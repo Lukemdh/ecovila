@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Hotel building placeholder</title>
+  <desc id="desc">Replace with a photo of the hotel building.</desc>
+  <rect width="1000" height="760" fill="#8B9D83"/>
+  <rect x="180" y="172" width="640" height="448" rx="34" fill="#E8DCC7"/>
+  <path d="M180 230h640" stroke="#B08B6E" stroke-width="28"/>
+  <g fill="#606C38">
+    <rect x="250" y="292" width="94" height="82" rx="14"/>
+    <rect x="453" y="292" width="94" height="82" rx="14"/>
+    <rect x="656" y="292" width="94" height="82" rx="14"/>
+    <rect x="250" y="426" width="94" height="82" rx="14"/>
+    <rect x="453" y="426" width="94" height="82" rx="14"/>
+    <rect x="656" y="426" width="94" height="82" rx="14"/>
+  </g>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Hotel building</text>
+</svg>

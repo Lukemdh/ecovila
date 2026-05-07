@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Forest path placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila forest territory.</desc>
+  <rect width="1000" height="760" fill="#8B9D83"/>
+  <path d="M0 546c156-66 296-78 420-34 176 62 330 36 580-84v332H0z" fill="#606C38"/>
+  <path d="M420 760c42-160 68-290 80-390 58 86 100 216 126 390z" fill="#D4B895"/>
+  <path d="M170 560V150M170 152 92 310h156zM170 72 70 258h200z" stroke="#3A2F24" stroke-width="24" stroke-linejoin="round" fill="#2F3A24"/>
+  <path d="M810 540V132M810 132 722 304h176zM810 52 700 252h220z" stroke="#3A2F24" stroke-width="24" stroke-linejoin="round" fill="#2F3A24"/>
+  <text x="130" y="686" fill="#E8DCC7" font-family="Georgia, serif" font-size="54" font-weight="700">Forest path</text>
+</svg>

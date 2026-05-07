@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">SPA pool placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila pools.</desc>
+  <rect width="1000" height="760" fill="#D4B895"/>
+  <rect x="86" y="98" width="828" height="538" rx="46" fill="#8B9D83"/>
+  <path d="M130 492c100-54 195-48 284 18 87 64 179 68 276 12 76-44 137-50 184-18v92H130z" fill="#606C38"/>
+  <path d="M158 246h684v210H158z" fill="#E8DCC7" opacity=".68"/>
+  <path d="M186 350c72-36 132-36 204 0s132 36 204 0 132-36 204 0" fill="none" stroke="#C66B3D" stroke-width="20" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">SPA pools</text>
+</svg>

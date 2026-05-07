@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1100" role="img" aria-labelledby="title desc">
+  <title id="title">EcoVila hero placeholder</title>
+  <desc id="desc">Replace with a cinematic full-width photograph of EcoVila or the surrounding forest.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#8EA0A0"/>
+      <stop offset=".58" stop-color="#B6B8AD"/>
+      <stop offset="1" stop-color="#756A5E"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" x2="1">
+      <stop offset="0" stop-color="#D8D1C3"/>
+      <stop offset=".5" stop-color="#B9AA97"/>
+      <stop offset="1" stop-color="#E2DDD2"/>
+    </linearGradient>
+  </defs>
+  <rect width="1800" height="1100" fill="url(#sky)"/>
+  <path d="M0 760c220-150 422-188 606-112 170 70 316 70 438-2 208-124 462-120 756 16v438H0z" fill="#283626" opacity=".82"/>
+  <path d="M0 825c260-90 510-72 750 54 236 124 586 104 1050-58v279H0z" fill="#1B271C" opacity=".92"/>
+  <g transform="translate(232 250)">
+    <path d="M84 682h1190V206L1042 96 850 168 662 78 476 160 278 84 84 198z" fill="url(#stone)"/>
+    <path d="M60 212 278 54l198 76 186-82 188 90 192-72 258 128" fill="none" stroke="#6E4B35" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
+    <path d="M84 312h1190M84 446h1190M84 580h1190" stroke="#8E7562" stroke-width="8" opacity=".34"/>
+    <g fill="#1F2723">
+      <rect x="176" y="282" width="74" height="118" rx="8"/>
+      <rect x="342" y="282" width="74" height="118" rx="8"/>
+      <rect x="508" y="282" width="74" height="118" rx="8"/>
+      <rect x="674" y="282" width="74" height="118" rx="8"/>
+      <rect x="840" y="282" width="74" height="118" rx="8"/>
+      <rect x="1006" y="282" width="74" height="118" rx="8"/>
+      <rect x="176" y="470" width="74" height="118" rx="8"/>
+      <rect x="342" y="470" width="74" height="118" rx="8"/>
+      <rect x="508" y="470" width="74" height="118" rx="8"/>
+      <rect x="674" y="470" width="74" height="118" rx="8"/>
+      <rect x="840" y="470" width="74" height="118" rx="8"/>
+      <rect x="1006" y="470" width="74" height="118" rx="8"/>
+    </g>
+    <path d="M0 694h1350" stroke="#E7E0D3" stroke-width="24" opacity=".82"/>
+    <path d="M120 706 470 470M470 706 820 470M820 706l350-236" stroke="#E7E0D3" stroke-width="18" opacity=".88"/>
+  </g>
+  <rect width="1800" height="1100" fill="#171412" opacity=".22"/>
+</svg>

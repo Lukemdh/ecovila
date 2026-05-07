@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Large villa exterior placeholder</title>
+  <desc id="desc">Replace with a photo of a large villa exterior.</desc>
+  <rect width="1000" height="760" fill="#606C38"/>
+  <path d="M126 410 350 222l150 126 150-126 224 188v214H126z" fill="#E8DCC7"/>
+  <path d="M88 410 350 190l150 126 150-126 262 220" fill="none" stroke="#3A2F24" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="230" y="470" width="118" height="112" rx="16" fill="#8B9D83"/>
+  <rect x="440" y="430" width="120" height="194" rx="18" fill="#B08B6E"/>
+  <rect x="652" y="470" width="118" height="112" rx="16" fill="#8B9D83"/>
+  <text x="130" y="686" fill="#E8DCC7" font-family="Georgia, serif" font-size="54" font-weight="700">Large villa</text>
+</svg>

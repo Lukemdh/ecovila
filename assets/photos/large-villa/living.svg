@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Large villa living room placeholder</title>
+  <desc id="desc">Replace with a photo of a large villa living room.</desc>
+  <rect width="1000" height="760" fill="#D4B895"/>
+  <rect x="120" y="126" width="760" height="460" rx="42" fill="#E8DCC7"/>
+  <rect x="198" y="370" width="604" height="128" rx="32" fill="#8B9D83"/>
+  <rect x="274" y="264" width="452" height="122" rx="28" fill="#B08B6E"/>
+  <circle cx="500" cy="228" r="58" fill="#C08E3A"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Living room</text>
+</svg>

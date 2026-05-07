@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Small villa exterior placeholder</title>
+  <desc id="desc">Replace with a photo of a small villa exterior.</desc>
+  <rect width="1000" height="760" fill="#8B9D83"/>
+  <path d="M174 404 500 168l326 236v216H174z" fill="#E8DCC7"/>
+  <path d="M122 404 500 130l378 274" fill="none" stroke="#3A2F24" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="420" y="440" width="160" height="180" rx="18" fill="#B08B6E"/>
+  <rect x="250" y="452" width="108" height="96" rx="16" fill="#606C38"/>
+  <rect x="642" y="452" width="108" height="96" rx="16" fill="#606C38"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Small villa</text>
+</svg>

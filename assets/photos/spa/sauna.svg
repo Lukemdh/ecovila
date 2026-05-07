@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Sauna placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila saunas.</desc>
+  <rect width="1000" height="760" fill="#B08B6E"/>
+  <rect x="120" y="100" width="760" height="520" rx="34" fill="#3A2F24"/>
+  <path d="M182 156h636v408H182z" fill="#E8DCC7"/>
+  <path d="M230 156v408M318 156v408M406 156v408M494 156v408M582 156v408M670 156v408M758 156v408" stroke="#B08B6E" stroke-width="18"/>
+  <path d="M360 520c40-80 40-128 0-206M500 520c40-80 40-128 0-206M640 520c40-80 40-128 0-206" fill="none" stroke="#C66B3D" stroke-width="18" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#E8DCC7" font-family="Georgia, serif" font-size="54" font-weight="700">Sauna</text>
+</svg>

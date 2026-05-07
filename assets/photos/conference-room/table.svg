@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Conference table placeholder</title>
+  <desc id="desc">Replace with another conference room photo.</desc>
+  <rect width="1000" height="760" fill="#606C38"/>
+  <rect x="158" y="190" width="684" height="368" rx="42" fill="#E8DCC7"/>
+  <rect x="240" y="342" width="520" height="82" rx="28" fill="#B08B6E"/>
+  <path d="M300 424v96M700 424v96" stroke="#3A2F24" stroke-width="22" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#E8DCC7" font-family="Georgia, serif" font-size="54" font-weight="700">Meeting setup</text>
+</svg>

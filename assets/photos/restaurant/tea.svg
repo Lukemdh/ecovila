@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Tea and coffee placeholder</title>
+  <desc id="desc">Replace with a photo of drinks at EcoVila.</desc>
+  <rect width="1000" height="760" fill="#E8DCC7"/>
+  <path d="M302 250h312v190c0 80-68 144-156 144s-156-64-156-144z" fill="#8B9D83"/>
+  <path d="M616 306h92c48 0 80 34 80 78s-32 78-80 78h-92" fill="none" stroke="#606C38" stroke-width="34"/>
+  <path d="M382 224c-28-54 38-74 12-124M500 224c-28-54 38-74 12-124M618 224c-28-54 38-74 12-124" fill="none" stroke="#C66B3D" stroke-width="18" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Coffee and tea</text>
+</svg>

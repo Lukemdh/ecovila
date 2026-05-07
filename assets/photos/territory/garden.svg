@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Garden placeholder</title>
+  <desc id="desc">Replace with a photo of EcoVila outdoor grounds.</desc>
+  <rect width="1000" height="760" fill="#D4B895"/>
+  <path d="M120 548c120-82 232-96 336-44 96 48 176 48 240 0 58-44 118-48 180-12v150H120z" fill="#606C38"/>
+  <circle cx="286" cy="310" r="86" fill="#8B9D83"/>
+  <circle cx="500" cy="266" r="118" fill="#606C38"/>
+  <circle cx="716" cy="330" r="86" fill="#8B9D83"/>
+  <path d="M286 394v134M500 384v164M716 414v114" stroke="#3A2F24" stroke-width="22" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Garden</text>
+</svg>

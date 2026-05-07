@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Small villa interior placeholder</title>
+  <desc id="desc">Replace with a photo of a small villa interior.</desc>
+  <rect width="1000" height="760" fill="#E8DCC7"/>
+  <rect x="128" y="150" width="744" height="420" rx="38" fill="#D4B895"/>
+  <rect x="202" y="338" width="596" height="126" rx="30" fill="#B08B6E"/>
+  <rect x="278" y="266" width="444" height="88" rx="24" fill="#8B9D83"/>
+  <path d="M204 462v86M796 462v86" stroke="#3A2F24" stroke-width="20" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Villa interior</text>
+</svg>

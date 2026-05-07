@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Salt room placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila salt room.</desc>
+  <rect width="1000" height="760" fill="#E8DCC7"/>
+  <rect x="110" y="104" width="780" height="520" rx="42" fill="#D4B895"/>
+  <circle cx="290" cy="280" r="80" fill="#C08E3A" opacity=".72"/>
+  <circle cx="710" cy="400" r="118" fill="#B08B6E" opacity=".62"/>
+  <path d="M180 570c174-74 330-74 468 0 80 42 144 42 192 0" fill="none" stroke="#606C38" stroke-width="24" stroke-linecap="round"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Salt room</text>
+</svg>

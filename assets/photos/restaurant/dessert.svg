@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Dessert placeholder</title>
+  <desc id="desc">Replace with a photo of desserts served at EcoVila.</desc>
+  <rect width="1000" height="760" fill="#D4B895"/>
+  <circle cx="500" cy="364" r="238" fill="#E8DCC7"/>
+  <circle cx="500" cy="364" r="164" fill="#B08B6E"/>
+  <path d="M350 344c72-86 160-86 300 0" fill="none" stroke="#C66B3D" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="430" cy="290" r="26" fill="#606C38"/>
+  <circle cx="570" cy="290" r="26" fill="#606C38"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Desserts</text>
+</svg>

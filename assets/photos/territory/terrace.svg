@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Terrace placeholder</title>
+  <desc id="desc">Replace with a photo of the outdoor terrace.</desc>
+  <rect width="1000" height="760" fill="#606C38"/>
+  <rect x="112" y="198" width="776" height="340" rx="40" fill="#E8DCC7"/>
+  <rect x="194" y="360" width="612" height="58" rx="20" fill="#B08B6E"/>
+  <path d="M230 420v116M770 420v116M500 198v340" stroke="#3A2F24" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="330" cy="290" r="54" fill="#C08E3A"/>
+  <circle cx="670" cy="290" r="54" fill="#8B9D83"/>
+  <text x="130" y="686" fill="#E8DCC7" font-family="Georgia, serif" font-size="54" font-weight="700">Terrace</text>
+</svg>

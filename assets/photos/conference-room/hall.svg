@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Conference hall placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila conference room.</desc>
+  <rect width="1200" height="760" fill="#D4B895"/>
+  <rect x="108" y="96" width="984" height="500" rx="44" fill="#E8DCC7"/>
+  <rect x="208" y="420" width="784" height="76" rx="26" fill="#B08B6E"/>
+  <path d="M270 496v82M930 496v82" stroke="#3A2F24" stroke-width="24" stroke-linecap="round"/>
+  <rect x="292" y="200" width="616" height="142" rx="28" fill="#606C38"/>
+  <circle cx="398" cy="382" r="34" fill="#C66B3D"/>
+  <circle cx="600" cy="382" r="34" fill="#C08E3A"/>
+  <circle cx="802" cy="382" r="34" fill="#8B9D83"/>
+  <text x="130" y="686" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Conference room</text>
+</svg>
