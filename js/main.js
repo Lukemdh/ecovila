@@ -47,6 +47,12 @@
     document.querySelectorAll('[data-lang-select]').forEach((select) => {
       select.value = state.language;
     });
+
+    window.dispatchEvent(
+      new CustomEvent('ecovila:languagechange', {
+        detail: { language: state.language },
+      }),
+    );
   }
 
   function initializeLanguageSwitcher() {
@@ -170,6 +176,12 @@
       });
     });
   }
+
+  window.EcoVilaLanguage = {
+    getLanguage: () => state.language,
+    setLanguage: applyLanguage,
+    t,
+  };
 
   document.addEventListener('DOMContentLoaded', () => {
     initializeLanguageSwitcher();

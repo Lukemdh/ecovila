@@ -136,11 +136,21 @@
     const kidsAges = Array.isArray(party?.kidsAges)
       ? party.kidsAges.map((age) => Number(age))
       : [];
+    const freeChildAges = kidsAges.filter((age) => Number.isInteger(age) && age >= 0 && age <= 3);
+    const chargeableKidAges = kidsAges.filter((age) => Number.isInteger(age) && age >= 4 && age <= 12);
+    const teenAges = kidsAges.filter((age) => Number.isInteger(age) && age >= 13);
 
     return {
       adults,
       kidsAges,
-      kids: kidsAges.length,
+      freeChildAges,
+      chargeableKidAges,
+      teenAges,
+      kids: freeChildAges.length + chargeableKidAges.length,
+      freeKids: freeChildAges.length,
+      chargeableKids: chargeableKidAges.length,
+      teensAsAdults: teenAges.length,
+      effectiveAdults: adults + teenAges.length,
     };
   }
 
@@ -154,8 +164,8 @@
     }
 
     normalized.kidsAges.forEach((age) => {
-      if (!Number.isInteger(age) || age < 0 || age > 12) {
-        errors.push('Child ages must be whole numbers from 0 to 12.');
+      if (!Number.isInteger(age) || age < 0 || age > 18) {
+        errors.push('Child ages must be whole numbers from 0 to 18.');
       }
     });
 
@@ -163,7 +173,7 @@
       errors.push('At least one adult is required for public bookings.');
     }
 
-    if (normalized.adults + normalized.kids === 0) {
+    if (normalized.adults + normalized.kidsAges.length === 0) {
       errors.push('At least one guest is required.');
     }
 
@@ -173,13 +183,17 @@
       adults: normalized.adults,
       kidsAges: normalized.kidsAges,
       kids: normalized.kids,
+      freeKids: normalized.freeKids,
+      chargeableKids: normalized.chargeableKids,
+      teensAsAdults: normalized.teensAsAdults,
+      effectiveAdults: normalized.effectiveAdults,
     };
   }
 
   function getUnitsNeeded(roomType, party) {
     const config = assertRoomType(roomType);
     const normalized = normalizeParty(party);
-    const adultUnits = Math.ceil(normalized.adults / config.maxAdults);
+    const adultUnits = Math.ceil(normalized.effectiveAdults / config.maxAdults);
     const kidUnits = Math.ceil(normalized.kids / config.maxKids);
 
     return Math.max(1, adultUnits, kidUnits);
@@ -190,15 +204,19 @@
     const normalized = normalizeParty(party);
     const units = Number(options?.units || getUnitsNeeded(roomType, normalized));
     const minimumAdults = units * config.minimumAdults;
-    const adultSlotsToFill = Math.max(0, minimumAdults - normalized.adults);
-    const kidsChargedAsAdults = Math.min(normalized.kids, adultSlotsToFill);
+    const adultSlotsToFill = Math.max(0, minimumAdults - normalized.effectiveAdults);
+    const kidsChargedAsAdults = Math.min(normalized.chargeableKids, adultSlotsToFill);
     const emptyAdultSlots = Math.max(0, adultSlotsToFill - kidsChargedAsAdults);
-    const billableAdults = normalized.adults + kidsChargedAsAdults + emptyAdultSlots;
-    const billableKids = normalized.kids - kidsChargedAsAdults;
+    const billableAdults = normalized.effectiveAdults + kidsChargedAsAdults + emptyAdultSlots;
+    const billableKids = normalized.chargeableKids - kidsChargedAsAdults;
 
     return {
       actualAdults: normalized.adults,
-      actualKids: normalized.kids,
+      actualKids: normalized.kidsAges.length,
+      capacityKids: normalized.kids,
+      freeKids: normalized.freeKids,
+      chargeableKids: normalized.chargeableKids,
+      teensAsAdults: normalized.teensAsAdults,
       billableAdults,
       billableKids,
       kidsChargedAsAdults,
@@ -321,6 +339,7 @@
     getFittingRoomTypes,
     getNightsTier,
     getUnitsNeeded,
+    normalizeParty,
     parseISODate,
     toISODate,
     validateParty,

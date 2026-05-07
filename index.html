@@ -1,234 +1,242 @@
 <!doctype html>
 <html lang="ro">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>EcoVila | Orheiul Vechi</title>
-    <meta
-      name="description"
-      content="EcoVila este un complex all-inclusive in Orheiul Vechi, cu SPA, restaurant, teritoriu in padure si cazare pentru familii."
-    >
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    >
-    <link rel="stylesheet" href="css/main.css">
-  </head>
-  <body>
-    <a class="skip-link" href="#spa" data-i18n="access.skip">Sari la conținut</a>
 
-    <header class="site-header" data-header>
-      <a class="brand" href="#top" aria-label="EcoVila">
-        <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
-      </a>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EcoVila | Orheiul Vechi</title>
+  <meta name="description"
+    content="EcoVila este un complex all-inclusive in Orheiul Vechi, cu SPA, restaurant, teritoriu in padure si cazare pentru familii.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/main.css">
+</head>
 
-      <div class="header-actions">
-        <div class="language-dropdown header-bar-control">
-          <label class="visually-hidden" for="language-select">Language</label>
-          <select class="language-select" id="language-select" data-lang-select aria-label="Language">
-            <option value="ro">RO</option>
-            <option value="ru">RU</option>
-            <option value="en">EN</option>
-          </select>
-        </div>
-        <a class="menu-link header-bar-control" href="rezervari.html" data-i18n="nav.cta">Rezervă</a>
+<body>
+  <a class="skip-link" href="#spa" data-i18n="access.skip">Sari la conținut</a>
+
+  <header class="site-header" data-header>
+    <a class="brand" href="#top" aria-label="EcoVila">
+      <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
+    </a>
+
+    <div class="header-actions">
+      <div class="language-dropdown header-bar-control">
+        <label class="visually-hidden" for="language-select">Language</label>
+        <select class="language-select" id="language-select" data-lang-select aria-label="Language">
+          <option value="ro">RO</option>
+          <option value="ru">RU</option>
+          <option value="en">EN</option>
+        </select>
       </div>
-    </header>
+      <a class="menu-link header-bar-control" href="rezervari.html" data-i18n="nav.cta">Rezervă</a>
+    </div>
+  </header>
 
-    <main id="top">
-      <section class="hero" id="hero" aria-labelledby="hero-title">
-        <div class="hero__content">
-          <h1 class="hero__title" id="hero-title" data-i18n="hero.title">
-            Un refugiu all-inclusive în inima pădurii
-          </h1>
-          <a class="hero__cta editorial-link" href="rezervari.html" data-i18n="hero.cta">Către rezervări →</a>
-        </div>
-      </section>
+  <main id="top">
+    <section class="hero" id="hero" aria-labelledby="hero-title">
+      <div class="hero__content">
+        <h1 class="hero__title" id="hero-title" data-i18n="hero.title">
+          Un refugiu all-inclusive în inima pădurii
+        </h1>
+        <a class="hero__cta editorial-link" href="rezervari.html" data-i18n="hero.cta">Către rezervări →</a>
+      </div>
+    </section>
 
-      <section class="intro-section" aria-labelledby="intro-title">
-        <div class="section-inner intro-section__grid">
-          <figure class="photo-panel">
-            <img src="/assets/photos/territory/forest-path.svg" alt="">
-          </figure>
-          <div class="intro-section__copy">
-            <p class="section-kicker" data-i18n="intro.kicker">EcoVila</p>
-            <h2 id="intro-title" data-i18n="intro.title">
-              O destinație de odihnă în Orheiul Vechi, construită în jurul naturii.
-            </h2>
-            <p data-i18n="intro.body">
-              EcoVila adună cazarea, mesele incluse, zona SPA și liniștea pădurii într-o experiență
-              coerentă pentru familii, cupluri și grupuri care caută timp împreună.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section class="showcase section-band" id="spa" aria-labelledby="spa-title">
-        <div class="section-inner showcase__grid">
-          <div class="showcase__copy">
-            <p class="section-kicker" data-i18n="showcase.spa.kicker">Zona SPA</p>
-            <h2 id="spa-title" data-i18n="showcase.spa.title">Apă caldă, saune și liniște după pădure</h2>
-            <p data-i18n="showcase.spa.body">
-              Două piscine interioare, o piscină exterioară, jacuzzi, trei tipuri de saună, salină,
-              cameră rece și piscină rece pentru zile tihnite la EcoVila.
-            </p>
-          </div>
-          <div class="photo-stack" aria-label="Zona SPA">
-            <img src="/assets/photos/spa/pool.svg" alt="" class="photo-stack__large">
-            <img src="/assets/photos/spa/sauna.svg" alt="" class="photo-stack__small photo-stack__small--top">
-            <img src="/assets/photos/spa/salt-room.svg" alt="" class="photo-stack__small photo-stack__small--bottom">
-          </div>
-        </div>
-      </section>
-
-      <section class="image-hero" id="restaurant" aria-labelledby="restaurant-title">
-        <img src="/assets/photos/restaurant/dining.svg" alt="" class="image-hero__image">
-        <div class="image-hero__overlay"></div>
-        <div class="image-hero__content">
-          <p class="section-kicker" data-i18n="showcase.restaurant.kicker">All-inclusive</p>
-          <h2 id="restaurant-title" data-i18n="showcase.restaurant.title">Trei mese pe zi, fără grija meniului</h2>
-          <p data-i18n="showcase.restaurant.body">
-            Mic dejun, prânz și cină, deserturi, cafea, ceai și apă dulce sunt incluse, ca oaspeții
-            să-și păstreze ziua pentru odihnă.
+    <section class="intro-section" aria-labelledby="intro-title">
+      <div class="section-inner intro-section__grid">
+        <figure class="photo-panel">
+          <img src="/assets/photos/territory/forest-path.svg" alt="">
+        </figure>
+        <div class="intro-section__copy">
+          <p class="section-kicker" data-i18n="intro.kicker">EcoVila</p>
+          <h2 id="intro-title" data-i18n="intro.title">
+            O destinație de odihnă în Orheiul Vechi, construită în jurul naturii.
+          </h2>
+          <p data-i18n="intro.body">
+            EcoVila adună cazarea, mesele incluse, zona SPA și liniștea pădurii într-o experiență
+            coerentă pentru familii, cupluri și grupuri care caută timp împreună.
           </p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="accommodation section-band" id="accommodation" aria-labelledby="accommodation-title">
-        <div class="section-inner">
-          <div class="section-heading section-heading--center">
-            <h2 id="accommodation-title" data-i18n="showcase.accommodation.title">Alege locul potrivit pentru odihna ta</h2>
-          </div>
-
-          <div class="stay-grid">
-            <article class="stay-card">
-              <img src="/assets/photos/small-villa/exterior.svg" alt="" class="stay-card__image">
-              <div class="stay-card__body">
-                <h3 data-i18n="accommodation.small.title">Căsuță Mică</h3>
-                <p class="stay-card__capacity" data-i18n="accommodation.small.capacity">Până la 2 adulți + 2 copii</p>
-                <p data-i18n="accommodation.small.summary">O căsuță intimă pentru odihnă în doi sau pentru o familie mică.</p>
-                <button class="editorial-button" type="button" data-accommodation="small" data-i18n="accommodation.details">
-                  Vezi detalii
-                </button>
-              </div>
-            </article>
-
-            <article class="stay-card">
-              <img src="/assets/photos/large-villa/exterior.svg" alt="" class="stay-card__image">
-              <div class="stay-card__body">
-                <h3 data-i18n="accommodation.large.title">Căsuță Mare</h3>
-                <p class="stay-card__capacity" data-i18n="accommodation.large.capacity">Până la 4 adulți + 2 copii</p>
-                <p data-i18n="accommodation.large.summary">Două dormitoare separate și living pentru familii sau prieteni.</p>
-                <button class="editorial-button" type="button" data-accommodation="large" data-i18n="accommodation.details">
-                  Vezi detalii
-                </button>
-              </div>
-            </article>
-
-            <article class="stay-card">
-              <img src="/assets/photos/hotel/room.svg" alt="" class="stay-card__image">
-              <div class="stay-card__body">
-                <h3 data-i18n="accommodation.hotel.title">Cameră în Hotel</h3>
-                <p class="stay-card__capacity" data-i18n="accommodation.hotel.capacity">Până la 2 adulți + 2 copii</p>
-                <p data-i18n="accommodation.hotel.summary">Camere comode în clădirea hotelului, aproape de facilități.</p>
-                <button class="editorial-button" type="button" data-accommodation="hotel" data-i18n="accommodation.details">
-                  Vezi detalii
-                </button>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="image-hero image-hero--conference" id="conference" aria-labelledby="conference-title">
-        <img src="/assets/photos/conference-room/hall.svg" alt="" class="image-hero__image">
-        <div class="image-hero__overlay"></div>
-        <div class="image-hero__content">
-          <p class="section-kicker" data-i18n="conference.kicker">Sala de conferințe</p>
-          <h2 id="conference-title" data-i18n="conference.title">Planificați un seminar?</h2>
-          <p data-i18n="conference.body">
-            Sala de conferințe este disponibilă pentru oaspeți business și se rezervă direct prin Diana.
+    <section class="showcase section-band" id="spa" aria-labelledby="spa-title">
+      <div class="section-inner showcase__grid">
+        <div class="showcase__copy">
+          <p class="section-kicker" data-i18n="showcase.spa.kicker">Zona SPA</p>
+          <h2 id="spa-title" data-i18n="showcase.spa.title">Apă caldă, saune și liniște după pădure</h2>
+          <p data-i18n="showcase.spa.body">
+            Două piscine interioare, o piscină exterioară, jacuzzi, trei tipuri de saună, salină,
+            cameră rece și piscină rece pentru zile tihnite la EcoVila.
           </p>
-          <p class="conference__phone" data-i18n="conference.phone">Telefon Diana: de completat</p>
         </div>
-      </section>
-
-      <section class="booking-repeat" aria-labelledby="booking-repeat-title">
-        <div class="section-inner booking-repeat__inner">
-          <h2 id="booking-repeat-title" data-i18n="repeat.title">Rezervă o zi de liniște la EcoVila</h2>
-          <a class="editorial-link editorial-link--dark" href="rezervari.html" data-i18n="repeat.cta">Către rezervări →</a>
-        </div>
-      </section>
-    </main>
-
-    <footer class="site-footer" id="footer">
-      <div class="section-inner site-footer__grid">
-        <div class="site-footer__brand">
-          <img src="/assets/logo.png" alt="EcoVila" class="site-footer__logo">
-          <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi, Moldova.</p>
-        </div>
-        <dl class="site-footer__legal">
-          <div>
-            <dt data-i18n="footer.companyLabel">Companie</dt>
-            <dd data-i18n="footer.companyValue">de completat de client</dd>
-          </div>
-          <div>
-            <dt data-i18n="footer.idnoLabel">IDNO</dt>
-            <dd data-i18n="footer.idnoValue">de completat de client</dd>
-          </div>
-          <div>
-            <dt data-i18n="footer.addressLabel">Adresa sediului</dt>
-            <dd data-i18n="footer.addressValue">de completat de client</dd>
-          </div>
-          <div>
-            <dt data-i18n="footer.phoneLabel">Telefon</dt>
-            <dd data-i18n="footer.phoneValue">de completat de client</dd>
-          </div>
-          <div>
-            <dt>Email</dt>
-            <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
-          </div>
-        </dl>
-        <div class="site-footer__links">
-          <h2 data-i18n="footer.useful">Utile</h2>
-          <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
-          <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
-          <span data-i18n="footer.copy">© 2026 EcoVila</span>
+        <div class="photo-stack" aria-label="Zona SPA">
+          <img src="/assets/photos/spa/pool.svg" alt="" class="photo-stack__large">
+          <img src="/assets/photos/spa/sauna.svg" alt="" class="photo-stack__small photo-stack__small--top">
+          <img src="/assets/photos/spa/salt-room.svg" alt="" class="photo-stack__small photo-stack__small--bottom">
         </div>
       </div>
-    </footer>
+    </section>
 
-    <div class="cookie-banner" id="cookie-banner" hidden>
-      <p data-i18n="cookie.text">
-        Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
-      </p>
-      <div class="cookie-banner__actions">
-        <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
-          Accept doar esențiale
-        </button>
-        <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
-          Accept
-        </button>
+    <section class="image-hero" id="restaurant" aria-labelledby="restaurant-title">
+      <img src="/assets/photos/restaurant/dining.svg" alt="" class="image-hero__image">
+      <div class="image-hero__overlay"></div>
+      <div class="image-hero__content">
+        <p class="section-kicker" data-i18n="showcase.restaurant.kicker">All-inclusive</p>
+        <h2 id="restaurant-title" data-i18n="showcase.restaurant.title">Trei mese pe zi, fără grija meniului</h2>
+        <p data-i18n="showcase.restaurant.body">
+          Mic dejun, prânz și cină, deserturi, cafea, ceai și apă dulce sunt incluse, ca oaspeții
+          să-și păstreze ziua pentru odihnă.
+        </p>
+      </div>
+    </section>
+
+    <section class="accommodation section-band" id="accommodation" aria-labelledby="accommodation-title">
+      <div class="section-inner">
+        <div class="section-heading section-heading--center">
+          <h2 id="accommodation-title" data-i18n="showcase.accommodation.title">Alege locul potrivit pentru odihna ta
+          </h2>
+        </div>
+
+        <div class="stay-grid">
+          <article class="stay-card">
+            <img src="/assets/photos/small-villa/exterior.svg" alt="" class="stay-card__image">
+            <div class="stay-card__body">
+              <h3 data-i18n="accommodation.small.title">Căsuță Mică</h3>
+              <p class="stay-card__capacity" data-i18n="accommodation.small.capacity">Până la 2 adulți + 2 copii</p>
+              <p data-i18n="accommodation.small.summary">O căsuță intimă pentru odihnă în doi sau pentru o familie mică.
+              </p>
+              <button class="editorial-button" type="button" data-accommodation="small"
+                data-i18n="accommodation.details">
+                Vezi detalii
+              </button>
+            </div>
+          </article>
+
+          <article class="stay-card">
+            <img src="/assets/photos/large-villa/exterior.svg" alt="" class="stay-card__image">
+            <div class="stay-card__body">
+              <h3 data-i18n="accommodation.large.title">Căsuță Mare</h3>
+              <p class="stay-card__capacity" data-i18n="accommodation.large.capacity">Până la 4 adulți + 2 copii</p>
+              <p data-i18n="accommodation.large.summary">Două dormitoare separate și living pentru familii sau prieteni.
+              </p>
+              <button class="editorial-button" type="button" data-accommodation="large"
+                data-i18n="accommodation.details">
+                Vezi detalii
+              </button>
+            </div>
+          </article>
+
+          <article class="stay-card">
+            <img src="/assets/photos/hotel/room.svg" alt="" class="stay-card__image">
+            <div class="stay-card__body">
+              <h3 data-i18n="accommodation.hotel.title">Cameră în Hotel</h3>
+              <p class="stay-card__capacity" data-i18n="accommodation.hotel.capacity">Până la 2 adulți + 2 copii</p>
+              <p data-i18n="accommodation.hotel.summary">Camere comode în clădirea hotelului, aproape de facilități.</p>
+              <button class="editorial-button" type="button" data-accommodation="hotel"
+                data-i18n="accommodation.details">
+                Vezi detalii
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="image-hero image-hero--conference" id="conference" aria-labelledby="conference-title">
+      <img src="/assets/photos/conference-room/hall.svg" alt="" class="image-hero__image">
+      <div class="image-hero__overlay"></div>
+      <div class="image-hero__content">
+        <p class="section-kicker" data-i18n="conference.kicker">Sala de conferințe</p>
+        <h2 id="conference-title" data-i18n="conference.title">Planificați un seminar?</h2>
+        <p data-i18n="conference.body">
+          Sala de conferințe este disponibilă pentru oaspeți business și se rezervă direct prin Diana.
+        </p>
+        <p class="conference__phone" data-i18n="conference.phone">Telefon Diana: de completat</p>
+      </div>
+    </section>
+
+    <section class="booking-repeat" aria-labelledby="booking-repeat-title">
+      <div class="section-inner booking-repeat__inner">
+        <h2 id="booking-repeat-title" data-i18n="repeat.title">Rezervă o zi de liniște la EcoVila</h2>
+        <a class="editorial-link editorial-link--dark" href="rezervari.html" data-i18n="repeat.cta">Către rezervări
+          →</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" id="footer">
+    <div class="section-inner site-footer__grid">
+      <div class="site-footer__brand">
+        <img src="/assets/logo.png" alt="EcoVila" class="site-footer__logo">
+        <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi, Moldova.</p>
+      </div>
+      <dl class="site-footer__legal">
+        <div>
+          <dt data-i18n="footer.companyLabel">Companie</dt>
+          <dd data-i18n="footer.companyValue">de completat de client</dd>
+        </div>
+        <div>
+          <dt data-i18n="footer.idnoLabel">IDNO</dt>
+          <dd data-i18n="footer.idnoValue">de completat de client</dd>
+        </div>
+        <div>
+          <dt data-i18n="footer.addressLabel">Adresa sediului</dt>
+          <dd data-i18n="footer.addressValue">de completat de client</dd>
+        </div>
+        <div>
+          <dt data-i18n="footer.phoneLabel">Telefon</dt>
+          <dd data-i18n="footer.phoneValue">de completat de client</dd>
+        </div>
+        <div>
+          <dt>Email</dt>
+          <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
+        </div>
+      </dl>
+      <div class="site-footer__links">
+        <h2 data-i18n="footer.useful">Utile</h2>
+        <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
+        <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
+        <span data-i18n="footer.copy">© 2026 EcoVila</span>
       </div>
     </div>
+  </footer>
 
-    <div class="modal" id="accommodation-modal" hidden>
-      <div class="modal__scrim" data-modal-close></div>
-      <article class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <button class="modal__close" type="button" data-modal-close data-i18n="modal.close">Închide</button>
-        <img src="/assets/photos/small-villa/interior.svg" alt="" class="modal__image" data-modal-image>
-        <div class="modal__content">
-          <p class="section-kicker" data-i18n="showcase.accommodation.kicker">Cazare</p>
-          <h2 id="modal-title" data-modal-title>Căsuță Mică</h2>
-          <p data-modal-body></p>
-          <ul class="modal__list" data-modal-list></ul>
-        </div>
-      </article>
+  <div class="cookie-banner" id="cookie-banner" hidden>
+    <p data-i18n="cookie.text">
+      Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
+    </p>
+    <div class="cookie-banner__actions">
+      <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
+        Accept doar esențiale
+      </button>
+      <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted"
+        data-i18n="cookie.accept">
+        Accept
+      </button>
     </div>
+  </div>
 
-    <script src="js/translations.js"></script>
-    <script src="js/main.js"></script>
-  </body>
+  <div class="modal" id="accommodation-modal" hidden>
+    <div class="modal__scrim" data-modal-close></div>
+    <article class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal__close" type="button" data-modal-close data-i18n="modal.close">Închide</button>
+      <img src="/assets/photos/small-villa/interior.svg" alt="" class="modal__image" data-modal-image>
+      <div class="modal__content">
+        <p class="section-kicker" data-i18n="showcase.accommodation.kicker">Cazare</p>
+        <h2 id="modal-title" data-modal-title>Căsuță Mică</h2>
+        <p data-modal-body></p>
+        <ul class="modal__list" data-modal-list></ul>
+      </div>
+    </article>
+  </div>
+
+  <script src="js/translations.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
 </html>

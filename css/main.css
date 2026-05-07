@@ -87,6 +87,10 @@ a {
   border: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .site-header {
   position: fixed;
   top: 0;

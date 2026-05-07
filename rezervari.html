@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila | Rezervări</title>
+    <meta
+      name="description"
+      content="Alege datele, persoanele si cazarea pentru rezervarea EcoVila."
+    >
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/booking.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#booking-page" data-i18n="access.skip">Sari la conținut</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="index.html#top" aria-label="EcoVila">
+        <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
+      </a>
+
+      <div class="header-actions">
+        <div class="language-dropdown header-bar-control">
+          <label class="visually-hidden" for="language-select">Language</label>
+          <select class="language-select" id="language-select" data-lang-select aria-label="Language">
+            <option value="ro">RO</option>
+            <option value="ru">RU</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="booking-page" id="booking-page" data-booking-app>
+      <section class="booking-shell" aria-labelledby="booking-title">
+        <div class="booking-intro">
+          <h1 id="booking-title" data-i18n="booking.title">Rezervări EcoVila</h1>
+          <p data-i18n="booking.lead">
+            Alege persoanele, perioada și tipul de cazare. Rezervarea se finalizează în pasul următor.
+          </p>
+        </div>
+
+        <section class="booking-panel booking-panel--selector" aria-labelledby="booking-selector-title">
+          <div class="booking-panel__heading">
+            <h2 id="booking-selector-title" data-i18n="booking.selectorTitle">Persoane și date</h2>
+            <p data-status-message data-i18n="booking.loading">Se verifică disponibilitatea...</p>
+          </div>
+
+          <div class="booking-selector-grid">
+            <div class="guest-picker" aria-label="Persoane">
+              <div class="guest-control">
+                <div>
+                  <span class="guest-control__label" data-i18n="booking.adults">Adulți</span>
+                  <span class="guest-control__value" data-adults-value>1</span>
+                </div>
+                <div class="guest-control__actions">
+                  <button type="button" data-counter="adults" data-counter-action="decrease" aria-label="Scade adulți">−</button>
+                  <button type="button" data-counter="adults" data-counter-action="increase" aria-label="Adaugă adulți">+</button>
+                </div>
+              </div>
+
+              <div class="guest-control">
+                <div>
+                  <span class="guest-control__label" data-i18n="booking.children">Copii</span>
+                  <span class="guest-control__value" data-kids-value>0</span>
+                </div>
+                <div class="guest-control__actions">
+                  <button type="button" data-counter="children" data-counter-action="decrease" aria-label="Scade copii">−</button>
+                  <button type="button" data-counter="children" data-counter-action="increase" aria-label="Adaugă copii">+</button>
+                </div>
+              </div>
+
+              <div class="child-ages" data-child-ages></div>
+              <p class="booking-error" data-party-error hidden></p>
+            </div>
+
+            <div class="date-picker">
+              <div class="date-summary">
+                <button class="date-summary__field" type="button" data-focus-calendar>
+                  <span data-i18n="booking.checkIn">Check-in</span>
+                  <strong data-check-in>--</strong>
+                </button>
+                <button class="date-summary__field" type="button" data-focus-calendar>
+                  <span data-i18n="booking.checkOut">Check-out</span>
+                  <strong data-check-out>--</strong>
+                </button>
+              </div>
+
+              <div class="calendar" data-booking-calendar>
+                <div class="calendar__header">
+                  <button class="calendar__nav" type="button" data-calendar-prev aria-label="Luna precedentă">‹</button>
+                  <h2 data-calendar-title>Mai 2026</h2>
+                  <button class="calendar__nav" type="button" data-calendar-next aria-label="Luna următoare">›</button>
+                </div>
+                <div class="calendar-weekdays" aria-hidden="true">
+                  <span>L</span>
+                  <span>Ma</span>
+                  <span>Mi</span>
+                  <span>J</span>
+                  <span>V</span>
+                  <span>S</span>
+                  <span>D</span>
+                </div>
+                <div class="calendar-grid" data-calendar-grid></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="booking-panel booking-panel--stays" aria-labelledby="booking-accommodation-title">
+          <div class="booking-panel__heading booking-panel__heading--wide">
+            <div>
+              <h2 id="booking-accommodation-title" data-i18n="booking.accommodationTitle">Alege cazarea</h2>
+              <p class="booking-accommodation-lead" data-i18n="booking.accommodationLead">Disponibilitatea se actualizează după persoanele și datele selectate.</p>
+            </div>
+            <p class="stay-summary" data-stay-summary data-i18n="booking.noDates">Alege datele pentru preț și disponibilitate.</p>
+          </div>
+
+          <div class="booking-stay-grid">
+            <article class="booking-stay-card" data-stay-card="small" tabindex="0">
+              <img src="/assets/photos/small-villa/exterior.svg" alt="" data-card-image>
+              <div class="booking-stay-card__body">
+                <span class="soldout-badge" data-soldout-badge hidden data-i18n="booking.soldOut">Epuizat</span>
+                <h3 data-card-title>Căsuță Mică</h3>
+                <p class="booking-stay-card__capacity" data-card-capacity>Până la 2 adulți + 2 copii</p>
+                <p class="booking-stay-card__meta" data-card-availability></p>
+                <p class="booking-stay-card__price" data-card-price></p>
+                <p class="booking-stay-card__rooms" data-card-selected-rooms hidden></p>
+                <div class="booking-stay-card__actions">
+                  <button class="editorial-button" type="button" data-card-room data-i18n="booking.chooseRoomNumber">
+                    Vreau să-mi aleg numărul
+                  </button>
+                  <button class="editorial-button" type="button" data-card-soldout hidden data-i18n="booking.wantThisType">
+                    Vreau așa căsuță
+                  </button>
+                </div>
+              </div>
+            </article>
+
+            <article class="booking-stay-card" data-stay-card="large" tabindex="0">
+              <img src="/assets/photos/large-villa/exterior.svg" alt="" data-card-image>
+              <div class="booking-stay-card__body">
+                <span class="soldout-badge" data-soldout-badge hidden data-i18n="booking.soldOut">Epuizat</span>
+                <h3 data-card-title>Căsuță Mare</h3>
+                <p class="booking-stay-card__capacity" data-card-capacity>Până la 4 adulți + 2 copii</p>
+                <p class="booking-stay-card__meta" data-card-availability></p>
+                <p class="booking-stay-card__price" data-card-price></p>
+                <p class="booking-stay-card__rooms" data-card-selected-rooms hidden></p>
+                <div class="booking-stay-card__actions">
+                  <button class="editorial-button" type="button" data-card-room data-i18n="booking.chooseRoomNumber">
+                    Vreau să-mi aleg numărul
+                  </button>
+                  <button class="editorial-button" type="button" data-card-soldout hidden data-i18n="booking.wantThisType">
+                    Vreau așa căsuță
+                  </button>
+                </div>
+              </div>
+            </article>
+
+            <article class="booking-stay-card" data-stay-card="hotel" tabindex="0">
+              <img src="/assets/photos/hotel/room.svg" alt="" data-card-image>
+              <div class="booking-stay-card__body">
+                <span class="soldout-badge" data-soldout-badge hidden data-i18n="booking.soldOut">Epuizat</span>
+                <h3 data-card-title>Cameră în Hotel</h3>
+                <p class="booking-stay-card__capacity" data-card-capacity>Până la 2 adulți + 2 copii</p>
+                <p class="booking-stay-card__meta" data-card-availability></p>
+                <p class="booking-stay-card__price" data-card-price></p>
+                <p class="booking-stay-card__rooms" data-card-selected-rooms hidden></p>
+                <div class="booking-stay-card__actions">
+                  <button class="editorial-button" type="button" data-card-room data-i18n="booking.chooseRoomNumber">
+                    Vreau să-mi aleg numărul
+                  </button>
+                  <button class="editorial-button" type="button" data-card-soldout hidden data-i18n="booking.wantThisType">
+                    Vreau așa căsuță
+                  </button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer" id="footer">
+      <div class="section-inner site-footer__grid">
+        <div class="site-footer__brand">
+          <img src="/assets/logo.png" alt="EcoVila" class="site-footer__logo">
+          <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi, Moldova.</p>
+        </div>
+        <dl class="site-footer__legal">
+          <div>
+            <dt data-i18n="footer.companyLabel">Companie</dt>
+            <dd data-i18n="footer.companyValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt data-i18n="footer.idnoLabel">IDNO</dt>
+            <dd data-i18n="footer.idnoValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt data-i18n="footer.addressLabel">Adresa sediului</dt>
+            <dd data-i18n="footer.addressValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt data-i18n="footer.phoneLabel">Telefon</dt>
+            <dd data-i18n="footer.phoneValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
+          </div>
+        </dl>
+        <div class="site-footer__links">
+          <h2 data-i18n="footer.useful">Utile</h2>
+          <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
+          <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
+          <span data-i18n="footer.copy">© 2026 EcoVila</span>
+        </div>
+      </div>
+    </footer>
+
+    <div class="cookie-banner" id="cookie-banner" hidden>
+      <p data-i18n="cookie.text">
+        Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
+      </p>
+      <div class="cookie-banner__actions">
+        <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
+          Accept doar esențiale
+        </button>
+        <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
+          Accept
+        </button>
+      </div>
+    </div>
+
+    <template data-age-placeholder>
+      <label class="child-age-row">
+        <span data-i18n="booking.childAge">Vârsta copilului</span>
+        <select data-child-age-select required>
+          <option value="" data-i18n="booking.childAgePlaceholder">Alege vârsta</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+          <option value="13">13</option>
+          <option value="14">14</option>
+          <option value="15">15</option>
+          <option value="16">16</option>
+          <option value="17">17</option>
+          <option value="18">18</option>
+        </select>
+      </label>
+    </template>
+
+    <div class="booking-modal" data-booking-modal hidden>
+      <div class="booking-modal__scrim" data-modal-close></div>
+      <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
+        <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
+        <div class="booking-details-gallery" data-booking-modal-gallery>
+          <div class="booking-details-gallery__main">
+            <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-booking-modal-prev aria-label="Imaginea precedentă">‹</button>
+            <img src="/assets/photos/small-villa/interior.svg" alt="" data-booking-modal-image>
+            <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-booking-modal-next aria-label="Imaginea următoare">›</button>
+            <div class="booking-details-gallery__dots" data-booking-modal-dots aria-hidden="true"></div>
+          </div>
+          <div class="booking-details-gallery__thumbs" data-booking-modal-thumbnails></div>
+        </div>
+        <div class="booking-modal__content booking-modal__content--details">
+          <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
+          <p data-booking-modal-body></p>
+          <section class="booking-detail-section" aria-labelledby="booking-bathroom-title">
+            <h3 id="booking-bathroom-title" data-i18n="booking.inBathroom">In the bathroom:</h3>
+            <ul class="booking-check-list" data-booking-modal-bathroom></ul>
+          </section>
+          <section class="booking-detail-section" aria-labelledby="booking-facilities-title">
+            <h3 id="booking-facilities-title" data-i18n="booking.facilities">Facilities:</h3>
+            <ul class="booking-check-list booking-check-list--wide" data-booking-modal-facilities></ul>
+          </section>
+          <p class="booking-error" data-booking-modal-error hidden></p>
+          <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve data-i18n="booking.reserve">
+            Rezervă
+          </button>
+        </div>
+      </article>
+    </div>
+
+    <div class="booking-modal" data-room-panel hidden>
+      <div class="booking-modal__scrim" data-room-panel-close></div>
+      <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="room-panel-title">
+        <button class="booking-modal__close" type="button" data-room-panel-close data-i18n="booking.close">Închide</button>
+        <div class="booking-modal__content">
+          <h2 id="room-panel-title" data-room-panel-title>Alege numărul</h2>
+          <p data-room-panel-intro></p>
+          <div class="room-number-grid" data-room-number-grid></div>
+          <button class="editorial-button" type="button" data-room-clear data-i18n="booking.clearSelection">Șterge selecția</button>
+        </div>
+      </article>
+    </div>
+
+    <div class="booking-modal" data-soldout-modal hidden>
+      <div class="booking-modal__scrim" data-soldout-close></div>
+      <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="soldout-modal-title">
+        <button class="booking-modal__close" type="button" data-soldout-close data-i18n="booking.close">Închide</button>
+        <div class="booking-modal__content">
+          <h2 id="soldout-modal-title" data-soldout-title>Date disponibile</h2>
+          <p data-soldout-intro></p>
+          <div class="soldout-calendar" data-soldout-calendar></div>
+        </div>
+      </article>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/translations.js"></script>
+    <script src="js/pricing.js"></script>
+    <script src="js/calendar.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/booking.js"></script>
+  </body>
+</html>

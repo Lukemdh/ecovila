@@ -1,0 +1,915 @@
+(function () {
+  'use strict';
+
+  const pricing = window.EcoVilaPricing;
+  const calendar = window.EcoVilaCalendar;
+  const supabaseHelpers = window.EcoVilaSupabase;
+  const app = document.querySelector('[data-booking-app]');
+
+  if (!app || !pricing || !calendar) {
+    return;
+  }
+
+  const STORAGE_SELECTION = 'ecovila_booking_selection';
+  const STORAGE_LANGUAGE = 'ecovila_language';
+  const TYPE_ORDER = ['small', 'large', 'hotel'];
+  const LOOKAHEAD_DAYS = 210;
+  const TEST_SOLD_OUT_RANGES = Object.freeze([
+    Object.freeze({
+      type: 'small',
+      checkIn: '2026-05-07',
+      checkOut: '2026-05-12',
+    }),
+    Object.freeze({
+      checkIn: '2026-05-20',
+      checkOut: '2026-05-25',
+    }),
+  ]);
+
+  const cardImages = {
+    small: '/assets/photos/small-villa/exterior.svg',
+    large: '/assets/photos/large-villa/exterior.svg',
+    hotel: '/assets/photos/hotel/room.svg',
+  };
+
+  const typeGalleries = {
+    small: [
+      '/assets/photos/small-villa/exterior.svg',
+      '/assets/photos/small-villa/interior.svg',
+      '/assets/photos/territory/terrace.svg',
+      '/assets/photos/spa/pool.svg',
+    ],
+    large: [
+      '/assets/photos/large-villa/exterior.svg',
+      '/assets/photos/large-villa/living.svg',
+      '/assets/photos/territory/garden.svg',
+      '/assets/photos/restaurant/dining.svg',
+    ],
+    hotel: [
+      '/assets/photos/hotel/room.svg',
+      '/assets/photos/hotel/building.svg',
+      '/assets/photos/spa/salt-room.svg',
+      '/assets/photos/restaurant/tea.svg',
+    ],
+  };
+
+  const typeImages = {
+    small: '/assets/photos/small-villa/interior.svg',
+    large: '/assets/photos/large-villa/living.svg',
+    hotel: '/assets/photos/hotel/building.svg',
+  };
+
+  const fallbackPricingTiers = [
+    { nights_tier: 1, day_type: 'weekday', adult_price: 1100, kid_price: 900, effective_from: '2026-05-06' },
+    { nights_tier: 1, day_type: 'holiday', adult_price: 1300, kid_price: 1000, effective_from: '2026-05-06' },
+    { nights_tier: 2, day_type: 'weekday', adult_price: 1000, kid_price: 800, effective_from: '2026-05-06' },
+    { nights_tier: 2, day_type: 'holiday', adult_price: 1200, kid_price: 900, effective_from: '2026-05-06' },
+    { nights_tier: 3, day_type: 'weekday', adult_price: 900, kid_price: 700, effective_from: '2026-05-06' },
+    { nights_tier: 3, day_type: 'holiday', adult_price: 1100, kid_price: 800, effective_from: '2026-05-06' },
+  ];
+
+  const fallbackRooms = createFallbackRooms();
+
+  const state = {
+    language: localStorage.getItem(STORAGE_LANGUAGE) || document.documentElement.lang || 'ro',
+    adults: 1,
+    kidsAges: [],
+    checkIn: '',
+    checkOut: '',
+    currentMonth: firstOfMonth(todayISO()),
+    rooms: fallbackRooms,
+    reservations: createTestingSoldOutBlocks(fallbackRooms),
+    pricingTiers: fallbackPricingTiers,
+    holidays: [],
+    loading: true,
+    loadError: '',
+    activeModalType: '',
+    activeRoomType: '',
+    activeSoldoutType: '',
+    modalImageIndex: 0,
+    soldoutCheckIn: '',
+    selectedRoomNumbers: {
+      small: [],
+      large: [],
+      hotel: [],
+    },
+  };
+
+  function getTranslations() {
+    return window.EcoVilaTranslations || {};
+  }
+
+  function t(key, replacements) {
+    const translations = getTranslations();
+    const language = translations[state.language] ? state.language : 'ro';
+    let value = translations[language]?.[key] || translations.ro?.[key] || key;
+
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    Object.entries(replacements || {}).forEach(([name, replacement]) => {
+      value = value.replaceAll(`{${name}}`, String(replacement));
+    });
+
+    return value;
+  }
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function firstOfMonth(date) {
+    const parsed = pricing.parseISODate(date);
+    return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  }
+
+  function addMonths(date, amount) {
+    const parsed = pricing.parseISODate(date);
+    return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth() + amount, 1))
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  function createFallbackRooms() {
+    return Object.values(pricing.ROOM_TYPES).flatMap((config) => {
+      return config.roomNumbers.map((number) => ({
+        id: `${config.type}-${number}`,
+        number,
+        type: config.type,
+        is_active: true,
+      }));
+    });
+  }
+
+  function createTestingSoldOutBlocks(rooms) {
+    return TEST_SOLD_OUT_RANGES.flatMap((range) => {
+      return (rooms || [])
+        .filter((room) => room.is_active !== false && (!range.type || room.type === range.type))
+        .map((room) => ({
+          room_id: room.id,
+          check_in: range.checkIn,
+          check_out: range.checkOut,
+          payment_status: 'paid',
+          cancelled_at: null,
+        }));
+    });
+  }
+
+  function withTestingSoldOutBlocks(reservations, rooms) {
+    return (reservations || []).concat(createTestingSoldOutBlocks(rooms));
+  }
+
+  function normalizeAvailabilityBlocks(blocks) {
+    return (blocks || []).map((block) => ({
+      room_id: block.room_id,
+      check_in: block.check_in,
+      check_out: block.check_out,
+      payment_status: 'paid',
+      cancelled_at: null,
+    }));
+  }
+
+  async function loadBookingData() {
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const startDate = todayISO();
+      const endDate = pricing.addDays(startDate, LOOKAHEAD_DAYS);
+      const [rooms, pricingTiers, holidays, blocks] = await Promise.all([
+        supabaseHelpers.fetchRooms(client),
+        supabaseHelpers.fetchPricingTiers(client),
+        supabaseHelpers.fetchHolidays(client, { startDate, endDate }),
+        supabaseHelpers.fetchAvailabilityBlocks(client, { startDate, endDate }),
+      ]);
+
+      state.rooms = rooms.length ? rooms : createFallbackRooms();
+      state.pricingTiers = pricingTiers.length ? pricingTiers : fallbackPricingTiers;
+      state.holidays = holidays || [];
+      state.reservations = withTestingSoldOutBlocks(normalizeAvailabilityBlocks(blocks), state.rooms);
+      state.loadError = '';
+    } catch (error) {
+      if (!String(error?.message || '').includes('Missing Supabase config')) {
+        state.loadError = t('booking.loadError');
+      }
+    } finally {
+      state.loading = false;
+      render();
+    }
+  }
+
+  function getPricingParty() {
+    return {
+      adults: state.adults,
+      kidsAges: state.kidsAges.map((age) => (age === '' ? 4 : Number(age))),
+    };
+  }
+
+  function getCheckoutParty() {
+    return {
+      adults: state.adults,
+      kidsAges: state.kidsAges.map((age) => Number(age)),
+    };
+  }
+
+  function hasMissingChildAges() {
+    return state.kidsAges.some((age) => age === '' || Number.isNaN(Number(age)));
+  }
+
+  function getPartyError() {
+    if (state.adults < 1) {
+      return t('booking.adultRequired');
+    }
+
+    if (hasMissingChildAges()) {
+      return t('booking.ageRequired');
+    }
+
+    const validation = pricing.validateParty(getCheckoutParty(), { publicBooking: true });
+    return validation.valid ? '' : validation.errors[0];
+  }
+
+  function getStayNights() {
+    if (!state.checkIn || !state.checkOut) {
+      return 0;
+    }
+
+    try {
+      return pricing.enumerateNights(state.checkIn, state.checkOut).length;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  function hasSelectedDates() {
+    return getStayNights() > 0;
+  }
+
+  function calculateQuote(type, checkIn, checkOut, units) {
+    try {
+      return pricing.calculateStayPrice({
+        roomType: type,
+        adults: state.adults,
+        kidsAges: getPricingParty().kidsAges,
+        checkIn,
+        checkOut,
+        units,
+        pricingTiers: state.pricingTiers,
+        holidays: state.holidays,
+      });
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function formatDate(date) {
+    if (!date) {
+      return '--';
+    }
+
+    const locale = state.language === 'ro' ? 'ro-MD' : state.language;
+    return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short' }).format(pricing.parseISODate(date));
+  }
+
+  function formatMonth(date) {
+    const locale = state.language === 'ro' ? 'ro-MD' : state.language;
+    return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(pricing.parseISODate(date));
+  }
+
+  function getCardTitle(type, neededUnits) {
+    const title = t(`accommodation.${type}.title`);
+    return neededUnits > 1 ? `${title} x${neededUnits}` : title;
+  }
+
+  function getTranslatedList(key) {
+    const value = t(key);
+    return Array.isArray(value) ? value : [];
+  }
+
+  function renderPlainList(container, items) {
+    container.innerHTML = '';
+
+    items.forEach((item) => {
+      const listItem = document.createElement('li');
+      listItem.textContent = item;
+      container.appendChild(listItem);
+    });
+  }
+
+  function getCardInfo(type) {
+    const party = getPricingParty();
+    const neededUnits = pricing.getUnitsNeeded(type, party);
+
+    if (hasSelectedDates()) {
+      const availableRooms = calendar.getAvailableRooms({
+        rooms: state.rooms,
+        reservations: state.reservations,
+        checkIn: state.checkIn,
+        checkOut: state.checkOut,
+        type,
+      });
+      const quote = calculateQuote(type, state.checkIn, state.checkOut, neededUnits);
+
+      return {
+        mode: 'selected',
+        neededUnits,
+        availableRooms,
+        availableCount: availableRooms.length,
+        isAvailable: availableRooms.length >= neededUnits,
+        quote,
+      };
+    }
+
+    const earliest = calendar.findEarliestAvailability({
+      rooms: state.rooms,
+      reservations: state.reservations,
+      startDate: todayISO(),
+      maxDays: LOOKAHEAD_DAYS,
+      stayNights: 1,
+      type,
+      party,
+    });
+    const quote = earliest ? calculateQuote(type, earliest.checkIn, earliest.checkOut, neededUnits) : null;
+
+    return {
+      mode: 'preview',
+      neededUnits,
+      availableRooms: earliest?.availableRooms || [],
+      availableCount: earliest?.availableCount || 0,
+      isAvailable: Boolean(earliest),
+      earliest,
+      quote,
+    };
+  }
+
+  function syncAvailableSelectedRooms(type, info) {
+    if (!hasSelectedDates()) {
+      return;
+    }
+
+    const availableNumbers = new Set(info.availableRooms.map((room) => Number(room.number)));
+    state.selectedRoomNumbers[type] = state.selectedRoomNumbers[type]
+      .filter((number) => availableNumbers.has(Number(number)))
+      .slice(0, info.neededUnits);
+  }
+
+  function render() {
+    state.language = document.documentElement.lang || localStorage.getItem(STORAGE_LANGUAGE) || state.language;
+    renderGuestControls();
+    renderCalendar();
+    renderStaySummary();
+    renderCards();
+    renderStatus();
+  }
+
+  function renderGuestControls() {
+    document.querySelector('[data-adults-value]').textContent = String(state.adults);
+    document.querySelector('[data-kids-value]').textContent = String(state.kidsAges.length);
+
+    document.querySelectorAll('[data-counter="adults"][data-counter-action="decrease"]').forEach((button) => {
+      button.disabled = state.adults <= 0;
+    });
+    document.querySelectorAll('[data-counter="children"][data-counter-action="decrease"]').forEach((button) => {
+      button.disabled = state.kidsAges.length <= 0;
+    });
+
+    const container = document.querySelector('[data-child-ages]');
+    const template = document.querySelector('template[data-age-placeholder]');
+    container.innerHTML = '';
+
+    state.kidsAges.forEach((age, index) => {
+      const fragment = template.content.cloneNode(true);
+      const row = fragment.querySelector('.child-age-row');
+      const label = row.querySelector('span');
+      const select = row.querySelector('select');
+      label.textContent = `${t('booking.childAge')} ${index + 1}`;
+      select.value = age;
+      select.querySelector('option[value=""]').textContent = t('booking.childAgePlaceholder');
+      select.addEventListener('change', () => {
+        state.kidsAges[index] = select.value;
+        render();
+      });
+      container.appendChild(fragment);
+    });
+
+    const error = getPartyError();
+    const errorElement = document.querySelector('[data-party-error]');
+    errorElement.hidden = !error;
+    errorElement.textContent = error;
+  }
+
+  function renderStatus() {
+    const status = document.querySelector('[data-status-message]');
+    if (!status) {
+      return;
+    }
+
+    if (state.loading) {
+      status.textContent = t('booking.loading');
+    } else if (state.loadError) {
+      status.textContent = state.loadError;
+    } else if (hasSelectedDates()) {
+      status.textContent = t('booking.selectedRange', {
+        checkIn: formatDate(state.checkIn),
+        checkOut: formatDate(state.checkOut),
+      });
+    } else {
+      status.textContent = t('booking.noDates');
+    }
+  }
+
+  function renderStaySummary() {
+    document.querySelector('[data-check-in]').textContent = formatDate(state.checkIn);
+    document.querySelector('[data-check-out]').textContent = formatDate(state.checkOut);
+
+    const summary = document.querySelector('[data-stay-summary]');
+    const nights = getStayNights();
+    if (!nights) {
+      summary.textContent = t('booking.noDates');
+      return;
+    }
+
+    summary.textContent = nights === 1 ? t('booking.night') : t('booking.nights', { count: nights });
+  }
+
+  function renderCalendar() {
+    const title = document.querySelector('[data-calendar-title]');
+    const grid = document.querySelector('[data-calendar-grid]');
+    title.textContent = formatMonth(state.currentMonth);
+    grid.innerHTML = '';
+
+    const monthStart = pricing.parseISODate(state.currentMonth);
+    const mondayOffset = (monthStart.getUTCDay() + 6) % 7;
+    const startDate = pricing.addDays(state.currentMonth, -mondayOffset);
+    const party = getPricingParty();
+
+    for (let index = 0; index < 42; index += 1) {
+      const date = pricing.addDays(startDate, index);
+      const parsed = pricing.parseISODate(date);
+      const isOutsideMonth = parsed.getUTCMonth() !== monthStart.getUTCMonth();
+      const isPast = date < todayISO();
+      const unavailable = !isPast && calendar.isDateFullyUnavailable({
+        rooms: state.rooms,
+        reservations: state.reservations,
+        date,
+        party,
+      });
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = String(parsed.getUTCDate());
+      button.dataset.date = date;
+      button.disabled = isPast || unavailable;
+      button.classList.toggle('is-muted', isOutsideMonth);
+      button.classList.toggle('is-unavailable', unavailable);
+      button.classList.toggle('is-selected', date === state.checkIn || date === state.checkOut);
+      button.classList.toggle(
+        'is-in-range',
+        Boolean(state.checkIn && state.checkOut && date > state.checkIn && date < state.checkOut),
+      );
+      button.setAttribute(
+        'aria-label',
+        unavailable ? `${date}, ${t('booking.calendarUnavailable')}` : date,
+      );
+      button.addEventListener('click', () => selectDate(date));
+      grid.appendChild(button);
+    }
+  }
+
+  function renderCards() {
+    TYPE_ORDER.forEach((type) => {
+      const card = document.querySelector(`[data-stay-card="${type}"]`);
+      const info = getCardInfo(type);
+      syncAvailableSelectedRooms(type, info);
+      const selectedNumbers = state.selectedRoomNumbers[type];
+      const isSoldOut = hasSelectedDates() && !info.isAvailable;
+
+      card.classList.toggle('is-sold-out', isSoldOut);
+      card.querySelector('[data-card-image]').src = cardImages[type];
+      card.querySelector('[data-card-title]').textContent = getCardTitle(type, info.neededUnits);
+      card.querySelector('[data-card-capacity]').textContent = t(`accommodation.${type}.capacity`);
+      card.querySelector('[data-soldout-badge]').hidden = !isSoldOut;
+
+      const availability = card.querySelector('[data-card-availability]');
+      const price = card.querySelector('[data-card-price]');
+      const roomButton = card.querySelector('[data-card-room]');
+      const soldoutButton = card.querySelector('[data-card-soldout]');
+      const selectedRooms = card.querySelector('[data-card-selected-rooms]');
+
+      if (hasSelectedDates()) {
+        availability.textContent = '';
+        price.textContent = info.isAvailable && info.quote
+          ? t('booking.priceForStay', { price: pricing.formatMDL(info.quote.total) })
+          : '';
+        roomButton.hidden = isSoldOut;
+        roomButton.disabled = isSoldOut;
+        soldoutButton.hidden = !isSoldOut;
+      } else if (info.earliest) {
+        availability.textContent = t('booking.earliest', { date: formatDate(info.earliest.checkIn) });
+        price.textContent = info.quote
+          ? t('booking.priceFrom', { price: pricing.formatMDL(info.quote.total) })
+          : '';
+        roomButton.hidden = true;
+        soldoutButton.hidden = true;
+      } else {
+        availability.textContent = t('booking.noAvailability');
+        price.textContent = '';
+        roomButton.hidden = true;
+        soldoutButton.hidden = false;
+      }
+
+      selectedRooms.hidden = !selectedNumbers.length;
+      selectedRooms.textContent = selectedNumbers.length
+        ? t('booking.roomSelected', { numbers: selectedNumbers.map((number) => `#${number}`).join(', ') })
+        : '';
+    });
+  }
+
+  function selectDate(date) {
+    if (!state.checkIn || state.checkOut || date <= state.checkIn) {
+      state.checkIn = date;
+      state.checkOut = '';
+    } else {
+      state.checkOut = date;
+    }
+
+    render();
+  }
+
+  function updateCounter(counter, action) {
+    const direction = action === 'increase' ? 1 : -1;
+
+    if (counter === 'adults') {
+      state.adults = Math.max(0, Math.min(10, state.adults + direction));
+    }
+
+    if (counter === 'children') {
+      if (direction > 0 && state.kidsAges.length < 10) {
+        state.kidsAges.push('');
+      }
+
+      if (direction < 0) {
+        state.kidsAges.pop();
+      }
+    }
+
+    render();
+  }
+
+  function openDetails(type) {
+    state.activeModalType = type;
+    state.modalImageIndex = 0;
+    renderDetailsModal(type);
+    showModal(document.querySelector('[data-booking-modal]'));
+  }
+
+  function renderDetailsModal(type) {
+    const modal = document.querySelector('[data-booking-modal]');
+    const gallery = typeGalleries[type] || [typeImages[type]];
+    const activeIndex = Math.min(state.modalImageIndex, gallery.length - 1);
+    const activeImage = gallery[activeIndex] || typeImages[type];
+    const galleryElement = modal.querySelector('[data-booking-modal-gallery]');
+
+    galleryElement.dataset.imageCount = String(gallery.length);
+    modal.querySelector('[data-booking-modal-image]').src = activeImage;
+    modal.querySelector('[data-booking-modal-title]').textContent = t(`accommodation.${type}.title`);
+    modal.querySelector('[data-booking-modal-body]').textContent = t(`accommodation.${type}.details`);
+
+    renderPlainList(modal.querySelector('[data-booking-modal-bathroom]'), getTranslatedList('accommodation.shared.bathroom'));
+    renderPlainList(modal.querySelector('[data-booking-modal-facilities]'), getTranslatedList('accommodation.shared.facilities'));
+
+    const thumbnails = modal.querySelector('[data-booking-modal-thumbnails]');
+    thumbnails.innerHTML = '';
+    gallery.forEach((image, index) => {
+      const button = document.createElement('button');
+      const thumbnail = document.createElement('img');
+      button.type = 'button';
+      button.classList.toggle('is-active', index === activeIndex);
+      button.setAttribute('aria-label', `${t('booking.image')} ${index + 1}`);
+      thumbnail.src = image;
+      thumbnail.alt = '';
+      button.appendChild(thumbnail);
+      button.addEventListener('click', () => {
+        state.modalImageIndex = index;
+        renderDetailsModal(type);
+      });
+      thumbnails.appendChild(button);
+    });
+
+    const dots = modal.querySelector('[data-booking-modal-dots]');
+    dots.innerHTML = '';
+    gallery.forEach((_, index) => {
+      const dot = document.createElement('span');
+      dot.classList.toggle('is-active', index === activeIndex);
+      dots.appendChild(dot);
+    });
+
+    modal.querySelector('[data-booking-modal-error]').hidden = true;
+  }
+
+  function moveDetailsImage(direction) {
+    if (!state.activeModalType) {
+      return;
+    }
+
+    const gallery = typeGalleries[state.activeModalType] || [typeImages[state.activeModalType]];
+    state.modalImageIndex = (state.modalImageIndex + direction + gallery.length) % gallery.length;
+    renderDetailsModal(state.activeModalType);
+  }
+
+  function showDetailsError(message) {
+    const error = document.querySelector('[data-booking-modal-error]');
+    error.textContent = message;
+    error.hidden = false;
+  }
+
+  function reserveType(type) {
+    const partyError = getPartyError();
+    if (partyError) {
+      showDetailsError(partyError);
+      return;
+    }
+
+    if (!hasSelectedDates()) {
+      showDetailsError(t('booking.checkoutMissingDates'));
+      return;
+    }
+
+    const info = getCardInfo(type);
+    if (!info.isAvailable) {
+      showDetailsError(t('booking.checkoutUnavailable'));
+      return;
+    }
+
+    try {
+      const party = getCheckoutParty();
+      const assignment = calendar.chooseRoomsForAssignment({
+        rooms: state.rooms,
+        reservations: state.reservations,
+        type,
+        checkIn: state.checkIn,
+        checkOut: state.checkOut,
+        party,
+        selectedRoomNumbers: state.selectedRoomNumbers[type],
+      });
+      const quote = pricing.calculateStayPrice({
+        roomType: type,
+        adults: party.adults,
+        kidsAges: party.kidsAges,
+        checkIn: state.checkIn,
+        checkOut: state.checkOut,
+        units: assignment.neededUnits,
+        pricingTiers: state.pricingTiers,
+        holidays: state.holidays,
+      });
+
+      localStorage.setItem(
+        STORAGE_SELECTION,
+        JSON.stringify({
+          type,
+          checkIn: state.checkIn,
+          checkOut: state.checkOut,
+          adults: party.adults,
+          kidsAges: party.kidsAges,
+          units: assignment.neededUnits,
+          roomNumbers: assignment.roomNumbers,
+          roomIds: assignment.roomIds,
+          roomExplicitlySelected: state.selectedRoomNumbers[type].length > 0,
+          totalPrice: quote.total,
+          pricingBreakdown: quote,
+          language: state.language,
+        }),
+      );
+
+      window.location.href = 'checkout.html';
+    } catch (error) {
+      showDetailsError(error.message || t('booking.checkoutUnavailable'));
+    }
+  }
+
+  function openRoomPanel(type) {
+    if (!hasSelectedDates()) {
+      return;
+    }
+
+    state.activeRoomType = type;
+    const info = getCardInfo(type);
+    const modal = document.querySelector('[data-room-panel]');
+    modal.querySelector('[data-room-panel-title]').textContent = `${t('booking.roomPanelTitle')} · ${t(`accommodation.${type}.title`)}`;
+    modal.querySelector('[data-room-panel-intro]').textContent = t('booking.roomPanelIntro', {
+      count: info.neededUnits,
+    });
+    renderRoomNumbers(type, info);
+    showModal(modal);
+  }
+
+  function renderRoomNumbers(type, info) {
+    const grid = document.querySelector('[data-room-number-grid]');
+    const selected = state.selectedRoomNumbers[type];
+    grid.innerHTML = '';
+
+    info.availableRooms
+      .slice()
+      .sort((left, right) => Number(left.number) - Number(right.number))
+      .forEach((room) => {
+        const number = Number(room.number);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = t('booking.roomNumber', { number });
+        button.classList.toggle('is-selected', selected.includes(number));
+        button.disabled = !selected.includes(number) && selected.length >= info.neededUnits;
+        button.addEventListener('click', () => {
+          if (selected.includes(number)) {
+            state.selectedRoomNumbers[type] = selected.filter((item) => item !== number);
+          } else if (selected.length < info.neededUnits) {
+            state.selectedRoomNumbers[type] = selected.concat(number);
+          }
+
+          renderRoomNumbers(type, getCardInfo(type));
+          renderCards();
+        });
+        grid.appendChild(button);
+      });
+  }
+
+  function openSoldoutModal(type) {
+    state.activeSoldoutType = type;
+    state.soldoutCheckIn = '';
+    const modal = document.querySelector('[data-soldout-modal]');
+    modal.querySelector('[data-soldout-title]').textContent = `${t('booking.futureAvailability')} · ${t(`accommodation.${type}.title`)}`;
+    modal.querySelector('[data-soldout-intro]').textContent = t('booking.soldoutPickCheckIn');
+    renderSoldoutCalendar(type);
+    showModal(modal);
+  }
+
+  function isTypeRangeAvailable(type, checkIn, checkOut) {
+    if (!checkIn || !checkOut || checkOut <= checkIn) {
+      return false;
+    }
+
+    const rooms = calendar.getAvailableRooms({
+      rooms: state.rooms,
+      reservations: state.reservations,
+      checkIn,
+      checkOut,
+      type,
+    });
+    const neededUnits = pricing.getUnitsNeeded(type, getPricingParty());
+    return rooms.length >= neededUnits;
+  }
+
+  function selectSoldoutDate(type, date) {
+    if (!state.soldoutCheckIn || date <= state.soldoutCheckIn) {
+      state.soldoutCheckIn = date;
+      renderSoldoutCalendar(type);
+      return;
+    }
+
+    if (!isTypeRangeAvailable(type, state.soldoutCheckIn, date)) {
+      return;
+    }
+
+    state.checkIn = state.soldoutCheckIn;
+    state.checkOut = date;
+    state.soldoutCheckIn = '';
+    closeAllModals();
+    render();
+  }
+
+  function renderSoldoutCalendar(type) {
+    const container = document.querySelector('[data-soldout-calendar]');
+    const intro = document.querySelector('[data-soldout-intro]');
+    let availableFound = false;
+    container.innerHTML = '';
+    intro.textContent = state.soldoutCheckIn
+      ? t('booking.soldoutPickCheckOut', { date: formatDate(state.soldoutCheckIn) })
+      : t('booking.soldoutPickCheckIn');
+
+    for (let offset = 0; offset < 70; offset += 1) {
+      const date = pricing.addDays(todayISO(), offset);
+      const isPendingCheckIn = date === state.soldoutCheckIn;
+      const oneNightAvailable = isTypeRangeAvailable(type, date, pricing.addDays(date, 1));
+      const checkoutAvailable = Boolean(
+        state.soldoutCheckIn &&
+        date > state.soldoutCheckIn &&
+        isTypeRangeAvailable(type, state.soldoutCheckIn, date),
+      );
+      const available = state.soldoutCheckIn
+        ? (date <= state.soldoutCheckIn ? oneNightAvailable : checkoutAvailable)
+        : oneNightAvailable;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = formatDate(date);
+      button.dataset.date = date;
+      button.classList.toggle('is-available', available);
+      button.classList.toggle('is-unavailable', !available);
+      button.classList.toggle('is-selected', isPendingCheckIn);
+      button.disabled = !available;
+      button.addEventListener('click', () => selectSoldoutDate(type, date));
+      availableFound = availableFound || available;
+      container.appendChild(button);
+    }
+
+    if (!availableFound) {
+      const empty = document.createElement('p');
+      empty.textContent = t('booking.noFutureAvailability');
+      container.appendChild(empty);
+    }
+  }
+
+  function showModal(modal) {
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeAllModals() {
+    document.querySelectorAll('.booking-modal').forEach((modal) => {
+      modal.hidden = true;
+    });
+    document.body.style.overflow = '';
+  }
+
+  function bindEvents() {
+    document.querySelectorAll('[data-counter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        updateCounter(button.dataset.counter, button.dataset.counterAction);
+      });
+    });
+
+    document.querySelector('[data-calendar-prev]').addEventListener('click', () => {
+      state.currentMonth = addMonths(state.currentMonth, -1);
+      renderCalendar();
+    });
+
+    document.querySelector('[data-calendar-next]').addEventListener('click', () => {
+      state.currentMonth = addMonths(state.currentMonth, 1);
+      renderCalendar();
+    });
+
+    document.querySelectorAll('[data-focus-calendar]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelector('[data-booking-calendar]').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
+
+    TYPE_ORDER.forEach((type) => {
+      const card = document.querySelector(`[data-stay-card="${type}"]`);
+      card.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target.closest('button, a, select, input, textarea')) {
+          return;
+        }
+
+        openDetails(type);
+      });
+      card.addEventListener('keydown', (event) => {
+        const target = event.target;
+        if (
+          target.closest('button, a, select, input, textarea') ||
+          !['Enter', ' '].includes(event.key)
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        openDetails(type);
+      });
+      card.querySelector('[data-card-room]').addEventListener('click', () => openRoomPanel(type));
+      card.querySelector('[data-card-soldout]').addEventListener('click', () => openSoldoutModal(type));
+    });
+
+    document.querySelector('[data-booking-modal-prev]').addEventListener('click', () => moveDetailsImage(-1));
+    document.querySelector('[data-booking-modal-next]').addEventListener('click', () => moveDetailsImage(1));
+
+    document.querySelector('[data-booking-modal-reserve]').addEventListener('click', () => {
+      reserveType(state.activeModalType);
+    });
+
+    document.querySelector('[data-room-clear]').addEventListener('click', () => {
+      if (state.activeRoomType) {
+        state.selectedRoomNumbers[state.activeRoomType] = [];
+        renderRoomNumbers(state.activeRoomType, getCardInfo(state.activeRoomType));
+        renderCards();
+      }
+    });
+
+    document.querySelectorAll('[data-modal-close], [data-room-panel-close], [data-soldout-close]').forEach((button) => {
+      button.addEventListener('click', closeAllModals);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeAllModals();
+      }
+    });
+
+    window.addEventListener('ecovila:languagechange', (event) => {
+      state.language = event.detail.language;
+      render();
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    bindEvents();
+    render();
+    loadBookingData();
+  });
+})();

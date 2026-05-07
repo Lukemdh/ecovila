@@ -11,6 +11,88 @@ This is a **vanilla HTML/CSS/JS** project. No frameworks. Use Supabase as the ba
 
 ---
 
+## Implementation Roadmap
+
+Step 1: **Main landing page**
+
+Step 2: **Supabase Foundation**
+Create the database schema: `rooms`, `pricing_tiers`, `holidays`, `reservations`, `cancellation_tokens`. Seed 25 rooms and initial pricing. Add RLS policies for public guests, Diana, and future Angela access.
+
+Step 3: **Booking Core**
+Build shared frontend logic:
+- `js/supabase.js`
+- `js/pricing.js`
+- `js/calendar.js`
+- Room fitting rules
+- Minimum billing logic
+- Weekday/weekend/holiday pricing
+- Availability checks
+- Auto-assignment rules
+
+Step 4: **Booking Page**
+Implement `rezervari.html`:
+- Adults/kids selector with child ages from 1-18
+- Date range calendar
+- Accommodation cards
+- Available unit count
+- Sold-out state
+- Room-number selection panel
+- Multilingual UI
+
+Step 5: **Checkout**
+Implement `checkout.html` and `js/checkout.js`:
+- Reservation summary
+- Guest form
+- GDPR checkbox
+- Cash/card selection
+- Cash disclaimer
+- Create pending reservation flow
+
+Step 6: **Confirmation & Cancellation**
+Implement:
+- `confirmare.html`: cash countdown, extend once, cancel reservation
+- `anulare.html`: token-based cancellation, 72-hour rule, phone confirmation
+
+Step 7: **Supabase Edge Functions**
+Add server-side logic:
+- Reservation creation helpers
+- Cancellation token generation
+- `send-sms`
+- `send-email`
+- `expire-cash-reservations`
+- `send-reminders`
+- `maib-webhook`
+
+Step 8: **Legal Pages**
+Implement:
+- `politica-confidentialitate.html`
+- `termeni-conditii.html`
+
+These need Moldova privacy/consumer law content from the brief and the same public header/footer/language structure.
+
+Step 9: **CRM**
+Build `admin/`:
+- Supabase Auth login
+- Desktop-only dashboard
+- Reservation calendar rows 1-25
+- Pending cash payments
+- Add/search reservation sidebar
+- Pricing and holiday settings
+- Drag/drop, swaps, deletion confirmation
+
+Step 10: **Real Integrations & Deployment**
+Wire credentials and production flows:
+- SMS.md
+- Resend
+- Maib ePay
+- Supabase cron/schedules
+- Static deploy to tophost.md
+- Edge Functions deploy to Supabase
+
+**Recommended next implementation step:** Step 2, Supabase schema and seed data, because every booking, availability, pricing, and CRM feature depends on that foundation.
+
+---
+
 ## Tech Stack
 
 | Layer | Tool |
@@ -63,8 +145,12 @@ Available for business guests. **NOT bookable online.** Guests must call Diana t
 ## Pricing Logic
 
 ### Age Definition
-- **Adult:** 13 years and older
-- **Kid:** 12 years and under
+- Guests choose child ages from 1-18 in the public booking UI.
+- Private pricing logic:
+  - **0-3 years:** free
+  - **4-12 years:** kid price
+  - **13+ years:** adult price
+- The public UI should not explain these internal pricing categories; it simply asks for each child's age.
 
 ### Minimum Occupancy Billing Rules
 
@@ -237,7 +323,7 @@ Each section (1–4) follows the same two-column layout:
 
 Left side: **Persons selector**
 - "Adulți" counter (min 1, max depends on accommodation — but at this stage just allow up to 10, validation happens when accommodation is shown)
-- "Copii" counter (min 0). When a child is added, a small input appears for their age (0–12). Exactly like Booking.com child age selector. Ages are required before proceeding.
+- "Copii" counter (min 0). When a child is added, a small input appears for their age (1-18). Exactly like Booking.com child age selector. Ages are required before proceeding.
 - If 0 adults are selected and user tries to proceed → show inline error: "Trebuie să fie cel puțin un adult în rezervare."
 
 Right side: **Date selector**

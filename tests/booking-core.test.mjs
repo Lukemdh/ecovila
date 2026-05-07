@@ -39,6 +39,23 @@ const pricingTiers = [
 ];
 
 describe('EcoVila Step 3 pricing core', () => {
+  it('normalizes selected child ages into free children, chargeable children, and teens billed as adults', () => {
+    const party = pricing.normalizeParty({ adults: 2, kidsAges: [2, 5, 15] });
+
+    assert.deepEqual(party, {
+      adults: 2,
+      kidsAges: [2, 5, 15],
+      freeChildAges: [2],
+      chargeableKidAges: [5],
+      teenAges: [15],
+      kids: 2,
+      freeKids: 1,
+      chargeableKids: 1,
+      teensAsAdults: 1,
+      effectiveAdults: 3,
+    });
+  });
+
   it('rejects public kids-only bookings while allowing Diana overrides', () => {
     assert.deepEqual(pricing.validateParty({ adults: 0, kidsAges: [4, 8] }).errors, [
       'At least one adult is required for public bookings.',
@@ -47,18 +64,32 @@ describe('EcoVila Step 3 pricing core', () => {
       pricing.validateParty({ adults: 0, kidsAges: [4, 8] }, { publicBooking: false }).valid,
       true,
     );
+    assert.equal(
+      pricing.validateParty({ adults: 1, kidsAges: [1, 18] }).valid,
+      true,
+      'public child age selector should allow ages 1-18',
+    );
   });
 
   it('calculates room units needed for groups larger than one accommodation unit', () => {
     assert.equal(pricing.getUnitsNeeded('small', { adults: 4, kidsAges: [] }), 2);
     assert.equal(pricing.getUnitsNeeded('large', { adults: 4, kidsAges: [5, 8] }), 1);
     assert.equal(pricing.getUnitsNeeded('hotel', { adults: 2, kidsAges: [3, 7, 9] }), 2);
+    assert.equal(
+      pricing.getUnitsNeeded('small', { adults: 2, kidsAges: [15] }),
+      2,
+      'children aged 13+ should count against adult capacity',
+    );
   });
 
   it('promotes children into minimum adult billing floors before applying kid rates', () => {
     assert.deepEqual(pricing.calculateBillableGuests('small', { adults: 1, kidsAges: [6] }), {
       actualAdults: 1,
       actualKids: 1,
+      capacityKids: 1,
+      freeKids: 0,
+      chargeableKids: 1,
+      teensAsAdults: 0,
       billableAdults: 2,
       billableKids: 0,
       kidsChargedAsAdults: 1,
@@ -70,6 +101,10 @@ describe('EcoVila Step 3 pricing core', () => {
     assert.deepEqual(pricing.calculateBillableGuests('large', { adults: 2, kidsAges: [6, 10] }), {
       actualAdults: 2,
       actualKids: 2,
+      capacityKids: 2,
+      freeKids: 0,
+      chargeableKids: 2,
+      teensAsAdults: 0,
       billableAdults: 3,
       billableKids: 1,
       kidsChargedAsAdults: 1,
@@ -77,6 +112,41 @@ describe('EcoVila Step 3 pricing core', () => {
       units: 1,
       minimumAdults: 3,
     });
+  });
+
+  it('keeps ages 0-3 free while billing ages 13+ as adults', () => {
+    const billable = pricing.calculateBillableGuests('large', {
+      adults: 2,
+      kidsAges: [2, 5, 15],
+    });
+
+    assert.deepEqual(billable, {
+      actualAdults: 2,
+      actualKids: 3,
+      capacityKids: 2,
+      freeKids: 1,
+      chargeableKids: 1,
+      teensAsAdults: 1,
+      billableAdults: 3,
+      billableKids: 1,
+      kidsChargedAsAdults: 0,
+      emptyAdultSlots: 0,
+      units: 1,
+      minimumAdults: 3,
+    });
+
+    const quote = pricing.calculateStayPrice({
+      roomType: 'large',
+      adults: 2,
+      kidsAges: [2, 5, 15],
+      checkIn: '2026-05-18',
+      checkOut: '2026-05-19',
+      pricingTiers,
+      holidays: [],
+      createdOn: '2026-05-07',
+    });
+
+    assert.equal(quote.total, 4200);
   });
 
   it('uses total nights for the tier and the next morning for weekend or holiday rates', () => {
