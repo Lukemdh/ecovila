@@ -13,6 +13,11 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
+function footerMarkup(html) {
+  const match = html.match(/<footer[\s\S]*?<\/footer>/);
+  return match ? match[0] : '';
+}
+
 describe('EcoVila Step 4 booking page', () => {
   it('creates the booking page files and loads shared booking dependencies', () => {
     for (const file of ['rezervari.html', 'css/booking.css', 'js/booking.js']) {
@@ -34,6 +39,13 @@ describe('EcoVila Step 4 booking page', () => {
 
     assert.match(html, /css\/main\.css/, 'booking page should use the shared public design system');
     assert.match(html, /css\/booking\.css/, 'booking page should load booking styles');
+  });
+
+  it('uses the alternate logo artwork in the footer', () => {
+    const html = read('rezervari.html');
+    const footer = footerMarkup(html);
+
+    assert.match(footer, /src="\/assets\/logoNT\.png"/, 'booking footer should use the alternate PNG logo');
   });
 
   it('renders guest selectors, a date range calendar, accommodation cards, and room selection UI hooks', () => {
@@ -95,6 +107,71 @@ describe('EcoVila Step 4 booking page', () => {
     assert.doesNotMatch(js, /data-card-summary/, 'booking.js should not render removed summary hooks');
     assert.match(js, /card\.addEventListener\('click'[\s\S]+openDetails\(type\)/, 'clicking the card should open details');
     assert.match(js, /target\.closest\('button, a, select, input, textarea'\)/, 'card clicks should ignore nested controls');
+  });
+
+  it('puts a direct reserve CTA on each accommodation card and demotes room choice to secondary text', () => {
+    const html = read('rezervari.html');
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.equal((html.match(/data-card-reserve/g) || []).length, 3, 'each accommodation card should have a direct reserve button');
+    assert.equal((html.match(/booking-room-choice/g) || []).length, 3, 'each accommodation card should render room choice as secondary text');
+    assert.match(
+      html,
+      /data-card-reserve[\s\S]+data-i18n="booking\.reserve"[\s\S]+data-card-room[\s\S]+booking\.chooseRoomNumber/,
+      'the reserve CTA should appear before the room-number choice',
+    );
+    assert.match(
+      js,
+      /card\.querySelector\('\[data-card-reserve\]'\)\.addEventListener\('click',\s*\(\)\s*=>\s*reserveType\(type\)\)/,
+      'card reserve buttons should use the checkout handoff',
+    );
+    assert.match(
+      css,
+      /\.booking-room-choice\s*{[^}]*color:\s*rgba\([^)]*0\.[0-9]+[^}]*font-size:\s*0\.[0-9]+rem/s,
+      'room-number choice should be visually smaller and faded',
+    );
+    assert.match(
+      css,
+      /\.booking-stay-card__actions\s*{[^}]*align-items:\s*center/s,
+      'card actions should be centered within each accommodation card',
+    );
+    assert.match(
+      css,
+      /\.booking-stay-card__actions \.editorial-button\s*{[^}]*min-width:\s*12[0-9]px/s,
+      'the card reserve CTA should be slightly wider than its text',
+    );
+  });
+
+  it('renders room picker buttons as larger standalone numbers', () => {
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.match(
+      js,
+      /button\.textContent\s*=\s*String\(number\)/,
+      'room picker buttons should show only the room number',
+    );
+    assert.match(
+      js,
+      /button\.setAttribute\('aria-label',\s*t\('booking\.roomNumber',\s*\{\s*number\s*\}\)\)/,
+      'room picker buttons should keep the translated accessible label',
+    );
+    assert.match(
+      css,
+      /\.room-number-grid button\s*{[^}]*font-size:\s*clamp\([^}]*line-height:\s*1/s,
+      'room picker numbers should be sized to fill the button better',
+    );
+    assert.match(
+      css,
+      /\.room-number-grid button\s*{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
+      'room picker numbers should be centered in the button box',
+    );
+    assert.match(
+      css,
+      /\.room-number-grid button\s*{[^}]*font-family:\s*var\(--body-font\)/s,
+      'room picker numbers should use the body font for steadier numeric centering',
+    );
   });
 
   it('uses a gallery-style accommodation details modal with bathroom and facility sections, without feature chips', () => {
@@ -166,6 +243,21 @@ describe('EcoVila Step 4 booking page', () => {
     );
   });
 
+  it('uses range-aware date selection so sold-out check-in dates can still be checkout dates', () => {
+    const js = read('js/booking.js');
+
+    assert.match(
+      js,
+      /calendar\.getDateSelectionState\(\{[\s\S]+checkIn:\s*state\.checkIn,[\s\S]+checkOut:\s*state\.checkOut/,
+      'calendar rendering should pass the current selected range into date selectability checks',
+    );
+    assert.doesNotMatch(
+      js,
+      /const unavailable = !isPast && calendar\.isDateFullyUnavailable\(/,
+      'calendar rendering should not disable checkout dates only because their own night is sold out',
+    );
+  });
+
   it('allows public child age choices from 1 to 18 while keeping the pricing categories private', () => {
     const html = read('rezervari.html');
     const pricing = read('js/pricing.js');
@@ -205,19 +297,31 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(js, /checkout\.html/, 'booking page should hand off to checkout');
   });
 
-  it('temporarily sells out Căsuță Mică from May 7 through May 11 and every accommodation from May 20 through May 24', () => {
+  it('temporarily sells out Căsuță Mică from May 7 through May 11, leaves one small cottage free on May 20, and sells out every accommodation from May 27 through May 30', () => {
     const js = read('js/booking.js');
 
     assert.match(js, /TEST_SOLD_OUT_RANGES/, 'booking.js should support multiple temporary test blackouts');
     assert.match(js, /type:\s*'small'/, 'one test blackout should target Căsuță Mică only');
     assert.match(js, /checkIn:\s*'2026-05-07'/, 'the small-cottage blackout should start on May 7, 2026');
     assert.match(js, /checkOut:\s*'2026-05-12'/, 'the small-cottage blackout should include May 11 as a booked night');
-    assert.match(js, /checkIn:\s*'2026-05-20'/, 'the full-site blackout should start on May 20, 2026');
-    assert.match(js, /checkOut:\s*'2026-05-25'/, 'the full-site blackout should include May 24 as a booked night');
+    assert.match(js, /checkIn:\s*'2026-05-20'/, 'the partial small-cottage blackout should start on May 20, 2026');
+    assert.match(js, /checkOut:\s*'2026-05-21'/, 'the partial small-cottage blackout should cover only the May 20 night');
     assert.match(
       js,
-      /flatMap\(\(range\)[\s\S]+!range\.type \|\| room\.type === range\.type[\s\S]+room_id: room\.id/,
-      'the test blackout should generate blocks for all active rooms or just the configured type',
+      /roomNumbers:\s*Object\.freeze\(\[\s*1,\s*2,\s*3,\s*4,\s*5,\s*6,\s*7\s*\]\)/,
+      'the May 20 test blackout should reserve seven small cottages and leave one free',
+    );
+    assert.match(js, /checkIn:\s*'2026-05-27'/, 'the full-site blackout should start on May 27, 2026');
+    assert.match(js, /checkOut:\s*'2026-05-31'/, 'the full-site blackout should include May 30 as a booked night');
+    assert.match(
+      js,
+      /Object\.freeze\(\{\s*checkIn:\s*'2026-05-27',\s*checkOut:\s*'2026-05-31',\s*\}\)/,
+      'the May 27-30 test blackout should target every accommodation type',
+    );
+    assert.match(
+      js,
+      /flatMap\(\(range\)[\s\S]+rangeRoomNumbers[\s\S]+rangeRoomNumbers\.has\(Number\(room\.number\)\)[\s\S]+room_id: room\.id/,
+      'the test blackout should optionally generate blocks for configured room numbers only',
     );
     assert.match(
       js,

@@ -1,0 +1,19 @@
+project_id = "ecovila"
+
+[functions.create-reservation]
+verify_jwt = true
+
+[functions.send-sms]
+verify_jwt = true
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.expire-cash-reservations]
+verify_jwt = false
+
+[functions.send-reminders]
+verify_jwt = false
+
+[functions.maib-webhook]
+verify_jwt = false

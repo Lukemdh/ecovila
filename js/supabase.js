@@ -131,8 +131,33 @@
     );
   }
 
+  function insertPendingReservations(client, payloads) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .insert(payloads),
+    );
+  }
+
+  async function createReservationRequest(client, payloads) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('create-reservation', {
+      body: { reservations: payloads },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
   return {
     CLIENT_OPTIONS,
+    createReservationRequest,
     createSupabaseClient,
     fetchAvailabilityBlocks,
     fetchHolidays,
@@ -140,6 +165,7 @@
     fetchRooms,
     getSupabaseClient,
     getSupabaseConfig,
+    insertPendingReservations,
     unwrapSupabaseResult,
   };
 });

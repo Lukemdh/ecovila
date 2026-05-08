@@ -32,6 +32,11 @@ function sectionMarkup(html, id) {
   return match ? match[0] : '';
 }
 
+function footerMarkup(html) {
+  const match = html.match(/<footer[\s\S]*?<\/footer>/);
+  return match ? match[0] : '';
+}
+
 describe('EcoVila landing page structure', () => {
   it('creates the required static files', () => {
     for (const file of requiredFiles) {
@@ -84,6 +89,13 @@ describe('EcoVila landing page structure', () => {
     for (const asset of assetReferences) {
       assert.ok(fs.existsSync(path.join(root, asset)), `${asset} should exist`);
     }
+  });
+
+  it('uses the alternate logo artwork in the footer', () => {
+    const html = read('index.html');
+    const footer = footerMarkup(html);
+
+    assert.match(footer, /src="\/assets\/logoNT\.png"/, 'footer should use the alternate PNG logo');
   });
 
   it('defines the editorial hospitality design language and translation surface', () => {

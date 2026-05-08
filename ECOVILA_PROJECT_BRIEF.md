@@ -89,6 +89,13 @@ Wire credentials and production flows:
 - Static deploy to tophost.md
 - Edge Functions deploy to Supabase
 
+Step 10 also includes the production secrets and provider account work that cannot be completed until the real accounts are ready:
+- Add Supabase Edge Function secrets: `SMSMD_API_TOKEN`, `SMSMD_FROM`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `MAIB_SIGNATURE_KEY`, `ECOVILA_CRON_SECRET`, and `ECOVILA_SITE_URL`.
+- Verify the `ecovila.md` sending domain in Resend and use `rezervari@ecovila.md` as the production sender.
+- Register and approve the `EcoVila` sender name in SMS.md.
+- Configure the Maib ePay callback URL to the deployed `maib-webhook` Edge Function and verify the Maib signature payload against production samples.
+- Configure scheduled calls for `expire-cash-reservations` and `send-reminders`, passing `ECOVILA_CRON_SECRET` through the `x-ecovila-secret` header or bearer token.
+
 **Recommended next implementation step:** Step 2, Supabase schema and seed data, because every booking, availability, pricing, and CRM feature depends on that foundation.
 
 ---

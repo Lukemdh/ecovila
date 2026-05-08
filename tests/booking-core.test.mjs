@@ -356,6 +356,58 @@ describe('EcoVila Step 3 calendar and assignment core', () => {
     );
   });
 
+  it('allows a sold-out date as checkout when the previous night is available', () => {
+    const allRoomsBooked = rooms.map((room) => ({
+      room_id: room.id,
+      check_in: '2026-05-27',
+      check_out: '2026-05-31',
+      payment_status: 'paid',
+      cancelled_at: null,
+    }));
+    const party = { adults: 2, kidsAges: [] };
+
+    assert.deepEqual(
+      calendar.getDateSelectionState({
+        rooms,
+        reservations: allRoomsBooked,
+        date: '2026-05-27',
+        party,
+      }),
+      {
+        isSelectable: false,
+        isUnavailable: true,
+      },
+    );
+    assert.deepEqual(
+      calendar.getDateSelectionState({
+        rooms,
+        reservations: allRoomsBooked,
+        date: '2026-05-27',
+        checkIn: '2026-05-26',
+        checkOut: '',
+        party,
+      }),
+      {
+        isSelectable: true,
+        isUnavailable: false,
+      },
+    );
+    assert.deepEqual(
+      calendar.getDateSelectionState({
+        rooms,
+        reservations: allRoomsBooked,
+        date: '2026-05-28',
+        checkIn: '2026-05-26',
+        checkOut: '',
+        party,
+      }),
+      {
+        isSelectable: false,
+        isUnavailable: true,
+      },
+    );
+  });
+
   it('auto-assigns small villas decreasing and large villas or hotel rooms increasing', () => {
     const reservations = [
       {

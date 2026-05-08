@@ -21,8 +21,14 @@
       checkOut: '2026-05-12',
     }),
     Object.freeze({
+      type: 'small',
+      roomNumbers: Object.freeze([1, 2, 3, 4, 5, 6, 7]),
       checkIn: '2026-05-20',
-      checkOut: '2026-05-25',
+      checkOut: '2026-05-21',
+    }),
+    Object.freeze({
+      checkIn: '2026-05-27',
+      checkOut: '2026-05-31',
     }),
   ]);
 
@@ -144,8 +150,18 @@
 
   function createTestingSoldOutBlocks(rooms) {
     return TEST_SOLD_OUT_RANGES.flatMap((range) => {
+      const rangeRoomNumbers = range.roomNumbers
+        ? new Set(range.roomNumbers.map((number) => Number(number)))
+        : null;
+
       return (rooms || [])
-        .filter((room) => room.is_active !== false && (!range.type || room.type === range.type))
+        .filter((room) => {
+          return (
+            room.is_active !== false &&
+            (!range.type || room.type === range.type) &&
+            (!rangeRoomNumbers || rangeRoomNumbers.has(Number(room.number)))
+          );
+        })
         .map((room) => ({
           room_id: room.id,
           check_in: range.checkIn,
@@ -447,17 +463,20 @@
       const parsed = pricing.parseISODate(date);
       const isOutsideMonth = parsed.getUTCMonth() !== monthStart.getUTCMonth();
       const isPast = date < todayISO();
-      const unavailable = !isPast && calendar.isDateFullyUnavailable({
+      const dateSelection = isPast ? null : calendar.getDateSelectionState({
         rooms: state.rooms,
         reservations: state.reservations,
         date,
+        checkIn: state.checkIn,
+        checkOut: state.checkOut,
         party,
       });
+      const unavailable = Boolean(dateSelection?.isUnavailable);
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = String(parsed.getUTCDate());
       button.dataset.date = date;
-      button.disabled = isPast || unavailable;
+      button.disabled = isPast || !dateSelection?.isSelectable;
       button.classList.toggle('is-muted', isOutsideMonth);
       button.classList.toggle('is-unavailable', unavailable);
       button.classList.toggle('is-selected', date === state.checkIn || date === state.checkOut);
@@ -490,6 +509,7 @@
 
       const availability = card.querySelector('[data-card-availability]');
       const price = card.querySelector('[data-card-price]');
+      const reserveButton = card.querySelector('[data-card-reserve]');
       const roomButton = card.querySelector('[data-card-room]');
       const soldoutButton = card.querySelector('[data-card-soldout]');
       const selectedRooms = card.querySelector('[data-card-selected-rooms]');
@@ -499,6 +519,8 @@
         price.textContent = info.isAvailable && info.quote
           ? t('booking.priceForStay', { price: pricing.formatMDL(info.quote.total) })
           : '';
+        reserveButton.hidden = isSoldOut;
+        reserveButton.disabled = isSoldOut;
         roomButton.hidden = isSoldOut;
         roomButton.disabled = isSoldOut;
         soldoutButton.hidden = !isSoldOut;
@@ -507,11 +529,15 @@
         price.textContent = info.quote
           ? t('booking.priceFrom', { price: pricing.formatMDL(info.quote.total) })
           : '';
+        reserveButton.hidden = true;
+        reserveButton.disabled = true;
         roomButton.hidden = true;
         soldoutButton.hidden = true;
       } else {
         availability.textContent = t('booking.noAvailability');
         price.textContent = '';
+        reserveButton.hidden = true;
+        reserveButton.disabled = true;
         roomButton.hidden = true;
         soldoutButton.hidden = false;
       }
@@ -713,7 +739,8 @@
         const number = Number(room.number);
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = t('booking.roomNumber', { number });
+        button.textContent = String(number);
+        button.setAttribute('aria-label', t('booking.roomNumber', { number }));
         button.classList.toggle('is-selected', selected.includes(number));
         button.disabled = !selected.includes(number) && selected.length >= info.neededUnits;
         button.addEventListener('click', () => {
@@ -873,6 +900,7 @@
         openDetails(type);
       });
       card.querySelector('[data-card-room]').addEventListener('click', () => openRoomPanel(type));
+      card.querySelector('[data-card-reserve]').addEventListener('click', () => reserveType(type));
       card.querySelector('[data-card-soldout]').addEventListener('click', () => openSoldoutModal(type));
     });
 

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila | Checkout</title>
+    <meta
+      name="description"
+      content="Confirmă datele rezervării EcoVila și alege metoda de plată."
+    >
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/booking.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#checkout-page" data-i18n="access.skip">Sari la conținut</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="index.html#top" aria-label="EcoVila">
+        <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
+      </a>
+
+      <div class="header-actions">
+        <div class="language-dropdown header-bar-control">
+          <label class="visually-hidden" for="language-select">Language</label>
+          <select class="language-select" id="language-select" data-lang-select aria-label="Language">
+            <option value="ro">RO</option>
+            <option value="ru">RU</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="booking-page checkout-page" id="checkout-page" data-checkout-app>
+      <section class="booking-shell" aria-labelledby="checkout-title">
+        <div class="booking-intro checkout-intro">
+          <h1 id="checkout-title" data-i18n="checkout.title">Finalizează rezervarea</h1>
+          <p data-i18n="checkout.lead">
+            Verifică sumarul, completează datele de contact și alege metoda de plată.
+          </p>
+        </div>
+
+        <section class="booking-panel checkout-empty" data-checkout-empty hidden>
+          <div>
+            <h2 data-i18n="checkout.emptyTitle">Nu există o rezervare pregătită</h2>
+            <p data-i18n="checkout.emptyText">
+              Revino la pagina de rezervări și alege perioada, persoanele și cazarea.
+            </p>
+          </div>
+          <a class="editorial-button editorial-button--filled" href="rezervari.html" data-i18n="checkout.backToBooking">
+            Înapoi la rezervări
+          </a>
+        </section>
+
+        <div class="checkout-layout" data-checkout-content hidden>
+          <section class="booking-panel checkout-summary-panel" aria-labelledby="checkout-summary-title">
+            <div class="booking-panel__heading checkout-panel-heading">
+              <h2 id="checkout-summary-title" data-i18n="checkout.summaryTitle">Sumar rezervare</h2>
+            </div>
+
+            <dl class="checkout-summary-list">
+              <div>
+                <dt data-i18n="checkout.dates">Perioada</dt>
+                <dd data-summary-dates>--</dd>
+              </div>
+              <div>
+                <dt data-i18n="checkout.nights">Nopți</dt>
+                <dd data-summary-nights>--</dd>
+              </div>
+              <div>
+                <dt data-i18n="checkout.guests">Oaspeți</dt>
+                <dd data-summary-guests>--</dd>
+              </div>
+              <div>
+                <dt data-i18n="checkout.accommodation">Cazare</dt>
+                <dd data-summary-accommodation>--</dd>
+              </div>
+              <div data-summary-rooms-row hidden>
+                <dt data-i18n="checkout.rooms">Număr</dt>
+                <dd data-summary-rooms>--</dd>
+              </div>
+            </dl>
+
+            <div class="checkout-breakdown">
+              <h3 data-i18n="checkout.breakdownTitle">Calcul preț</h3>
+              <ul data-summary-breakdown></ul>
+            </div>
+
+            <div class="checkout-total">
+              <span data-i18n="checkout.total">Total</span>
+              <strong data-summary-total>--</strong>
+            </div>
+          </section>
+
+          <section class="booking-panel checkout-form-panel" aria-labelledby="checkout-form-title">
+            <form data-checkout-form novalidate>
+              <div class="booking-panel__heading checkout-panel-heading">
+                <h2 id="checkout-form-title" data-i18n="checkout.guestTitle">Datele oaspetelui</h2>
+                <p data-i18n="checkout.guestLead">Folosim aceste date pentru confirmare și notificări.</p>
+              </div>
+
+              <div class="checkout-form-grid">
+                <label class="checkout-field">
+                  <span data-i18n="checkout.firstName">Prenume</span>
+                  <input type="text" autocomplete="given-name" data-guest-first-name required>
+                </label>
+                <label class="checkout-field">
+                  <span data-i18n="checkout.lastName">Nume</span>
+                  <input type="text" autocomplete="family-name" data-guest-last-name required>
+                </label>
+                <label class="checkout-field">
+                  <span data-i18n="checkout.phone">Telefon</span>
+                  <input type="tel" value="+373" autocomplete="tel" inputmode="tel" data-guest-phone required>
+                </label>
+                <label class="checkout-field">
+                  <span data-i18n="checkout.email">Email</span>
+                  <input type="email" autocomplete="email" data-guest-email required>
+                </label>
+              </div>
+
+              <label class="checkout-consent">
+                <input type="checkbox" data-gdpr-consent required>
+                <span>
+                  <span data-i18n="checkout.gdpr">Am citit și sunt de acord cu</span>
+                  <a href="politica-confidentialitate.html" target="_blank" rel="noopener" data-i18n="footer.privacy">
+                    Politica de Confidențialitate
+                  </a>
+                  <span data-i18n="checkout.gdprAnd">și</span>
+                  <a href="termeni-conditii.html" target="_blank" rel="noopener" data-i18n="footer.terms">
+                    Termenii și Condițiile
+                  </a>.
+                </span>
+              </label>
+
+              <div class="checkout-payment" aria-labelledby="checkout-payment-title">
+                <h3 id="checkout-payment-title" data-i18n="checkout.paymentTitle">Metoda de plată</h3>
+                <div class="checkout-payment-grid">
+                  <button class="checkout-payment-option is-selected" type="button" data-payment-option="card" aria-pressed="true">
+                    <strong data-i18n="checkout.payCard">Plată cu cardul</strong>
+                    <span data-i18n="checkout.payCardMeta">Rezervarea se creează în așteptare până la confirmarea plății.</span>
+                  </button>
+                  <button class="checkout-payment-option" type="button" data-payment-option="cash" aria-pressed="false">
+                    <strong data-i18n="checkout.payCash">Plată cash</strong>
+                    <span data-i18n="checkout.payCashMeta">Achitare la oficiu în termenul rezervat.</span>
+                  </button>
+                </div>
+                <p class="checkout-cash-disclaimer" data-cash-disclaimer data-i18n="checkout.cashDisclaimer" hidden>
+                  Rezervarea este valabilă 30 de minute și trebuie achitată la oficiu, str. Aerodromului 3. Dacă termenul expiră, rezervarea va fi anulată automat.
+                </p>
+              </div>
+
+              <p class="booking-error" data-checkout-error hidden></p>
+              <p class="checkout-status" data-checkout-status hidden></p>
+
+              <button class="editorial-button editorial-button--filled checkout-submit" type="submit" data-checkout-submit data-i18n="checkout.reserve">
+                Rezervă
+              </button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer" id="footer">
+      <div class="section-inner site-footer__grid">
+        <div class="site-footer__brand">
+          <img src="/assets/logoNT.png" alt="EcoVila" class="site-footer__logo">
+          <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi, Moldova.</p>
+        </div>
+        <dl class="site-footer__legal">
+          <div>
+            <dt data-i18n="footer.companyLabel">Companie</dt>
+            <dd data-i18n="footer.companyValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt data-i18n="footer.idnoLabel">IDNO</dt>
+            <dd data-i18n="footer.idnoValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt data-i18n="footer.addressLabel">Adresa sediului</dt>
+            <dd data-i18n="footer.addressValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt data-i18n="footer.phoneLabel">Telefon</dt>
+            <dd data-i18n="footer.phoneValue">de completat de client</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
+          </div>
+        </dl>
+        <div class="site-footer__links">
+          <h2 data-i18n="footer.useful">Utile</h2>
+          <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
+          <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
+          <span data-i18n="footer.copy">© 2026 EcoVila</span>
+        </div>
+      </div>
+    </footer>
+
+    <div class="cookie-banner" id="cookie-banner" hidden>
+      <p data-i18n="cookie.text">
+        Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
+      </p>
+      <div class="cookie-banner__actions">
+        <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
+          Accept doar esențiale
+        </button>
+        <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
+          Accept
+        </button>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/translations.js"></script>
+    <script src="js/pricing.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/checkout.js"></script>
+  </body>
+</html>

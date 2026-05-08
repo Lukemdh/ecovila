@@ -116,6 +116,38 @@
     });
   }
 
+  function getDateSelectionState(input) {
+    const date = pricing.toISODate(input.date);
+    const hasPendingCheckIn = Boolean(input.checkIn && !input.checkOut);
+
+    if (hasPendingCheckIn && date > pricing.toISODate(input.checkIn)) {
+      const isAvailableCheckout = hasAnyAvailability({
+        rooms: input.rooms,
+        reservations: input.reservations,
+        checkIn: input.checkIn,
+        checkOut: date,
+        party: input.party,
+      });
+
+      return {
+        isSelectable: isAvailableCheckout,
+        isUnavailable: !isAvailableCheckout,
+      };
+    }
+
+    const isUnavailable = isDateFullyUnavailable({
+      rooms: input.rooms,
+      reservations: input.reservations,
+      date,
+      party: input.party,
+    });
+
+    return {
+      isSelectable: !isUnavailable,
+      isUnavailable,
+    };
+  }
+
   function getUnavailableDates(input) {
     const days = Number(input.days || 0);
     const unavailableDates = [];
@@ -231,6 +263,7 @@
     findEarliestAvailability,
     getAvailabilityByType,
     getAvailableRooms,
+    getDateSelectionState,
     getUnavailableDates,
     hasAnyAvailability,
     isActiveReservation,
