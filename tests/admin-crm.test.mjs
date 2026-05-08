@@ -160,5 +160,9 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(sql, /ecovila_app_role\(\) in \('diana', 'angela'\)/i);
     assert.match(sql, /created_by in \('guest', 'diana', 'angela'\)/i);
     assert.match(sql, /alter publication supabase_realtime add table public\.reservations/i);
+    assert.match(sql, /drop policy if exists "Public can read EcoVila photos" on storage\.objects/i);
+    assert.match(sql, /crm_photos_created_by_idx/i);
+    assert.match(sql, /crm_daily_statuses_updated_by_idx/i);
+    assert.match(sql, /to anon\s+using \(status = 'published'\)/i);
   });
 });
