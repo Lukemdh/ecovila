@@ -38,6 +38,12 @@
     hotel: '/assets/photos/hotel/room.svg',
   };
 
+  const PHOTO_TYPE_SECTIONS = {
+    small: 'small-villa',
+    large: 'large-villa',
+    hotel: 'hotel',
+  };
+
   const typeGalleries = {
     small: [
       '/assets/photos/small-villa/exterior.svg',
@@ -186,18 +192,39 @@
     }));
   }
 
+  function mergePublishedPhotos(library) {
+    Object.entries(PHOTO_TYPE_SECTIONS).forEach(([type, section]) => {
+      const urls = (library?.[section] || [])
+        .map((photo) => photo.url)
+        .filter(Boolean);
+
+      if (!urls.length) {
+        return;
+      }
+
+      cardImages[type] = urls[0];
+      typeImages[type] = urls[0];
+      typeGalleries[type] = urls;
+    });
+  }
+
   async function loadBookingData() {
     try {
       const client = supabaseHelpers.getSupabaseClient();
       const startDate = todayISO();
       const endDate = pricing.addDays(startDate, LOOKAHEAD_DAYS);
-      const [rooms, pricingTiers, holidays, blocks] = await Promise.all([
+      const photoLibraryPromise = supabaseHelpers.fetchPublicPhotoLibrary
+        ? supabaseHelpers.fetchPublicPhotoLibrary(client).catch(() => ({}))
+        : Promise.resolve({});
+      const [rooms, pricingTiers, holidays, blocks, photoLibrary] = await Promise.all([
         supabaseHelpers.fetchRooms(client),
         supabaseHelpers.fetchPricingTiers(client),
         supabaseHelpers.fetchHolidays(client, { startDate, endDate }),
         supabaseHelpers.fetchAvailabilityBlocks(client, { startDate, endDate }),
+        photoLibraryPromise,
       ]);
 
+      mergePublishedPhotos(photoLibrary);
       state.rooms = rooms.length ? rooms : createFallbackRooms();
       state.pricingTiers = pricingTiers.length ? pricingTiers : fallbackPricingTiers;
       state.holidays = holidays || [];

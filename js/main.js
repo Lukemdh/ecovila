@@ -10,6 +10,12 @@
     hotel: '/assets/photos/hotel/building.svg',
   };
 
+  const accommodationPhotoSections = {
+    small: 'small-villa',
+    large: 'large-villa',
+    hotel: 'hotel',
+  };
+
   const state = {
     language: 'ro',
     lastFocusedElement: null,
@@ -177,6 +183,70 @@
     });
   }
 
+  function cssImageUrl(url) {
+    return `url("${String(url).replaceAll('"', '%22')}")`;
+  }
+
+  function photoAt(library, section, index) {
+    const photos = library?.[section] || [];
+    return photos[index] || photos[0] || null;
+  }
+
+  function applyImageElement(element, photo) {
+    if (!photo?.url) {
+      return;
+    }
+
+    element.src = photo.url;
+    element.alt = photo.alt || '';
+  }
+
+  function applyPublishedPhotos(library) {
+    document.querySelectorAll('img[data-photo-section]').forEach((image) => {
+      const section = image.dataset.photoSection;
+      const index = Number(image.dataset.photoIndex || 0);
+      applyImageElement(image, photoAt(library, section, index));
+    });
+
+    document.querySelectorAll('[data-photo-background]').forEach((element) => {
+      const section = element.dataset.photoBackground;
+      const photo = photoAt(library, section, 0);
+
+      if (!photo?.url) {
+        return;
+      }
+
+      element.style.backgroundImage = [
+        'linear-gradient(180deg, rgba(18, 15, 13, 0.28), rgba(18, 15, 13, 0.62))',
+        cssImageUrl(photo.url),
+      ].join(', ');
+    });
+
+    Object.entries(accommodationPhotoSections).forEach(([type, section]) => {
+      const photo = photoAt(library, section, 0);
+
+      if (photo?.url) {
+        accommodationImages[type] = photo.url;
+      }
+    });
+  }
+
+  async function initializePublishedPhotos() {
+    const supabaseHelpers = window.EcoVilaSupabase;
+
+    if (!supabaseHelpers?.fetchPublicPhotoLibrary) {
+      return;
+    }
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const library = await supabaseHelpers.fetchPublicPhotoLibrary(client);
+      applyPublishedPhotos(library);
+    } catch (_error) {
+      // Keep local SVG placeholders when Supabase photos are not available.
+    }
+  }
+
   window.EcoVilaLanguage = {
     getLanguage: () => state.language,
     setLanguage: applyLanguage,
@@ -188,5 +258,6 @@
     initializeHeader();
     initializeAccommodationModal();
     initializeCookieBanner();
+    initializePublishedPhotos();
   });
 })();

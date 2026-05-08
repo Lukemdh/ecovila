@@ -354,6 +354,42 @@
     );
   }
 
+  function groupPublishedPhotos(client, photos) {
+    const library = {};
+
+    (photos || []).forEach((photo) => {
+      const slug = photo.crm_photo_sections?.slug || photo.section_slug || '';
+      const publicUrl = photo.publicUrl || getCrmPhotoPublicUrl(client, photo.storage_path);
+
+      if (!slug || !publicUrl) {
+        return;
+      }
+
+      if (!library[slug]) {
+        library[slug] = [];
+      }
+
+      library[slug].push({
+        id: photo.id || '',
+        url: publicUrl,
+        storagePath: photo.storage_path || '',
+        alt: photo.alt_text || '',
+        sortOrder: Number(photo.sort_order || 999),
+      });
+    });
+
+    Object.values(library).forEach((items) => {
+      items.sort((left, right) => left.sortOrder - right.sortOrder);
+    });
+
+    return library;
+  }
+
+  async function fetchPublicPhotoLibrary(client) {
+    const photos = await fetchPublishedPhotos(client);
+    return groupPublishedPhotos(client, photos);
+  }
+
   function insertPricingRows(client, rows) {
     return unwrapSupabaseResult(
       client
@@ -394,11 +430,13 @@
     fetchPendingCashReservations,
     fetchPhotoSections,
     fetchPublishedPhotos,
+    fetchPublicPhotoLibrary,
     fetchPricingTiers,
     fetchRooms,
     getSupabaseClient,
     getSupabaseConfig,
     getCrmPhotoPublicUrl,
+    groupPublishedPhotos,
     insertCrmPhoto,
     insertHoliday,
     insertPendingReservations,
