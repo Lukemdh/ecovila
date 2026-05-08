@@ -6,6 +6,7 @@
 
   const LOGIN_PATH = 'index.html';
   const DASHBOARD_PATH = 'dashboard.html';
+  const STAFF_USERNAME_DOMAIN = 'crm.ecovila.local';
 
   function getHelpers() {
     return root.EcoVilaSupabase;
@@ -36,6 +37,16 @@
 
   function getRole(session) {
     return session?.user?.app_metadata?.role || '';
+  }
+
+  function normalizeCrmLoginIdentifier(value) {
+    const identifier = String(value || '').trim().toLowerCase();
+
+    if (!identifier || identifier.includes('@')) {
+      return identifier;
+    }
+
+    return `${identifier}@${STAFF_USERNAME_DOMAIN}`;
   }
 
   async function requireSession(options) {
@@ -74,11 +85,11 @@
 
       try {
         const client = await getClient();
-        const email = form.querySelector('[data-crm-email]')?.value?.trim();
+        const loginIdentifier = form.querySelector('[data-crm-email]')?.value?.trim();
         const password = form.querySelector('[data-crm-password]')?.value || '';
 
-        if (!email || !password) {
-          showMessage(message, 'Completează emailul și parola.');
+        if (!loginIdentifier || !password) {
+          showMessage(message, 'Completează utilizatorul și parola.');
           return;
         }
 
@@ -86,7 +97,10 @@
           submit.disabled = true;
         }
 
-        const result = await client.auth.signInWithPassword({ email, password });
+        const result = await client.auth.signInWithPassword({
+          email: normalizeCrmLoginIdentifier(loginIdentifier),
+          password,
+        });
 
         if (result.error) {
           throw result.error;
@@ -116,6 +130,7 @@
     getRole,
     getSession,
     initLogin,
+    normalizeCrmLoginIdentifier,
     requireSession,
     signOut,
   };

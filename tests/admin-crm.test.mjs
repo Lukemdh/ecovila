@@ -32,7 +32,7 @@ describe('EcoVila Step 9 CRM', () => {
     const dashboard = read('admin/dashboard.html');
 
     assert.match(login, /Autentificare CRM/i);
-    assert.match(login, /type="email"/i);
+    assert.match(login, /type="text"/i);
     assert.match(login, /type="password"/i);
     assert.match(login, /crm-auth\.js/i);
 
@@ -44,6 +44,17 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboard, /data-tab="daily"/i);
     assert.match(dashboard, /data-tab="photos"/i);
     assert.match(dashboard, /data-tab="pricing"/i);
+  });
+
+  it('accepts staff usernames as CRM login aliases', () => {
+    const login = read('admin/index.html');
+    const auth = read('admin/js/crm-auth.js');
+
+    assert.match(login, /Email sau utilizator/i);
+    assert.match(login, /type="text"[^>]+autocomplete="username"/i);
+    assert.match(auth, /function normalizeCrmLoginIdentifier/);
+    assert.match(auth, /STAFF_USERNAME_DOMAIN\s*=\s*'crm\.ecovila\.local'/);
+    assert.match(auth, /signInWithPassword\(\{\s*email:\s*normalizeCrmLoginIdentifier\(loginIdentifier\)/s);
   });
 
   it('keeps tabs usable in the local no-config dashboard and narrow app browser', () => {
