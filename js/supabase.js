@@ -155,17 +155,263 @@
     return result.data || {};
   }
 
+  function fetchAdminReservations(client, options) {
+    let query = client
+      .from('reservations')
+      .select(
+        [
+          'id',
+          'booking_group_id',
+          'room_id',
+          'guest_first_name',
+          'guest_last_name',
+          'guest_phone',
+          'guest_email',
+          'check_in',
+          'check_out',
+          'adults',
+          'kids_ages',
+          'total_price',
+          'payment_type',
+          'payment_status',
+          'room_explicitly_selected',
+          'conference_room',
+          'notes',
+          'cash_expires_at',
+          'cash_extended',
+          'created_by',
+          'created_at',
+          'cancelled_at',
+          'cancellation_reason',
+          'rooms(id, number, type)',
+        ].join(', '),
+      )
+      .order('check_in', { ascending: true });
+
+    if (options?.startDate) {
+      query = query.gt('check_out', options.startDate);
+    }
+
+    if (options?.endDate) {
+      query = query.lt('check_in', options.endDate);
+    }
+
+    return unwrapSupabaseResult(query);
+  }
+
+  function fetchPendingCashReservations(client) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .select('id, room_id, guest_first_name, guest_last_name, guest_phone, total_price, payment_type, payment_status, cash_expires_at, rooms(number, type)')
+        .eq('payment_type', 'cash')
+        .eq('payment_status', 'pending')
+        .is('cancelled_at', null)
+        .order('cash_expires_at', { ascending: true }),
+    );
+  }
+
+  function updateReservation(client, reservationId, values) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .update(values)
+        .eq('id', reservationId)
+        .select(),
+    );
+  }
+
+  function insertStaffReservations(client, payloads) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .insert(payloads)
+        .select(),
+    );
+  }
+
+  function searchReservations(client, filters) {
+    let query = client
+      .from('reservations')
+      .select('id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, payment_status, rooms(number, type)')
+      .gte('check_out', filters?.fromDate || new Date().toISOString().slice(0, 10))
+      .order('check_in', { ascending: true })
+      .limit(25);
+
+    if (filters?.date) {
+      query = query.lte('check_in', filters.date).gte('check_out', filters.date);
+    }
+
+    if (filters?.phone) {
+      query = query.ilike('guest_phone', `%${filters.phone}%`);
+    }
+
+    if (filters?.name) {
+      const name = `%${filters.name}%`;
+      query = query.or(`guest_first_name.ilike.${name},guest_last_name.ilike.${name}`);
+    }
+
+    return unwrapSupabaseResult(query);
+  }
+
+  function fetchDailyStatuses(client, serviceDate, reservationIds) {
+    let query = client
+      .from('crm_daily_statuses')
+      .select('reservation_id, service_date, checked_in_at, checked_out_at, checkout_note, updated_by, updated_at')
+      .eq('service_date', serviceDate);
+
+    if (reservationIds?.length) {
+      query = query.in('reservation_id', reservationIds);
+    }
+
+    return unwrapSupabaseResult(query);
+  }
+
+  function upsertDailyStatus(client, payload) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_daily_statuses')
+        .upsert(payload, { onConflict: 'reservation_id,service_date' })
+        .select(),
+    );
+  }
+
+  function fetchPhotoSections(client) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_photo_sections')
+        .select('id, slug, label, display_order')
+        .order('display_order', { ascending: true }),
+    );
+  }
+
+  function fetchCrmPhotos(client, status) {
+    let query = client
+      .from('crm_photos')
+      .select('id, section_id, storage_path, alt_text, sort_order, status, created_at, updated_at, published_at, crm_photo_sections(slug, label, display_order)')
+      .order('sort_order', { ascending: true });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    return unwrapSupabaseResult(query);
+  }
+
+  function uploadCrmPhoto(client, path, file) {
+    return client.storage
+      .from('ecovila-photos')
+      .upload(path, file, { upsert: true, cacheControl: '3600' });
+  }
+
+  function getCrmPhotoPublicUrl(client, storagePath) {
+    return client.storage
+      .from('ecovila-photos')
+      .getPublicUrl(storagePath)
+      .data?.publicUrl || '';
+  }
+
+  function insertCrmPhoto(client, payload) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_photos')
+        .insert(payload)
+        .select(),
+    );
+  }
+
+  function updateCrmPhoto(client, photoId, values) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_photos')
+        .update(values)
+        .eq('id', photoId)
+        .select(),
+    );
+  }
+
+  function deleteCrmPhoto(client, photoId) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_photos')
+        .delete()
+        .eq('id', photoId)
+        .select(),
+    );
+  }
+
+  function publishCrmPhotos(client) {
+    return unwrapSupabaseResult(client.rpc('publish_crm_photos'));
+  }
+
+  function fetchPublishedPhotos(client) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_photos')
+        .select('id, section_id, storage_path, alt_text, sort_order, status, crm_photo_sections(slug, label, display_order)')
+        .eq('status', 'published')
+        .order('sort_order', { ascending: true }),
+    );
+  }
+
+  function insertPricingRows(client, rows) {
+    return unwrapSupabaseResult(
+      client
+        .from('pricing_tiers')
+        .insert(rows)
+        .select(),
+    );
+  }
+
+  function insertHoliday(client, payload) {
+    return unwrapSupabaseResult(
+      client
+        .from('holidays')
+        .insert(payload)
+        .select(),
+    );
+  }
+
+  function deleteHoliday(client, holidayDate) {
+    return unwrapSupabaseResult(
+      client
+        .from('holidays')
+        .delete()
+        .eq('date', holidayDate)
+        .select(),
+    );
+  }
+
   return {
     CLIENT_OPTIONS,
     createReservationRequest,
     createSupabaseClient,
     fetchAvailabilityBlocks,
+    fetchAdminReservations,
+    fetchCrmPhotos,
+    fetchDailyStatuses,
     fetchHolidays,
+    fetchPendingCashReservations,
+    fetchPhotoSections,
+    fetchPublishedPhotos,
     fetchPricingTiers,
     fetchRooms,
     getSupabaseClient,
     getSupabaseConfig,
+    getCrmPhotoPublicUrl,
+    insertCrmPhoto,
+    insertHoliday,
     insertPendingReservations,
+    insertPricingRows,
+    insertStaffReservations,
+    publishCrmPhotos,
+    searchReservations,
+    updateCrmPhoto,
+    updateReservation,
+    deleteCrmPhoto,
+    deleteHoliday,
+    uploadCrmPhoto,
+    upsertDailyStatus,
     unwrapSupabaseResult,
   };
 });

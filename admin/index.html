@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila CRM | Autentificare</title>
+    <meta name="description" content="Autentificare pentru CRM EcoVila.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="../css/crm.css">
+  </head>
+  <body class="crm-login-page">
+    <main class="crm-login" data-crm-login-page>
+      <section class="crm-login__panel" aria-labelledby="crm-login-title">
+        <div class="crm-login__brand">
+          <img src="../assets/logo.png" alt="EcoVila" class="crm-login__logo">
+          <div>
+            <p class="crm-eyebrow">admin.ecovila.md</p>
+            <h1 id="crm-login-title">Autentificare CRM</h1>
+          </div>
+        </div>
+
+        <form class="crm-login__form" data-crm-login-form novalidate>
+          <label class="crm-field">
+            <span>Email</span>
+            <input type="email" autocomplete="email" data-crm-email required>
+          </label>
+
+          <label class="crm-field">
+            <span>Parolă</span>
+            <input type="password" autocomplete="current-password" data-crm-password required>
+          </label>
+
+          <p class="crm-form-message" data-crm-login-message hidden></p>
+
+          <button class="crm-button crm-button--primary" type="submit" data-crm-login-submit>
+            Intră în CRM
+          </button>
+        </form>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../js/supabase.js"></script>
+    <script src="js/crm-auth.js"></script>
+  </body>
+</html>
