@@ -46,6 +46,24 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboard, /data-tab="pricing"/i);
   });
 
+  it('keeps tabs usable in the local no-config dashboard and narrow app browser', () => {
+    const app = read('admin/js/crm-app.js');
+    const css = read('css/crm.css');
+    const initStart = app.indexOf('async function init()');
+    const wireTabsIndex = app.indexOf('wireTabs();', initStart);
+    const requireSessionIndex = app.indexOf('auth.requireSession', initStart);
+    const narrowRules = css.slice(css.indexOf('@media (max-width: 1179px)'));
+
+    assert.ok(wireTabsIndex > -1, 'CRM tabs should be wired during dashboard init');
+    assert.ok(requireSessionIndex > -1, 'dashboard init should still require auth for live data');
+    assert.ok(
+      wireTabsIndex < requireSessionIndex,
+      'tabs should be wired before auth/config loading can fail locally'
+    );
+    assert.doesNotMatch(narrowRules, /\.crm-app\s*\{[\s\S]*display:\s*none\s*!important/i);
+    assert.match(narrowRules, /\.crm-tabs[\s\S]*overflow-x:\s*auto/i);
+  });
+
   it('keeps dashboard cards readable in a horizontally scrolling desktop calendar', () => {
     const html = read('admin/dashboard.html');
     const css = read('css/crm.css');

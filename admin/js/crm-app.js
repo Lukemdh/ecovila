@@ -34,6 +34,11 @@
 
   function wireTabs() {
     qsa('[data-tab]').forEach((button) => {
+      if (button.dataset.crmTabWired === 'true') {
+        return;
+      }
+
+      button.dataset.crmTabWired = 'true';
       button.addEventListener('click', () => setActiveTab(button.dataset.tab));
     });
   }
@@ -57,6 +62,10 @@
       return;
     }
 
+    app.hidden = false;
+    wireTabs();
+    setActiveTab(qs('[data-tab].is-active')?.dataset.tab || 'dashboard');
+
     try {
       const auth = root.EcoVilaCrmAuth;
       const sessionState = await auth.requireSession();
@@ -65,10 +74,8 @@
         return;
       }
 
-      app.hidden = false;
       qs('[data-crm-user-label]').textContent = sessionState.role === 'angela' ? 'Angela' : 'Diana';
       qs('[data-crm-sign-out]')?.addEventListener('click', () => auth.signOut(sessionState.client));
-      wireTabs();
 
       const context = {
         client: sessionState.client,

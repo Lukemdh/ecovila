@@ -559,14 +559,87 @@ h2 {
   }
 
   .crm-mobile-block {
-    display: grid;
-    place-items: center;
-    min-height: 100vh;
-    padding: 24px;
-    text-align: center;
+    display: none;
   }
 
-  .crm-app {
-    display: none !important;
+  .crm-topbar {
+    position: static;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .crm-brand {
+    flex: 1 1 auto;
+  }
+
+  .crm-brand__logo {
+    width: 30px;
+    height: 30px;
+  }
+
+  .crm-tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+
+  .crm-tab {
+    flex: 0 0 auto;
+    padding: 8px 9px;
+    font-size: 0.86rem;
+  }
+
+  .crm-user {
+    margin-left: auto;
+  }
+
+  .crm-alert {
+    margin: 10px;
+  }
+
+  .crm-panel[data-panel="dashboard"].is-active {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .crm-sidebar {
+    max-height: none;
+  }
+
+  .crm-calendar-toolbar,
+  .crm-panel-header,
+  .crm-section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .crm-calendar {
+    max-width: calc(100vw - 20px);
+  }
+
+  .crm-panel:not([data-panel="dashboard"]) {
+    padding: 10px;
+  }
+
+  .crm-daily-grid,
+  .crm-photo-grid,
+  .crm-settings-grid,
+  .crm-form-grid--two,
+  .crm-field--inline,
+  .crm-staff-form--inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crm-dialog {
+    width: calc(100vw - 20px);
+  }
+
+  .crm-dialog__panel {
+    min-width: 0;
   }
 }
