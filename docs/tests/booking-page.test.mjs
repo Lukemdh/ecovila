@@ -56,6 +56,8 @@ describe('EcoVila Step 4 booking page', () => {
       'data-adults-value',
       'data-kids-value',
       'data-child-ages',
+      'data-child-age-overlay',
+      'data-child-age-confirm',
       'data-calendar-grid',
       'data-check-in',
       'data-check-out',
@@ -70,6 +72,87 @@ describe('EcoVila Step 4 booking page', () => {
     }
 
     assert.match(html, /data-age-placeholder/, 'child age selector template should exist');
+  });
+
+  it('prompts for child ages in an overlay that reopens after child count changes', () => {
+    const html = read('rezervari.html');
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.match(html, /data-child-age-overlay/, 'booking page should render a child-age overlay');
+    assert.match(html, /data-child-age-confirm[\s\S]+booking\.confirm/, 'child-age overlay should have a confirm button');
+    assert.match(js, /childAgeOverlayOpen:\s*false/, 'booking state should track the child-age overlay');
+    assert.match(js, /function showChildAgeOverlay/, 'booking.js should expose a child-age overlay opener');
+    assert.match(
+      js,
+      /counter === 'children'[\s\S]+showChildAgeOverlay\(\)/,
+      'changing the child count should reopen the age overlay',
+    );
+    assert.match(
+      js,
+      /\[data-child-age-confirm\][\s\S]+confirmChildAges/,
+      'the confirm button should hide the child-age overlay through booking.js',
+    );
+    assert.match(
+      css,
+      /\.child-age-overlay\s*{[^}]*position:\s*absolute/s,
+      'child-age prompt should be styled as an overlay on the guest section',
+    );
+  });
+
+  it('opens the calendar from the date card without date prices and closes after checkout selection', () => {
+    const html = read('rezervari.html');
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.match(html, /data-date-picker-shell/, 'date picker should have a shell that can receive open state');
+    assert.match(html, /data-focus-calendar/, 'date summary cards should open the calendar');
+    assert.match(html, /data-calendar-clear/, 'calendar should render a clear action in its footer');
+    assert.match(html, /data-calendar-apply/, 'calendar should render an apply action in its footer');
+    assert.doesNotMatch(html, /data-type-prompt/, 'the selector row should not render a separate accommodation prompt card');
+    assert.match(js, /calendarOpen:\s*false/, 'booking state should track whether the calendar is open');
+    assert.match(js, /function openCalendar/, 'booking.js should open the calendar from the date summary');
+    assert.match(js, /function closeCalendar/, 'booking.js should centralize calendar closing');
+    assert.doesNotMatch(js, /getCalendarDatePrice/, 'calendar cells should not calculate or render price previews');
+    assert.doesNotMatch(js, /calendar-day__price/, 'calendar day buttons should not render price elements');
+    assert.match(
+      js,
+      /state\.checkOut\s*=\s*date[\s\S]+state\.calendarOpen\s*=\s*false/,
+      'selecting a checkout date should hide the calendar',
+    );
+    assert.match(
+      css,
+      /\.date-picker:not\(\.is-calendar-open\) \.calendar\s*{[^}]*display:\s*none/s,
+      'closed calendar state should be hidden in CSS',
+    );
+    assert.match(
+      css,
+      /@media \(max-width: 700px\)[\s\S]+\.calendar__header h2\s*{[^}]*font-size:\s*0\.[0-9]+rem/s,
+      'calendar month text should stay compact on mobile',
+    );
+  });
+
+  it('closes the calendar on outside click and keeps the popup inside the viewport', () => {
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.match(
+      js,
+      /document\.addEventListener\('click'[\s\S]+state\.calendarOpen[\s\S]+closest\('\[data-date-picker-shell\]'\)[\s\S]+closeCalendar\(\)/,
+      'clicking outside the date picker should close the open calendar',
+    );
+    assert.match(
+      css,
+      /\.date-picker\s*{[^}]*position:\s*static/s,
+      'calendar should be positioned against the selector panel instead of the narrow date field',
+    );
+    assert.match(
+      css,
+      /\.calendar\s*{[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)[^}]*width:\s*min\(540px,\s*calc\(100vw - 32px\)\)/s,
+      'calendar should be centered and clamped to the viewport width',
+    );
+    assert.match(css, /\.calendar__footer\s*{[^}]*display:\s*flex/s, 'calendar should have a Booking-style footer row');
+    assert.match(css, /\.calendar__apply\s*{[^}]*background:\s*var\(--booking-green\)/s, 'calendar apply action should use the green CTA treatment');
   });
 
   it('keeps the accommodation availability lead left aligned and separate from the stay summary', () => {
@@ -109,6 +192,23 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(js, /target\.closest\('button, a, select, input, textarea'\)/, 'card clicks should ignore nested controls');
   });
 
+  it('selects accommodation from the details modal without redirecting to checkout', () => {
+    const html = read('rezervari.html');
+    const js = read('js/booking.js');
+
+    assert.match(
+      html,
+      /data-booking-modal-reserve[\s\S]+data-i18n="booking\.select"/,
+      'details modal CTA should use Selectează copy',
+    );
+    assert.match(
+      js,
+      /\[data-booking-modal-reserve\][\s\S]+selectType\(state\.activeModalType[\s\S]+closeAllModals\(\)/,
+      'details modal CTA should select the type and close the popup',
+    );
+    assert.match(js, /checkout\.html/, 'checkout handoff should remain available for the booking flow');
+  });
+
   it('puts a direct reserve CTA on each accommodation card and demotes room choice to secondary text', () => {
     const html = read('rezervari.html');
     const js = read('js/booking.js');
@@ -119,17 +219,17 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(
       html,
       /data-card-reserve[\s\S]+data-i18n="booking\.reserve"[\s\S]+data-card-room[\s\S]+booking\.chooseRoomNumber/,
-      'the reserve CTA should appear before the room-number choice',
+      'the select CTA should appear before the room-number choice',
     );
     assert.match(
       js,
-      /card\.querySelector\('\[data-card-reserve\]'\)\.addEventListener\('click',\s*\(\)\s*=>\s*reserveType\(type\)\)/,
-      'card reserve buttons should use the checkout handoff',
+      /card\.querySelector\('\[data-card-reserve\]'\)\.addEventListener\('click',\s*\(\)\s*=>\s*selectType\(type\)\)/,
+      'card select buttons should select an accommodation type',
     );
     assert.match(
       css,
-      /\.booking-room-choice\s*{[^}]*color:\s*rgba\([^)]*0\.[0-9]+[^}]*font-size:\s*0\.[0-9]+rem/s,
-      'room-number choice should be visually smaller and faded',
+      /\.booking-room-choice\s*{[^}]*color:\s*var\(--booking-green-dark\)[^}]*font-size:\s*1\.0[0-9]rem/s,
+      'room-number choice should read as the green text link from the reservation mockup',
     );
     assert.match(
       css,
@@ -139,7 +239,60 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(
       css,
       /\.booking-stay-card__actions \.editorial-button\s*{[^}]*min-width:\s*12[0-9]px/s,
-      'the card reserve CTA should be slightly wider than its text',
+      'the card select CTA should be slightly wider than its text',
+    );
+  });
+
+  it('adds the all-inclusive, SPA, and Wi-Fi amenity chips to each accommodation card', () => {
+    const html = read('rezervari.html');
+    const css = read('css/booking.css');
+
+    assert.equal((html.match(/booking-amenities/g) || []).length, 3, 'each accommodation card should render amenity chips');
+
+    for (const label of ['All-Inclusive', 'Access SPA', 'Wi-Fi']) {
+      assert.equal((html.match(new RegExp(label, 'g')) || []).length, 3, `${label} should appear on every accommodation card`);
+    }
+
+    assert.match(css, /\.booking-amenities\s*{[^}]*grid-template-columns:\s*repeat\(3/s, 'amenity chips should sit in a three-chip row');
+  });
+
+  it('keeps the child-age overlay quiet while guests are choosing ages', () => {
+    const html = read('rezervari.html');
+    const js = read('js/booking.js');
+
+    assert.doesNotMatch(html, /booking\.childAgePrompt/, 'child-age popup should not render explanatory prompt text');
+    assert.match(
+      js,
+      /state\.childAgeOverlayOpen[\s\S]+errorElement\.hidden = true/,
+      'missing-age errors should be hidden while the child-age overlay is open',
+    );
+  });
+
+  it('reveals room-number selection only after an accommodation type is selected and summarizes choices on the same button', () => {
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.match(js, /selectedType:\s*''/, 'booking state should track the selected accommodation type');
+    assert.match(js, /function selectType/, 'booking.js should have a type-selection handler');
+    assert.match(
+      js,
+      /roomButton\.hidden\s*=\s*state\.selectedType !== type/,
+      'room choice should be hidden until its accommodation card is selected',
+    );
+    assert.match(
+      js,
+      /roomButton\.textContent\s*=\s*selectedNumbers\.length[\s\S]+booking\.roomSelected/,
+      'selected room numbers should replace the room-choice button text',
+    );
+    assert.match(
+      js,
+      /closeAllModals\(\);[\s\S]+renderCards\(\);/,
+      'selecting a room number should close the room picker and refresh the cards',
+    );
+    assert.match(
+      css,
+      /\.booking-room-choice:not\(\[hidden\]\)\s*{[^}]*animation:/s,
+      'room-number choice should animate when it appears',
     );
   });
 
@@ -172,6 +325,29 @@ describe('EcoVila Step 4 booking page', () => {
       /\.room-number-grid button\s*{[^}]*font-family:\s*var\(--body-font\)/s,
       'room picker numbers should use the body font for steadier numeric centering',
     );
+  });
+
+  it('uses larger 3:2 media boxes and supports portrait images in the details gallery', () => {
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+
+    assert.match(css, /\.booking-stay-card img\s*{[^}]*aspect-ratio:\s*3 \/ 2/s, 'card photos should use a 3:2 crop box');
+    assert.match(css, /\.booking-details-gallery__main\s*{[^}]*display:\s*grid[^}]*place-items:\s*center[^}]*aspect-ratio:\s*3 \/ 2/s, 'details gallery should use a centered 3:2 media stage');
+    assert.match(css, /\.booking-details-gallery__main > img\s*{[^}]*object-fit:\s*cover/s, 'landscape media should crop into 3:2');
+    assert.match(
+      css,
+      /\.booking-details-gallery__main > img\.is-portrait\s*{[^}]*width:\s*auto[^}]*height:\s*100%[^}]*object-fit:\s*contain/s,
+      'portrait media should be contained at full frame height inside the details gallery',
+    );
+    assert.match(js, /function markImageOrientation/, 'booking.js should mark loaded images by orientation');
+    assert.match(js, /naturalHeight\s*>\s*naturalWidth/, 'orientation marking should detect portrait images from natural dimensions');
+    assert.match(js, /dataset\.orientation/, 'orientation marking should expose image orientation to CSS and browser checks');
+  });
+
+  it('removes vertical guide-line backgrounds from the reservation experience', () => {
+    const css = read('css/booking.css');
+
+    assert.doesNotMatch(css, /linear-gradient\(90deg/, 'booking styles should not draw vertical background lines');
   });
 
   it('uses a gallery-style accommodation details modal with bathroom and facility sections, without feature chips', () => {
@@ -258,20 +434,21 @@ describe('EcoVila Step 4 booking page', () => {
     );
   });
 
-  it('allows public child age choices from 1 to 18 while keeping the pricing categories private', () => {
+  it('allows public child age choices from 1 to 17 while keeping the pricing categories private', () => {
     const html = read('rezervari.html');
     const pricing = read('js/pricing.js');
     const brief = read('ECOVILA_PROJECT_BRIEF.md');
 
     assert.match(html, /<option value="1">1<\/option>/, 'child age selector should start at age 1');
-    assert.match(html, /<option value="18">18<\/option>/, 'child age selector should include age 18');
+    assert.match(html, /<option value="17">17<\/option>/, 'child age selector should include age 17');
+    assert.doesNotMatch(html, /<option value="18">18<\/option>/, 'age 18 should not be selectable as a child');
     assert.doesNotMatch(html, /0-3.*free/i, 'public booking UI should not explain hidden age pricing logic');
 
-    assert.match(pricing, /freeChildAges/, 'pricing should track children aged 0-3 separately');
-    assert.match(pricing, /teenAges/, 'pricing should track children aged 13+ separately');
-    assert.match(brief, /Guests choose child ages from 1-18/i, 'brief should document the public selector range');
-    assert.match(brief, /0-3 years.*free/i, 'brief should document the private free-child pricing rule');
-    assert.match(brief, /13\+.*adult price/i, 'brief should document teen adult pricing');
+    assert.match(pricing, /freeChildAges/, 'pricing should track children aged 1-3 separately');
+    assert.match(pricing, /teenAges/, 'pricing should track children aged 12-17 separately');
+    assert.match(brief, /Guests choose child ages from 1-17/i, 'brief should document the public selector range');
+    assert.match(brief, /1-3 years.*free/i, 'brief should document the private free-child pricing rule');
+    assert.match(brief, /12-17 years.*adult price/i, 'brief should document adult-fee child pricing');
   });
 
   it('implements booking flow logic without creating reservations before checkout', () => {
@@ -344,6 +521,8 @@ describe('EcoVila Step 4 booking page', () => {
         'booking.childAge',
         'booking.checkIn',
         'booking.checkOut',
+        'booking.calendarClear',
+        'booking.calendarApply',
         'booking.availableUnits',
         'booking.soldOut',
         'booking.wantThisType',

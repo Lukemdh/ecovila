@@ -40,16 +40,21 @@
       </header>
 
       <div class="crm-alert" data-crm-alert hidden></div>
+      <div class="crm-toast" role="status" aria-live="polite" data-crm-toast hidden></div>
 
       <section class="crm-panel is-active" data-panel="dashboard" aria-labelledby="crm-dashboard-title">
         <aside class="crm-sidebar" data-crm-sidebar>
-          <h1 id="crm-dashboard-title">Dashboard</h1>
+          <div class="crm-sidebar-head">
+            <h1 id="crm-dashboard-title">Dashboard</h1>
+            <button class="crm-button crm-button--small" type="button" data-collapse-sidebar>Ascunde</button>
+          </div>
 
           <section class="crm-sidebar-section" aria-labelledby="pending-cash-title">
             <div class="crm-section-heading">
               <h2 id="pending-cash-title">Plăți cash în așteptare</h2>
               <button class="crm-button crm-button--small" type="button" data-refresh-pending>Actualizează</button>
             </div>
+            <strong class="crm-pending-total" data-pending-cash-count>0</strong>
             <div class="crm-pending-list" data-pending-cash-list>
               <p class="crm-empty">Nu sunt plăți cash în așteptare.</p>
             </div>
@@ -155,13 +160,44 @@
 
         <section class="crm-calendar-shell" aria-label="Calendar rezervări">
           <div class="crm-calendar-toolbar">
-            <button class="crm-button crm-button--small" type="button" data-calendar-prev>Înapoi</button>
-            <strong data-calendar-range>Azi înainte</strong>
-            <button class="crm-button crm-button--small" type="button" data-calendar-next>Înainte</button>
+            <button class="crm-button crm-button--small crm-sidebar-restore" type="button" data-collapse-sidebar>Arată panoul</button>
+            <div class="crm-calendar-nav">
+              <button class="crm-date-button" type="button" data-calendar-prev aria-label="Luna precedentă">‹</button>
+              <strong data-calendar-range data-calendar-month>Mai 2026</strong>
+              <button class="crm-date-button" type="button" data-calendar-next aria-label="Luna următoare">›</button>
+              <button class="crm-button crm-button--small" type="button" data-calendar-today>Azi</button>
+            </div>
+            <label class="crm-jump-date">
+              <span>Sari la zi</span>
+              <input type="date" data-calendar-jump-date>
+            </label>
             <label class="crm-check">
               <input type="checkbox" data-show-cancelled>
               <span>Arată anulate</span>
             </label>
+          </div>
+
+          <div class="crm-dashboard-stats" aria-label="Situația de azi">
+            <article class="crm-stat">
+              <span>Camere libere</span>
+              <strong data-stat-free-rooms>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Camere ocupate</span>
+              <strong data-stat-occupied-rooms>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Sosiri azi</span>
+              <strong data-stat-arrivals-today>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Plecări azi</span>
+              <strong data-stat-departures-today>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Plăți cash în așteptare</span>
+              <strong data-stat-pending-cash>0</strong>
+            </article>
           </div>
 
           <div class="crm-calendar" data-reservation-calendar>
@@ -279,19 +315,44 @@
           <h1 id="daily-title">Situația zilnică</h1>
           <div class="crm-date-nav">
             <button class="crm-button crm-button--small" type="button" data-daily-prev>Înapoi</button>
-            <button class="crm-date-button" type="button" data-daily-date-button>Astăzi</button>
-            <input class="crm-date-input" type="date" data-daily-date hidden>
+            <label class="crm-date-picker-button" data-daily-date-picker>
+              <svg class="crm-date-picker-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 2v4m8-4v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"></path>
+              </svg>
+              <span data-daily-date-button data-daily-date-label>Astăzi</span>
+              <input class="crm-date-picker-button__input" type="date" data-daily-date aria-label="Alege data">
+            </label>
             <button class="crm-button crm-button--small" type="button" data-daily-next>Înainte</button>
           </div>
         </div>
         <div class="crm-daily-grid">
           <section class="crm-daily-section" aria-labelledby="check-in-title">
-            <h2 id="check-in-title">Se cazează azi</h2>
-            <div data-check-ins></div>
+            <h2 id="check-in-title">
+              <span class="crm-daily-section__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M22 20v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </span>
+              <span>Se cazează azi</span>
+            </h2>
+            <div class="crm-daily-list" data-check-ins></div>
           </section>
           <section class="crm-daily-section" aria-labelledby="check-out-title">
-            <h2 id="check-out-title">Pleacă azi</h2>
-            <div data-check-outs></div>
+            <h2 id="check-out-title">
+              <span class="crm-daily-section__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M13 12h8"></path>
+                  <path d="m18 7 5 5-5 5"></path>
+                  <path d="M3 21h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H3"></path>
+                  <path d="M8 12h.01"></path>
+                </svg>
+              </span>
+              <span>Pleacă azi</span>
+            </h2>
+            <div class="crm-daily-list" data-check-outs></div>
           </section>
         </div>
         <dialog class="crm-dialog" data-checkout-note-dialog>
@@ -310,11 +371,21 @@
       </section>
 
       <section class="crm-panel" data-panel="photos" aria-labelledby="photos-title">
-        <div class="crm-panel-header">
-          <h1 id="photos-title">Poze</h1>
-          <button class="crm-button crm-button--primary" type="button" data-publish-photos>Publică pozele</button>
+        <div class="crm-photos-header">
+          <div class="crm-photos-title">
+            <h1 id="photos-title">Poze</h1>
+            <p class="crm-note">Prima poză publicată din fiecare secțiune este imaginea principală.</p>
+          </div>
+          <button class="crm-button crm-button--primary crm-photos-publish" type="button" data-publish-photos>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 16V8"></path>
+              <path d="m8 12 4-4 4 4"></path>
+              <path d="M20 16.5A4.5 4.5 0 0 0 15.5 12h-1.3A6 6 0 1 0 5 17.2"></path>
+              <path d="M8 20h8"></path>
+            </svg>
+            <span>Publică pozele</span>
+          </button>
         </div>
-        <p class="crm-note">Prima poză publicată din fiecare secțiune este imaginea principală.</p>
         <div class="crm-photo-grid" data-photo-sections>
           <article class="crm-photo-section" data-photo-section="landing">
             <h2>Landing</h2>
@@ -344,35 +415,65 @@
       </section>
 
       <section class="crm-panel" data-panel="pricing" aria-labelledby="pricing-title">
-        <div class="crm-panel-header">
+        <div class="crm-panel-header crm-panel-header--stacked">
           <h1 id="pricing-title">Prețuri</h1>
+          <p class="crm-panel-subtitle">Gestionează tarifele pentru diferite tipuri de sejur și perioade.</p>
         </div>
-        <div class="crm-settings-grid">
-          <section class="crm-settings-section" aria-labelledby="price-table-title">
+        <div class="crm-settings-grid crm-pricing-layout">
+          <section class="crm-settings-section crm-pricing-card" aria-labelledby="price-table-title">
             <h2 id="price-table-title">Prețuri active</h2>
             <div class="crm-price-table" data-pricing-table></div>
-            <label class="crm-field crm-field--inline">
-              <span>Dată intrare în vigoare</span>
+            <label class="crm-field crm-field--inline crm-price-effective">
+              <span>Data intrării în vigoare</span>
               <input type="date" data-price-effective-from>
             </label>
-            <button class="crm-button crm-button--primary" type="button" data-save-prices>Salvează prețuri</button>
+            <button class="crm-button crm-button--primary crm-button--block" type="button" data-save-prices>Salvează prețuri</button>
             <p class="crm-note">Rezervările existente nu vor fi afectate de modificări de preț.</p>
             <div data-upcoming-prices></div>
           </section>
-          <section class="crm-settings-section" aria-labelledby="holidays-title">
-            <h2 id="holidays-title">Zile de sărbătoare</h2>
-            <div data-holiday-list></div>
-            <form class="crm-staff-form crm-staff-form--inline" data-add-holiday-form>
-              <label class="crm-field">
-                <span>Data</span>
-                <input type="date" data-holiday-date>
-              </label>
-              <label class="crm-field">
-                <span>Etichetă</span>
-                <input type="text" data-holiday-label>
-              </label>
-              <button class="crm-button crm-button--primary" type="submit">Adaugă zi</button>
-            </form>
+          <section class="crm-settings-section crm-pricing-card crm-pricing-card--holidays" aria-labelledby="holidays-title">
+            <div class="crm-holiday-panel">
+              <div class="crm-holiday-panel__body">
+                <h2 id="holidays-title">Zile de sărbătoare</h2>
+                <p class="crm-note">Adaugă zile de sărbătoare pentru a aplica tarifele de weekend / sărbătoare. Zilele se aplică în fiecare an până sunt șterse.</p>
+                <div class="crm-holiday-list" data-holiday-list></div>
+              </div>
+              <form class="crm-holiday-form" data-add-holiday-form>
+                <div>
+                  <h3>Adaugă zi</h3>
+                  <p class="crm-note">Alege doar ziua și luna.</p>
+                </div>
+                <div class="crm-holiday-form__row">
+                  <label class="crm-field">
+                    <span>Zi</span>
+                    <input type="number" min="1" max="31" placeholder="30" data-holiday-day>
+                  </label>
+                  <label class="crm-field">
+                    <span>Lună</span>
+                    <select data-holiday-month>
+                      <option value="">Selectează luna</option>
+                      <option value="1">Ianuarie</option>
+                      <option value="2">Februarie</option>
+                      <option value="3">Martie</option>
+                      <option value="4">Aprilie</option>
+                      <option value="5">Mai</option>
+                      <option value="6">Iunie</option>
+                      <option value="7">Iulie</option>
+                      <option value="8">August</option>
+                      <option value="9">Septembrie</option>
+                      <option value="10">Octombrie</option>
+                      <option value="11">Noiembrie</option>
+                      <option value="12">Decembrie</option>
+                    </select>
+                  </label>
+                  <label class="crm-field">
+                    <span>Etichetă (opțional)</span>
+                    <input type="text" placeholder="Ex: Paște, Ziua Independenței" data-holiday-label>
+                  </label>
+                  <button class="crm-button crm-button--primary" type="submit">Adaugă zi</button>
+                </div>
+              </form>
+            </div>
           </section>
         </div>
       </section>

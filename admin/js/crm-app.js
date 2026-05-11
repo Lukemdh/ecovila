@@ -30,6 +30,10 @@
     qsa('[data-panel]').forEach((panel) => {
       panel.classList.toggle('is-active', panel.dataset.panel === name);
     });
+
+    if (name === 'daily') {
+      root.EcoVilaCrmDaily?.showToday?.();
+    }
   }
 
   function wireTabs() {

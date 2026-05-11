@@ -39,20 +39,21 @@ const pricingTiers = [
 ];
 
 describe('EcoVila Step 3 pricing core', () => {
-  it('normalizes selected child ages into free children, chargeable children, and teens billed as adults', () => {
-    const party = pricing.normalizeParty({ adults: 2, kidsAges: [2, 5, 15] });
+  it('normalizes selected child ages into free children, child-fee children, and adult-fee children', () => {
+    const party = pricing.normalizeParty({ adults: 2, kidsAges: [2, 5, 12, 17] });
 
     assert.deepEqual(party, {
       adults: 2,
-      kidsAges: [2, 5, 15],
+      kidsAges: [2, 5, 12, 17],
       freeChildAges: [2],
       chargeableKidAges: [5],
-      teenAges: [15],
-      kids: 2,
+      teenAges: [12, 17],
+      kids: 4,
       freeKids: 1,
       chargeableKids: 1,
-      teensAsAdults: 1,
-      effectiveAdults: 3,
+      teensAsAdults: 2,
+      overflowKids: 0,
+      effectiveAdults: 2,
     });
   });
 
@@ -65,9 +66,19 @@ describe('EcoVila Step 3 pricing core', () => {
       true,
     );
     assert.equal(
-      pricing.validateParty({ adults: 1, kidsAges: [1, 18] }).valid,
+      pricing.validateParty({ adults: 1, kidsAges: [1, 17] }).valid,
       true,
-      'public child age selector should allow ages 1-18',
+      'public child age selector should allow ages 1-17',
+    );
+    assert.equal(
+      pricing.validateParty({ adults: 1, kidsAges: [18] }).valid,
+      false,
+      'age 18 should be entered as an adult, not as a child',
+    );
+    assert.equal(
+      pricing.validateParty({ adults: 1, kidsAges: [0] }).valid,
+      false,
+      'child ages should start at 1',
     );
   });
 
@@ -76,9 +87,19 @@ describe('EcoVila Step 3 pricing core', () => {
     assert.equal(pricing.getUnitsNeeded('large', { adults: 4, kidsAges: [5, 8] }), 1);
     assert.equal(pricing.getUnitsNeeded('hotel', { adults: 2, kidsAges: [3, 7, 9] }), 2);
     assert.equal(
-      pricing.getUnitsNeeded('small', { adults: 2, kidsAges: [15] }),
-      2,
-      'children aged 13+ should count against adult capacity',
+      pricing.getUnitsNeeded('small', { adults: 2, kidsAges: [12, 17] }),
+      1,
+      'children aged 12-17 should still fit in child capacity',
+    );
+    assert.equal(
+      pricing.getUnitsNeeded('hotel', { adults: 2, kidsAges: [12, 17] }),
+      1,
+      'hotel rooms should also allow two adults and two 12-17 year old children',
+    );
+    assert.equal(
+      pricing.getUnitsNeeded('large', { adults: 1, kidsAges: [2, 5, 9, 10] }),
+      1,
+      'a large villa can use open adult slots for the oldest children while keeping one actual adult',
     );
   });
 
@@ -112,24 +133,54 @@ describe('EcoVila Step 3 pricing core', () => {
       units: 1,
       minimumAdults: 3,
     });
+
+    assert.deepEqual(pricing.calculateBillableGuests('large', { adults: 1, kidsAges: [2, 5, 9, 10] }), {
+      actualAdults: 1,
+      actualKids: 4,
+      capacityKids: 4,
+      freeKids: 1,
+      chargeableKids: 3,
+      teensAsAdults: 0,
+      billableAdults: 3,
+      billableKids: 1,
+      kidsChargedAsAdults: 2,
+      emptyAdultSlots: 0,
+      units: 1,
+      minimumAdults: 3,
+    });
   });
 
-  it('keeps ages 0-3 free while billing ages 13+ as adults', () => {
+  it('keeps ages 1-3 free, bills ages 4-11 as children, and bills ages 12-17 as adult fee without adult classification', () => {
+    assert.deepEqual(pricing.calculateBillableGuests('small', { adults: 2, kidsAges: [12, 17] }), {
+      actualAdults: 2,
+      actualKids: 2,
+      capacityKids: 2,
+      freeKids: 0,
+      chargeableKids: 0,
+      teensAsAdults: 2,
+      billableAdults: 4,
+      billableKids: 0,
+      kidsChargedAsAdults: 2,
+      emptyAdultSlots: 0,
+      units: 1,
+      minimumAdults: 2,
+    });
+
     const billable = pricing.calculateBillableGuests('large', {
       adults: 2,
-      kidsAges: [2, 5, 15],
+      kidsAges: [3, 11, 12],
     });
 
     assert.deepEqual(billable, {
       actualAdults: 2,
       actualKids: 3,
-      capacityKids: 2,
+      capacityKids: 3,
       freeKids: 1,
       chargeableKids: 1,
       teensAsAdults: 1,
       billableAdults: 3,
       billableKids: 1,
-      kidsChargedAsAdults: 0,
+      kidsChargedAsAdults: 1,
       emptyAdultSlots: 0,
       units: 1,
       minimumAdults: 3,
@@ -138,7 +189,7 @@ describe('EcoVila Step 3 pricing core', () => {
     const quote = pricing.calculateStayPrice({
       roomType: 'large',
       adults: 2,
-      kidsAges: [2, 5, 15],
+      kidsAges: [3, 11, 12],
       checkIn: '2026-05-18',
       checkOut: '2026-05-19',
       pricingTiers,
@@ -206,6 +257,22 @@ describe('EcoVila Step 3 pricing core', () => {
     ]);
   });
 
+  it('treats manual holidays as recurring day and month dates across years', () => {
+    const quote = pricing.calculateStayPrice({
+      roomType: 'small',
+      adults: 2,
+      kidsAges: [],
+      checkIn: '2027-05-13',
+      checkOut: '2027-05-14',
+      pricingTiers,
+      holidays: [{ date: '2026-05-14', label: 'Zi de test' }],
+      createdOn: '2026-05-07',
+    });
+
+    assert.equal(quote.total, 2600);
+    assert.deepEqual(quote.nightlyBreakdown.map((night) => night.dayType), ['holiday']);
+  });
+
   it('prices Sunday-to-Monday nights as standard unless the date is a manual holiday', () => {
     const quote = pricing.calculateStayPrice({
       roomType: 'small',
@@ -256,6 +323,36 @@ describe('EcoVila Step 3 pricing core', () => {
         createdOn: '2026-06-01',
       }).adult_price,
       1500,
+    );
+  });
+
+  it('uses the newest same-date price row when CRM saves the same effective date again', () => {
+    const duplicateSameDatePrices = [
+      {
+        nights_tier: 1,
+        day_type: 'weekday',
+        adult_price: 1100,
+        kid_price: 900,
+        effective_from: '2026-05-08',
+        created_at: '2026-05-08T09:00:00.000Z',
+      },
+      {
+        nights_tier: 1,
+        day_type: 'weekday',
+        adult_price: 1300,
+        kid_price: 600,
+        effective_from: '2026-05-08',
+        created_at: '2026-05-08T10:00:00.000Z',
+      },
+    ];
+
+    assert.deepEqual(
+      pricing.findPricingRow(duplicateSameDatePrices, {
+        nightsTier: 1,
+        dayType: 'weekday',
+        createdOn: '2026-05-09',
+      }),
+      duplicateSameDatePrices[1],
     );
   });
 });
@@ -497,6 +594,48 @@ describe('EcoVila Step 3 Supabase helper', () => {
         name: 'get_public_availability_blocks',
         params: { range_start: '2026-07-01', range_end: '2026-07-31' },
       },
+    ]);
+  });
+
+  it('upserts pricing rows by tier, day type, and effective date', async () => {
+    const calls = [];
+    const client = {
+      from(table) {
+        calls.push({ method: 'from', table });
+        return {
+          upsert(rows, options) {
+            calls.push({ method: 'upsert', rows, options });
+            return {
+              select() {
+                calls.push({ method: 'select' });
+                return Promise.resolve({ data: rows, error: null });
+              },
+            };
+          },
+        };
+      },
+    };
+    const rows = [
+      {
+        nights_tier: 1,
+        day_type: 'weekday',
+        adult_price: 1100,
+        kid_price: 850,
+        effective_from: '2026-06-01',
+      },
+    ];
+
+    const saved = await supabaseHelpers.insertPricingRows(client, rows);
+
+    assert.deepEqual(saved, rows);
+    assert.deepEqual(calls, [
+      { method: 'from', table: 'pricing_tiers' },
+      {
+        method: 'upsert',
+        rows,
+        options: { onConflict: 'nights_tier,day_type,effective_from' },
+      },
+      { method: 'select' },
     ]);
   });
 });

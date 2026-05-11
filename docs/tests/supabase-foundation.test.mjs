@@ -53,6 +53,7 @@ describe('EcoVila Supabase foundation migration', () => {
 
   it('models the required reservation and pricing business constraints', () => {
     const sql = readMigration();
+    const allSql = readAllMigrations();
 
     assert.match(sql, /type text not null/i, 'rooms.type should be required');
     assert.match(sql, /number integer not null unique/i, 'rooms.number should be unique');
@@ -72,6 +73,11 @@ describe('EcoVila Supabase foundation migration', () => {
       sql,
       /token text not null unique default encode\(gen_random_bytes\(32\), 'hex'\)/i,
       'cancellation tokens should default to a secure random value',
+    );
+    assert.match(
+      allSql,
+      /holidays_recurring_month_day_unique_idx[\s\S]+extract\(month from date\)[\s\S]+extract\(day from date\)/i,
+      'manual holidays should be unique by recurring month and day',
     );
   });
 

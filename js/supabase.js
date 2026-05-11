@@ -203,7 +203,7 @@
     return unwrapSupabaseResult(
       client
         .from('reservations')
-        .select('id, room_id, guest_first_name, guest_last_name, guest_phone, total_price, payment_type, payment_status, cash_expires_at, rooms(number, type)')
+        .select('id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, total_price, payment_type, payment_status, cash_expires_at, rooms(id, number, type)')
         .eq('payment_type', 'cash')
         .eq('payment_status', 'pending')
         .is('cancelled_at', null)
@@ -217,6 +217,16 @@
         .from('reservations')
         .update(values)
         .eq('id', reservationId)
+        .select(),
+    );
+  }
+
+  function updateReservationGroup(client, bookingGroupId, values) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .update(values)
+        .eq('booking_group_id', bookingGroupId)
         .select(),
     );
   }
@@ -298,10 +308,10 @@
     return unwrapSupabaseResult(query);
   }
 
-  function uploadCrmPhoto(client, path, file) {
+  function uploadCrmPhoto(client, path, file, options) {
     return client.storage
       .from('ecovila-photos')
-      .upload(path, file, { upsert: true, cacheControl: '3600' });
+      .upload(path, file, { upsert: options?.upsert === true, cacheControl: '3600' });
   }
 
   function getCrmPhotoPublicUrl(client, storagePath) {
@@ -394,7 +404,7 @@
     return unwrapSupabaseResult(
       client
         .from('pricing_tiers')
-        .insert(rows)
+        .upsert(rows, { onConflict: 'nights_tier,day_type,effective_from' })
         .select(),
     );
   }
@@ -445,6 +455,7 @@
     publishCrmPhotos,
     searchReservations,
     updateCrmPhoto,
+    updateReservationGroup,
     updateReservation,
     deleteCrmPhoto,
     deleteHoliday,

@@ -49,13 +49,24 @@ describe('EcoVila live Supabase wiring', () => {
     const bookingJs = read('js/booking.js');
 
     assert.match(landingHtml, /data-photo-section="landing"/);
-    assert.match(landingHtml, /data-photo-section="small-villa"/);
-    assert.match(landingHtml, /data-photo-section="restaurant-food"/);
+    assert.match(landingHtml, /data-photo-index="8"/);
     assert.match(mainJs, /fetchPublicPhotoLibrary/);
     assert.match(mainJs, /applyPublishedPhotos/);
     assert.match(mainJs, /data-photo-section/);
     assert.match(bookingJs, /fetchPublicPhotoLibrary/);
     assert.match(bookingJs, /mergePublishedPhotos/);
     assert.match(bookingJs, /small-villa/);
+  });
+
+  it('maps Landing tab photos to homepage slots after the hardcoded hero media', () => {
+    const landingHtml = read('index.html');
+    const heroTag = landingHtml.match(/<section class="hero"[\s\S]*?>/)?.[0] || '';
+    const landingSlotIndexes = Array.from(
+      landingHtml.matchAll(/<img[^>]+data-photo-section="landing"[^>]+data-photo-index="(\d+)"/g),
+      (match) => Number(match[1]),
+    );
+
+    assert.doesNotMatch(heroTag, /data-photo-background="landing"/);
+    assert.deepEqual(landingSlotIndexes, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
   });
 });

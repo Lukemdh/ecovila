@@ -5,6 +5,13 @@
   'use strict';
 
   const DAILY_STATUS_TABLE = 'crm_daily_statuses';
+  const CHECK_ICON = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `;
+
+  let activeDaily = null;
 
   function qs(selector, scope) {
     return (scope || root.document).querySelector(selector);
@@ -24,21 +31,44 @@
     return statuses.find((status) => status.reservation_id === reservationId) || {};
   }
 
+  function syncDateControl(context, state) {
+    const label = qs('[data-daily-date-label]') || qs('[data-daily-date-button]');
+    const input = qs('[data-daily-date]');
+    if (label) {
+      label.textContent = context.formatDate(state.selectedDate);
+    }
+    if (input) {
+      input.value = state.selectedDate;
+    }
+  }
+
+  function dailyActionLabel(type) {
+    return type === 'in' ? 'Marchează cazarea' : 'Marchează plecarea';
+  }
+
   function buildDailyCard(context, state, reservation, type, status) {
     const card = root.document.createElement('article');
     const completed = type === 'in' ? Boolean(status.checked_in_at) : Boolean(status.checked_out_at);
-    card.className = `crm-daily-card ${completed ? 'is-complete' : ''}`;
+    card.className = [
+      'crm-daily-card',
+      `crm-daily-card--${type}`,
+      completed ? 'is-complete' : '',
+    ].filter(Boolean).join(' ');
     card.innerHTML = `
-      <span>${root.EcoVilaCrmCalendar.roomLabel(reservation)}</span>
-      <strong>${root.EcoVilaCrmCalendar.guestName(reservation)}</strong>
-      <span>${reservation.guest_phone || ''}</span>
+      <div class="crm-daily-card__details">
+        <span class="crm-daily-card__room">${root.EcoVilaCrmCalendar.roomLabel(reservation)}</span>
+        <strong>${root.EcoVilaCrmCalendar.guestName(reservation)}</strong>
+        <span>${reservation.guest_phone || ''}</span>
+      </div>
     `;
 
     if (!completed) {
       const button = root.document.createElement('button');
       button.type = 'button';
-      button.className = 'crm-button crm-button--primary crm-button--small';
-      button.textContent = type === 'in' ? 'S-a cazat' : 'A plecat';
+      button.className = 'crm-daily-check';
+      button.setAttribute('aria-label', dailyActionLabel(type));
+      button.title = dailyActionLabel(type);
+      button.innerHTML = CHECK_ICON;
       button.addEventListener('click', () => {
         if (type === 'out') {
           openCheckoutNote(context, state, reservation);
@@ -50,6 +80,35 @@
     }
 
     return card;
+  }
+
+  function emptyState(context, state, type) {
+    const selectedIsToday = state.selectedDate === root.EcoVilaCrmCalendar.todayISO();
+    const dateLabel = selectedIsToday ? 'de astăzi' : `din ${context.formatDate(state.selectedDate)}`;
+    const body = type === 'in'
+      ? `Toate cazările ${dateLabel} vor apărea aici.`
+      : `Toate plecările ${dateLabel} vor apărea aici.`;
+
+    return `
+      <div class="crm-daily-empty">
+        <svg class="crm-daily-empty__art" viewBox="0 0 220 160" aria-hidden="true">
+          <circle cx="111" cy="76" r="62"></circle>
+          <path d="M45 126h130"></path>
+          <path d="M118 125V42h55v83"></path>
+          <path d="M126 50h39v75"></path>
+          <path d="M59 124V76c0-8 6-14 14-14h30c8 0 14 6 14 14v49"></path>
+          <path d="M72 124V82"></path>
+          <path d="M101 124V82"></path>
+          <path d="M71 62V49c0-6 5-11 11-11h10c6 0 11 5 11 11v13"></path>
+          <path d="M139 86h4"></path>
+          <path d="M184 125V92"></path>
+          <path d="M184 103c18-5 22-20 22-20-18 2-22 20-22 20Z"></path>
+          <path d="M184 113c-17-6-25-20-25-20 18 0 25 20 25 20Z"></path>
+        </svg>
+        <strong>Nu sunt rezervări pentru această secțiune.</strong>
+        <span>${body}</span>
+      </div>
+    `;
   }
 
   async function saveDailyStatus(context, state, reservation, values) {
@@ -96,9 +155,10 @@
 
     const sorted = sortByRoomWithCompletedLast(cards);
     container.innerHTML = '';
+    container.className = `crm-daily-list ${sorted.length ? '' : 'is-empty'}`.trim();
 
     if (!sorted.length) {
-      container.innerHTML = '<p class="crm-empty">Nu sunt rezervări pentru această secțiune.</p>';
+      container.innerHTML = emptyState(context, state, type);
       return;
     }
 
@@ -108,6 +168,7 @@
   }
 
   async function loadDaily(context, state) {
+    syncDateControl(context, state);
     const nextDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, 1);
     const previousDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, -1);
     const reservations = await root.EcoVilaSupabase.fetchAdminReservations(context.client, {
@@ -119,31 +180,44 @@
     const ids = [...checkIns, ...checkOuts].map((reservation) => reservation.id);
     const statuses = await root.EcoVilaSupabase.fetchDailyStatuses(context.client, state.selectedDate, ids);
 
-    qs('[data-daily-date-button]').textContent = context.formatDate(state.selectedDate);
     renderSection(context, state, qs('[data-check-ins]'), checkIns, statuses, 'in');
     renderSection(context, state, qs('[data-check-outs]'), checkOuts, statuses, 'out');
   }
 
+  function setSelectedDate(context, state, date) {
+    state.selectedDate = root.EcoVilaCrmCalendar.toISODate(date);
+    syncDateControl(context, state);
+  }
+
+  function showToday() {
+    if (!activeDaily) {
+      return null;
+    }
+
+    const { context, state } = activeDaily;
+    setSelectedDate(context, state, root.EcoVilaCrmCalendar.todayISO());
+    return loadDaily(context, state).catch((error) => {
+      context.setAlert(error?.message || 'Situația zilnică nu s-a putut încărca.');
+    });
+  }
+
   function init(context) {
     const state = {
-      selectedDate: new Date().toISOString().slice(0, 10),
+      selectedDate: root.EcoVilaCrmCalendar.todayISO(),
     };
+    activeDaily = { context, state };
 
     const dateInput = qs('[data-daily-date]');
-    qs('[data-daily-date-button]')?.addEventListener('click', () => {
-      dateInput.hidden = false;
-      dateInput.showPicker?.();
-    });
     dateInput?.addEventListener('change', () => {
-      state.selectedDate = dateInput.value || state.selectedDate;
+      setSelectedDate(context, state, dateInput.value || state.selectedDate);
       loadDaily(context, state);
     });
     qs('[data-daily-prev]')?.addEventListener('click', () => {
-      state.selectedDate = root.EcoVilaCrmCalendar.addDays(state.selectedDate, -1);
+      setSelectedDate(context, state, root.EcoVilaCrmCalendar.addDays(state.selectedDate, -1));
       loadDaily(context, state);
     });
     qs('[data-daily-next]')?.addEventListener('click', () => {
-      state.selectedDate = root.EcoVilaCrmCalendar.addDays(state.selectedDate, 1);
+      setSelectedDate(context, state, root.EcoVilaCrmCalendar.addDays(state.selectedDate, 1));
       loadDaily(context, state);
     });
 
@@ -155,6 +229,7 @@
     init,
     loadDaily,
     saveDailyStatus,
+    showToday,
     sortByRoomWithCompletedLast,
   };
 });

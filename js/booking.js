@@ -88,6 +88,9 @@
     kidsAges: [],
     checkIn: '',
     checkOut: '',
+    calendarOpen: false,
+    childAgeOverlayOpen: false,
+    selectedType: '',
     currentMonth: firstOfMonth(todayISO()),
     rooms: fallbackRooms,
     reservations: createTestingSoldOutBlocks(fallbackRooms),
@@ -315,7 +318,8 @@
 
   function formatMonth(date) {
     const locale = state.language === 'ro' ? 'ro-MD' : state.language;
-    return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(pricing.parseISODate(date));
+    const formatted = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(pricing.parseISODate(date));
+    return formatted.charAt(0).toLocaleUpperCase(locale) + formatted.slice(1);
   }
 
   function getCardTitle(type, neededUnits) {
@@ -338,8 +342,42 @@
     });
   }
 
+  function markImageOrientation(image) {
+    const update = () => {
+      const { naturalHeight, naturalWidth } = image;
+      const isPortrait = naturalHeight > naturalWidth;
+      image.classList.toggle('is-portrait', isPortrait);
+      image.classList.toggle('is-landscape', !isPortrait);
+      image.dataset.orientation = isPortrait ? 'portrait' : 'landscape';
+    };
+
+    image.classList.remove('is-portrait', 'is-landscape');
+    image.dataset.orientation = '';
+
+    if (image.complete && image.naturalWidth) {
+      update();
+      return;
+    }
+
+    image.addEventListener('load', update, { once: true });
+  }
+
   function getCardInfo(type) {
     const party = getPricingParty();
+    const partyFits = pricing.isTypeAvailableForParty(type, party);
+
+    if (!partyFits) {
+      return {
+        mode: 'unavailable',
+        neededUnits: pricing.getUnitsNeeded(type, party),
+        availableRooms: [],
+        availableCount: 0,
+        isAvailable: false,
+        isUnavailableForParty: true,
+        quote: null,
+      };
+    }
+
     const neededUnits = pricing.getUnitsNeeded(type, party);
 
     if (hasSelectedDates()) {
@@ -397,10 +435,16 @@
 
   function render() {
     state.language = document.documentElement.lang || localStorage.getItem(STORAGE_LANGUAGE) || state.language;
+
+    if (state.selectedType && !pricing.isTypeAvailableForParty(state.selectedType, getPricingParty())) {
+      state.selectedType = '';
+    }
+
     renderGuestControls();
     renderCalendar();
     renderStaySummary();
     renderCards();
+    renderContinueButton();
     renderStatus();
   }
 
@@ -417,7 +461,9 @@
 
     const container = document.querySelector('[data-child-ages]');
     const template = document.querySelector('template[data-age-placeholder]');
+    const overlay = document.querySelector('[data-child-age-overlay]');
     container.innerHTML = '';
+    overlay.hidden = !state.childAgeOverlayOpen || !state.kidsAges.length;
 
     state.kidsAges.forEach((age, index) => {
       const fragment = template.content.cloneNode(true);
@@ -436,6 +482,11 @@
 
     const error = getPartyError();
     const errorElement = document.querySelector('[data-party-error]');
+    if (state.childAgeOverlayOpen) {
+      errorElement.hidden = true;
+      errorElement.textContent = '';
+      return;
+    }
     errorElement.hidden = !error;
     errorElement.textContent = error;
   }
@@ -460,6 +511,15 @@
     }
   }
 
+  function showChildAgeOverlay() {
+    state.childAgeOverlayOpen = state.kidsAges.length > 0;
+  }
+
+  function confirmChildAges() {
+    state.childAgeOverlayOpen = false;
+    render();
+  }
+
   function renderStaySummary() {
     document.querySelector('[data-check-in]').textContent = formatDate(state.checkIn);
     document.querySelector('[data-check-out]').textContent = formatDate(state.checkOut);
@@ -477,6 +537,10 @@
   function renderCalendar() {
     const title = document.querySelector('[data-calendar-title]');
     const grid = document.querySelector('[data-calendar-grid]');
+    const shell = document.querySelector('[data-date-picker-shell]');
+    const calendarElement = document.querySelector('[data-booking-calendar]');
+    shell.classList.toggle('is-calendar-open', state.calendarOpen);
+    calendarElement.setAttribute('aria-hidden', String(!state.calendarOpen));
     title.textContent = formatMonth(state.currentMonth);
     grid.innerHTML = '';
 
@@ -500,13 +564,20 @@
       });
       const unavailable = Boolean(dateSelection?.isUnavailable);
       const button = document.createElement('button');
+      const numberElement = document.createElement('span');
+      const isCheckIn = date === state.checkIn;
+      const isCheckOut = date === state.checkOut;
       button.type = 'button';
-      button.textContent = String(parsed.getUTCDate());
+      numberElement.className = 'calendar-day__number';
+      numberElement.textContent = String(parsed.getUTCDate());
+      button.appendChild(numberElement);
       button.dataset.date = date;
       button.disabled = isPast || !dateSelection?.isSelectable;
       button.classList.toggle('is-muted', isOutsideMonth);
       button.classList.toggle('is-unavailable', unavailable);
-      button.classList.toggle('is-selected', date === state.checkIn || date === state.checkOut);
+      button.classList.toggle('is-selected', isCheckIn || isCheckOut);
+      button.classList.toggle('is-range-start', isCheckIn);
+      button.classList.toggle('is-range-end', isCheckOut);
       button.classList.toggle(
         'is-in-range',
         Boolean(state.checkIn && state.checkOut && date > state.checkIn && date < state.checkOut),
@@ -526,13 +597,28 @@
       const info = getCardInfo(type);
       syncAvailableSelectedRooms(type, info);
       const selectedNumbers = state.selectedRoomNumbers[type];
-      const isSoldOut = hasSelectedDates() && !info.isAvailable;
+      const isUnavailableForParty = Boolean(info.isUnavailableForParty);
+      const isSoldOut = !isUnavailableForParty && hasSelectedDates() && !info.isAvailable;
+      const isSelected = state.selectedType === type;
 
       card.classList.toggle('is-sold-out', isSoldOut);
-      card.querySelector('[data-card-image]').src = cardImages[type];
+      card.classList.toggle('is-unavailable-party', isUnavailableForParty);
+      card.classList.toggle('is-selected', isSelected && !isUnavailableForParty);
+      const cardImage = card.querySelector('[data-card-image]');
+      cardImage.src = cardImages[type];
+      markImageOrientation(cardImage);
       card.querySelector('[data-card-title]').textContent = getCardTitle(type, info.neededUnits);
       card.querySelector('[data-card-capacity]').textContent = t(`accommodation.${type}.capacity`);
-      card.querySelector('[data-soldout-badge]').hidden = !isSoldOut;
+
+      const soldoutBadge = card.querySelector('[data-soldout-badge]');
+
+      if (isUnavailableForParty) {
+        soldoutBadge.hidden = false;
+        soldoutBadge.textContent = t('booking.unavailableForParty');
+      } else {
+        soldoutBadge.hidden = !isSoldOut;
+        soldoutBadge.textContent = t('booking.soldOut');
+      }
 
       const availability = card.querySelector('[data-card-availability]');
       const price = card.querySelector('[data-card-price]');
@@ -540,15 +626,25 @@
       const roomButton = card.querySelector('[data-card-room]');
       const soldoutButton = card.querySelector('[data-card-soldout]');
       const selectedRooms = card.querySelector('[data-card-selected-rooms]');
+      const roomChoiceText = selectedNumbers.length
+        ? t('booking.roomSelected', { numbers: selectedNumbers.map((number) => `#${number}`).join(', ') })
+        : t('booking.chooseRoomNumber');
 
-      if (hasSelectedDates()) {
+      if (isUnavailableForParty) {
+        availability.textContent = '';
+        price.textContent = '';
+        reserveButton.hidden = true;
+        reserveButton.disabled = true;
+        roomButton.hidden = true;
+        roomButton.disabled = true;
+        soldoutButton.hidden = true;
+      } else if (hasSelectedDates()) {
         availability.textContent = '';
         price.textContent = info.isAvailable && info.quote
           ? t('booking.priceForStay', { price: pricing.formatMDL(info.quote.total) })
           : '';
         reserveButton.hidden = isSoldOut;
         reserveButton.disabled = isSoldOut;
-        roomButton.hidden = isSoldOut;
         roomButton.disabled = isSoldOut;
         soldoutButton.hidden = !isSoldOut;
       } else if (info.earliest) {
@@ -558,23 +654,32 @@
           : '';
         reserveButton.hidden = true;
         reserveButton.disabled = true;
-        roomButton.hidden = true;
+        roomButton.disabled = true;
         soldoutButton.hidden = true;
       } else {
         availability.textContent = t('booking.noAvailability');
         price.textContent = '';
         reserveButton.hidden = true;
         reserveButton.disabled = true;
-        roomButton.hidden = true;
+        roomButton.disabled = true;
         soldoutButton.hidden = false;
       }
 
-      selectedRooms.hidden = !selectedNumbers.length;
-      selectedRooms.textContent = selectedNumbers.length
+      reserveButton.textContent = isSelected ? t('booking.selected') : t('booking.reserve');
+      roomButton.hidden = state.selectedType !== type || isUnavailableForParty;
+      if (isSoldOut) {
+        roomButton.hidden = true;
+      }
+      roomButton.textContent = selectedNumbers.length
         ? t('booking.roomSelected', { numbers: selectedNumbers.map((number) => `#${number}`).join(', ') })
-        : '';
+        : t('booking.chooseRoomNumber');
+      roomButton.setAttribute('aria-label', roomChoiceText);
+      selectedRooms.hidden = true;
+      selectedRooms.textContent = '';
     });
   }
+
+  let suppressCalendarClose = false;
 
   function selectDate(date) {
     if (!state.checkIn || state.checkOut || date <= state.checkIn) {
@@ -584,6 +689,30 @@
       state.checkOut = date;
     }
 
+    state.calendarOpen = true;
+    suppressCalendarClose = true;
+    render();
+    requestAnimationFrame(() => { suppressCalendarClose = false; });
+  }
+
+  function openCalendar() {
+    state.calendarOpen = true;
+    renderCalendar();
+  }
+
+  function closeCalendar() {
+    if (!state.calendarOpen) {
+      return;
+    }
+
+    state.calendarOpen = false;
+    renderCalendar();
+  }
+
+  function clearCalendarDates() {
+    state.checkIn = '';
+    state.checkOut = '';
+    state.calendarOpen = true;
     render();
   }
 
@@ -602,9 +731,46 @@
       if (direction < 0) {
         state.kidsAges.pop();
       }
+
+      showChildAgeOverlay();
     }
 
     render();
+  }
+
+  function selectType(type) {
+    if (!TYPE_ORDER.includes(type)) {
+      return;
+    }
+
+    const party = getPricingParty();
+    if (!pricing.isTypeAvailableForParty(type, party)) {
+      return;
+    }
+
+    state.selectedType = type;
+    renderCards();
+    renderContinueButton();
+    renderCalendar();
+  }
+
+  function renderContinueButton() {
+    const button = document.querySelector('[data-continue-checkout]');
+    if (!button) {
+      return;
+    }
+
+    const canContinue = state.selectedType && hasSelectedDates() && !getPartyError();
+    button.hidden = !canContinue;
+    button.textContent = t('booking.continue');
+  }
+
+  function continueToCheckout() {
+    if (!state.selectedType) {
+      return;
+    }
+
+    reserveType(state.selectedType);
   }
 
   function openDetails(type) {
@@ -622,7 +788,9 @@
     const galleryElement = modal.querySelector('[data-booking-modal-gallery]');
 
     galleryElement.dataset.imageCount = String(gallery.length);
-    modal.querySelector('[data-booking-modal-image]').src = activeImage;
+    const activeImageElement = modal.querySelector('[data-booking-modal-image]');
+    activeImageElement.src = activeImage;
+    markImageOrientation(activeImageElement);
     modal.querySelector('[data-booking-modal-title]').textContent = t(`accommodation.${type}.title`);
     modal.querySelector('[data-booking-modal-body]').textContent = t(`accommodation.${type}.details`);
 
@@ -639,6 +807,7 @@
       button.setAttribute('aria-label', `${t('booking.image')} ${index + 1}`);
       thumbnail.src = image;
       thumbnail.alt = '';
+      markImageOrientation(thumbnail);
       button.appendChild(thumbnail);
       button.addEventListener('click', () => {
         state.modalImageIndex = index;
@@ -777,7 +946,7 @@
             state.selectedRoomNumbers[type] = selected.concat(number);
           }
 
-          renderRoomNumbers(type, getCardInfo(type));
+          closeAllModals();
           renderCards();
         });
         grid.appendChild(button);
@@ -900,9 +1069,12 @@
 
     document.querySelectorAll('[data-focus-calendar]').forEach((button) => {
       button.addEventListener('click', () => {
-        document.querySelector('[data-booking-calendar]').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        openCalendar();
       });
     });
+
+    document.querySelector('[data-calendar-clear]').addEventListener('click', clearCalendarDates);
+    document.querySelector('[data-calendar-apply]').addEventListener('click', closeCalendar);
 
     TYPE_ORDER.forEach((type) => {
       const card = document.querySelector(`[data-stay-card="${type}"]`);
@@ -927,16 +1099,24 @@
         openDetails(type);
       });
       card.querySelector('[data-card-room]').addEventListener('click', () => openRoomPanel(type));
-      card.querySelector('[data-card-reserve]').addEventListener('click', () => reserveType(type));
+      card.querySelector('[data-card-reserve]').addEventListener('click', () => selectType(type));
       card.querySelector('[data-card-soldout]').addEventListener('click', () => openSoldoutModal(type));
     });
+
+    const continueButton = document.querySelector('[data-continue-checkout]');
+    if (continueButton) {
+      continueButton.addEventListener('click', continueToCheckout);
+    }
 
     document.querySelector('[data-booking-modal-prev]').addEventListener('click', () => moveDetailsImage(-1));
     document.querySelector('[data-booking-modal-next]').addEventListener('click', () => moveDetailsImage(1));
 
     document.querySelector('[data-booking-modal-reserve]').addEventListener('click', () => {
-      reserveType(state.activeModalType);
+      selectType(state.activeModalType);
+      closeAllModals();
     });
+
+    document.querySelector('[data-child-age-confirm]').addEventListener('click', confirmChildAges);
 
     document.querySelector('[data-room-clear]').addEventListener('click', () => {
       if (state.activeRoomType) {
@@ -952,8 +1132,21 @@
 
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
+        closeCalendar();
         closeAllModals();
       }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!state.calendarOpen || suppressCalendarClose) {
+        return;
+      }
+
+      if (event.target.closest('[data-date-picker-shell]')) {
+        return;
+      }
+
+      closeCalendar();
     });
 
     window.addEventListener('ecovila:languagechange', (event) => {

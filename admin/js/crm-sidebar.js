@@ -15,27 +15,43 @@
       .filter((number) => Number.isInteger(number));
   }
 
+  function createBookingGroupId(options) {
+    if (typeof options?.createGroupId === 'function') {
+      return options.createGroupId();
+    }
+
+    if (root.crypto?.randomUUID) {
+      return root.crypto.randomUUID();
+    }
+
+    return `staff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
   function wireToggles() {
     root.document.querySelectorAll('[data-sidebar-toggle]').forEach((button) => {
+      const target = button.dataset.sidebarToggle;
+      const form = qs(target === 'add' ? '[data-add-reservation-form]' : '[data-search-reservation-form]');
+      button.setAttribute('aria-expanded', String(Boolean(form && !form.hidden)));
       button.addEventListener('click', () => {
-        const target = button.dataset.sidebarToggle;
-        const form = qs(target === 'add' ? '[data-add-reservation-form]' : '[data-search-reservation-form]');
         if (form) {
           form.hidden = !form.hidden;
+          button.setAttribute('aria-expanded', String(!form.hidden));
         }
       });
     });
   }
 
-  function buildStaffReservationRows(form, rooms, context) {
+  function buildStaffReservationRows(form, rooms, context, options) {
     const roomNumbers = readNumberList(qs('[data-add-room-numbers]', form)?.value);
     const selectedRooms = roomNumbers
       .map((number) => rooms.find((room) => Number(room.number) === number))
       .filter(Boolean);
-    const now = new Date();
+    const now = options?.now || new Date();
     const paymentType = qs('[data-add-payment-type]', form)?.value || 'cash';
+    const bookingGroupId = createBookingGroupId(options);
 
     return selectedRooms.map((room) => ({
+      booking_group_id: bookingGroupId,
       room_id: room.id,
       guest_first_name: qs('[data-add-first-name]', form)?.value?.trim() || 'Client',
       guest_last_name: qs('[data-add-last-name]', form)?.value?.trim() || 'CRM',
