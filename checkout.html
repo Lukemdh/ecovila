@@ -15,7 +15,7 @@
       rel="stylesheet"
     >
     <link rel="stylesheet" href="css/main.css">
-    <link rel="stylesheet" href="css/booking.css">
+    <link rel="stylesheet" href="css/checkout.css">
   </head>
   <body>
     <a class="skip-link" href="#checkout-page" data-i18n="access.skip">Sari la conținut</a>
@@ -37,16 +37,16 @@
       </div>
     </header>
 
-    <main class="booking-page checkout-page" id="checkout-page" data-checkout-app>
-      <section class="booking-shell" aria-labelledby="checkout-title">
-        <div class="booking-intro checkout-intro">
+    <main class="checkout-page" id="checkout-page" data-checkout-app>
+      <div class="checkout-shell">
+        <div class="checkout-hero">
           <h1 id="checkout-title" data-i18n="checkout.title">Finalizează rezervarea</h1>
           <p data-i18n="checkout.lead">
             Verifică sumarul, completează datele de contact și alege metoda de plată.
           </p>
         </div>
 
-        <section class="booking-panel checkout-empty" data-checkout-empty hidden>
+        <section class="checkout-empty-state" data-checkout-empty hidden>
           <div>
             <h2 data-i18n="checkout.emptyTitle">Nu există o rezervare pregătită</h2>
             <p data-i18n="checkout.emptyText">
@@ -58,73 +58,98 @@
           </a>
         </section>
 
-        <div class="checkout-layout" data-checkout-content hidden>
-          <section class="booking-panel checkout-summary-panel" aria-labelledby="checkout-summary-title">
-            <div class="booking-panel__heading checkout-panel-heading">
-              <h2 id="checkout-summary-title" data-i18n="checkout.summaryTitle">Sumar rezervare</h2>
-            </div>
+        <div class="checkout-grid" data-checkout-content hidden>
+          <!-- LEFT: Summary Card -->
+          <section class="co-card co-summary" aria-labelledby="checkout-summary-title">
+            <h2 id="checkout-summary-title" class="co-card__title" data-i18n="checkout.summaryTitle">Sumar rezervare</h2>
 
-            <dl class="checkout-summary-list">
-              <div>
-                <dt data-i18n="checkout.dates">Perioada</dt>
+            <dl class="co-summary__list">
+              <div class="co-summary__row">
+                <dt>
+                  <span class="co-summary__icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </span>
+                  <span data-i18n="checkout.dates">Perioada</span>
+                </dt>
                 <dd data-summary-dates>--</dd>
               </div>
-              <div>
-                <dt data-i18n="checkout.nights">Nopți</dt>
+              <div class="co-summary__row">
+                <dt>
+                  <span class="co-summary__icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  </span>
+                  <span data-i18n="checkout.nights">Nopți</span>
+                </dt>
                 <dd data-summary-nights>--</dd>
               </div>
-              <div>
-                <dt data-i18n="checkout.guests">Oaspeți</dt>
+              <div class="co-summary__row">
+                <dt>
+                  <span class="co-summary__icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  </span>
+                  <span data-i18n="checkout.guests">Oaspeți</span>
+                </dt>
                 <dd data-summary-guests>--</dd>
               </div>
-              <div>
-                <dt data-i18n="checkout.accommodation">Cazare</dt>
+              <div class="co-summary__row">
+                <dt>
+                  <span class="co-summary__icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  </span>
+                  <span data-i18n="checkout.accommodation">Cazare</span>
+                </dt>
                 <dd data-summary-accommodation>--</dd>
               </div>
-              <div data-summary-rooms-row hidden>
-                <dt data-i18n="checkout.rooms">Număr</dt>
+              <div class="co-summary__row" data-summary-rooms-row hidden>
+                <dt>
+                  <span class="co-summary__icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+                  </span>
+                  <span data-i18n="checkout.rooms">Număr</span>
+                </dt>
                 <dd data-summary-rooms>--</dd>
               </div>
             </dl>
 
-            <div class="checkout-breakdown">
+            <div class="co-breakdown">
               <h3 data-i18n="checkout.breakdownTitle">Calcul preț</h3>
               <ul data-summary-breakdown></ul>
             </div>
 
-            <div class="checkout-total">
+            <div class="co-total">
               <span data-i18n="checkout.total">Total</span>
               <strong data-summary-total>--</strong>
             </div>
           </section>
 
-          <section class="booking-panel checkout-form-panel" aria-labelledby="checkout-form-title">
+          <!-- RIGHT: Guest Form + Payment -->
+          <section class="co-card co-form" aria-labelledby="checkout-form-title">
             <form data-checkout-form novalidate>
-              <div class="booking-panel__heading checkout-panel-heading">
-                <h2 id="checkout-form-title" data-i18n="checkout.guestTitle">Datele oaspetelui</h2>
+              <div class="co-form__header">
+                <h2 id="checkout-form-title" class="co-card__title" data-i18n="checkout.guestTitle">Datele oaspetelui</h2>
                 <p data-i18n="checkout.guestLead">Folosim aceste date pentru confirmare și notificări.</p>
               </div>
 
-              <div class="checkout-form-grid">
-                <label class="checkout-field">
+              <div class="co-form__fields">
+                <label class="co-field">
                   <span data-i18n="checkout.firstName">Prenume</span>
                   <input type="text" autocomplete="given-name" data-guest-first-name required>
                 </label>
-                <label class="checkout-field">
+                <label class="co-field">
                   <span data-i18n="checkout.lastName">Nume</span>
                   <input type="text" autocomplete="family-name" data-guest-last-name required>
                 </label>
-                <label class="checkout-field">
+                <label class="co-field">
                   <span data-i18n="checkout.phone">Telefon</span>
                   <input type="tel" value="+373" autocomplete="tel" inputmode="tel" data-guest-phone required>
                 </label>
-                <label class="checkout-field">
+                <label class="co-field">
                   <span data-i18n="checkout.email">Email</span>
                   <input type="email" autocomplete="email" data-guest-email required>
                 </label>
               </div>
 
-              <label class="checkout-consent">
+              <label class="co-consent">
                 <input type="checkbox" data-gdpr-consent required>
                 <span>
                   <span data-i18n="checkout.gdpr">Am citit și sunt de acord cu</span>
@@ -138,33 +163,45 @@
                 </span>
               </label>
 
-              <div class="checkout-payment" aria-labelledby="checkout-payment-title">
+              <div class="co-payment" aria-labelledby="checkout-payment-title">
                 <h3 id="checkout-payment-title" data-i18n="checkout.paymentTitle">Metoda de plată</h3>
-                <div class="checkout-payment-grid">
-                  <button class="checkout-payment-option is-selected" type="button" data-payment-option="card" aria-pressed="true">
-                    <strong data-i18n="checkout.payCard">Plată cu cardul</strong>
-                    <span data-i18n="checkout.payCardMeta">Rezervarea se creează în așteptare până la confirmarea plății.</span>
+                <div class="co-payment__grid">
+                  <button class="co-payment__option is-selected" type="button" data-payment-option="card" aria-pressed="true">
+                    <span class="co-payment__radio"></span>
+                    <div class="co-payment__body">
+                      <strong data-i18n="checkout.payCard">Plată cu cardul</strong>
+                      <span data-i18n="checkout.payCardMeta">Rezervarea se creează în așteptare până la confirmarea plății.</span>
+                    </div>
+                    <span class="co-payment__badge" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                    </span>
                   </button>
-                  <button class="checkout-payment-option" type="button" data-payment-option="cash" aria-pressed="false">
-                    <strong data-i18n="checkout.payCash">Plată cash</strong>
-                    <span data-i18n="checkout.payCashMeta">Achitare la oficiu în termenul rezervat.</span>
+                  <button class="co-payment__option" type="button" data-payment-option="cash" aria-pressed="false">
+                    <span class="co-payment__radio"></span>
+                    <div class="co-payment__body">
+                      <strong data-i18n="checkout.payCash">Plată cash</strong>
+                      <span data-i18n="checkout.payCashMeta">Achitare la oficiu în termenul rezervat.</span>
+                    </div>
+                    <span class="co-payment__badge" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </span>
                   </button>
                 </div>
-                <p class="checkout-cash-disclaimer" data-cash-disclaimer data-i18n="checkout.cashDisclaimer" hidden>
+                <p class="co-cash-disclaimer" data-cash-disclaimer data-i18n="checkout.cashDisclaimer" hidden>
                   Rezervarea este valabilă 30 de minute și trebuie achitată la oficiu, str. Aerodromului 3. Dacă termenul expiră, rezervarea va fi anulată automat.
                 </p>
               </div>
 
               <p class="booking-error" data-checkout-error hidden></p>
-              <p class="checkout-status" data-checkout-status hidden></p>
+              <p class="co-status" data-checkout-status hidden></p>
 
-              <button class="editorial-button editorial-button--filled checkout-submit" type="submit" data-checkout-submit data-i18n="checkout.reserve">
+              <button class="co-submit" type="submit" data-checkout-submit data-i18n="checkout.reserve">
                 Rezervă
               </button>
             </form>
           </section>
         </div>
-      </section>
+      </div>
     </main>
 
     <footer class="site-footer" id="footer">
@@ -219,6 +256,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
     <script src="js/translations.js"></script>
     <script src="js/pricing.js"></script>
     <script src="js/supabase.js"></script>

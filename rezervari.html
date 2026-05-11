@@ -40,9 +40,9 @@
     <main class="booking-page" id="booking-page" data-booking-app>
       <section class="booking-shell" aria-labelledby="booking-title">
         <div class="booking-intro">
-          <h1 id="booking-title" data-i18n="booking.title">Rezervări EcoVila</h1>
+          <h1 id="booking-title" data-i18n="booking.title">Rezervări</h1>
           <p data-i18n="booking.lead">
-            Alege persoanele, perioada și tipul de cazare. Rezervarea se finalizează în pasul următor.
+            Disponibilitatea se actualizează după persoanele și datele selectate.
           </p>
         </div>
 
@@ -76,11 +76,18 @@
                 </div>
               </div>
 
-              <div class="child-ages" data-child-ages></div>
+              <div class="child-age-overlay" data-child-age-overlay hidden>
+                <div class="child-age-overlay__panel">
+                  <div class="child-ages" data-child-ages></div>
+                  <button class="editorial-button editorial-button--filled" type="button" data-child-age-confirm data-i18n="booking.confirm">
+                    Confirmă
+                  </button>
+                </div>
+              </div>
               <p class="booking-error" data-party-error hidden></p>
             </div>
 
-            <div class="date-picker">
+            <div class="date-picker" data-date-picker-shell>
               <div class="date-summary">
                 <button class="date-summary__field" type="button" data-focus-calendar>
                   <span data-i18n="booking.checkIn">Check-in</span>
@@ -108,8 +115,17 @@
                   <span>D</span>
                 </div>
                 <div class="calendar-grid" data-calendar-grid></div>
+                <div class="calendar__footer">
+                  <button class="calendar__clear" type="button" data-calendar-clear data-i18n="booking.calendarClear">
+                    Șterge
+                  </button>
+                  <button class="calendar__apply" type="button" data-calendar-apply data-i18n="booking.calendarApply">
+                    Aplică
+                  </button>
+                </div>
               </div>
             </div>
+
           </div>
         </section>
 
@@ -131,13 +147,18 @@
                 <p class="booking-stay-card__capacity" data-card-capacity>Până la 2 adulți + 2 copii</p>
                 <p class="booking-stay-card__meta" data-card-availability></p>
                 <p class="booking-stay-card__price" data-card-price></p>
+                <div class="booking-amenities" aria-label="Facilități incluse">
+                  <span>All-Inclusive</span>
+                  <span>Access SPA</span>
+                  <span>Wi-Fi</span>
+                </div>
                 <p class="booking-stay-card__rooms" data-card-selected-rooms hidden></p>
                 <div class="booking-stay-card__actions">
                   <button class="editorial-button editorial-button--filled" type="button" data-card-reserve data-i18n="booking.reserve">
-                    Rezervă
+                    Selectează
                   </button>
-                  <button class="booking-room-choice" type="button" data-card-room data-i18n="booking.chooseRoomNumber">
-                    Vreau să-mi aleg numărul
+                  <button class="booking-room-choice" type="button" data-card-room hidden data-i18n="booking.chooseRoomNumber">
+                    Vreau să-mi selectez numărul
                   </button>
                   <button class="editorial-button" type="button" data-card-soldout hidden data-i18n="booking.wantThisType">
                     Vreau așa căsuță
@@ -154,13 +175,18 @@
                 <p class="booking-stay-card__capacity" data-card-capacity>Până la 4 adulți + 2 copii</p>
                 <p class="booking-stay-card__meta" data-card-availability></p>
                 <p class="booking-stay-card__price" data-card-price></p>
+                <div class="booking-amenities" aria-label="Facilități incluse">
+                  <span>All-Inclusive</span>
+                  <span>Access SPA</span>
+                  <span>Wi-Fi</span>
+                </div>
                 <p class="booking-stay-card__rooms" data-card-selected-rooms hidden></p>
                 <div class="booking-stay-card__actions">
                   <button class="editorial-button editorial-button--filled" type="button" data-card-reserve data-i18n="booking.reserve">
-                    Rezervă
+                    Selectează
                   </button>
-                  <button class="booking-room-choice" type="button" data-card-room data-i18n="booking.chooseRoomNumber">
-                    Vreau să-mi aleg numărul
+                  <button class="booking-room-choice" type="button" data-card-room hidden data-i18n="booking.chooseRoomNumber">
+                    Vreau să-mi selectez numărul
                   </button>
                   <button class="editorial-button" type="button" data-card-soldout hidden data-i18n="booking.wantThisType">
                     Vreau așa căsuță
@@ -177,13 +203,18 @@
                 <p class="booking-stay-card__capacity" data-card-capacity>Până la 2 adulți + 2 copii</p>
                 <p class="booking-stay-card__meta" data-card-availability></p>
                 <p class="booking-stay-card__price" data-card-price></p>
+                <div class="booking-amenities" aria-label="Facilități incluse">
+                  <span>All-Inclusive</span>
+                  <span>Access SPA</span>
+                  <span>Wi-Fi</span>
+                </div>
                 <p class="booking-stay-card__rooms" data-card-selected-rooms hidden></p>
                 <div class="booking-stay-card__actions">
                   <button class="editorial-button editorial-button--filled" type="button" data-card-reserve data-i18n="booking.reserve">
-                    Rezervă
+                    Selectează
                   </button>
-                  <button class="booking-room-choice" type="button" data-card-room data-i18n="booking.chooseRoomNumber">
-                    Vreau să-mi aleg numărul
+                  <button class="booking-room-choice" type="button" data-card-room hidden data-i18n="booking.chooseRoomNumber">
+                    Vreau să-mi selectez numărul
                   </button>
                   <button class="editorial-button" type="button" data-card-soldout hidden data-i18n="booking.wantThisType">
                     Vreau așa căsuță
@@ -191,6 +222,12 @@
                 </div>
               </div>
             </article>
+          </div>
+
+          <div class="booking-continue-bar">
+            <button class="editorial-button editorial-button--filled booking-continue-button" type="button" data-continue-checkout hidden data-i18n="booking.continue">
+              Continuă
+            </button>
           </div>
         </section>
       </section>
@@ -269,7 +306,6 @@
           <option value="15">15</option>
           <option value="16">16</option>
           <option value="17">17</option>
-          <option value="18">18</option>
         </select>
       </label>
     </template>
@@ -299,8 +335,8 @@
             <ul class="booking-check-list booking-check-list--wide" data-booking-modal-facilities></ul>
           </section>
           <p class="booking-error" data-booking-modal-error hidden></p>
-          <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve data-i18n="booking.reserve">
-            Rezervă
+          <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve data-i18n="booking.select">
+            Selectează
           </button>
         </div>
       </article>
@@ -332,6 +368,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
     <script src="js/translations.js"></script>
     <script src="js/pricing.js"></script>
     <script src="js/calendar.js"></script>

@@ -1,0 +1,343 @@
+(function (root, factory) {
+  const api = factory(root);
+  root.EcoVilaCrmPhotos = api;
+})(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
+  'use strict';
+
+  const ECOVILA_PHOTO_BUCKET = 'ecovila-photos';
+  const PUBLISH_RPC = 'publish_crm_photos';
+  let photoToastTimer;
+  let photoToastHideTimer;
+  const FALLBACK_SECTIONS = [
+    { slug: 'landing', label: 'Landing' },
+    { slug: 'small-villa', label: 'Căsuță Mică' },
+    { slug: 'large-villa', label: 'Căsuță Mare' },
+    { slug: 'hotel', label: 'Hotel' },
+    { slug: 'spa', label: 'SPA' },
+    { slug: 'territory', label: 'Teritoriu' },
+    { slug: 'restaurant-food', label: 'Restaurant/Mâncare' },
+    { slug: 'playground', label: 'Teren de joacă' },
+  ];
+
+  function qs(selector, scope) {
+    return (scope || root.document).querySelector(selector);
+  }
+
+  function publicUrl(context, photo) {
+    return root.EcoVilaSupabase.getCrmPhotoPublicUrl(context.client, photo.storage_path);
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[character]));
+  }
+
+  function photoCountLabel(count) {
+    return count === 1 ? '1 poză' : `${count} poze`;
+  }
+
+  function sectionTitle(label) {
+    return escapeHtml(label).replace(/\//g, '/<wbr>');
+  }
+
+  function photoTitle(section, photo, index) {
+    if (section.slug === 'landing') {
+      return `Poza ${index + 2} pe site`;
+    }
+
+    return photo.sort_order === 1 ? 'Imagine principală' : `Poza ${photo.sort_order}`;
+  }
+
+  function renderPhotoThumb(context, section, photo, index, variant) {
+    const item = root.document.createElement('article');
+    const variantClass = variant === 'primary' ? 'crm-photo-thumb--primary' : 'crm-photo-thumb--secondary';
+    const title = photoTitle(section, photo, index);
+    const alt = photo.alt_text || section.label;
+
+    item.className = `crm-photo-thumb ${variantClass}`;
+    item.draggable = true;
+    item.innerHTML = `
+      <div class="crm-photo-thumb__media">
+        <img src="${escapeHtml(publicUrl(context, photo))}" alt="${escapeHtml(alt)}">
+      </div>
+      <button class="crm-button crm-button--small crm-photo-remove" type="button" data-remove-photo="${escapeHtml(photo.id)}" title="Șterge poza">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 6h18"></path>
+          <path d="M8 6V4h8v2"></path>
+          <path d="m10 11 .5 7"></path>
+          <path d="m14 11-.5 7"></path>
+          <path d="M6 6l1 15h10l1-15"></path>
+        </svg>
+        <span>Șterge</span>
+      </button>
+      <span class="crm-photo-position">${escapeHtml(title)}</span>
+    `;
+    if (item.setAttribute) {
+      item.setAttribute('data-photo-id', photo.id);
+      item.setAttribute('data-photo-section-slug', section.slug);
+      item.setAttribute('draggable', 'true');
+      item.setAttribute('title', 'Trage poza pentru a schimba ordinea');
+    }
+
+    return item;
+  }
+
+  function movePhotoBefore(photos, draggedId, targetId) {
+    if (!draggedId || !targetId || draggedId === targetId) {
+      return photos.slice();
+    }
+
+    const nextPhotos = photos.slice();
+    const draggedIndex = nextPhotos.findIndex((photo) => photo.id === draggedId);
+    const targetIndex = nextPhotos.findIndex((photo) => photo.id === targetId);
+
+    if (draggedIndex < 0 || targetIndex < 0) {
+      return nextPhotos;
+    }
+
+    const [draggedPhoto] = nextPhotos.splice(draggedIndex, 1);
+    const insertionIndex = nextPhotos.findIndex((photo) => photo.id === targetId);
+    nextPhotos.splice(insertionIndex, 0, draggedPhoto);
+
+    return nextPhotos;
+  }
+
+  function withSortOrder(photos) {
+    return photos.map((photo, index) => ({
+      ...photo,
+      sort_order: index + 1,
+    }));
+  }
+
+  async function reorderPhotos(context, section, ordered, draggedId, targetId) {
+    const nextPhotos = withSortOrder(movePhotoBefore(ordered, draggedId, targetId));
+
+    renderPhotoSection(context, section, nextPhotos);
+
+    await Promise.all(nextPhotos.map((photo, index) => (
+      root.EcoVilaSupabase.updateCrmPhoto(context.client, photo.id, { sort_order: index + 1 })
+    )));
+
+    return nextPhotos;
+  }
+
+  function wirePhotoReordering(context, section, ordered, scope) {
+    scope.querySelectorAll('.crm-photo-thumb[draggable="true"]').forEach((thumb) => {
+      thumb.addEventListener('dragstart', (event) => {
+        thumb.classList.add('is-dragging');
+        event.dataTransfer?.setData('text/plain', thumb.dataset.photoId);
+        event.dataTransfer?.setData('application/x-ecovila-photo-section', section.slug);
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = 'move';
+        }
+      });
+
+      thumb.addEventListener('dragend', () => {
+        thumb.classList.remove('is-dragging');
+        scope.querySelectorAll('.crm-photo-thumb.is-drop-target').forEach((target) => {
+          target.classList.remove('is-drop-target');
+        });
+      });
+
+      thumb.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'move';
+        }
+        thumb.classList.add('is-drop-target');
+      });
+
+      thumb.addEventListener('dragleave', () => {
+        thumb.classList.remove('is-drop-target');
+      });
+
+      thumb.addEventListener('drop', async (event) => {
+        event.preventDefault();
+        thumb.classList.remove('is-drop-target');
+
+        const draggedId = event.dataTransfer?.getData('text/plain');
+        const draggedSection = event.dataTransfer?.getData('application/x-ecovila-photo-section');
+        const targetId = thumb.dataset.photoId;
+
+        if (!draggedId || draggedSection !== section.slug || draggedId === targetId) {
+          return;
+        }
+
+        try {
+          await reorderPhotos(context, section, ordered, draggedId, targetId);
+        } catch (error) {
+          loadPhotos(context).catch(() => {});
+          context.setAlert(error?.message || 'Ordinea pozelor nu s-a putut salva.');
+        }
+      });
+    });
+  }
+
+  function renderPhotoSection(context, section, photos) {
+    const existing = qs(`[data-photo-section="${section.slug}"]`);
+    if (!existing) {
+      return;
+    }
+
+    const ordered = photos.slice().sort((left, right) => left.sort_order - right.sort_order);
+
+    existing.innerHTML = `
+      <div class="crm-photo-card-head">
+        <h2>${sectionTitle(section.label)}</h2>
+        <span class="crm-photo-count" data-photo-count="${ordered.length}">${photoCountLabel(ordered.length)}</span>
+        <label class="crm-button crm-button--small crm-photo-add">
+          <span>Adaugă poze</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="8"></circle>
+            <path d="M12 8v8"></path>
+            <path d="M8 12h8"></path>
+          </svg>
+          <input type="file" accept="image/*" multiple hidden data-photo-upload="${section.slug}">
+        </label>
+      </div>
+      <div class="crm-photo-list"></div>
+    `;
+
+    const list = qs('.crm-photo-list', existing);
+
+    if (!ordered.length) {
+      list.innerHTML = `
+        <div class="crm-photo-empty">
+          <span class="crm-photo-empty__icon" aria-hidden="true">
+            <svg viewBox="0 0 96 96">
+              <circle cx="48" cy="48" r="40"></circle>
+              <path d="M31 62V36h31v26H31Z"></path>
+              <path d="m35 58 12-12 8 8 5-5 8 9"></path>
+              <path d="M40 30h31v26"></path>
+              <path d="M52 42h.01"></path>
+            </svg>
+          </span>
+          <p>Nu sunt poze în draft.</p>
+        </div>
+      `;
+    } else {
+      const primaryLabel = root.document.createElement('p');
+      primaryLabel.className = 'crm-photo-group-label';
+      primaryLabel.textContent = 'Imagine principală';
+      list.appendChild(primaryLabel);
+      list.appendChild(renderPhotoThumb(context, section, ordered[0], 0, 'primary'));
+
+      if (ordered.length > 1) {
+        const secondaryLabel = root.document.createElement('p');
+        const secondaryGrid = root.document.createElement('div');
+
+        secondaryLabel.className = 'crm-photo-group-label';
+        secondaryLabel.textContent = 'Alte poze';
+        secondaryGrid.className = 'crm-photo-secondary-grid';
+
+        ordered.slice(1).forEach((photo, index) => {
+          secondaryGrid.appendChild(renderPhotoThumb(context, section, photo, index + 1, 'secondary'));
+        });
+
+        list.appendChild(secondaryLabel);
+        list.appendChild(secondaryGrid);
+      }
+    }
+
+    qs(`[data-photo-upload="${section.slug}"]`, existing)?.addEventListener('change', (event) => {
+      uploadFiles(context, section, Array.from(event.target.files || []), ordered.length);
+    });
+
+    existing.querySelectorAll('[data-remove-photo]').forEach((button) => {
+      button.addEventListener('click', () => removePhoto(context, button.dataset.removePhoto));
+    });
+
+    wirePhotoReordering(context, section, ordered, existing);
+  }
+
+  async function uploadFiles(context, section, files, currentCount) {
+    for (const [index, file] of files.entries()) {
+      const extension = file.name.split('.').pop() || 'jpg';
+      const storagePath = `${section.slug}/${Date.now()}-${index}.${extension}`;
+      const upload = await root.EcoVilaSupabase.uploadCrmPhoto(context.client, storagePath, file);
+      if (upload.error) {
+        throw upload.error;
+      }
+      await root.EcoVilaSupabase.insertCrmPhoto(context.client, {
+        section_id: section.id,
+        storage_path: storagePath,
+        alt_text: section.label,
+        sort_order: currentCount + index + 1,
+        status: 'draft',
+        created_by: context.session.user.id,
+      });
+    }
+    await loadPhotos(context);
+  }
+
+  async function removePhoto(context, photoId) {
+    await root.EcoVilaSupabase.deleteCrmPhoto(context.client, photoId);
+    await loadPhotos(context);
+  }
+
+  async function publish(context) {
+    await root.EcoVilaSupabase.publishCrmPhotos(context.client);
+    await loadPhotos(context);
+    showPhotoToast('Pozele au fost publicate.');
+  }
+
+  function showPhotoToast(message) {
+    const toast = qs('[data-crm-toast]');
+    if (!toast) {
+      return false;
+    }
+
+    root.clearTimeout?.(photoToastTimer);
+    root.clearTimeout?.(photoToastHideTimer);
+    toast.textContent = message || '';
+    toast.hidden = false;
+    toast.classList.remove('is-visible', 'is-hiding');
+    toast.offsetWidth;
+    toast.classList.add('is-visible');
+
+    photoToastTimer = root.setTimeout(() => {
+      toast.classList.remove('is-visible');
+      toast.classList.add('is-hiding');
+      photoToastHideTimer = root.setTimeout(() => {
+        toast.hidden = true;
+        toast.classList.remove('is-hiding');
+      }, 220);
+    }, 3000);
+
+    return true;
+  }
+
+  async function loadPhotos(context) {
+    const sections = await root.EcoVilaSupabase.fetchPhotoSections(context.client).catch(() => FALLBACK_SECTIONS);
+    const photos = await root.EcoVilaSupabase.fetchCrmPhotos(context.client, 'draft').catch(() => []);
+
+    (sections.length ? sections : FALLBACK_SECTIONS).forEach((section) => {
+      renderPhotoSection(
+        context,
+        section,
+        photos.filter((photo) => photo.section_id === section.id || photo.crm_photo_sections?.slug === section.slug),
+      );
+    });
+  }
+
+  function init(context) {
+    qs('[data-publish-photos]')?.addEventListener('click', () => publish(context));
+    loadPhotos(context).catch((error) => context.setAlert(error?.message || 'Pozele nu s-au putut încărca.'));
+  }
+
+  return {
+    ECOVILA_PHOTO_BUCKET,
+    PUBLISH_RPC,
+    init,
+    loadPhotos,
+    publish,
+    reorderPhotos,
+    renderPhotoSection,
+    showPhotoToast,
+  };
+});

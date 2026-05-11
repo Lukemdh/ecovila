@@ -10,8 +10,13 @@
   'use strict';
 
   const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+  const HOLIDAY_KEY_PATTERN = /^(\d{2})-(\d{2})$/;
   const DAY_MS = 24 * 60 * 60 * 1000;
   const DEFAULT_PREMIUM_NEXT_DAYS = [6, 0];
+  const CHILD_MIN_AGE = 1;
+  const CHILD_MAX_AGE = 17;
+  const FREE_CHILD_MAX_AGE = 3;
+  const CHILD_FEE_MAX_AGE = 11;
 
   const ROOM_TYPES = Object.freeze({
     small: Object.freeze({
@@ -81,8 +86,36 @@
     return parseISODate(value).toISOString().slice(0, 10);
   }
 
+  function toHolidayKey(value) {
+    if (value && typeof value === 'object') {
+      if ('date' in value) {
+        return toHolidayKey(value.date);
+      }
+
+      if ('month' in value && 'day' in value) {
+        return toHolidayKey(`${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`);
+      }
+    }
+
+    const raw = String(value || '').trim();
+    const isoMatch = raw.match(ISO_DATE_PATTERN);
+    if (isoMatch) {
+      return toISODate(raw).slice(5);
+    }
+
+    const monthDayMatch = raw.match(HOLIDAY_KEY_PATTERN);
+    if (!monthDayMatch) {
+      throw new Error(`Expected holiday in YYYY-MM-DD or MM-DD format, received: ${value}`);
+    }
+
+    const canonicalDate = `2000-${monthDayMatch[1]}-${monthDayMatch[2]}`;
+    return toISODate(canonicalDate).slice(5);
+  }
+
   function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    const date = new Date();
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+    return localDate.toISOString().slice(0, 10);
   }
 
   function compareDates(left, right) {
@@ -136,9 +169,9 @@
     const kidsAges = Array.isArray(party?.kidsAges)
       ? party.kidsAges.map((age) => Number(age))
       : [];
-    const freeChildAges = kidsAges.filter((age) => Number.isInteger(age) && age >= 0 && age <= 3);
-    const chargeableKidAges = kidsAges.filter((age) => Number.isInteger(age) && age >= 4 && age <= 12);
-    const teenAges = kidsAges.filter((age) => Number.isInteger(age) && age >= 13);
+    const freeChildAges = kidsAges.filter((age) => Number.isInteger(age) && age >= CHILD_MIN_AGE && age <= FREE_CHILD_MAX_AGE);
+    const chargeableKidAges = kidsAges.filter((age) => Number.isInteger(age) && age > FREE_CHILD_MAX_AGE && age <= CHILD_FEE_MAX_AGE);
+    const teenAges = kidsAges.filter((age) => Number.isInteger(age) && age > CHILD_FEE_MAX_AGE && age <= CHILD_MAX_AGE);
 
     return {
       adults,
@@ -146,11 +179,12 @@
       freeChildAges,
       chargeableKidAges,
       teenAges,
-      kids: freeChildAges.length + chargeableKidAges.length,
+      kids: kidsAges.length,
       freeKids: freeChildAges.length,
       chargeableKids: chargeableKidAges.length,
       teensAsAdults: teenAges.length,
-      effectiveAdults: adults + teenAges.length,
+      overflowKids: 0,
+      effectiveAdults: adults,
     };
   }
 
@@ -164,8 +198,8 @@
     }
 
     normalized.kidsAges.forEach((age) => {
-      if (!Number.isInteger(age) || age < 0 || age > 18) {
-        errors.push('Child ages must be whole numbers from 0 to 18.');
+      if (!Number.isInteger(age) || age < CHILD_MIN_AGE || age > CHILD_MAX_AGE) {
+        errors.push('Child ages must be whole numbers from 1 to 17.');
       }
     });
 
@@ -193,10 +227,23 @@
   function getUnitsNeeded(roomType, party) {
     const config = assertRoomType(roomType);
     const normalized = normalizeParty(party);
-    const adultUnits = Math.ceil(normalized.effectiveAdults / config.maxAdults);
-    const kidUnits = Math.ceil(normalized.kids / config.maxKids);
+    let units = 1;
 
-    return Math.max(1, adultUnits, kidUnits);
+    while (
+      normalized.adults > units * config.maxAdults ||
+      normalized.kids > units * config.maxKids + Math.max(0, units * config.maxAdults - normalized.adults)
+    ) {
+      units += 1;
+    }
+
+    return units;
+  }
+
+  function isTypeAvailableForParty(roomType, party) {
+    const normalized = normalizeParty(party);
+    const neededUnits = getUnitsNeeded(roomType, normalized);
+
+    return normalized.adults >= neededUnits;
   }
 
   function calculateBillableGuests(roomType, party, options) {
@@ -204,17 +251,27 @@
     const normalized = normalizeParty(party);
     const units = Number(options?.units || getUnitsNeeded(roomType, normalized));
     const minimumAdults = units * config.minimumAdults;
-    const adultSlotsToFill = Math.max(0, minimumAdults - normalized.effectiveAdults);
-    const kidsChargedAsAdults = Math.min(normalized.chargeableKids, adultSlotsToFill);
-    const emptyAdultSlots = Math.max(0, adultSlotsToFill - kidsChargedAsAdults);
-    const billableAdults = normalized.effectiveAdults + kidsChargedAsAdults + emptyAdultSlots;
-    const billableKids = normalized.chargeableKids - kidsChargedAsAdults;
+    const sortedChildAges = normalized.kidsAges
+      .filter((age) => Number.isInteger(age) && age >= CHILD_MIN_AGE && age <= CHILD_MAX_AGE)
+      .slice()
+      .sort((left, right) => right - left);
+    const minimumAdultFeeChildren = Math.max(0, minimumAdults - normalized.adults);
+    const adultFeeChildCount = Math.min(
+      sortedChildAges.length,
+      Math.max(normalized.teensAsAdults, minimumAdultFeeChildren),
+    );
+    const childFeeAges = sortedChildAges.slice(adultFeeChildCount);
+    const kidsChargedAsAdults = adultFeeChildCount;
+    const emptyAdultSlots = Math.max(0, minimumAdults - normalized.adults - kidsChargedAsAdults);
+    const billableAdults = normalized.adults + kidsChargedAsAdults + emptyAdultSlots;
+    const billableKids = childFeeAges.filter((age) => age > FREE_CHILD_MAX_AGE && age <= CHILD_FEE_MAX_AGE).length;
+    const freeKids = childFeeAges.filter((age) => age >= CHILD_MIN_AGE && age <= FREE_CHILD_MAX_AGE).length;
 
     return {
       actualAdults: normalized.adults,
       actualKids: normalized.kidsAges.length,
       capacityKids: normalized.kids,
-      freeKids: normalized.freeKids,
+      freeKids,
       chargeableKids: normalized.chargeableKids,
       teensAsAdults: normalized.teensAsAdults,
       billableAdults,
@@ -228,19 +285,19 @@
 
   function toHolidaySet(holidays) {
     return new Set(
-      (holidays || []).map((holiday) => toISODate(typeof holiday === 'string' ? holiday : holiday.date)),
+      (holidays || []).map((holiday) => toHolidayKey(holiday)),
     );
   }
 
   function getDayType(date, holidays, options) {
     const isoDate = toISODate(date);
     const premiumDate = addDays(isoDate, 1);
-    const holidaySet = holidays instanceof Set ? holidays : toHolidaySet(holidays);
+    const holidaySet = holidays instanceof Set ? toHolidaySet(Array.from(holidays)) : toHolidaySet(holidays);
     const premiumNextDays =
       options?.premiumNextDays || options?.weekendDays || DEFAULT_PREMIUM_NEXT_DAYS;
     const day = parseISODate(premiumDate).getUTCDay();
 
-    return holidaySet.has(premiumDate) || premiumNextDays.includes(day) ? 'holiday' : 'weekday';
+    return holidaySet.has(toHolidayKey(premiumDate)) || premiumNextDays.includes(day) ? 'holiday' : 'weekday';
   }
 
   function findPricingRow(pricingTiers, lookup) {
@@ -253,7 +310,14 @@
           toISODate(row.effective_from) <= createdOn
         );
       })
-      .sort((left, right) => compareDates(right.effective_from, left.effective_from));
+      .sort((left, right) => {
+        const effectiveCompare = compareDates(right.effective_from, left.effective_from);
+        if (effectiveCompare !== 0) {
+          return effectiveCompare;
+        }
+
+        return String(right.created_at || '').localeCompare(String(left.created_at || ''));
+      });
 
     if (!matches.length) {
       throw new Error(
@@ -339,8 +403,10 @@
     getFittingRoomTypes,
     getNightsTier,
     getUnitsNeeded,
+    isTypeAvailableForParty,
     normalizeParty,
     parseISODate,
+    toHolidayKey,
     toISODate,
     validateParty,
   };

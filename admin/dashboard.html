@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila CRM | Dashboard</title>
+    <meta name="description" content="CRM EcoVila pentru rezervări, recepție, poze și prețuri.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="../css/crm.css">
+  </head>
+  <body class="crm-page">
+    <div class="crm-mobile-block">
+      <h1>CRM EcoVila este disponibil pe desktop.</h1>
+      <p>Deschideți aplicația pe un ecran mai lat pentru calendarul de rezervări.</p>
+    </div>
+
+    <main class="crm-app" data-crm-app hidden>
+      <header class="crm-topbar">
+        <a class="crm-brand" href="../index.html" aria-label="EcoVila">
+          <img src="../assets/logo.png" alt="EcoVila" class="crm-brand__logo">
+          <span>EcoVila CRM</span>
+        </a>
+
+        <nav class="crm-tabs" aria-label="Secțiuni CRM">
+          <button class="crm-tab is-active" type="button" data-tab="dashboard">Dashboard</button>
+          <button class="crm-tab" type="button" data-tab="daily">Situația zilnică</button>
+          <button class="crm-tab" type="button" data-tab="photos">Poze</button>
+          <button class="crm-tab" type="button" data-tab="pricing">Prețuri</button>
+        </nav>
+
+        <div class="crm-user">
+          <span data-crm-user-label>Diana / Angela</span>
+          <button class="crm-button crm-button--ghost" type="button" data-crm-sign-out>Ieșire</button>
+        </div>
+      </header>
+
+      <div class="crm-alert" data-crm-alert hidden></div>
+      <div class="crm-toast" role="status" aria-live="polite" data-crm-toast hidden></div>
+
+      <section class="crm-panel is-active" data-panel="dashboard" aria-labelledby="crm-dashboard-title">
+        <aside class="crm-sidebar" data-crm-sidebar>
+          <div class="crm-sidebar-head">
+            <h1 id="crm-dashboard-title">Dashboard</h1>
+            <button class="crm-button crm-button--small" type="button" data-collapse-sidebar>Ascunde</button>
+          </div>
+
+          <section class="crm-sidebar-section" aria-labelledby="pending-cash-title">
+            <div class="crm-section-heading">
+              <h2 id="pending-cash-title">Plăți cash în așteptare</h2>
+              <button class="crm-button crm-button--small" type="button" data-refresh-pending>Actualizează</button>
+            </div>
+            <strong class="crm-pending-total" data-pending-cash-count>0</strong>
+            <div class="crm-pending-list" data-pending-cash-list>
+              <p class="crm-empty">Nu sunt plăți cash în așteptare.</p>
+            </div>
+            <template data-pending-cash-template>
+              <article class="crm-pending-card">
+                <strong data-pending-room>Căsuța 7</strong>
+                <span data-pending-meta>Cash · 1900 MDL</span>
+                <span data-pending-countdown>08:12 rămase</span>
+                <button class="crm-button crm-button--primary crm-button--small" type="button" data-mark-paid>
+                  Marchează ca plătit
+                </button>
+              </article>
+            </template>
+          </section>
+
+          <section class="crm-sidebar-section" aria-labelledby="add-reservation-title">
+            <button class="crm-sidebar-toggle" type="button" data-sidebar-toggle="add">Adaugă rezervare</button>
+            <form class="crm-staff-form" id="add-reservation-title" data-add-reservation-form hidden>
+              <div class="crm-form-grid crm-form-grid--two">
+                <label class="crm-field">
+                  <span>Adulți</span>
+                  <input type="number" min="0" value="2" data-add-adults>
+                </label>
+                <label class="crm-field">
+                  <span>Copii</span>
+                  <input type="number" min="0" value="0" data-add-kids>
+                </label>
+              </div>
+              <label class="crm-field">
+                <span>Vârste copii</span>
+                <input type="text" placeholder="5, 8, 12" data-add-kids-ages>
+              </label>
+              <label class="crm-field">
+                <span>Căsuțe</span>
+                <input type="text" placeholder="3, 11, 18" data-add-room-numbers>
+              </label>
+              <label class="crm-check">
+                <input type="checkbox" data-add-conference>
+                <span>Cameră de conferință</span>
+              </label>
+              <div class="crm-form-grid crm-form-grid--two">
+                <label class="crm-field">
+                  <span>Check-in</span>
+                  <input type="date" data-add-check-in>
+                </label>
+                <label class="crm-field">
+                  <span>Check-out</span>
+                  <input type="date" data-add-check-out>
+                </label>
+              </div>
+              <label class="crm-field">
+                <span>Prenume</span>
+                <input type="text" data-add-first-name>
+              </label>
+              <label class="crm-field">
+                <span>Nume</span>
+                <input type="text" data-add-last-name>
+              </label>
+              <label class="crm-field">
+                <span>Telefon</span>
+                <input type="tel" value="+373" data-add-phone>
+              </label>
+              <label class="crm-field">
+                <span>Email</span>
+                <input type="email" data-add-email>
+              </label>
+              <label class="crm-field">
+                <span>Plată</span>
+                <select data-add-payment-type>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                </select>
+              </label>
+              <label class="crm-field">
+                <span>Note</span>
+                <textarea rows="3" data-add-notes></textarea>
+              </label>
+              <div class="crm-total" data-add-total>Total: 0 MDL</div>
+              <button class="crm-button crm-button--primary" type="submit">Adaugă rezervare</button>
+            </form>
+          </section>
+
+          <section class="crm-sidebar-section" aria-labelledby="search-reservation-title">
+            <button class="crm-sidebar-toggle" type="button" data-sidebar-toggle="search">Caută rezervare</button>
+            <form class="crm-staff-form" id="search-reservation-title" data-search-reservation-form hidden>
+              <label class="crm-field">
+                <span>Data</span>
+                <input type="date" data-search-date>
+              </label>
+              <label class="crm-field">
+                <span>Nume/Prenume</span>
+                <input type="search" data-search-name>
+              </label>
+              <label class="crm-field">
+                <span>Telefon</span>
+                <input type="tel" value="+373" data-search-phone>
+              </label>
+              <button class="crm-button crm-button--primary" type="submit">Caută rezervare</button>
+            </form>
+            <div class="crm-search-results" data-search-results></div>
+          </section>
+        </aside>
+
+        <section class="crm-calendar-shell" aria-label="Calendar rezervări">
+          <div class="crm-calendar-toolbar">
+            <button class="crm-button crm-button--small crm-sidebar-restore" type="button" data-collapse-sidebar>Arată panoul</button>
+            <div class="crm-calendar-nav">
+              <button class="crm-date-button" type="button" data-calendar-prev aria-label="Luna precedentă">‹</button>
+              <strong data-calendar-range data-calendar-month>Mai 2026</strong>
+              <button class="crm-date-button" type="button" data-calendar-next aria-label="Luna următoare">›</button>
+              <button class="crm-button crm-button--small" type="button" data-calendar-today>Azi</button>
+            </div>
+            <label class="crm-jump-date">
+              <span>Sari la zi</span>
+              <input type="date" data-calendar-jump-date>
+            </label>
+            <label class="crm-check">
+              <input type="checkbox" data-show-cancelled>
+              <span>Arată anulate</span>
+            </label>
+          </div>
+
+          <div class="crm-dashboard-stats" aria-label="Situația de azi">
+            <article class="crm-stat">
+              <span>Camere libere</span>
+              <strong data-stat-free-rooms>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Camere ocupate</span>
+              <strong data-stat-occupied-rooms>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Sosiri azi</span>
+              <strong data-stat-arrivals-today>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Plecări azi</span>
+              <strong data-stat-departures-today>0</strong>
+            </article>
+            <article class="crm-stat">
+              <span>Plăți cash în așteptare</span>
+              <strong data-stat-pending-cash>0</strong>
+            </article>
+          </div>
+
+          <div class="crm-calendar" data-reservation-calendar>
+            <div class="crm-calendar-grid" data-calendar-grid>
+              <div class="crm-calendar-cell crm-calendar-cell--head"></div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">8 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">9 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">10 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">11 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">12 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">13 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">14 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">15 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">16 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">17 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">18 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">19 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">20 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--head">21 mai</div>
+              <div class="crm-calendar-cell crm-calendar-cell--room">1</div>
+              <div class="crm-calendar-cell">
+                <article class="crm-reservation-card crm-reservation-card--paid-card" draggable="true">
+                  <strong>Popescu Alexandru</strong>
+                  <span>+37368983660</span>
+                </article>
+              </div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+              <div class="crm-calendar-cell"></div>
+            </div>
+          </div>
+        </section>
+
+        <dialog class="crm-dialog" data-reservation-dialog>
+          <form method="dialog" class="crm-dialog__panel" data-reservation-editor>
+            <h2>Detalii rezervare</h2>
+            <div class="crm-form-grid crm-form-grid--two">
+              <label class="crm-field">
+                <span>Check-in</span>
+                <input type="date" data-edit-check-in>
+              </label>
+              <label class="crm-field">
+                <span>Check-out</span>
+                <input type="date" data-edit-check-out>
+              </label>
+            </div>
+            <div class="crm-form-grid crm-form-grid--two">
+              <label class="crm-field">
+                <span>Adulți</span>
+                <input type="number" min="0" data-edit-adults>
+              </label>
+              <label class="crm-field">
+                <span>Copii</span>
+                <input type="text" data-edit-kids-ages>
+              </label>
+            </div>
+            <label class="crm-field">
+              <span>Nume / Prenume</span>
+              <input type="text" data-edit-name>
+            </label>
+            <label class="crm-field">
+              <span>Telefon</span>
+              <input type="tel" data-edit-phone>
+            </label>
+            <label class="crm-field">
+              <span>Note</span>
+              <textarea rows="3" data-edit-notes></textarea>
+            </label>
+            <p class="crm-payment-readonly" data-edit-payment>Tip plată: cash/card</p>
+            <strong class="crm-total" data-edit-total>Preț total: 0 MDL</strong>
+            <menu class="crm-dialog-actions">
+              <button class="crm-button" value="cancel">Închide</button>
+              <button class="crm-button crm-button--primary" value="save" data-save-reservation>Salvează modificări</button>
+            </menu>
+            <div class="crm-danger-zone">
+              <label class="crm-field">
+                <span>Șterge rezervarea: tastează sterge</span>
+                <input type="text" data-delete-confirm>
+              </label>
+              <button class="crm-button crm-button--danger" type="button" data-delete-reservation>
+                Șterge rezervarea
+              </button>
+            </div>
+          </form>
+        </dialog>
+
+        <dialog class="crm-dialog" data-swap-dialog>
+          <form method="dialog" class="crm-dialog__panel">
+            <h2>Confirmă schimbarea</h2>
+            <p>Una dintre rezervări are camera aleasă explicit. Tastează schimba pentru confirmare.</p>
+            <label class="crm-field">
+              <span>Confirmare</span>
+              <input type="text" data-swap-confirm>
+            </label>
+            <menu class="crm-dialog-actions">
+              <button class="crm-button" value="cancel">Anulează</button>
+              <button class="crm-button crm-button--primary" value="confirm" data-confirm-swap>Confirmă</button>
+            </menu>
+          </form>
+        </dialog>
+      </section>
+
+      <section class="crm-panel" data-panel="daily" aria-labelledby="daily-title">
+        <div class="crm-panel-header">
+          <h1 id="daily-title">Situația zilnică</h1>
+          <div class="crm-date-nav">
+            <button class="crm-button crm-button--small" type="button" data-daily-prev>Înapoi</button>
+            <label class="crm-date-picker-button" data-daily-date-picker>
+              <svg class="crm-date-picker-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 2v4m8-4v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"></path>
+              </svg>
+              <span data-daily-date-button data-daily-date-label>Astăzi</span>
+              <input class="crm-date-picker-button__input" type="date" data-daily-date aria-label="Alege data">
+            </label>
+            <button class="crm-button crm-button--small" type="button" data-daily-next>Înainte</button>
+          </div>
+        </div>
+        <div class="crm-daily-grid">
+          <section class="crm-daily-section" aria-labelledby="check-in-title">
+            <h2 id="check-in-title">
+              <span class="crm-daily-section__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M22 20v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </span>
+              <span>Se cazează azi</span>
+            </h2>
+            <div class="crm-daily-list" data-check-ins></div>
+          </section>
+          <section class="crm-daily-section" aria-labelledby="check-out-title">
+            <h2 id="check-out-title">
+              <span class="crm-daily-section__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M13 12h8"></path>
+                  <path d="m18 7 5 5-5 5"></path>
+                  <path d="M3 21h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H3"></path>
+                  <path d="M8 12h.01"></path>
+                </svg>
+              </span>
+              <span>Pleacă azi</span>
+            </h2>
+            <div class="crm-daily-list" data-check-outs></div>
+          </section>
+        </div>
+        <dialog class="crm-dialog" data-checkout-note-dialog>
+          <form method="dialog" class="crm-dialog__panel" data-checkout-note-form>
+            <h2>Adaugă un feedback clientului</h2>
+            <label class="crm-field">
+              <span>Feedback opțional</span>
+              <textarea rows="5" data-checkout-note></textarea>
+            </label>
+            <menu class="crm-dialog-actions">
+              <button class="crm-button" value="cancel">Anulează</button>
+              <button class="crm-button crm-button--primary" value="save">Salvează</button>
+            </menu>
+          </form>
+        </dialog>
+      </section>
+
+      <section class="crm-panel" data-panel="photos" aria-labelledby="photos-title">
+        <div class="crm-photos-header">
+          <div class="crm-photos-title">
+            <h1 id="photos-title">Poze</h1>
+            <p class="crm-note">Prima poză publicată din fiecare secțiune este imaginea principală.</p>
+          </div>
+          <button class="crm-button crm-button--primary crm-photos-publish" type="button" data-publish-photos>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 16V8"></path>
+              <path d="m8 12 4-4 4 4"></path>
+              <path d="M20 16.5A4.5 4.5 0 0 0 15.5 12h-1.3A6 6 0 1 0 5 17.2"></path>
+              <path d="M8 20h8"></path>
+            </svg>
+            <span>Publică pozele</span>
+          </button>
+        </div>
+        <div class="crm-photo-grid" data-photo-sections>
+          <article class="crm-photo-section" data-photo-section="landing">
+            <h2>Landing</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="small-villa">
+            <h2>Căsuță Mică</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="large-villa">
+            <h2>Căsuță Mare</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="hotel">
+            <h2>Hotel</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="spa">
+            <h2>SPA</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="territory">
+            <h2>Teritoriu</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="restaurant-food">
+            <h2>Restaurant/Mâncare</h2>
+          </article>
+          <article class="crm-photo-section" data-photo-section="playground">
+            <h2>Teren de joacă</h2>
+          </article>
+        </div>
+      </section>
+
+      <section class="crm-panel" data-panel="pricing" aria-labelledby="pricing-title">
+        <div class="crm-panel-header crm-panel-header--stacked">
+          <h1 id="pricing-title">Prețuri</h1>
+          <p class="crm-panel-subtitle">Gestionează tarifele pentru diferite tipuri de sejur și perioade.</p>
+        </div>
+        <div class="crm-settings-grid crm-pricing-layout">
+          <section class="crm-settings-section crm-pricing-card" aria-labelledby="price-table-title">
+            <h2 id="price-table-title">Prețuri active</h2>
+            <div class="crm-price-table" data-pricing-table></div>
+            <label class="crm-field crm-field--inline crm-price-effective">
+              <span>Data intrării în vigoare</span>
+              <input type="date" data-price-effective-from>
+            </label>
+            <button class="crm-button crm-button--primary crm-button--block" type="button" data-save-prices>Salvează prețuri</button>
+            <p class="crm-note">Rezervările existente nu vor fi afectate de modificări de preț.</p>
+            <div data-upcoming-prices></div>
+          </section>
+          <section class="crm-settings-section crm-pricing-card crm-pricing-card--holidays" aria-labelledby="holidays-title">
+            <div class="crm-holiday-panel">
+              <div class="crm-holiday-panel__body">
+                <h2 id="holidays-title">Zile de sărbătoare</h2>
+                <p class="crm-note">Adaugă zile de sărbătoare pentru a aplica tarifele de weekend / sărbătoare. Zilele se aplică în fiecare an până sunt șterse.</p>
+                <div class="crm-holiday-list" data-holiday-list></div>
+              </div>
+              <form class="crm-holiday-form" data-add-holiday-form>
+                <div>
+                  <h3>Adaugă zi</h3>
+                  <p class="crm-note">Alege doar ziua și luna.</p>
+                </div>
+                <div class="crm-holiday-form__row">
+                  <label class="crm-field">
+                    <span>Zi</span>
+                    <input type="number" min="1" max="31" placeholder="30" data-holiday-day>
+                  </label>
+                  <label class="crm-field">
+                    <span>Lună</span>
+                    <select data-holiday-month>
+                      <option value="">Selectează luna</option>
+                      <option value="1">Ianuarie</option>
+                      <option value="2">Februarie</option>
+                      <option value="3">Martie</option>
+                      <option value="4">Aprilie</option>
+                      <option value="5">Mai</option>
+                      <option value="6">Iunie</option>
+                      <option value="7">Iulie</option>
+                      <option value="8">August</option>
+                      <option value="9">Septembrie</option>
+                      <option value="10">Octombrie</option>
+                      <option value="11">Noiembrie</option>
+                      <option value="12">Decembrie</option>
+                    </select>
+                  </label>
+                  <label class="crm-field">
+                    <span>Etichetă (opțional)</span>
+                    <input type="text" placeholder="Ex: Paște, Ziua Independenței" data-holiday-label>
+                  </label>
+                  <button class="crm-button crm-button--primary" type="submit">Adaugă zi</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../js/supabase-config.js"></script>
+    <script src="../js/supabase.js"></script>
+    <script src="../js/pricing.js"></script>
+    <script src="js/crm-calendar.js"></script>
+    <script src="js/crm-sidebar.js"></script>
+    <script src="js/crm-dashboard.js"></script>
+    <script src="js/crm-daily.js"></script>
+    <script src="js/crm-photos.js"></script>
+    <script src="js/crm-pricing.js"></script>
+    <script src="js/crm-auth.js"></script>
+    <script src="js/crm-app.js"></script>
+  </body>
+</html>
