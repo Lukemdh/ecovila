@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila | Anulare rezervare</title>
+    <meta
+      name="description"
+      content="Anulați rezervarea EcoVila folosind linkul primit pe SMS sau email."
+    >
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/checkout.css">
+    <meta name="robots" content="noindex">
+  </head>
+  <body>
+    <a class="skip-link" href="#anulare-page" data-i18n="access.skip">Sari la conținut</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="index.html#top" aria-label="EcoVila">
+        <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
+      </a>
+
+      <div class="header-actions">
+        <div class="language-dropdown header-bar-control">
+          <label class="visually-hidden" for="language-select">Language</label>
+          <select class="language-select" id="language-select" data-lang-select aria-label="Language">
+            <option value="ro">RO</option>
+            <option value="ru">RU</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="checkout-page" id="anulare-page" data-anulare-app>
+      <div class="checkout-shell">
+        <div class="checkout-hero">
+          <h1 data-i18n="anulare.title">Anulare rezervare</h1>
+          <p data-anulare-lead data-i18n="anulare.lead">
+            Verificați detaliile și introduceți numărul de telefon pentru confirmare.
+          </p>
+        </div>
+
+        <div class="an-container">
+
+          <!-- Loading state -->
+          <div class="an-state" data-anulare-loading>
+            <div class="an-loading">
+              <span class="an-spinner" aria-hidden="true"></span>
+              <span data-i18n="anulare.loading">Se verifică rezervarea...</span>
+            </div>
+          </div>
+
+          <!-- Not found / invalid token -->
+          <div class="an-state" data-anulare-not-found hidden>
+            <div class="an-card">
+              <div class="an-status-icon an-status-icon--error" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              </div>
+              <h2 class="an-card__title" data-i18n="anulare.notFoundTitle">Link invalid sau utilizat</h2>
+              <p data-i18n="anulare.notFoundText">
+                Linkul de anulare nu este valid sau a fost deja folosit. Verificați email-ul sau SMS-ul pentru linkul original.
+              </p>
+              <a class="editorial-button editorial-button--filled" href="index.html" data-i18n="anulare.backHome">
+                Înapoi la pagina principală
+              </a>
+            </div>
+          </div>
+
+          <!-- Already cancelled -->
+          <div class="an-state" data-anulare-already-cancelled hidden>
+            <div class="an-card">
+              <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <h2 class="an-card__title" data-i18n="anulare.alreadyCancelledTitle">Rezervare deja anulată</h2>
+              <p data-i18n="anulare.alreadyCancelledText">
+                Această rezervare a fost deja anulată anterior.
+              </p>
+              <a class="editorial-button editorial-button--filled" href="index.html" data-i18n="anulare.backHome">
+                Înapoi la pagina principală
+              </a>
+            </div>
+          </div>
+
+          <!-- Too late — 72-hour rule blocks cancellation -->
+          <div class="an-state" data-anulare-too-late hidden>
+            <div class="an-card">
+              <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <h2 class="an-card__title" data-i18n="anulare.tooLateTitle">Anulare online indisponibilă</h2>
+              <p data-anulare-too-late-text data-i18n="anulare.tooLateText">
+                Rezervarea nu mai poate fi anulată online cu mai puțin de 72 de ore înainte de sosire. Contactați-ne.
+              </p>
+
+              <!-- Reservation details summary -->
+              <dl class="an-detail-list" data-too-late-details hidden>
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.dates">Perioada</dt>
+                  <dd data-tl-dates>--</dd>
+                </div>
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.accommodation">Cazare</dt>
+                  <dd data-tl-room>--</dd>
+                </div>
+              </dl>
+
+              <a class="editorial-button editorial-button--filled" href="index.html" data-i18n="anulare.backHome">
+                Înapoi la pagina principală
+              </a>
+            </div>
+          </div>
+
+          <!-- Phone confirmation form -->
+          <div class="an-state" data-anulare-form hidden>
+            <!-- Reservation details -->
+            <div class="an-card">
+              <h2 class="an-card__title" data-i18n="anulare.detailsTitle">Detalii rezervare</h2>
+              <dl class="an-detail-list">
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.dates">Perioada</dt>
+                  <dd data-res-dates>--</dd>
+                </div>
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.nights">Nopți</dt>
+                  <dd data-res-nights>--</dd>
+                </div>
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.guests">Oaspeți</dt>
+                  <dd data-res-guests>--</dd>
+                </div>
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.accommodation">Cazare</dt>
+                  <dd data-res-room>--</dd>
+                </div>
+                <div class="an-detail-row">
+                  <dt data-i18n="checkout.total">Total</dt>
+                  <dd data-res-total>--</dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- Phone confirmation -->
+            <div class="an-card">
+              <h2 class="an-card__title" data-i18n="anulare.confirmTitle">Confirmați anularea</h2>
+              <p data-i18n="anulare.confirmLead">
+                Introduceți numărul de telefon cu care ați efectuat rezervarea.
+              </p>
+
+              <div class="an-phone-field">
+                <label for="anulare-phone" data-i18n="anulare.phoneLabel">Număr de telefon</label>
+                <input
+                  id="anulare-phone"
+                  type="tel"
+                  value="+373"
+                  autocomplete="tel"
+                  inputmode="tel"
+                  data-phone-input
+                >
+              </div>
+
+              <p class="booking-error" data-anulare-error hidden></p>
+
+              <p class="an-refund-note" data-i18n="anulare.refundNote">
+                Conform politicii noastre, se aplică rambursare integrală pentru anulări efectuate cu 72+ ore înainte de data sosirii.
+              </p>
+
+              <div style="margin-top: 20px;">
+                <button
+                  class="co-submit"
+                  type="button"
+                  data-anulare-cancel-btn
+                  data-i18n="anulare.cancelButton"
+                  style="width: 100%;"
+                >
+                  Anulează rezervarea
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Success state -->
+          <div class="an-state" data-anulare-success hidden>
+            <div class="an-card">
+              <div class="an-status-icon an-status-icon--success" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <h2 class="an-card__title" data-i18n="anulare.successTitle">Rezervarea a fost anulată</h2>
+              <p data-i18n="anulare.successText">
+                Rezervarea dvs. a fost anulată cu succes. O confirmare a fost trimisă pe email și SMS.
+              </p>
+              <p class="an-refund-note" data-i18n="anulare.refundNote">
+                Conform politicii noastre, se aplică rambursare integrală pentru anulări efectuate cu 72+ ore înainte de data sosirii.
+              </p>
+              <a
+                class="editorial-button editorial-button--filled"
+                href="index.html"
+                data-i18n="anulare.backHome"
+                style="margin-top: 8px; display: inline-flex;"
+              >
+                Înapoi la pagina principală
+              </a>
+            </div>
+          </div>
+
+        </div><!-- /.an-container -->
+      </div><!-- /.checkout-shell -->
+    </main>
+
+    <footer class="site-footer" id="footer">
+      <div class="section-inner site-footer__grid">
+        <div class="site-footer__brand">
+          <img src="/assets/logoNT.png" alt="EcoVila" class="site-footer__logo">
+          <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi, Moldova.</p>
+        </div>
+        <dl class="site-footer__legal">
+          <div>
+            <dt data-i18n="footer.phoneLabel">Telefon</dt>
+            <dd>+37360120220</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
+          </div>
+        </dl>
+        <div class="site-footer__social">
+          <h2 data-i18n="footer.followUs">Urmăriți-ne</h2>
+          <a href="https://www.facebook.com/p/Eco-Vila-100069882319416" target="_blank" rel="noopener">Facebook</a>
+          <a href="https://www.instagram.com/ecovila_1/?hl=ro" target="_blank" rel="noopener">Instagram</a>
+          <a href="https://www.tiktok.com/@ecovila8" target="_blank" rel="noopener">TikTok</a>
+        </div>
+        <div class="site-footer__links">
+          <h2 data-i18n="footer.useful">Utile</h2>
+          <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
+          <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
+          <span data-i18n="footer.copy">© 2026 EcoVila</span>
+        </div>
+      </div>
+    </footer>
+
+    <div class="cookie-banner" id="cookie-banner" hidden>
+      <p data-i18n="cookie.text">
+        Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
+      </p>
+      <div class="cookie-banner__actions">
+        <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
+          Accept doar esențiale
+        </button>
+        <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
+          Accept
+        </button>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/translations.js"></script>
+    <script src="js/pricing.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/anulare.js"></script>
+  </body>
+</html>

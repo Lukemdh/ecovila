@@ -400,6 +400,51 @@
     return groupPublishedPhotos(client, photos);
   }
 
+  function fetchPendingReservationStatus(client, reservationId) {
+    return unwrapSupabaseResult(
+      client.rpc('get_pending_reservation_status', { res_id: reservationId }),
+    );
+  }
+
+  async function extendCashReservation(client, reservationId) {
+    const result = await client.rpc('extend_cash_reservation', { res_id: reservationId });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data;
+  }
+
+  async function cancelPendingReservation(client, reservationId) {
+    const result = await client.rpc('cancel_pending_reservation', { res_id: reservationId });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data;
+  }
+
+  async function cancelReservationByToken(client, token, phone) {
+    const result = await client.rpc('cancel_reservation_by_token', {
+      lookup_token: token,
+      confirming_phone: phone,
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data;
+  }
+
+  function fetchReservationByToken(client, token) {
+    return unwrapSupabaseResult(
+      client.rpc('get_reservation_by_cancellation_token', { lookup_token: token }),
+    );
+  }
+
   function insertPricingRows(client, rows) {
     return unwrapSupabaseResult(
       client
@@ -430,7 +475,12 @@
 
   return {
     CLIENT_OPTIONS,
+    cancelPendingReservation,
+    cancelReservationByToken,
     createReservationRequest,
+    extendCashReservation,
+    fetchPendingReservationStatus,
+    fetchReservationByToken,
     createSupabaseClient,
     fetchAvailabilityBlocks,
     fetchAdminReservations,

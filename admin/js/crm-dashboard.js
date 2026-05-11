@@ -78,7 +78,7 @@
           <strong>${root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume'}</strong>
           <span>${group.roomLabel}</span>
           <span>Cash · ${context.formatMDL(group.totalPrice)}</span>
-          <span data-countdown>${formatCountdown(group.cash_expires_at)}</span>
+          <span data-countdown data-expires-at="${group.cash_expires_at}">${formatCountdown(group.cash_expires_at)}</span>
           <button class="crm-button crm-button--primary crm-button--small" type="button" data-mark-paid="${reservation.id}" data-mark-paid-group="${group.bookingGroupId}">
             Marchează ca plătit
           </button>
@@ -134,10 +134,21 @@
       <strong>${name}</strong>
       <span>${guestSummary(reservation)}</span>
       <span class="crm-reservation-card__phone">${root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone)}</span>
-      ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span>${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
+      ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${reservation.cash_expires_at}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
     `;
     card.addEventListener('click', () => openReservation(reservation));
     return card;
+  }
+
+  let _countdownInterval = null;
+
+  function startCountdownTicker() {
+    if (_countdownInterval) return;
+    _countdownInterval = setInterval(() => {
+      qsa('[data-countdown][data-expires-at]').forEach((node) => {
+        node.textContent = formatCountdown(node.dataset.expiresAt);
+      });
+    }, 1000);
   }
 
   let activeState = null;
@@ -411,6 +422,7 @@
     });
 
     root.EcoVilaCrmSidebar?.init?.(context, state);
+    startCountdownTicker();
     state.reload().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
 
     context.client

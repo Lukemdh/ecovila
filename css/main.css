@@ -539,7 +539,7 @@ h3 {
 
 .site-footer__grid {
   display: grid;
-  grid-template-columns: minmax(170px, 0.75fr) minmax(0, 1.7fr) minmax(170px, 0.75fr);
+  grid-template-columns: minmax(170px, 0.75fr) minmax(0, 1.4fr) minmax(120px, 0.55fr) minmax(120px, 0.55fr);
   gap: 28px;
   align-items: start;
 }
@@ -556,6 +556,7 @@ h3 {
 }
 
 .site-footer__legal,
+.site-footer__social,
 .site-footer__links {
   display: grid;
   gap: 8px 18px;
@@ -565,10 +566,11 @@ h3 {
 }
 
 .site-footer__legal {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, auto);
 }
 
 .site-footer__legal dt,
+.site-footer__social h2,
 .site-footer__links h2 {
   margin: 0 0 3px;
   color: var(--white);
@@ -708,6 +710,7 @@ h3 {
   }
 
   .site-footer__legal,
+  .site-footer__social,
   .site-footer__links {
     padding-top: 16px;
     padding-left: 0;
