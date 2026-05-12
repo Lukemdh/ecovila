@@ -46,6 +46,19 @@
     if (node) node.textContent = value;
   }
 
+  /**
+   * Set text on a button safely: targets the inner <span> so SVG icons are preserved.
+   */
+  function setBtnText(btn, value) {
+    if (!btn) return;
+    const span = btn.querySelector('span');
+    if (span) {
+      span.textContent = value;
+    } else {
+      btn.textContent = value;
+    }
+  }
+
   function show(selector) {
     const node = el(selector);
     if (node) node.hidden = false;
@@ -179,7 +192,7 @@
     }
 
     btn.disabled = true;
-    btn.textContent = t('anulare.cancellingButton');
+    setBtnText(btn, t('anulare.cancellingButton'));
     if (errorEl) errorEl.hidden = true;
 
     try {
@@ -195,7 +208,7 @@
 
         case 'phone_mismatch':
           btn.disabled = false;
-          btn.textContent = t('anulare.cancelButton');
+          setBtnText(btn, t('anulare.cancelButton'));
           if (errorEl) {
             errorEl.textContent = t('anulare.phoneMismatch');
             errorEl.hidden = false;
@@ -218,7 +231,7 @@
       }
     } catch {
       btn.disabled = false;
-      btn.textContent = t('anulare.cancelButton');
+      setBtnText(btn, t('anulare.cancelButton'));
 
       if (errorEl) {
         const isConfigError = !supabaseHelpers;

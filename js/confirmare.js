@@ -52,6 +52,20 @@
     if (node) node.textContent = value;
   }
 
+  /**
+   * Set text on a button safely: targets the inner <span> so SVG icons are preserved.
+   * Falls back to setting textContent on the button itself.
+   */
+  function setBtnText(btn, value) {
+    if (!btn) return;
+    const span = btn.querySelector('span');
+    if (span) {
+      span.textContent = value;
+    } else {
+      btn.textContent = value;
+    }
+  }
+
   function show(selector) {
     const node = el(selector);
     if (node) node.hidden = false;
@@ -244,7 +258,7 @@
       const extendBtn = el('[data-extend-btn]');
       if (extendBtn) {
         extendBtn.disabled = true;
-        extendBtn.textContent = t('confirmare.extended');
+        setBtnText(extendBtn, t('confirmare.extended'));
       }
     }
 
@@ -303,7 +317,7 @@
     if (!btn || btn.disabled) return;
 
     btn.disabled = true;
-    btn.textContent = t('confirmare.extending');
+    setBtnText(btn, t('confirmare.extending'));
     hide('[data-confirmare-action-error]');
 
     try {
@@ -312,17 +326,17 @@
 
       if (newExpiry) {
         _expiresAt = new Date(newExpiry).getTime();
-        btn.textContent = t('confirmare.extended');
+        setBtnText(btn, t('confirmare.extended'));
         show('[data-extend-success]');
       } else {
         btn.disabled = false;
-        btn.textContent = t('confirmare.extend');
+        setBtnText(btn, t('confirmare.extend'));
         setText('[data-confirmare-action-error]', t('confirmare.extendError'));
         show('[data-confirmare-action-error]');
       }
     } catch {
       btn.disabled = false;
-      btn.textContent = t('confirmare.extend');
+      setBtnText(btn, t('confirmare.extend'));
       setText('[data-confirmare-action-error]', t('confirmare.extendError'));
       show('[data-confirmare-action-error]');
     }
@@ -346,7 +360,7 @@
     if (!yesBtn) return;
 
     yesBtn.disabled = true;
-    yesBtn.textContent = t('confirmare.cancelling');
+    setBtnText(yesBtn, t('confirmare.cancelling'));
     hide('[data-confirmare-action-error]');
 
     try {
@@ -357,13 +371,13 @@
         showExpiredOverlay(true);
       } else {
         yesBtn.disabled = false;
-        yesBtn.textContent = t('confirmare.cancelYes');
+        setBtnText(yesBtn, t('confirmare.cancelYes'));
         setText('[data-confirmare-action-error]', t('confirmare.cancelError'));
         show('[data-confirmare-action-error]');
       }
     } catch {
       yesBtn.disabled = false;
-      yesBtn.textContent = t('confirmare.cancelYes');
+      setBtnText(yesBtn, t('confirmare.cancelYes'));
       setText('[data-confirmare-action-error]', t('confirmare.cancelError'));
       show('[data-confirmare-action-error]');
     }

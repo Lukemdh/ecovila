@@ -13,6 +13,7 @@
     href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/booking.css">
 </head>
 
 <body>
@@ -38,6 +39,18 @@
 
   <main id="top">
     <section class="hero" id="hero" aria-labelledby="hero-title">
+      <video
+        class="hero__video"
+        autoplay
+        muted
+        loop
+        playsinline
+        poster="/assets/photos/other/forest-hero-poster.jpg"
+        preload="metadata"
+      >
+        <source src="https://mckchrviaawdxtsfytut.supabase.co/storage/v1/object/public/ecovila-photos/ecovilavideo-web.mp4" type="video/mp4">
+      </video>
+      <div class="hero__video-overlay"></div>
       <div class="hero__content">
         <h1 class="hero__title" id="hero-title" data-i18n="hero.title">
           Un refugiu all-inclusive în inima pădurii
@@ -86,8 +99,10 @@
       <img src="/assets/photos/restaurant/dining.svg" alt="" class="image-hero__image" data-photo-section="landing" data-photo-index="4">
       <div class="image-hero__overlay"></div>
       <div class="image-hero__content">
-        <p class="section-kicker" data-i18n="showcase.restaurant.kicker">All-inclusive</p>
-        <h2 id="restaurant-title" data-i18n="showcase.restaurant.title">Trei mese pe zi, fără grija meniului</h2>
+        <div class="image-hero__top">
+          <p class="section-kicker" data-i18n="showcase.restaurant.kicker">All-inclusive</p>
+          <h2 id="restaurant-title" data-i18n="showcase.restaurant.title">Trei mese pe zi, fără grija meniului</h2>
+        </div>
         <p data-i18n="showcase.restaurant.body">
           Mic dejun, prânz și cină, deserturi, cafea, ceai și apă dulce sunt incluse, ca oaspeții
           să-și păstreze ziua pentru odihnă.
@@ -102,45 +117,55 @@
           </h2>
         </div>
 
-        <div class="stay-grid">
-          <article class="stay-card">
-            <img src="/assets/photos/small-villa/exterior.svg" alt="" class="stay-card__image" data-photo-section="landing" data-photo-index="5">
-            <div class="stay-card__body">
+        <div class="booking-stay-grid">
+          <article class="booking-stay-card">
+            <img src="/assets/photos/small-villa/exterior.svg" alt="" data-accommodation-type="small">
+            <div class="booking-stay-card__body">
               <h3 data-i18n="accommodation.small.title">Căsuță Mică</h3>
-              <p class="stay-card__capacity" data-i18n="accommodation.small.capacity">Până la 2 adulți + 2 copii</p>
-              <p data-i18n="accommodation.small.summary">O căsuță intimă pentru odihnă în doi sau pentru o familie mică.
-              </p>
-              <button class="editorial-button" type="button" data-accommodation="small"
-                data-i18n="accommodation.details">
-                Vezi detalii
-              </button>
+              <p class="booking-stay-card__capacity" data-i18n="accommodation.small.capacity">Până la 2 adulți + 2 copii</p>
+              <p data-i18n="accommodation.small.summary">O căsuță intimă pentru odihnă în doi sau pentru o familie mică.</p>
+              <div class="booking-amenities" aria-label="Facilități incluse">
+                <span>All-Inclusive</span>
+                <span>Access SPA</span>
+                <span>Wi-Fi</span>
+              </div>
+              <div class="booking-stay-card__actions">
+                <button class="editorial-button" type="button" data-accommodation="small" data-i18n="accommodation.details">Vezi detalii</button>
+              </div>
             </div>
           </article>
 
-          <article class="stay-card">
-            <img src="/assets/photos/large-villa/exterior.svg" alt="" class="stay-card__image" data-photo-section="landing" data-photo-index="6">
-            <div class="stay-card__body">
+          <article class="booking-stay-card">
+            <img src="/assets/photos/large-villa/exterior.svg" alt="" data-accommodation-type="large">
+            <div class="booking-stay-card__body">
               <h3 data-i18n="accommodation.large.title">Căsuță Mare</h3>
-              <p class="stay-card__capacity" data-i18n="accommodation.large.capacity">Până la 4 adulți + 2 copii</p>
-              <p data-i18n="accommodation.large.summary">Două dormitoare separate și living pentru familii sau prieteni.
-              </p>
-              <button class="editorial-button" type="button" data-accommodation="large"
-                data-i18n="accommodation.details">
-                Vezi detalii
-              </button>
+              <p class="booking-stay-card__capacity" data-i18n="accommodation.large.capacity">Până la 4 adulți + 2 copii</p>
+              <p data-i18n="accommodation.large.summary">Două dormitoare separate și living pentru familii sau prieteni.</p>
+              <div class="booking-amenities" aria-label="Facilități incluse">
+                <span>All-Inclusive</span>
+                <span>Access SPA</span>
+                <span>Wi-Fi</span>
+              </div>
+              <div class="booking-stay-card__actions">
+                <button class="editorial-button" type="button" data-accommodation="large" data-i18n="accommodation.details">Vezi detalii</button>
+              </div>
             </div>
           </article>
 
-          <article class="stay-card">
-            <img src="/assets/photos/hotel/room.svg" alt="" class="stay-card__image" data-photo-section="landing" data-photo-index="7">
-            <div class="stay-card__body">
+          <article class="booking-stay-card">
+            <img src="/assets/photos/hotel/room.svg" alt="" data-accommodation-type="hotel">
+            <div class="booking-stay-card__body">
               <h3 data-i18n="accommodation.hotel.title">Cameră în Hotel</h3>
-              <p class="stay-card__capacity" data-i18n="accommodation.hotel.capacity">Până la 2 adulți + 2 copii</p>
+              <p class="booking-stay-card__capacity" data-i18n="accommodation.hotel.capacity">Până la 2 adulți + 2 copii</p>
               <p data-i18n="accommodation.hotel.summary">Camere comode în clădirea hotelului, aproape de facilități.</p>
-              <button class="editorial-button" type="button" data-accommodation="hotel"
-                data-i18n="accommodation.details">
-                Vezi detalii
-              </button>
+              <div class="booking-amenities" aria-label="Facilități incluse">
+                <span>All-Inclusive</span>
+                <span>Access SPA</span>
+                <span>Wi-Fi</span>
+              </div>
+              <div class="booking-stay-card__actions">
+                <button class="editorial-button" type="button" data-accommodation="hotel" data-i18n="accommodation.details">Vezi detalii</button>
+              </div>
             </div>
           </article>
         </div>
@@ -148,15 +173,15 @@
     </section>
 
     <section class="image-hero image-hero--conference" id="conference" aria-labelledby="conference-title">
-      <img src="/assets/photos/conference-room/hall.svg" alt="" class="image-hero__image" data-photo-section="landing" data-photo-index="8">
+      <img src="/assets/photos/conference-room/hall.svg" alt="" class="image-hero__image" data-photo-section="landing" data-photo-index="5">
       <div class="image-hero__overlay"></div>
       <div class="image-hero__content">
         <p class="section-kicker" data-i18n="conference.kicker">Sala de conferințe</p>
         <h2 id="conference-title" data-i18n="conference.title">Planificați un seminar?</h2>
         <p data-i18n="conference.body">
-          Sala de conferințe este disponibilă pentru oaspeți business și se rezervă direct prin Diana.
+          Sala de conferințe este disponibilă pentru oaspeți business. Pentru rezervări:
         </p>
-        <p class="conference__phone" data-i18n="conference.phone">Telefon Diana: de completat</p>
+        <p class="conference__phone">Telefon: <a href="tel:+37360120220">060 120 220</a><br>E-mail: <a href="mailto:conferinte@ecovila.md">conferinte@ecovila.md</a></p>
       </div>
     </section>
 
@@ -215,16 +240,33 @@
     </div>
   </div>
 
-  <div class="modal" id="accommodation-modal" hidden>
-    <div class="modal__scrim" data-modal-close></div>
-    <article class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <button class="modal__close" type="button" data-modal-close data-i18n="modal.close">Închide</button>
-      <img src="/assets/photos/small-villa/interior.svg" alt="" class="modal__image" data-modal-image>
-      <div class="modal__content">
-        <p class="section-kicker" data-i18n="showcase.accommodation.kicker">Cazare</p>
-        <h2 id="modal-title" data-modal-title>Căsuță Mică</h2>
-        <p data-modal-body></p>
-        <ul class="modal__list" data-modal-list></ul>
+  <div class="booking-modal" data-booking-modal hidden>
+    <div class="booking-modal__scrim" data-modal-close></div>
+    <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
+      <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
+      <div class="booking-details-gallery" data-booking-modal-gallery>
+        <div class="booking-details-gallery__main">
+          <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-booking-modal-prev aria-label="Imaginea precedentă">‹</button>
+          <img src="/assets/photos/small-villa/exterior.svg" alt="" data-booking-modal-image>
+          <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-booking-modal-next aria-label="Imaginea următoare">›</button>
+          <div class="booking-details-gallery__dots" data-booking-modal-dots aria-hidden="true"></div>
+        </div>
+        <div class="booking-details-gallery__thumbs" data-booking-modal-thumbnails></div>
+      </div>
+      <div class="booking-modal__content booking-modal__content--details">
+        <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
+        <p data-booking-modal-body></p>
+        <section class="booking-detail-section" aria-labelledby="booking-bathroom-title">
+          <h3 id="booking-bathroom-title" data-i18n="booking.inBathroom">În baie:</h3>
+          <ul class="booking-check-list" data-booking-modal-bathroom></ul>
+        </section>
+        <section class="booking-detail-section" aria-labelledby="booking-facilities-title">
+          <h3 id="booking-facilities-title" data-i18n="booking.facilities">Facilități:</h3>
+          <ul class="booking-check-list booking-check-list--wide" data-booking-modal-facilities></ul>
+        </section>
+        <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve>
+          Rezervă acum →
+        </button>
       </div>
     </article>
   </div>

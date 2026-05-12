@@ -1,4 +1,4 @@
-.site-header {
+body.page-booking .site-header {
   color: var(--ink);
   background: rgba(247, 244, 239, 0.94);
   box-shadow: 0 18px 45px rgba(51, 38, 31, 0.12);
@@ -1054,7 +1054,7 @@
   border-color: var(--espresso);
 }
 
-.site-header {
+body.page-booking .site-header {
   z-index: 35;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 18px 54px rgba(51, 38, 31, 0.08);

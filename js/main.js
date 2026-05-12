@@ -5,9 +5,30 @@
   };
 
   const accommodationImages = {
-    small: '/assets/photos/small-villa/interior.svg',
-    large: '/assets/photos/large-villa/living.svg',
-    hotel: '/assets/photos/hotel/building.svg',
+    small: '/assets/photos/small-villa/exterior.svg',
+    large: '/assets/photos/large-villa/exterior.svg',
+    hotel: '/assets/photos/hotel/room.svg',
+  };
+
+  const typeGalleries = {
+    small: [
+      '/assets/photos/small-villa/exterior.svg',
+      '/assets/photos/small-villa/interior.svg',
+      '/assets/photos/territory/terrace.svg',
+      '/assets/photos/spa/pool.svg',
+    ],
+    large: [
+      '/assets/photos/large-villa/exterior.svg',
+      '/assets/photos/large-villa/living.svg',
+      '/assets/photos/territory/garden.svg',
+      '/assets/photos/restaurant/dining.svg',
+    ],
+    hotel: [
+      '/assets/photos/hotel/room.svg',
+      '/assets/photos/hotel/building.svg',
+      '/assets/photos/spa/salt-room.svg',
+      '/assets/photos/restaurant/tea.svg',
+    ],
   };
 
   const accommodationPhotoSections = {
@@ -19,6 +40,8 @@
   const state = {
     language: 'ro',
     lastFocusedElement: null,
+    activeModalType: null,
+    modalImageIndex: 0,
   };
 
   function getTranslations() {
@@ -96,40 +119,68 @@
     window.setTimeout(updateHeader, 120);
   }
 
+  function renderList(ul, items) {
+    ul.innerHTML = '';
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const li = document.createElement('li');
+      li.textContent = item;
+      ul.appendChild(li);
+    });
+  }
+
   function fillModal(type) {
-    const modal = document.getElementById('accommodation-modal');
+    const modal = document.querySelector('[data-booking-modal]');
     if (!modal) {
       return;
     }
 
-    const title = modal.querySelector('[data-modal-title]');
-    const body = modal.querySelector('[data-modal-body]');
-    const list = modal.querySelector('[data-modal-list]');
-    const image = modal.querySelector('[data-modal-image]');
-    const amenities = t(`accommodation.${type}.amenities`);
+    const gallery = typeGalleries[type] || [accommodationImages[type]];
+    const activeIndex = Math.min(state.modalImageIndex, gallery.length - 1);
 
-    title.textContent = t(`accommodation.${type}.title`);
-    body.textContent = t(`accommodation.${type}.details`);
-    image.src = accommodationImages[type] || accommodationImages.small;
-    image.alt = '';
-    list.innerHTML = '';
+    modal.querySelector('[data-booking-modal-gallery]').dataset.imageCount = String(gallery.length);
+    modal.querySelector('[data-booking-modal-image]').src = gallery[activeIndex];
+    modal.querySelector('[data-booking-modal-title]').textContent = t(`accommodation.${type}.title`);
+    modal.querySelector('[data-booking-modal-body]').textContent = t(`accommodation.${type}.details`);
 
-    if (Array.isArray(amenities)) {
-      amenities.forEach((item) => {
-        const listItem = document.createElement('li');
-        listItem.textContent = item;
-        list.appendChild(listItem);
+    renderList(modal.querySelector('[data-booking-modal-bathroom]'), t('accommodation.shared.bathroom'));
+    renderList(modal.querySelector('[data-booking-modal-facilities]'), t('accommodation.shared.facilities'));
+
+    const thumbnails = modal.querySelector('[data-booking-modal-thumbnails]');
+    thumbnails.innerHTML = '';
+    gallery.forEach((src, index) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', `Imaginea ${index + 1}`);
+      btn.classList.toggle('is-active', index === activeIndex);
+      const thumb = document.createElement('img');
+      thumb.src = src;
+      thumb.alt = '';
+      btn.appendChild(thumb);
+      btn.addEventListener('click', () => {
+        state.modalImageIndex = index;
+        fillModal(state.activeModalType);
       });
-    }
+      thumbnails.appendChild(btn);
+    });
+
+    const dots = modal.querySelector('[data-booking-modal-dots]');
+    dots.innerHTML = '';
+    gallery.forEach((_, index) => {
+      const dot = document.createElement('span');
+      dot.classList.toggle('is-active', index === activeIndex);
+      dots.appendChild(dot);
+    });
   }
 
   function openModal(type, trigger) {
-    const modal = document.getElementById('accommodation-modal');
+    const modal = document.querySelector('[data-booking-modal]');
     if (!modal) {
       return;
     }
 
     state.lastFocusedElement = trigger || document.activeElement;
+    state.activeModalType = type;
+    state.modalImageIndex = 0;
     fillModal(type);
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
@@ -137,7 +188,7 @@
   }
 
   function closeModal() {
-    const modal = document.getElementById('accommodation-modal');
+    const modal = document.querySelector('[data-booking-modal]');
     if (!modal || modal.hidden) {
       return;
     }
@@ -150,6 +201,15 @@
     }
   }
 
+  function moveImage(direction) {
+    if (!state.activeModalType) {
+      return;
+    }
+    const gallery = typeGalleries[state.activeModalType] || [accommodationImages[state.activeModalType]];
+    state.modalImageIndex = (state.modalImageIndex + direction + gallery.length) % gallery.length;
+    fillModal(state.activeModalType);
+  }
+
   function initializeAccommodationModal() {
     document.querySelectorAll('[data-accommodation]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -157,9 +217,21 @@
       });
     });
 
-    document.querySelectorAll('[data-modal-close]').forEach((button) => {
-      button.addEventListener('click', closeModal);
+    document.querySelectorAll('[data-modal-close]').forEach((el) => {
+      el.addEventListener('click', closeModal);
     });
+
+    const prevBtn = document.querySelector('[data-booking-modal-prev]');
+    const nextBtn = document.querySelector('[data-booking-modal-next]');
+    if (prevBtn) prevBtn.addEventListener('click', () => moveImage(-1));
+    if (nextBtn) nextBtn.addEventListener('click', () => moveImage(1));
+
+    const reserveBtn = document.querySelector('[data-booking-modal-reserve]');
+    if (reserveBtn) {
+      reserveBtn.addEventListener('click', () => {
+        window.location.href = 'rezervari.html';
+      });
+    }
 
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
@@ -223,10 +295,14 @@
     });
 
     Object.entries(accommodationPhotoSections).forEach(([type, section]) => {
-      const photo = photoAt(library, section, 0);
+      const photos = library?.[section] || [];
+      const urls = photos.map((p) => p?.url).filter(Boolean);
 
-      if (photo?.url) {
-        accommodationImages[type] = photo.url;
+      if (urls.length > 0) {
+        typeGalleries[type] = urls;
+        accommodationImages[type] = urls[0];
+        const cardImg = document.querySelector(`img[data-accommodation-type="${type}"]`);
+        if (cardImg) cardImg.src = urls[0];
       }
     });
   }

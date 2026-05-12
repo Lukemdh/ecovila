@@ -16,6 +16,7 @@
     >
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/checkout.css">
+    <link rel="stylesheet" href="css/confirmation.css">
     <meta name="robots" content="noindex">
   </head>
   <body>
@@ -61,7 +62,7 @@
           <div class="an-state" data-anulare-not-found hidden>
             <div class="an-card">
               <div class="an-status-icon an-status-icon--error" aria-hidden="true">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               </div>
               <h2 class="an-card__title" data-i18n="anulare.notFoundTitle">Link invalid sau utilizat</h2>
               <p data-i18n="anulare.notFoundText">
@@ -77,7 +78,7 @@
           <div class="an-state" data-anulare-already-cancelled hidden>
             <div class="an-card">
               <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
               <h2 class="an-card__title" data-i18n="anulare.alreadyCancelledTitle">Rezervare deja anulată</h2>
               <p data-i18n="anulare.alreadyCancelledText">
@@ -93,14 +94,14 @@
           <div class="an-state" data-anulare-too-late hidden>
             <div class="an-card">
               <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
               <h2 class="an-card__title" data-i18n="anulare.tooLateTitle">Anulare online indisponibilă</h2>
               <p data-anulare-too-late-text data-i18n="anulare.tooLateText">
                 Rezervarea nu mai poate fi anulată online cu mai puțin de 72 de ore înainte de sosire. Contactați-ne.
               </p>
 
-              <!-- Reservation details summary -->
+              <!-- Reservation summary (shown when reservation data available) -->
               <dl class="an-detail-list" data-too-late-details hidden>
                 <div class="an-detail-row">
                   <dt data-i18n="checkout.dates">Perioada</dt>
@@ -120,6 +121,7 @@
 
           <!-- Phone confirmation form -->
           <div class="an-state" data-anulare-form hidden>
+
             <!-- Reservation details -->
             <div class="an-card">
               <h2 class="an-card__title" data-i18n="anulare.detailsTitle">Detalii rezervare</h2>
@@ -147,7 +149,7 @@
               </dl>
             </div>
 
-            <!-- Phone confirmation -->
+            <!-- Phone confirmation card -->
             <div class="an-card">
               <h2 class="an-card__title" data-i18n="anulare.confirmTitle">Confirmați anularea</h2>
               <p data-i18n="anulare.confirmLead">
@@ -172,25 +174,26 @@
                 Conform politicii noastre, se aplică rambursare integrală pentru anulări efectuate cu 72+ ore înainte de data sosirii.
               </p>
 
-              <div style="margin-top: 20px;">
+              <div style="margin-top: 24px;">
                 <button
-                  class="co-submit"
+                  class="cf-btn cf-btn--danger-outline"
                   type="button"
                   data-anulare-cancel-btn
-                  data-i18n="anulare.cancelButton"
-                  style="width: 100%;"
+                  style="width: 100%; min-height: 54px;"
                 >
-                  Anulează rezervarea
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  <span data-i18n="anulare.cancelButton">Anulează rezervarea</span>
                 </button>
               </div>
             </div>
+
           </div>
 
           <!-- Success state -->
           <div class="an-state" data-anulare-success hidden>
             <div class="an-card">
               <div class="an-status-icon an-status-icon--success" aria-hidden="true">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               </div>
               <h2 class="an-card__title" data-i18n="anulare.successTitle">Rezervarea a fost anulată</h2>
               <p data-i18n="anulare.successText">
@@ -203,7 +206,7 @@
                 class="editorial-button editorial-button--filled"
                 href="index.html"
                 data-i18n="anulare.backHome"
-                style="margin-top: 8px; display: inline-flex;"
+                style="margin-top: 24px; display: inline-flex;"
               >
                 Înapoi la pagina principală
               </a>
