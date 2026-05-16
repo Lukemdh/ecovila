@@ -87,23 +87,30 @@ Build `admin/`:
 * Pricing and holiday settings
 * Drag/drop, swaps, deletion confirmation
 
-Step 10: **Real Integrations \& Deployment**
-Wire credentials and production flows:
+Step 10: **Production Notifications & Scheduling**
+Wire the real notification and scheduling production flow:
 
 * SMS.md
 * Resend
-* Maib ePay
 * Supabase cron/schedules
-* Static deploy to tophost.md
 * Edge Functions deploy to Supabase
 
 Step 10 also includes the production secrets and provider account work that cannot be completed until the real accounts are ready:
 
-* Add Supabase Edge Function secrets: `SMSMD\\\_API\\\_TOKEN`, `SMSMD\\\_FROM`, `RESEND\\\_API\\\_KEY`, `RESEND\\\_FROM\\\_EMAIL`, `MAIB\\\_SIGNATURE\\\_KEY`, `ECOVILA\\\_CRON\\\_SECRET`, and `ECOVILA\\\_SITE\\\_URL`.
+* Add Supabase Edge Function secrets: `SMSMD_API_TOKEN`, `SMSMD_FROM`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ECOVILA_CRON_SECRET`, and `ECOVILA_SITE_URL`.
 * Verify the `ecovila.md` sending domain in Resend and use `rezervari@ecovila.md` as the production sender.
 * Register and approve the `EcoVila` sender name in SMS.md.
-* Configure the Maib ePay callback URL to the deployed `maib-webhook` Edge Function and verify the Maib signature payload against production samples.
-* Configure scheduled calls for `expire-cash-reservations` and `send-reminders`, passing `ECOVILA\\\_CRON\\\_SECRET` through the `x-ecovila-secret` header or bearer token.
+* Configure scheduled calls for `expire-cash-reservations` and `send-reminders`, passing `ECOVILA_CRON_SECRET` through the `x-ecovila-secret` header or bearer token.
+
+Step 11: **Maib ePay**
+Complete card-payment production rollout:
+
+* Add `MAIB_SIGNATURE_KEY`.
+* Configure the Maib ePay callback URL to the deployed `maib-webhook` Edge Function.
+* Verify the Maib signature payload against production samples.
+
+Step 12: **tophost Deployment**
+Deploy the static frontend to tophost.md and complete final public-site verification.
 
 \---
 
@@ -846,7 +853,7 @@ Supabase Edge Functions (deployed to Supabase, NOT tophost):
 8. Room auto-assign: căsuță mică decreasing (8→1), căsuță mare + hotel increasing
 9. If guest explicitly chose room number: Diana sees warning + must type "schimba" before any room swap in CRM
 10. Pricing is locked at booking creation time — price changes never affect existing reservations
-11. Cancellation: guest can cancel 72h+ before arrival; under 72h only Diana can cancel
+11. Cancellation: guest can cancel at least 7 calendar days before arrival for a refund; later cancellations remain possible online but are non-refundable
 12. All SMS/email via Edge Functions (never from browser — API keys stay server-side)
 13. CRM is desktop-only, Romanian-only, Supabase Auth protected
 14. Legal compliance: Legea 195/2024 (Moldova GDPR, in force Aug 23 2026), full privacy policy, cookie consent, T\&C required
