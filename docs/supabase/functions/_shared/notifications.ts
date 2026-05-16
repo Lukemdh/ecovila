@@ -26,6 +26,8 @@ export type NotificationMessage = {
   };
 };
 
+export type NotificationDeliveryStatus = 'reserved' | 'sent' | 'failed';
+
 export function composeBookingConfirmation(
   reservation: NotificationReservation,
   options: { cancellationToken: string; siteUrl: string },
@@ -47,7 +49,7 @@ export function composeBookingConfirmation(
         'EcoVila: Rezervarea dvs. a fost confirmată!',
         `${roomCopy}, ${reservation.check_in} - ${reservation.check_out}`,
         `Total: ${total} (${reservation.payment_type})`,
-        `Anulare (72h+): ${cancellationLink}`,
+        `Anulare (7 zile+): ${cancellationLink}`,
       ].join('\n'),
     },
     email: {
@@ -59,7 +61,7 @@ export function composeBookingConfirmation(
         `Perioada: ${reservation.check_in} - ${reservation.check_out}.`,
         `Total: ${total}.`,
         `Confirmare: ${confirmationLink}`,
-        `Anulare 72h+: ${cancellationLink}`,
+        `Anulare 7 zile+: ${cancellationLink}`,
       ].join('\n'),
       html: reservationEmailHtml({
         title: 'Rezervarea dvs. EcoVila este confirmată',
@@ -202,6 +204,78 @@ export async function dispatchNotification(message: NotificationMessage) {
   ]);
 
   return { sms, email };
+}
+
+export async function reserveNotificationEvent(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  metadata: Record<string, unknown> = {},
+) {
+  const { error } = await client
+    .from('notification_events')
+    .insert({
+      reservation_id: reservationId,
+      event_type: eventType,
+      delivery_status: 'reserved',
+      attempted_at: new Date().toISOString(),
+      metadata,
+    });
+
+  if (!error) {
+    return true;
+  }
+
+  if (error.code === '23505') {
+    return false;
+  }
+
+  throw new Error(error.message || 'Could not reserve notification event.');
+}
+
+export async function markNotificationEventSent(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  providerResponse: Record<string, unknown> = {},
+) {
+  const completionTime = new Date().toISOString();
+  const { error } = await client
+    .from('notification_events')
+    .update({
+      delivery_status: 'sent',
+      provider_response: providerResponse,
+      completed_at: completionTime,
+      sent_at: completionTime,
+      last_error: null,
+    })
+    .eq('reservation_id', reservationId)
+    .eq('event_type', eventType);
+
+  if (error) {
+    throw new Error(error.message || 'Could not mark notification as sent.');
+  }
+}
+
+export async function markNotificationEventFailed(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  error: unknown,
+) {
+  const { error: updateError } = await client
+    .from('notification_events')
+    .update({
+      delivery_status: 'failed',
+      last_error: error instanceof Error ? error.message : 'Notification failed.',
+      completed_at: new Date().toISOString(),
+    })
+    .eq('reservation_id', reservationId)
+    .eq('event_type', eventType);
+
+  if (updateError) {
+    throw new Error(updateError.message || 'Could not mark notification as failed.');
+  }
 }
 
 export async function dispatchAndRecordNotification(

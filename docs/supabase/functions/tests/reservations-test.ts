@@ -106,6 +106,82 @@ Deno.test('composeBookingConfirmation includes cancellation and confirmation lin
   assertIncludes(message.email.html, 'https://ecovila.md/confirmare.html?id=reservation-a');
 });
 
+Deno.test('composeBookingConfirmation uses the 7-day cancellation wording', async () => {
+  const { composeBookingConfirmation } = await import('../_shared/notifications.ts');
+  const message = composeBookingConfirmation(
+    {
+      id: 'reservation-a',
+      room_number: 8,
+      check_in: '2026-06-01',
+      check_out: '2026-06-03',
+      total_price: 5200,
+      payment_type: 'cash',
+      guest_email: 'ana@example.md',
+      guest_phone: '+37360123456',
+      guest_first_name: 'Ana',
+      guest_last_name: 'Munteanu',
+    },
+    {
+      cancellationToken: 'cancel-token',
+      siteUrl: 'https://ecovila.md',
+    },
+  );
+
+  assertIncludes(message.sms.message, 'Anulare (7 zile+):');
+  assertIncludes(message.email.text, 'Anulare 7 zile+:');
+});
+
+Deno.test('reserveNotificationEvent returns false for duplicate rows before dispatch', async () => {
+  const { reserveNotificationEvent } = await import('../_shared/notifications.ts');
+  const inserts: unknown[] = [];
+  const client = {
+    from() {
+      return {
+        insert(payload: unknown) {
+          inserts.push(payload);
+          return Promise.resolve({ error: { code: '23505' } });
+        },
+      };
+    },
+  };
+
+  assertEquals(await reserveNotificationEvent(client, 'reservation-a', 'arrival_24h'), false);
+  assertEquals(inserts.length, 1);
+});
+
+Deno.test('markNotificationEventFailed stores provider errors for support', async () => {
+  const { markNotificationEventFailed } = await import('../_shared/notifications.ts');
+  let updatePayload: unknown;
+  const client = {
+    from() {
+      return {
+        update(payload: unknown) {
+          updatePayload = payload;
+          return {
+            eq() {
+              return {
+                eq() {
+                  return Promise.resolve({ error: null });
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  await markNotificationEventFailed(
+    client,
+    'reservation-a',
+    'arrival_24h',
+    new Error('provider unavailable'),
+  );
+
+  assertEquals((updatePayload as Record<string, unknown>).delivery_status, 'failed');
+  assertEquals((updatePayload as Record<string, unknown>).last_error, 'provider unavailable');
+});
+
 Deno.test('verifyMaibSignature follows the documented sorted-result signature algorithm', async () => {
   const { createMaibSignature, verifyMaibSignature } = await import('../_shared/maib.ts');
   const result = {
