@@ -158,15 +158,16 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
 
   it('splits the production rollout into notifications, Maib, and tophost steps', () => {
     const brief = read('docs/ECOVILA_PROJECT_BRIEF.md');
+    const step10 = brief.match(/Step 10:[\s\S]*?(?=Step 11:)/i)?.[0] || '';
 
     assert.match(brief, /Step 10:\s+\*\*Production Notifications & Scheduling\*\*/i);
     assert.match(brief, /Step 11:\s+\*\*Maib ePay\*\*/i);
     assert.match(brief, /Step 12:\s+\*\*tophost Deployment\*\*/i);
-    assert.match(brief, /SMS\.md/i);
-    assert.match(brief, /Resend/i);
-    assert.match(brief, /Supabase cron\/schedules/i);
+    assert.match(step10, /SMS\.md/i);
+    assert.match(step10, /Resend/i);
+    assert.match(step10, /Supabase cron\/schedules/i);
     assert.doesNotMatch(
-      brief.match(/Step 10:[\s\S]*?(?=Step 11:)/i)?.[0] || '',
+      step10,
       /Maib ePay|tophost\.md/i,
       'Step 10 should not still include Maib or tophost work',
     );
