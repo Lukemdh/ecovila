@@ -467,10 +467,10 @@ Accessed via a unique link sent in the SMS/email confirmation: `/anulare?token=C
 
 1. Page loads, fetches reservation by token.
 2. Shows: reservation details (dates, accommodation type, room number, total paid).
-3. Checks if cancellation is allowed: `check\\\_in - now() >= 72 hours`.
+3. Shows refund eligibility based on the legal policy: at least 7 calendar days before check-in is refundable; later cancellations remain possible online but are non-refundable.
 
-   * If YES → show **"Anulează rezervarea"** button.
-   * If NO → show message: *"Rezervarea nu mai poate fi anulată cu mai puțin de 72 de ore înainte de sosire. Contactați-ne la \[phone]."*
+   * If YES → show **"Anulează rezervarea"** button and the refundable message.
+   * If NO → keep the **"Anulează rezervarea"** button available and show the non-refundable message.
 4. When "Anulează" is clicked → ask for phone number confirmation (must match `guest\\\_phone` on the reservation).
 5. On match → reservation cancelled, room freed, cancellation SMS + email sent, token marked as used.
 
@@ -700,8 +700,8 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Guest-initiated (via cancellation link):
 
-* **More than 72 hours before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent.
-* **Less than 72 hours before check-in:** NOT allowed via website. Message shown: *"Rezervarea nu mai poate fi anulată online. Contactați-ne la \[phone]."*
+* **At least 7 calendar days before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
+* **Less than 7 calendar days before check-in:** Allowed online. Room freed immediately. Cancellation SMS + email sent. Paid amount is not refunded.
 
 ### Diana-initiated (from CRM):
 
@@ -711,8 +711,8 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Refund policy (display in T\&C and on cancellation page):
 
-* Cancellation 72h+ before arrival → full refund
-* Less than 72h → no refund (guest must call Diana)
+* Cancellation at least 7 calendar days before arrival → full refund
+* Less than 7 calendar days → no refund
 
 \---
 
@@ -765,7 +765,7 @@ Must include:
 Must include:
 
 * Booking and payment terms
-* Cancellation policy (72h rule, refund conditions)
+* Cancellation policy (7-calendar-day refund conditions)
 * Check-in / check-out times (13:00 / 10:00)
 * House rules: no pets, no outside food/drinks on premises, access only for paying guests
 * Pricing disclaimer (prices in MDL, all-inclusive)
@@ -850,4 +850,3 @@ Supabase Edge Functions (deployed to Supabase, NOT tophost):
 12. All SMS/email via Edge Functions (never from browser — API keys stay server-side)
 13. CRM is desktop-only, Romanian-only, Supabase Auth protected
 14. Legal compliance: Legea 195/2024 (Moldova GDPR, in force Aug 23 2026), full privacy policy, cookie consent, T\&C required
-

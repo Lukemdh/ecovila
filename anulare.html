@@ -90,35 +90,6 @@
             </div>
           </div>
 
-          <!-- Too late — 72-hour rule blocks cancellation -->
-          <div class="an-state" data-anulare-too-late hidden>
-            <div class="an-card">
-              <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              </div>
-              <h2 class="an-card__title" data-i18n="anulare.tooLateTitle">Anulare online indisponibilă</h2>
-              <p data-anulare-too-late-text data-i18n="anulare.tooLateText">
-                Rezervarea nu mai poate fi anulată online cu mai puțin de 72 de ore înainte de sosire. Contactați-ne.
-              </p>
-
-              <!-- Reservation summary (shown when reservation data available) -->
-              <dl class="an-detail-list" data-too-late-details hidden>
-                <div class="an-detail-row">
-                  <dt data-i18n="checkout.dates">Perioada</dt>
-                  <dd data-tl-dates>--</dd>
-                </div>
-                <div class="an-detail-row">
-                  <dt data-i18n="checkout.accommodation">Cazare</dt>
-                  <dd data-tl-room>--</dd>
-                </div>
-              </dl>
-
-              <a class="editorial-button editorial-button--filled" href="index.html" data-i18n="anulare.backHome">
-                Înapoi la pagina principală
-              </a>
-            </div>
-          </div>
-
           <!-- Phone confirmation form -->
           <div class="an-state" data-anulare-form hidden>
 
@@ -170,8 +141,8 @@
 
               <p class="booking-error" data-anulare-error hidden></p>
 
-              <p class="an-refund-note" data-i18n="anulare.refundNote">
-                Conform politicii noastre, se aplică rambursare integrală pentru anulări efectuate cu 72+ ore înainte de data sosirii.
+              <p class="an-refund-note" data-anulare-refund-note data-i18n="anulare.refundPolicyNote">
+                Rambursarea integrală se aplică numai anulărilor recepționate cu cel puțin 7 zile calendaristice înainte de data sosirii; pentru anulări cu mai puțin de 7 zile calendaristice înainte de sosire, suma achitată nu se rambursează.
               </p>
 
               <div style="margin-top: 24px;">
@@ -199,8 +170,8 @@
               <p data-i18n="anulare.successText">
                 Rezervarea dvs. a fost anulată cu succes. O confirmare a fost trimisă pe email și SMS.
               </p>
-              <p class="an-refund-note" data-i18n="anulare.refundNote">
-                Conform politicii noastre, se aplică rambursare integrală pentru anulări efectuate cu 72+ ore înainte de data sosirii.
+              <p class="an-refund-note" data-anulare-refund-note data-i18n="anulare.refundPolicyNote">
+                Rambursarea integrală se aplică numai anulărilor recepționate cu cel puțin 7 zile calendaristice înainte de data sosirii; pentru anulări cu mai puțin de 7 zile calendaristice înainte de sosire, suma achitată nu se rambursează.
               </p>
               <a
                 class="editorial-button editorial-button--filled"

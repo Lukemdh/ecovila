@@ -13,6 +13,11 @@
 
   const STORAGE_LANGUAGE = 'ecovila_language';
   const SESSION_KEY = 'ecovila_anulare_success';
+  const SESSION_REFUND_KEY = 'ecovila_anulare_refund_eligible';
+  const BUSINESS_TIME_ZONE = 'Europe/Chisinau';
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  let activeReservation = null;
 
   // ── Translation helper ──────────────────────────────────────────────────────
 
@@ -135,27 +140,12 @@
 
   function showState(activeAttr) {
     const all = ['[data-anulare-loading]', '[data-anulare-not-found]', '[data-anulare-already-cancelled]',
-      '[data-anulare-too-late]', '[data-anulare-form]', '[data-anulare-success]'];
+      '[data-anulare-form]', '[data-anulare-success]'];
 
     all.forEach((sel) => {
       const node = el(sel);
       if (node) node.hidden = sel !== activeAttr;
     });
-  }
-
-  function showTooLate(reservation) {
-    showState('[data-anulare-too-late]');
-
-    const phone = t('anulare.contactPhone');
-    setText('[data-anulare-too-late-text]', t('anulare.tooLateText', { phone }));
-
-    if (reservation) {
-      const detailsEl = el('[data-too-late-details]');
-      if (detailsEl) detailsEl.hidden = false;
-
-      setText('[data-tl-dates]', `${formatDate(reservation.check_in)} – ${formatDate(reservation.check_out)}`);
-      setText('[data-tl-room]', formatRoomLabel(reservation.room_type, reservation.room_number));
-    }
   }
 
   function showForm(reservation) {
@@ -167,6 +157,7 @@
     setText('[data-res-guests]', formatGuests(reservation.adults, reservation.kids_ages));
     setText('[data-res-room]', formatRoomLabel(reservation.room_type, reservation.room_number));
     setText('[data-res-total]', pricing ? pricing.formatMDL(reservation.total_price) : `${reservation.total_price} MDL`);
+    updateRefundNote(reservation.check_in);
   }
 
   // ── Cancellation submit ─────────────────────────────────────────────────────
@@ -202,7 +193,14 @@
       switch (result) {
         case 'cancelled':
           // Store success flag so refreshing the page still shows success
-          try { root.sessionStorage?.setItem(SESSION_KEY, '1'); } catch { /* ignore */ }
+          try {
+            root.sessionStorage?.setItem(SESSION_KEY, '1');
+            root.sessionStorage?.setItem(
+              SESSION_REFUND_KEY,
+              isRefundEligible(activeReservation?.check_in) ? 'eligible' : 'ineligible',
+            );
+          } catch { /* ignore */ }
+          updateRefundNote(activeReservation?.check_in);
           showState('[data-anulare-success]');
           break;
 
@@ -214,10 +212,6 @@
             errorEl.hidden = false;
           }
           phoneInput.focus();
-          break;
-
-        case 'too_late':
-          showTooLate(null);
           break;
 
         case 'already_cancelled':
@@ -243,14 +237,74 @@
     }
   }
 
-  // ── 72-hour check (client-side pre-check) ───────────────────────────────────
+  // ── Refund eligibility ──────────────────────────────────────────────────────
 
-  function isWithin72Hours(checkInDate) {
-    try {
-      const checkInTs = new Date(checkInDate).getTime() + 13 * 60 * 60 * 1000; // 13:00 check-in
-      return Date.now() + 72 * 60 * 60 * 1000 > checkInTs;
-    } catch {
+  function dateValue(dateString) {
+    const [year, month, day] = String(dateString || '').split('-').map(Number);
+
+    if (![year, month, day].every(Number.isFinite)) {
+      return Number.NaN;
+    }
+
+    return Date.UTC(year, month - 1, day);
+  }
+
+  function currentBusinessDate(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: BUSINESS_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+
+    const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${byType.year}-${byType.month}-${byType.day}`;
+  }
+
+  function isRefundEligible(checkInDate, now = new Date()) {
+    const checkInValue = dateValue(checkInDate);
+    const todayValue = dateValue(currentBusinessDate(now));
+
+    if (!Number.isFinite(checkInValue) || !Number.isFinite(todayValue)) {
       return false;
+    }
+
+    return (checkInValue - todayValue) / DAY_MS >= 7;
+  }
+
+  function setRefundNoteByEligibility(eligible) {
+    root.document?.querySelectorAll('[data-anulare-refund-note]').forEach((node) => {
+      node.textContent = t(eligible ? 'anulare.refundEligibleNote' : 'anulare.refundIneligibleNote');
+    });
+  }
+
+  function updateRefundNote(checkInDate) {
+    if (!checkInDate) {
+      return;
+    }
+
+    setRefundNoteByEligibility(isRefundEligible(checkInDate));
+  }
+
+  function readStoredRefundEligibility() {
+    try {
+      const stored = root.sessionStorage?.getItem(SESSION_REFUND_KEY);
+      if (stored === 'eligible') return true;
+      if (stored === 'ineligible') return false;
+    } catch { /* ignore */ }
+
+    return null;
+  }
+
+  function refreshRefundNotesForCurrentState() {
+    if (activeReservation?.check_in) {
+      updateRefundNote(activeReservation.check_in);
+      return;
+    }
+
+    const storedEligibility = readStoredRefundEligibility();
+    if (storedEligibility !== null) {
+      setRefundNoteByEligibility(storedEligibility);
     }
   }
 
@@ -261,6 +315,7 @@
     try {
       if (root.sessionStorage?.getItem(SESSION_KEY)) {
         showState('[data-anulare-success]');
+        refreshRefundNotesForCurrentState();
         return;
       }
     } catch { /* ignore */ }
@@ -291,14 +346,10 @@
       return;
     }
 
+    activeReservation = reservation;
+
     if (reservation.payment_status === 'cancelled' || reservation.cancelled_at) {
       showState('[data-anulare-already-cancelled]');
-      return;
-    }
-
-    // Client-side 72h pre-check (server will enforce this too, but give early feedback)
-    if (isWithin72Hours(reservation.check_in)) {
-      showTooLate(reservation);
       return;
     }
 
@@ -316,8 +367,9 @@
   }
 
   if (root.document) {
+    root.addEventListener?.('ecovila:languagechange', refreshRefundNotesForCurrentState);
     root.document.addEventListener('DOMContentLoaded', init);
   }
 
-  return { init };
+  return { init, isRefundEligible };
 });
