@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -45,10 +45,10 @@ function exists(relativePath) {
 
 function allMigrations() {
   return fs
-    .readdirSync(path.join(root, 'supabase/migrations'))
+    .readdirSync(path.join(root, 'docs/supabase/migrations'))
     .filter((file) => file.endsWith('.sql'))
     .sort()
-    .map((file) => read(`supabase/migrations/${file}`))
+    .map((file) => read(`docs/supabase/migrations/${file}`))
     .join('\n');
 }
 

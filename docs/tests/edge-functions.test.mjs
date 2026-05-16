@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 
 function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
@@ -16,18 +16,18 @@ function read(relativePath) {
 describe('EcoVila Step 7 Supabase Edge Functions', () => {
   it('creates the Supabase Edge Function workspace with shared modules and tests', () => {
     for (const file of [
-      'supabase/config.toml',
-      'supabase/functions/deno.json',
-      'supabase/functions/import_map.json',
-      'supabase/functions/_shared/cors.ts',
-      'supabase/functions/_shared/env.ts',
-      'supabase/functions/_shared/http.ts',
-      'supabase/functions/_shared/maib.ts',
-      'supabase/functions/_shared/notifications.ts',
-      'supabase/functions/_shared/providers.ts',
-      'supabase/functions/_shared/reservations.ts',
-      'supabase/functions/_shared/supabaseAdmin.ts',
-      'supabase/functions/tests/reservations-test.ts',
+      'docs/supabase/config.toml',
+      'docs/supabase/functions/deno.json',
+      'docs/supabase/functions/import_map.json',
+      'docs/supabase/functions/_shared/cors.ts',
+      'docs/supabase/functions/_shared/env.ts',
+      'docs/supabase/functions/_shared/http.ts',
+      'docs/supabase/functions/_shared/maib.ts',
+      'docs/supabase/functions/_shared/notifications.ts',
+      'docs/supabase/functions/_shared/providers.ts',
+      'docs/supabase/functions/_shared/reservations.ts',
+      'docs/supabase/functions/_shared/supabaseAdmin.ts',
+      'docs/supabase/functions/tests/reservations-test.ts',
     ]) {
       assert.ok(exists(file), `${file} should exist`);
     }
@@ -42,7 +42,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'send-reminders',
       'maib-webhook',
     ]) {
-      const file = `supabase/functions/${name}/index.ts`;
+      const file = `docs/supabase/functions/${name}/index.ts`;
       assert.ok(exists(file), `${file} should exist`);
       assert.match(read(file), /Deno\.serve\(/, `${file} should register a Deno.serve handler`);
     }
@@ -69,7 +69,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
   });
 
   it('configures public and server-only function JWT behavior explicitly', () => {
-    const config = read('supabase/config.toml');
+    const config = read('docs/supabase/config.toml');
 
     assert.match(
       config,
@@ -92,8 +92,8 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
   });
 
   it('uses current provider endpoints and required secret names only inside Edge Functions', () => {
-    const providers = read('supabase/functions/_shared/providers.ts');
-    const maib = read('supabase/functions/_shared/maib.ts');
+    const providers = read('docs/supabase/functions/_shared/providers.ts');
+    const maib = read('docs/supabase/functions/_shared/maib.ts');
 
     assert.match(providers, /https:\/\/api\.sms\.md\/v1\/send/, 'SMS.md REST endpoint should be used');
     assert.match(providers, /SMSMD_API_TOKEN/, 'SMS.md API token should be read from Edge Function env');
@@ -107,10 +107,10 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
 
   it('adds idempotency storage for scheduled notification jobs', () => {
     const migrations = fs
-      .readdirSync(path.join(root, 'supabase/migrations'))
+      .readdirSync(path.join(root, 'docs/supabase/migrations'))
       .filter((file) => file.endsWith('.sql'))
       .sort()
-      .map((file) => read(`supabase/migrations/${file}`))
+      .map((file) => read(`docs/supabase/migrations/${file}`))
       .join('\n');
 
     assert.match(

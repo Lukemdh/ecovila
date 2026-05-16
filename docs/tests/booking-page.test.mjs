@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 
 function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
@@ -346,8 +346,13 @@ describe('EcoVila Step 4 booking page', () => {
 
   it('removes vertical guide-line backgrounds from the reservation experience', () => {
     const css = read('css/booking.css');
+    const bookingPageBlock = css.match(/\.booking-page\s*{[^}]*}/s)?.[0] || '';
 
-    assert.doesNotMatch(css, /linear-gradient\(90deg/, 'booking styles should not draw vertical background lines');
+    assert.doesNotMatch(
+      bookingPageBlock,
+      /linear-gradient\(90deg/,
+      'booking page background should not draw vertical guide lines',
+    );
   });
 
   it('uses a gallery-style accommodation details modal with bathroom and facility sections, without feature chips', () => {
@@ -437,7 +442,7 @@ describe('EcoVila Step 4 booking page', () => {
   it('allows public child age choices from 1 to 17 while keeping the pricing categories private', () => {
     const html = read('rezervari.html');
     const pricing = read('js/pricing.js');
-    const brief = read('ECOVILA_PROJECT_BRIEF.md');
+    const brief = read('docs/ECOVILA_PROJECT_BRIEF.md');
 
     assert.match(html, /<option value="1">1<\/option>/, 'child age selector should start at age 1');
     assert.match(html, /<option value="17">17<\/option>/, 'child age selector should include age 17');

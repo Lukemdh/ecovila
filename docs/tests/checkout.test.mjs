@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 const require = createRequire(import.meta.url);
 
 function exists(relativePath) {
@@ -21,12 +21,12 @@ function footerMarkup(html) {
 }
 
 function loadCheckout() {
-  return require('../js/checkout.js');
+  return require('../../js/checkout.js');
 }
 
 describe('EcoVila Step 5 checkout', () => {
   it('creates the checkout page files and loads the booking dependencies', () => {
-    for (const file of ['checkout.html', 'js/checkout.js', 'css/booking.css']) {
+    for (const file of ['checkout.html', 'js/checkout.js', 'css/checkout.css']) {
       assert.ok(exists(file), `${file} should exist`);
     }
 
@@ -34,7 +34,7 @@ describe('EcoVila Step 5 checkout', () => {
 
     assert.match(html, /data-checkout-app/, 'checkout app hook should exist');
     assert.match(html, /css\/main\.css/, 'checkout page should use the shared public design system');
-    assert.match(html, /css\/booking\.css/, 'checkout page should use booking styles');
+    assert.match(html, /css\/checkout\.css/, 'checkout page should use checkout styles');
     assert.match(html, /@supabase\/supabase-js@2/, 'checkout page should load Supabase JS v2 from CDN');
 
     for (const script of [
@@ -283,7 +283,7 @@ describe('EcoVila Step 5 checkout', () => {
   });
 
   it('creates pending reservations through the Edge Function instead of direct table inserts', async () => {
-    const supabaseHelpers = require('../js/supabase.js');
+    const supabaseHelpers = require('../../js/supabase.js');
     const calls = [];
     const client = {
       functions: {

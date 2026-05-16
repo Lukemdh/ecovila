@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 const migrationPath = path.join(
   root,
-  'supabase/migrations/20260506210000_supabase_foundation.sql',
+  'docs/supabase/migrations/20260506210000_supabase_foundation.sql',
 );
 
 function readMigration() {
@@ -20,6 +20,13 @@ function readAllMigrations() {
     .sort()
     .map((file) => fs.readFileSync(path.join(path.dirname(migrationPath), file), 'utf8'))
     .join('\n');
+}
+
+function availabilityRpcSql(sql) {
+  const match = sql.match(
+    /create or replace function public\.get_public_availability_blocks[\s\S]*?\$\$;/i,
+  );
+  return match ? match[0] : '';
 }
 
 describe('EcoVila Supabase foundation migration', () => {
@@ -165,6 +172,7 @@ describe('EcoVila Supabase foundation migration', () => {
 
   it('adds a public-safe availability RPC without exposing guest reservation details', () => {
     const sql = readAllMigrations();
+    const availabilityRpc = availabilityRpcSql(sql);
 
     assert.match(
       sql,
@@ -188,13 +196,13 @@ describe('EcoVila Supabase foundation migration', () => {
       'public users should be able to call the availability RPC',
     );
     assert.doesNotMatch(
-      sql,
-      /get_public_availability_blocks[\s\S]+guest_first_name/i,
+      availabilityRpc,
+      /guest_first_name/i,
       'availability RPC should not leak guest names',
     );
     assert.doesNotMatch(
-      sql,
-      /get_public_availability_blocks[\s\S]+guest_phone/i,
+      availabilityRpc,
+      /guest_phone/i,
       'availability RPC should not leak guest phone numbers',
     );
   });

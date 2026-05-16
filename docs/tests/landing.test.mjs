@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 const requiredFiles = [
   'index.html',
   'css/main.css',
@@ -73,7 +73,7 @@ describe('EcoVila landing page structure', () => {
     assert.match(html, /href="rezervari\.html"/, 'reservation CTA should link to rezervari.html');
     assert.match(html, /data-lang-select/, 'language dropdown should exist');
     assert.match(html, /id="cookie-banner"/, 'cookie consent banner should exist');
-    assert.match(html, /id="accommodation-modal"/, 'accommodation modal should exist');
+    assert.match(html, /data-booking-modal/, 'accommodation modal should exist');
   });
 
   it('references only local assets that exist', () => {
@@ -120,7 +120,11 @@ describe('EcoVila landing page structure', () => {
     assert.match(css, /--espresso:\s*#33261F/i, 'CSS should include a dark brown footer surface');
     assert.match(css, /\.site-footer\s*{[^}]*padding:\s*30px 0/s, 'footer should stay compact');
     assert.match(css, /\.site-footer__logo\s*{[^}]*width:\s*96px/s, 'footer logo should stay small');
-    assert.match(css, /\.site-footer__legal dt,\s*\.site-footer__links h2\s*{[^}]*font-size:\s*0\.68rem/s, 'footer labels should use small utility text');
+    assert.match(
+      css,
+      /\.site-footer__legal dt,\s*\.site-footer__social h2,\s*\.site-footer__links h2\s*{[^}]*font-size:\s*0\.68rem/s,
+      'footer labels should use small utility text',
+    );
     assert.match(css, /\.site-header\s*{[^}]*grid-template-columns:\s*minmax\(88px,\s*120px\) auto/s, 'desktop header should use a compact logo column');
     assert.match(css, /\.site-header\s*{[^}]*padding:\s*12px 24px/s, 'desktop header should use compact padding');
     assert.match(css, /\.brand\s*{[^}]*width:\s*min\(120px,\s*13vw\)/s, 'desktop header logo should stay small');

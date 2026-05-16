@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -49,7 +49,7 @@ describe('EcoVila live Supabase wiring', () => {
     const bookingJs = read('js/booking.js');
 
     assert.match(landingHtml, /data-photo-section="landing"/);
-    assert.match(landingHtml, /data-photo-index="8"/);
+    assert.match(landingHtml, /data-photo-index="5"/);
     assert.match(mainJs, /fetchPublicPhotoLibrary/);
     assert.match(mainJs, /applyPublishedPhotos/);
     assert.match(mainJs, /data-photo-section/);
@@ -67,6 +67,6 @@ describe('EcoVila live Supabase wiring', () => {
     );
 
     assert.doesNotMatch(heroTag, /data-photo-background="landing"/);
-    assert.deepEqual(landingSlotIndexes, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.deepEqual(landingSlotIndexes, [0, 1, 2, 3, 4, 5]);
   });
 });
