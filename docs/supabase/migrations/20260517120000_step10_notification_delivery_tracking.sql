@@ -22,3 +22,7 @@ set
 where delivery_status is null
    or attempted_at is null
    or completed_at is null;
+
+alter table public.notification_events
+  alter column sent_at drop default,
+  alter column sent_at drop not null;

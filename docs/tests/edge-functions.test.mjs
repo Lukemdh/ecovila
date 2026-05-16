@@ -136,19 +136,20 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
   });
 
   it('tracks notification delivery lifecycle on durable event rows', () => {
-    const migrations = fs
-      .readdirSync(path.join(root, 'docs/supabase/migrations'))
-      .filter((file) => file.endsWith('.sql'))
-      .sort()
-      .map((file) => read(`docs/supabase/migrations/${file}`))
-      .join('\n');
+    const migration = read(
+      'docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql',
+    );
 
-    assert.match(migrations, /add column if not exists delivery_status text/i);
-    assert.match(migrations, /delivery_status in \('reserved', 'sent', 'failed'\)/i);
-    assert.match(migrations, /add column if not exists attempted_at timestamptz/i);
-    assert.match(migrations, /add column if not exists completed_at timestamptz/i);
-    assert.match(migrations, /add column if not exists last_error text/i);
-    assert.match(migrations, /add column if not exists provider_response jsonb/i);
+    assert.match(migration, /add column if not exists delivery_status text/i);
+    assert.match(migration, /delivery_status in \('reserved', 'sent', 'failed'\)/i);
+    assert.match(migration, /add column if not exists attempted_at timestamptz/i);
+    assert.match(migration, /add column if not exists completed_at timestamptz/i);
+    assert.match(migration, /add column if not exists last_error text/i);
+    assert.match(migration, /add column if not exists provider_response jsonb/i);
+    assert.match(migration, /alter column sent_at drop default/i);
+    assert.match(migration, /alter column sent_at drop not null/i);
+    assert.match(migration, /attempted_at = coalesce\(attempted_at, sent_at\)/i);
+    assert.match(migration, /completed_at = coalesce\(completed_at, sent_at\)/i);
   });
 
   it('routes checkout reservation creation through the Edge Function', () => {
