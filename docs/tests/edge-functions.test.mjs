@@ -135,6 +135,22 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
   });
 
+  it('tracks notification delivery lifecycle on durable event rows', () => {
+    const migrations = fs
+      .readdirSync(path.join(root, 'docs/supabase/migrations'))
+      .filter((file) => file.endsWith('.sql'))
+      .sort()
+      .map((file) => read(`docs/supabase/migrations/${file}`))
+      .join('\n');
+
+    assert.match(migrations, /add column if not exists delivery_status text/i);
+    assert.match(migrations, /delivery_status in \('reserved', 'sent', 'failed'\)/i);
+    assert.match(migrations, /add column if not exists attempted_at timestamptz/i);
+    assert.match(migrations, /add column if not exists completed_at timestamptz/i);
+    assert.match(migrations, /add column if not exists last_error text/i);
+    assert.match(migrations, /add column if not exists provider_response jsonb/i);
+  });
+
   it('routes checkout reservation creation through the Edge Function', () => {
     const supabaseHelpers = read('js/supabase.js');
     const checkout = read('js/checkout.js');
