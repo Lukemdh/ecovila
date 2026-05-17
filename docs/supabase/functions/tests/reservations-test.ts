@@ -149,6 +149,45 @@ Deno.test('reserveNotificationEvent returns false for duplicate rows before disp
   assertEquals(inserts.length, 1);
 });
 
+Deno.test('markNotificationEventSent stores completion timestamps explicitly', async () => {
+  const { markNotificationEventSent } = await import('../_shared/notifications.ts');
+  let updatePayload: Record<string, unknown> | undefined;
+  const providerResponse = {
+    sms: { id: 'sms-a' },
+    email: { id: 'email-a' },
+  };
+  const client = {
+    from() {
+      return {
+        update(payload: Record<string, unknown>) {
+          updatePayload = payload;
+          return {
+            eq() {
+              return {
+                eq() {
+                  return Promise.resolve({ error: null });
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  await markNotificationEventSent(
+    client,
+    'reservation-a',
+    'arrival_24h',
+    providerResponse,
+  );
+
+  assertEquals(updatePayload?.delivery_status, 'sent');
+  assertEquals(updatePayload?.provider_response, providerResponse);
+  assertEquals(updatePayload?.completed_at, updatePayload?.sent_at);
+  assertEquals(updatePayload?.last_error, null);
+});
+
 Deno.test('markNotificationEventFailed stores provider errors for support', async () => {
   const { markNotificationEventFailed } = await import('../_shared/notifications.ts');
   let updatePayload: unknown;

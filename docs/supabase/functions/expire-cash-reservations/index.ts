@@ -68,13 +68,17 @@ async function notifyExpiredReservations(client: any, reservations: any[]) {
 
   for (const reservation of reservations) {
     try {
-      await dispatchAndRecordNotification(
+      const result = await dispatchAndRecordNotification(
         client,
         reservation.id,
         'cash_expired',
         composeExpiredCashCancellation(reservation),
       );
-      results.push({ reservationId: reservation.id, sent: true });
+      results.push({
+        reservationId: reservation.id,
+        ...result,
+        skipped_duplicate: result.skipped_duplicate,
+      });
     } catch (error) {
       console.error('Expired cash notification failed', error);
       results.push({

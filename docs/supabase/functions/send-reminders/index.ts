@@ -98,13 +98,17 @@ async function notifyEach(
 
   for (const reservation of reservations) {
     try {
-      await dispatchAndRecordNotification(
+      const result = await dispatchAndRecordNotification(
         client,
         reservation.id,
         eventType,
         createMessage(reservation),
       );
-      results.push({ reservationId: reservation.id, sent: true });
+      results.push({
+        reservationId: reservation.id,
+        ...result,
+        skipped_duplicate: result.skipped_duplicate,
+      });
     } catch (error) {
       console.error(`${eventType} notification failed`, error);
       results.push({

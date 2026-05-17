@@ -285,35 +285,20 @@ export async function dispatchAndRecordNotification(
   message: NotificationMessage,
   metadata: Record<string, unknown> = {},
 ) {
-  const result = await dispatchNotification(message);
-  const recorded = await recordNotificationEvent(client, reservationId, eventType, metadata);
+  const reserved = await reserveNotificationEvent(client, reservationId, eventType, metadata);
 
-  return { result, recorded };
-}
-
-export async function recordNotificationEvent(
-  client: any,
-  reservationId: string,
-  eventType: string,
-  metadata: Record<string, unknown> = {},
-) {
-  const { error } = await client
-    .from('notification_events')
-    .insert({
-      reservation_id: reservationId,
-      event_type: eventType,
-      metadata,
-    });
-
-  if (!error) {
-    return true;
+  if (!reserved) {
+    return { sent: false, skipped_duplicate: true };
   }
 
-  if (error.code === '23505') {
-    return false;
+  try {
+    const result = await dispatchNotification(message);
+    await markNotificationEventSent(client, reservationId, eventType, result);
+    return { sent: true, skipped_duplicate: false, result };
+  } catch (error) {
+    await markNotificationEventFailed(client, reservationId, eventType, error);
+    throw error;
   }
-
-  throw new Error(error.message || 'Could not reserve notification event.');
 }
 
 function roomLabel(reservation: NotificationReservation) {

@@ -152,6 +152,23 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     assert.match(migration, /completed_at = coalesce\(completed_at, sent_at\)/i);
   });
 
+  it('reserves scheduled notification events before provider dispatch', () => {
+    const notifications = read('docs/supabase/functions/_shared/notifications.ts');
+    const reminders = read('docs/supabase/functions/send-reminders/index.ts');
+    const expiry = read('docs/supabase/functions/expire-cash-reservations/index.ts');
+
+    assert.match(notifications, /reserveNotificationEvent/);
+    assert.match(notifications, /markNotificationEventSent/);
+    assert.match(notifications, /markNotificationEventFailed/);
+    assert.match(reminders, /skipped_duplicate/);
+    assert.match(expiry, /skipped_duplicate/);
+    assert.doesNotMatch(
+      notifications,
+      /dispatchNotification\(message\)[\s\S]*recordNotificationEvent/,
+      'dispatch should no longer happen before duplicate reservation succeeds',
+    );
+  });
+
   it('routes checkout reservation creation through the Edge Function', () => {
     const supabaseHelpers = read('js/supabase.js');
     const checkout = read('js/checkout.js');
