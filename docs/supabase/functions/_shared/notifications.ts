@@ -26,7 +26,21 @@ export type NotificationMessage = {
   };
 };
 
-export type NotificationDeliveryStatus = 'reserved' | 'sent' | 'failed';
+export type NotificationDeliveryStatus = 'reserved' | 'sent' | 'failed' | 'abandoned';
+
+type NotificationEventRow = {
+  delivery_status: NotificationDeliveryStatus;
+  attempt_count: number;
+  attempted_at: string | null;
+};
+
+type ScheduledNotificationOptions = {
+  now?: Date;
+  dispatch?: typeof dispatchNotification;
+};
+
+const MAX_SCHEDULED_NOTIFICATION_ATTEMPTS = 3;
+const RESERVED_RETRY_TIMEOUT_MS = 3 * 60 * 1000;
 
 export function composeBookingConfirmation(
   reservation: NotificationReservation,
@@ -211,6 +225,7 @@ export async function reserveNotificationEvent(
   reservationId: string,
   eventType: string,
   metadata: Record<string, unknown> = {},
+  now = new Date(),
 ) {
   const { error } = await client
     .from('notification_events')
@@ -218,7 +233,8 @@ export async function reserveNotificationEvent(
       reservation_id: reservationId,
       event_type: eventType,
       delivery_status: 'reserved',
-      attempted_at: new Date().toISOString(),
+      attempt_count: 1,
+      attempted_at: now.toISOString(),
       metadata,
     });
 
@@ -262,13 +278,17 @@ export async function markNotificationEventFailed(
   reservationId: string,
   eventType: string,
   error: unknown,
+  attemptCount = 1,
+  now = new Date(),
 ) {
   const { error: updateError } = await client
     .from('notification_events')
     .update({
-      delivery_status: 'failed',
+      delivery_status: attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS
+        ? 'abandoned'
+        : 'failed',
       last_error: error instanceof Error ? error.message : 'Notification failed.',
-      completed_at: new Date().toISOString(),
+      completed_at: now.toISOString(),
     })
     .eq('reservation_id', reservationId)
     .eq('event_type', eventType);
@@ -327,21 +347,168 @@ export async function dispatchScheduledNotificationOnce(
   eventType: string,
   message: NotificationMessage,
   metadata: Record<string, unknown> = {},
+  options: ScheduledNotificationOptions = {},
 ) {
-  const reserved = await reserveNotificationEvent(client, reservationId, eventType, metadata);
+  const now = options.now || new Date();
+  const claim = await claimScheduledNotificationAttempt(
+    client,
+    reservationId,
+    eventType,
+    metadata,
+    now,
+  );
 
-  if (!reserved) {
+  if (claim.outcome === 'sent') {
     return { sent: false, skipped_duplicate: true };
   }
 
+  if (claim.outcome === 'abandoned') {
+    return { sent: false, skipped_duplicate: false, abandoned: true };
+  }
+
+  if (claim.outcome === 'retry_pending') {
+    return { sent: false, skipped_duplicate: false, retry_pending: true };
+  }
+
+  let result: Awaited<ReturnType<typeof dispatchNotification>>;
+
   try {
-    const result = await dispatchNotification(message);
-    await markNotificationEventSent(client, reservationId, eventType, result);
-    return { sent: true, skipped_duplicate: false, result };
+    result = await (options.dispatch || dispatchNotification)(message);
   } catch (error) {
-    await markNotificationEventFailed(client, reservationId, eventType, error);
+    await markNotificationEventFailed(
+      client,
+      reservationId,
+      eventType,
+      error,
+      claim.attemptCount,
+      now,
+    );
     throw error;
   }
+
+  await markNotificationEventSent(client, reservationId, eventType, result);
+  return { sent: true, skipped_duplicate: false, result };
+}
+
+async function claimScheduledNotificationAttempt(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  metadata: Record<string, unknown>,
+  now: Date,
+) {
+  const existing = await readNotificationEvent(client, reservationId, eventType);
+
+  if (!existing) {
+    const reserved = await reserveNotificationEvent(
+      client,
+      reservationId,
+      eventType,
+      metadata,
+      now,
+    );
+
+    if (reserved) {
+      return { outcome: 'claimed' as const, attemptCount: 1 };
+    }
+
+    const concurrentlyClaimed = await readNotificationEvent(client, reservationId, eventType);
+
+    if (!concurrentlyClaimed) {
+      throw new Error('Notification event claim was not persisted.');
+    }
+
+    return claimExistingScheduledNotificationAttempt(
+      client,
+      reservationId,
+      eventType,
+      concurrentlyClaimed,
+      now,
+    );
+  }
+
+  return claimExistingScheduledNotificationAttempt(
+    client,
+    reservationId,
+    eventType,
+    existing,
+    now,
+  );
+}
+
+async function claimExistingScheduledNotificationAttempt(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  existing: NotificationEventRow,
+  now: Date,
+) {
+  if (existing.delivery_status === 'sent') {
+    return { outcome: 'sent' as const };
+  }
+
+  if (existing.delivery_status === 'abandoned') {
+    return { outcome: 'abandoned' as const };
+  }
+
+  const attemptCount = Number(existing.attempt_count || 1);
+
+  if (attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS) {
+    return { outcome: 'abandoned' as const };
+  }
+
+  if (
+    existing.delivery_status === 'reserved' &&
+    !isStaleReservation(existing.attempted_at, now)
+  ) {
+    return { outcome: 'retry_pending' as const };
+  }
+
+  const nextAttemptCount = attemptCount + 1;
+  const { error } = await client
+    .from('notification_events')
+    .update({
+      delivery_status: 'reserved',
+      attempt_count: nextAttemptCount,
+      attempted_at: now.toISOString(),
+      completed_at: null,
+      last_error: null,
+    })
+    .eq('reservation_id', reservationId)
+    .eq('event_type', eventType);
+
+  if (error) {
+    throw new Error(error.message || 'Could not claim notification retry attempt.');
+  }
+
+  return { outcome: 'claimed' as const, attemptCount: nextAttemptCount };
+}
+
+async function readNotificationEvent(
+  client: any,
+  reservationId: string,
+  eventType: string,
+): Promise<NotificationEventRow | null> {
+  const { data, error } = await client
+    .from('notification_events')
+    .select('delivery_status, attempt_count, attempted_at')
+    .eq('reservation_id', reservationId)
+    .eq('event_type', eventType)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Could not read notification event.');
+  }
+
+  return data || null;
+}
+
+function isStaleReservation(attemptedAt: string | null, now: Date) {
+  if (!attemptedAt) {
+    return true;
+  }
+
+  return now.getTime() - new Date(attemptedAt).getTime() >= RESERVED_RETRY_TIMEOUT_MS;
 }
 
 function roomLabel(reservation: NotificationReservation) {

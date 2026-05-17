@@ -141,7 +141,9 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
 
     assert.match(migration, /add column if not exists delivery_status text/i);
-    assert.match(migration, /delivery_status in \('reserved', 'sent', 'failed'\)/i);
+    assert.match(migration, /delivery_status in \('reserved', 'sent', 'failed', 'abandoned'\)/i);
+    assert.match(migration, /add column if not exists attempt_count integer/i);
+    assert.match(migration, /attempt_count between 1 and 3/i);
     assert.match(migration, /add column if not exists attempted_at timestamptz/i);
     assert.match(migration, /add column if not exists completed_at timestamptz/i);
     assert.match(migration, /add column if not exists last_error text/i);

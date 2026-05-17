@@ -245,6 +245,192 @@ Deno.test('markNotificationEventFailed stores provider errors for support', asyn
   assertEquals((updatePayload as Record<string, unknown>).last_error, 'provider unavailable');
 });
 
+Deno.test('dispatchScheduledNotificationOnce records the first attempt as sent', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore();
+  let dispatchCount = 0;
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => {
+        dispatchCount += 1;
+        return Promise.resolve(providerResult);
+      },
+    },
+  );
+
+  assertEquals(result.sent, true);
+  assertEquals(result.skipped_duplicate, false);
+  assertEquals(dispatchCount, 1);
+  assertEquals(store.inserts[0].attempt_count, 1);
+  assertEquals(store.updates.map((update) => update.delivery_status), ['sent']);
+});
+
+Deno.test('dispatchScheduledNotificationOnce retries failed rows while attempts remain', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore({
+    delivery_status: 'failed',
+    attempt_count: 1,
+    attempted_at: '2026-05-17T11:59:00.000Z',
+  });
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => Promise.resolve(providerResult),
+    },
+  );
+
+  assertEquals(result.sent, true);
+  assertEquals(store.updates[0].delivery_status, 'reserved');
+  assertEquals(store.updates[0].attempt_count, 2);
+  assertEquals(store.updates[1].delivery_status, 'sent');
+});
+
+Deno.test('dispatchScheduledNotificationOnce retries reserved rows after 3 minutes', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore({
+    delivery_status: 'reserved',
+    attempt_count: 1,
+    attempted_at: '2026-05-17T11:57:00.000Z',
+  });
+
+  await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => Promise.resolve(providerResult),
+    },
+  );
+
+  assertEquals(store.updates[0].delivery_status, 'reserved');
+  assertEquals(store.updates[0].attempt_count, 2);
+});
+
+Deno.test('dispatchScheduledNotificationOnce treats sent rows as terminal duplicates', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore({
+    delivery_status: 'sent',
+    attempt_count: 1,
+    attempted_at: '2026-05-17T11:57:00.000Z',
+  });
+  let dispatchCount = 0;
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => {
+        dispatchCount += 1;
+        return Promise.resolve(providerResult);
+      },
+    },
+  );
+
+  assertEquals(result, { sent: false, skipped_duplicate: true });
+  assertEquals(dispatchCount, 0);
+});
+
+Deno.test('dispatchScheduledNotificationOnce only suppresses sent rows after a concurrent claim', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore(undefined, {}, {
+    insertError: { code: '23505' },
+    rowAfterInsertError: {
+      delivery_status: 'failed',
+      attempt_count: 1,
+      attempted_at: '2026-05-17T11:59:00.000Z',
+    },
+  });
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => Promise.resolve(providerResult),
+    },
+  );
+
+  assertEquals(result.sent, true);
+  assertEquals(store.updates[0].delivery_status, 'reserved');
+  assertEquals(store.updates[0].attempt_count, 2);
+});
+
+Deno.test('dispatchScheduledNotificationOnce abandons the third provider failure', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore({
+    delivery_status: 'failed',
+    attempt_count: 2,
+    attempted_at: '2026-05-17T11:59:00.000Z',
+  });
+
+  await assertRejects(
+    () =>
+      dispatchScheduledNotificationOnce(
+        store.client,
+        'reservation-a',
+        'arrival_24h',
+        scheduledMessage,
+        {},
+        {
+          now: new Date('2026-05-17T12:00:00.000Z'),
+          dispatch: () => Promise.reject(new Error('provider unavailable')),
+        },
+      ),
+    'provider unavailable',
+  );
+
+  assertEquals(store.updates[0].attempt_count, 3);
+  assertEquals(store.updates[1].delivery_status, 'abandoned');
+});
+
+Deno.test('dispatchScheduledNotificationOnce does not rewrite post-send persistence errors as provider failures', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore(undefined, {
+    sent: { message: 'mark sent unavailable' },
+  });
+
+  await assertRejects(
+    () =>
+      dispatchScheduledNotificationOnce(
+        store.client,
+        'reservation-a',
+        'arrival_24h',
+        scheduledMessage,
+        {},
+        {
+          now: new Date('2026-05-17T12:00:00.000Z'),
+          dispatch: () => Promise.resolve(providerResult),
+        },
+      ),
+    'mark sent unavailable',
+  );
+
+  assertEquals(store.updates.map((update) => update.delivery_status), ['sent']);
+});
+
 Deno.test('verifyMaibSignature follows the documented sorted-result signature algorithm', async () => {
   const { createMaibSignature, verifyMaibSignature } = await import('../_shared/maib.ts');
   const result = {
@@ -290,8 +476,119 @@ function assertThrows(callback: () => unknown, expectedMessage: string) {
   throw new Error(`Expected callback to throw "${expectedMessage}"`);
 }
 
+async function assertRejects(callback: () => Promise<unknown>, expectedMessage: string) {
+  try {
+    await callback();
+  } catch (error) {
+    if (String((error as Error).message) !== expectedMessage) {
+      throw new Error(`Expected "${expectedMessage}", received "${(error as Error).message}"`);
+    }
+
+    return;
+  }
+
+  throw new Error(`Expected callback to reject with "${expectedMessage}"`);
+}
+
 function assertIncludes(value: string, expected: string) {
   if (!value.includes(expected)) {
     throw new Error(`Expected "${value}" to include "${expected}"`);
   }
+}
+
+const scheduledMessage = {
+  sms: {
+    to: '+37360123456',
+    message: 'Reminder',
+  },
+  email: {
+    to: 'ana@example.md',
+    subject: 'Reminder',
+    html: '<p>Reminder</p>',
+    text: 'Reminder',
+  },
+};
+
+const providerResult = {
+  sms: { id: 'sms-a' },
+  email: { id: 'email-a' },
+};
+
+function createNotificationEventStore(
+  initialRow?: Record<string, unknown>,
+  updateErrors: Partial<Record<string, { message: string }>> = {},
+  insertOptions: {
+    insertError?: { code: string };
+    rowAfterInsertError?: Record<string, unknown>;
+  } = {},
+) {
+  let row = initialRow ? { ...initialRow } : null;
+  const inserts: Array<Record<string, unknown>> = [];
+  const updates: Array<Record<string, unknown>> = [];
+
+  return {
+    inserts,
+    updates,
+    client: {
+      from() {
+        return {
+          select() {
+            return createSelectBuilder(() => row);
+          },
+          insert(payload: Record<string, unknown>) {
+            inserts.push(payload);
+
+            if (insertOptions.insertError) {
+              row = insertOptions.rowAfterInsertError
+                ? { ...insertOptions.rowAfterInsertError }
+                : row;
+              return Promise.resolve({ error: insertOptions.insertError });
+            }
+
+            row = { ...payload };
+            return Promise.resolve({ error: null });
+          },
+          update(payload: Record<string, unknown>) {
+            updates.push(payload);
+            return createUpdateBuilder(() => {
+              const status = String(payload.delivery_status || '');
+              const error = updateErrors[status];
+
+              if (!error) {
+                row = { ...row, ...payload };
+              }
+
+              return { error: error || null };
+            });
+          },
+        };
+      },
+    },
+  };
+}
+
+function createSelectBuilder(readRow: () => Record<string, unknown> | null) {
+  return {
+    eq() {
+      return this;
+    },
+    maybeSingle() {
+      return Promise.resolve({ data: readRow(), error: null });
+    },
+  };
+}
+
+function createUpdateBuilder(resolve: () => { error: { message: string } | null }) {
+  let filters = 0;
+  return {
+    eq() {
+      filters += 1;
+
+      if (filters === 2) {
+        return Promise.resolve(resolve());
+      }
+
+      return this;
+    },
+  };
 }
