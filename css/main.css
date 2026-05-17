@@ -575,9 +575,12 @@ h3 {
 
 .site-footer__grid {
   display: grid;
-  grid-template-columns: minmax(170px, 0.75fr) minmax(0, 1.4fr) minmax(120px, 0.55fr) minmax(120px, 0.55fr);
+  grid-template-columns: minmax(220px, 280px) minmax(180px, 220px) minmax(140px, 180px) minmax(180px, 220px);
+  width: fit-content;
+  margin-inline: auto;
   gap: 28px;
   align-items: start;
+  justify-content: center;
 }
 
 .site-footer__logo {
@@ -602,7 +605,7 @@ h3 {
 }
 
 .site-footer__legal {
-  grid-template-columns: repeat(2, auto);
+  grid-template-columns: 1fr;
 }
 
 .site-footer__legal dt,
@@ -742,6 +745,8 @@ h3 {
   }
 
   .site-footer__grid {
+    width: 100%;
+    margin-inline: 0;
     gap: 18px;
   }
 
@@ -755,7 +760,7 @@ h3 {
   }
 
   .site-footer__legal {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .showcase__grid--reverse .showcase__copy,
@@ -886,7 +891,7 @@ h3 {
   }
 
   .site-footer__legal {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .cookie-banner {

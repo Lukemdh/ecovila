@@ -122,6 +122,21 @@ describe('EcoVila landing page structure', () => {
     assert.match(css, /\.site-footer__logo\s*{[^}]*width:\s*96px/s, 'footer logo should stay small');
     assert.match(
       css,
+      /\.site-footer__grid\s*{[^}]*grid-template-columns:\s*minmax\(220px,\s*280px\)\s+minmax\(180px,\s*220px\)\s+minmax\(140px,\s*180px\)\s+minmax\(180px,\s*220px\)[^}]*width:\s*fit-content[^}]*margin-inline:\s*auto/s,
+      'desktop footer columns should stay compact and center as one group',
+    );
+    assert.match(
+      css,
+      /\.site-footer__legal\s*{[^}]*grid-template-columns:\s*1fr/s,
+      'footer contact details should stack in one column',
+    );
+    assert.doesNotMatch(
+      css,
+      /\.site-footer__legal\s*{[^}]*justify-items:\s*center|\.site-footer__legal\s*{[^}]*text-align:\s*center/s,
+      'footer contact details should align like the other footer columns',
+    );
+    assert.match(
+      css,
       /\.site-footer__legal dt,\s*\.site-footer__social h2,\s*\.site-footer__links h2\s*{[^}]*font-size:\s*0\.68rem/s,
       'footer labels should use small utility text',
     );
