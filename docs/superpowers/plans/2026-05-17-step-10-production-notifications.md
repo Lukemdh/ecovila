@@ -15,8 +15,8 @@
 - `docs/ECOVILA_PROJECT_BRIEF.md`: split the old Step 10 into Steps 10-12 and normalize cancellation wording to the implemented 7-day policy.
 - `docs/tests/edge-functions.test.mjs`: repo-level contract tests for the Step 10 roadmap split, secure secret boundary, and hardened notification-event model.
 - `docs/supabase/functions/tests/reservations-test.ts`: Deno unit coverage for booking-confirmation wording and the notification reservation/delivery helpers.
-- `docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`: add delivery lifecycle fields to `notification_events`.
-- `docs/supabase/functions/_shared/notifications.ts`: reserve events before dispatch, mark sent/failed/skipped outcomes, and update booking confirmation copy from stale 72h wording to 7-day wording while keeping the existing public helper API stable for non-cron callers.
+- `docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`: add delivery lifecycle fields, retry counts, and abandonment state to `notification_events`.
+- `docs/supabase/functions/_shared/notifications.ts`: reserve scheduled events before dispatch, retry failed or stale-reserved attempts up to 3 total tries, mark sent/failed/abandoned/skipped outcomes, and update booking confirmation copy from stale 72h wording to 7-day wording while keeping the existing public helper API stable for non-cron callers.
 - `docs/supabase/functions/send-reminders/index.ts`: use pre-send reservation results so duplicate cron invocations return `skipped_duplicate` instead of sending again.
 - `docs/supabase/functions/expire-cash-reservations/index.ts`: use the same hardened notification lifecycle for expired-cash notices.
 - Supabase project configuration via MCP / platform tools: deploy functions, apply migration, configure scheduled invocations where available, and verify live executions.
@@ -417,6 +417,8 @@ git commit -m "feat: reserve notification events before dispatch"
 ```
 
 ## Task 4: Harden Scheduled Notification Flows
+
+**Approved refinement on 2026-05-17:** scheduled notifications retry until sent with a cap of **3 total attempts**. Failed rows remain retryable while attempts remain; `reserved` rows become retryable after **3 minutes**; the third failed attempt is marked `abandoned`; only sent rows are terminal duplicate suppressors.
 
 **Files:**
 - Modify: `docs/supabase/functions/_shared/notifications.ts`

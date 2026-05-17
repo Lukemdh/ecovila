@@ -85,7 +85,8 @@ The system should make it possible to distinguish:
 
 - a notification that was sent successfully
 - a notification that failed at the provider boundary
-- a reminder that was intentionally skipped because its idempotency event already exists
+- a scheduled notification that is eligible for retry, has been retried, or was abandoned after the allowed attempts
+- a reminder that was intentionally skipped because it was already sent
 - a scheduled function invocation that was rejected because its cron secret was missing or invalid
 
 Where the current implementation is already sufficient, keep it. Where it is too opaque, prefer small targeted additions such as structured logging, clearer provider error propagation, or durable status fields tied to existing notification events.
@@ -104,7 +105,9 @@ Verification should prove four things:
 1. the deployed function can be reached by the scheduler
 2. unauthorized requests are rejected
 3. authorized requests perform the expected reservation/reminder side effects
-4. duplicate reminder sends remain prevented by the existing idempotency model
+4. duplicate reminder sends remain prevented once delivery has succeeded
+5. failed scheduled sends retry at most 3 total attempts, with stale `reserved` attempts becoming retryable after 3 minutes
+6. events are marked `abandoned` after the third failed attempt so support can distinguish exhaustion from a transient failure
 
 ## Provider Prerequisites
 
@@ -123,7 +126,7 @@ Step 10 is complete only when there is evidence at three layers.
 
 - automated tests reflect the new roadmap split
 - browser-visible code still contains no private provider secrets
-- any new hardening behavior is covered by focused tests
+- any new hardening behavior is covered by focused tests, including the 3-attempt retry policy and the 3-minute stale-reservation timeout
 
 ### Function-level verification
 
