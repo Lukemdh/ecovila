@@ -322,6 +322,34 @@ Deno.test('dispatchScheduledNotificationOnce retries reserved rows after 3 minut
   assertEquals(store.updates[0].attempt_count, 2);
 });
 
+Deno.test('dispatchScheduledNotificationOnce keeps a fresh third reserved attempt pending', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore({
+    delivery_status: 'reserved',
+    attempt_count: 3,
+    attempted_at: '2026-05-17T11:58:00.000Z',
+  });
+  let dispatchCount = 0;
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => {
+        dispatchCount += 1;
+        return Promise.resolve(providerResult);
+      },
+    },
+  );
+
+  assertEquals(result, { sent: false, skipped_duplicate: false, retry_pending: true });
+  assertEquals(dispatchCount, 0);
+});
+
 Deno.test('dispatchScheduledNotificationOnce treats sent rows as terminal duplicates', async () => {
   const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
   const store = createNotificationEventStore({

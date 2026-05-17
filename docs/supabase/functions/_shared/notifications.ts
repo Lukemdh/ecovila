@@ -453,15 +453,15 @@ async function claimExistingScheduledNotificationAttempt(
 
   const attemptCount = Number(existing.attempt_count || 1);
 
-  if (attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS) {
-    return { outcome: 'abandoned' as const };
-  }
-
   if (
     existing.delivery_status === 'reserved' &&
     !isStaleReservation(existing.attempted_at, now)
   ) {
     return { outcome: 'retry_pending' as const };
+  }
+
+  if (attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS) {
+    return { outcome: 'abandoned' as const };
   }
 
   const nextAttemptCount = attemptCount + 1;
