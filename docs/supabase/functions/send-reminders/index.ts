@@ -5,7 +5,7 @@ import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   composeArrivalReminder,
   composeCashExpiryReminder,
-  dispatchAndRecordNotification,
+  dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
 
@@ -98,7 +98,7 @@ async function notifyEach(
 
   for (const reservation of reservations) {
     try {
-      const result = await dispatchAndRecordNotification(
+      const result = await dispatchScheduledNotificationOnce(
         client,
         reservation.id,
         eventType,

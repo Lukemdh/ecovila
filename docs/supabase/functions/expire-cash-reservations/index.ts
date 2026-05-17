@@ -3,7 +3,7 @@ import { assertMethod, errorResponse, jsonResponse, requireSharedSecret } from '
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   composeExpiredCashCancellation,
-  dispatchAndRecordNotification,
+  dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
 
@@ -68,7 +68,7 @@ async function notifyExpiredReservations(client: any, reservations: any[]) {
 
   for (const reservation of reservations) {
     try {
-      const result = await dispatchAndRecordNotification(
+      const result = await dispatchScheduledNotificationOnce(
         client,
         reservation.id,
         'cash_expired',

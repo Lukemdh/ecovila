@@ -149,6 +149,30 @@ Deno.test('reserveNotificationEvent returns false for duplicate rows before disp
   assertEquals(inserts.length, 1);
 });
 
+Deno.test('recordNotificationEvent stores non-cron sends as sent lifecycle rows', async () => {
+  const { recordNotificationEvent } = await import('../_shared/notifications.ts');
+  let insertPayload: Record<string, unknown> | undefined;
+  const client = {
+    from() {
+      return {
+        insert(payload: Record<string, unknown>) {
+          insertPayload = payload;
+          return Promise.resolve({ error: null });
+        },
+      };
+    },
+  };
+
+  assertEquals(
+    await recordNotificationEvent(client, 'reservation-a', 'booking_confirmation'),
+    true,
+  );
+
+  assertEquals(insertPayload?.delivery_status, 'sent');
+  assertEquals(insertPayload?.attempted_at, insertPayload?.completed_at);
+  assertEquals(insertPayload?.completed_at, insertPayload?.sent_at);
+});
+
 Deno.test('markNotificationEventSent stores completion timestamps explicitly', async () => {
   const { markNotificationEventSent } = await import('../_shared/notifications.ts');
   let updatePayload: Record<string, unknown> | undefined;

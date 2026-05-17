@@ -285,6 +285,49 @@ export async function dispatchAndRecordNotification(
   message: NotificationMessage,
   metadata: Record<string, unknown> = {},
 ) {
+  const result = await dispatchNotification(message);
+  const recorded = await recordNotificationEvent(client, reservationId, eventType, metadata);
+
+  return { result, recorded };
+}
+
+export async function recordNotificationEvent(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  metadata: Record<string, unknown> = {},
+) {
+  const completionTime = new Date().toISOString();
+  const { error } = await client
+    .from('notification_events')
+    .insert({
+      reservation_id: reservationId,
+      event_type: eventType,
+      delivery_status: 'sent',
+      attempted_at: completionTime,
+      completed_at: completionTime,
+      sent_at: completionTime,
+      metadata,
+    });
+
+  if (!error) {
+    return true;
+  }
+
+  if (error.code === '23505') {
+    return false;
+  }
+
+  throw new Error(error.message || 'Could not record notification event.');
+}
+
+export async function dispatchScheduledNotificationOnce(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  message: NotificationMessage,
+  metadata: Record<string, unknown> = {},
+) {
   const reserved = await reserveNotificationEvent(client, reservationId, eventType, metadata);
 
   if (!reserved) {

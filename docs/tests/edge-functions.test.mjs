@@ -156,16 +156,41 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     const notifications = read('docs/supabase/functions/_shared/notifications.ts');
     const reminders = read('docs/supabase/functions/send-reminders/index.ts');
     const expiry = read('docs/supabase/functions/expire-cash-reservations/index.ts');
+    const createReservation = read('docs/supabase/functions/create-reservation/index.ts');
+    const maibWebhook = read('docs/supabase/functions/maib-webhook/index.ts');
 
     assert.match(notifications, /reserveNotificationEvent/);
     assert.match(notifications, /markNotificationEventSent/);
     assert.match(notifications, /markNotificationEventFailed/);
+    assert.match(notifications, /dispatchScheduledNotificationOnce/);
+    assert.match(reminders, /dispatchScheduledNotificationOnce/);
+    assert.match(expiry, /dispatchScheduledNotificationOnce/);
     assert.match(reminders, /skipped_duplicate/);
     assert.match(expiry, /skipped_duplicate/);
-    assert.doesNotMatch(
+    assert.match(
       notifications,
-      /dispatchNotification\(message\)[\s\S]*recordNotificationEvent/,
-      'dispatch should no longer happen before duplicate reservation succeeds',
+      /export async function dispatchAndRecordNotification[\s\S]*return \{ result, recorded \};/,
+      'non-cron notification callers should keep the public helper return shape',
+    );
+    assert.match(
+      createReservation,
+      /dispatchAndRecordNotification/,
+      'guest confirmation should keep using the non-cron helper',
+    );
+    assert.match(
+      maibWebhook,
+      /dispatchAndRecordNotification/,
+      'Maib confirmation should keep using the non-cron helper',
+    );
+    assert.doesNotMatch(
+      createReservation,
+      /dispatchScheduledNotificationOnce/,
+      'guest confirmation should not inherit scheduled duplicate-skip semantics',
+    );
+    assert.doesNotMatch(
+      maibWebhook,
+      /dispatchScheduledNotificationOnce/,
+      'Maib confirmation should not inherit scheduled duplicate-skip semantics',
     );
   });
 
