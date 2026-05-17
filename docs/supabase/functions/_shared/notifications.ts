@@ -381,7 +381,6 @@ export async function dispatchScheduledNotificationOnce(
       eventType,
       error,
       claim.attemptCount,
-      now,
     );
     throw error;
   }
@@ -461,27 +460,40 @@ async function claimExistingScheduledNotificationAttempt(
   }
 
   if (attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS) {
-    return { outcome: 'abandoned' as const };
+    const abandoned = await updateScheduledNotificationIfUnchanged(
+      client,
+      reservationId,
+      eventType,
+      existing,
+      {
+        delivery_status: 'abandoned',
+        completed_at: now.toISOString(),
+      },
+    );
+
+    return abandoned
+      ? { outcome: 'abandoned' as const }
+      : { outcome: 'retry_pending' as const };
   }
 
   const nextAttemptCount = attemptCount + 1;
-  const { error } = await client
-    .from('notification_events')
-    .update({
+  const claimed = await updateScheduledNotificationIfUnchanged(
+    client,
+    reservationId,
+    eventType,
+    existing,
+    {
       delivery_status: 'reserved',
       attempt_count: nextAttemptCount,
       attempted_at: now.toISOString(),
       completed_at: null,
       last_error: null,
-    })
-    .eq('reservation_id', reservationId)
-    .eq('event_type', eventType);
+    },
+  );
 
-  if (error) {
-    throw new Error(error.message || 'Could not claim notification retry attempt.');
-  }
-
-  return { outcome: 'claimed' as const, attemptCount: nextAttemptCount };
+  return claimed
+    ? { outcome: 'claimed' as const, attemptCount: nextAttemptCount }
+    : { outcome: 'retry_pending' as const };
 }
 
 async function readNotificationEvent(
@@ -501,6 +513,36 @@ async function readNotificationEvent(
   }
 
   return data || null;
+}
+
+async function updateScheduledNotificationIfUnchanged(
+  client: any,
+  reservationId: string,
+  eventType: string,
+  existing: NotificationEventRow,
+  patch: Record<string, unknown>,
+) {
+  let query = client
+    .from('notification_events')
+    .update(patch)
+    .eq('reservation_id', reservationId)
+    .eq('event_type', eventType)
+    .eq('delivery_status', existing.delivery_status)
+    .eq('attempt_count', existing.attempt_count);
+
+  query = existing.attempted_at === null
+    ? query.is('attempted_at', null)
+    : query.eq('attempted_at', existing.attempted_at);
+
+  const { data, error } = await query
+    .select('attempt_count')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Could not claim notification retry attempt.');
+  }
+
+  return Boolean(data);
 }
 
 function isStaleReservation(attemptedAt: string | null, now: Date) {

@@ -350,6 +350,73 @@ Deno.test('dispatchScheduledNotificationOnce keeps a fresh third reserved attemp
   assertEquals(dispatchCount, 0);
 });
 
+Deno.test('dispatchScheduledNotificationOnce persists stale third reserved attempts as abandoned', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore({
+    delivery_status: 'reserved',
+    attempt_count: 3,
+    attempted_at: '2026-05-17T11:56:00.000Z',
+  });
+  let dispatchCount = 0;
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => {
+        dispatchCount += 1;
+        return Promise.resolve(providerResult);
+      },
+    },
+  );
+
+  assertEquals(result, { sent: false, skipped_duplicate: false, abandoned: true });
+  assertEquals(dispatchCount, 0);
+  assertEquals(store.updates.map((update) => update.delivery_status), ['abandoned']);
+});
+
+Deno.test('dispatchScheduledNotificationOnce only dispatches the retry invocation that wins the guarded claim', async () => {
+  const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
+  const store = createNotificationEventStore(
+    {
+      delivery_status: 'failed',
+      attempt_count: 1,
+      attempted_at: '2026-05-17T11:59:00.000Z',
+    },
+    {},
+    {
+      rowBeforeRetryClaim: {
+        delivery_status: 'reserved',
+        attempt_count: 2,
+        attempted_at: '2026-05-17T12:00:00.000Z',
+      },
+    },
+  );
+  let dispatchCount = 0;
+
+  const result = await dispatchScheduledNotificationOnce(
+    store.client,
+    'reservation-a',
+    'arrival_24h',
+    scheduledMessage,
+    {},
+    {
+      now: new Date('2026-05-17T12:00:00.000Z'),
+      dispatch: () => {
+        dispatchCount += 1;
+        return Promise.resolve(providerResult);
+      },
+    },
+  );
+
+  assertEquals(result, { sent: false, skipped_duplicate: false, retry_pending: true });
+  assertEquals(dispatchCount, 0);
+});
+
 Deno.test('dispatchScheduledNotificationOnce treats sent rows as terminal duplicates', async () => {
   const { dispatchScheduledNotificationOnce } = await import('../_shared/notifications.ts');
   const store = createNotificationEventStore({
@@ -432,6 +499,10 @@ Deno.test('dispatchScheduledNotificationOnce abandons the third provider failure
 
   assertEquals(store.updates[0].attempt_count, 3);
   assertEquals(store.updates[1].delivery_status, 'abandoned');
+  assertEquals(
+    store.updates[1].completed_at === '2026-05-17T12:00:00.000Z',
+    false,
+  );
 });
 
 Deno.test('dispatchScheduledNotificationOnce does not rewrite post-send persistence errors as provider failures', async () => {
@@ -548,11 +619,15 @@ function createNotificationEventStore(
   insertOptions: {
     insertError?: { code: string };
     rowAfterInsertError?: Record<string, unknown>;
+    rowBeforeRetryClaim?: Record<string, unknown>;
   } = {},
 ) {
-  let row = initialRow ? { ...initialRow } : null;
+  let row: Record<string, unknown> | null = initialRow
+    ? withNotificationEventIdentity(initialRow)
+    : null;
   const inserts: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
+  let simulatedRetryClaimRace = false;
 
   return {
     inserts,
@@ -568,7 +643,7 @@ function createNotificationEventStore(
 
             if (insertOptions.insertError) {
               row = insertOptions.rowAfterInsertError
-                ? { ...insertOptions.rowAfterInsertError }
+                ? withNotificationEventIdentity(insertOptions.rowAfterInsertError)
                 : row;
               return Promise.resolve({ error: insertOptions.insertError });
             }
@@ -578,20 +653,47 @@ function createNotificationEventStore(
           },
           update(payload: Record<string, unknown>) {
             updates.push(payload);
-            return createUpdateBuilder(() => {
-              const status = String(payload.delivery_status || '');
-              const error = updateErrors[status];
+            return createUpdateBuilder(
+              (filters) => {
+                if (
+                  insertOptions.rowBeforeRetryClaim &&
+                  !simulatedRetryClaimRace &&
+                  payload.delivery_status === 'reserved' &&
+                  Number(payload.attempt_count) > 1
+                ) {
+                  row = withNotificationEventIdentity(insertOptions.rowBeforeRetryClaim);
+                  simulatedRetryClaimRace = true;
+                }
 
-              if (!error) {
-                row = { ...row, ...payload };
-              }
+                const rowMatches = row &&
+                  filters.every(({ column, value }) => row?.[column] === value);
 
-              return { error: error || null };
-            });
+                if (!rowMatches) {
+                  return { data: null, error: null };
+                }
+
+                const status = String(payload.delivery_status || '');
+                const error = updateErrors[status];
+
+                if (!error) {
+                  row = { ...row, ...payload };
+                }
+
+                return { data: error ? null : row, error: error || null };
+              },
+            );
           },
         };
       },
     },
+  };
+}
+
+function withNotificationEventIdentity(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    reservation_id: 'reservation-a',
+    event_type: 'arrival_24h',
+    ...row,
   };
 }
 
@@ -606,17 +708,36 @@ function createSelectBuilder(readRow: () => Record<string, unknown> | null) {
   };
 }
 
-function createUpdateBuilder(resolve: () => { error: { message: string } | null }) {
-  let filters = 0;
-  return {
-    eq() {
-      filters += 1;
-
-      if (filters === 2) {
-        return Promise.resolve(resolve());
-      }
-
-      return this;
+function createUpdateBuilder(
+  resolve: (
+    filters: Array<{ column: string; value: unknown }>,
+  ) => { data: Record<string, unknown> | null; error: { message: string } | null },
+) {
+  const filters: Array<{ column: string; value: unknown }> = [];
+  const builder = {
+    eq(column: string, value: unknown) {
+      filters.push({ column, value });
+      return builder;
+    },
+    is(column: string, value: unknown) {
+      filters.push({ column, value });
+      return builder;
+    },
+    select() {
+      return builder;
+    },
+    maybeSingle() {
+      return Promise.resolve(resolve(filters));
+    },
+    then(
+      onfulfilled?: (
+        value: { data: Record<string, unknown> | null; error: { message: string } | null },
+      ) => unknown,
+      onrejected?: (reason: unknown) => unknown,
+    ) {
+      return Promise.resolve(resolve(filters)).then(onfulfilled, onrejected);
     },
   };
+
+  return builder;
 }
