@@ -167,6 +167,205 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.crm-child-buckets {
+  display: grid;
+  gap: 10px;
+}
+
+.crm-child-bucket-row {
+  display: grid;
+  gap: 7px;
+}
+
+.crm-child-bucket-row > span {
+  font-size: 0.72rem;
+}
+
+.crm-child-bucket-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.crm-child-bucket-option {
+  position: relative;
+  display: block;
+}
+
+.crm-child-bucket-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.crm-child-bucket-option span {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  border: 1px solid var(--crm-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--crm-ink);
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.crm-child-bucket-option input:checked + span {
+  border-color: var(--crm-moss);
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+.crm-child-bucket-option input:focus-visible + span {
+  outline: 3px solid rgba(96, 108, 56, 0.18);
+  outline-offset: 1px;
+}
+
+.crm-add-date-picker {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.crm-add-date-picker > span {
+  color: var(--crm-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.crm-add-date-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.crm-add-date-summary button {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  border: 1px solid var(--crm-line);
+  background: #fff;
+  color: var(--crm-ink);
+  cursor: pointer;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.crm-add-date-summary button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.crm-add-date-summary button:last-child {
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.crm-add-date-summary button span {
+  color: var(--crm-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.crm-add-date-summary button strong {
+  font-size: 0.92rem;
+}
+
+.crm-add-date-summary button:hover,
+.crm-add-date-summary button:focus-visible {
+  border-color: var(--crm-moss);
+}
+
+.crm-add-range-calendar {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 18;
+  display: grid;
+  gap: 10px;
+  width: min(304px, calc(100vw - 48px));
+  border: 1px solid var(--crm-line);
+  border-radius: 10px;
+  background: var(--crm-panel);
+  box-shadow: 0 18px 34px rgba(39, 48, 39, 0.16);
+  padding: 12px;
+}
+
+.crm-add-range-calendar__header,
+.crm-add-range-calendar__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crm-add-range-calendar__header strong {
+  font-size: 0.9rem;
+}
+
+.crm-add-range-calendar__weekdays,
+.crm-add-range-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.crm-add-range-calendar__weekdays {
+  color: var(--crm-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.crm-add-range-calendar__grid button {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--crm-ink);
+  cursor: pointer;
+  font-size: 0.76rem;
+}
+
+.crm-add-range-calendar__grid button:hover:not(:disabled) {
+  border-color: var(--crm-moss);
+}
+
+.crm-add-range-calendar__grid button.is-muted {
+  color: #a39b8f;
+}
+
+.crm-add-range-calendar__grid button.is-in-range {
+  background: rgba(96, 108, 56, 0.12);
+}
+
+.crm-add-range-calendar__grid button.is-selected {
+  border-color: var(--crm-moss);
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+.crm-add-range-calendar__grid button.is-unavailable,
+.crm-add-range-calendar__grid button:disabled {
+  color: #b7b0a5;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.crm-add-range-calendar__footer button {
+  border: 0;
+  background: transparent;
+  color: var(--crm-moss);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 5px 0;
+}
+
+.crm-add-range-calendar__footer button:last-child {
+  border-radius: 999px;
+  background: var(--crm-moss);
+  color: #fff;
+  padding: 7px 12px;
+}
+
 .crm-field--inline {
   grid-template-columns: 180px 1fr;
   align-items: center;
@@ -624,6 +823,9 @@ h2 {
 
 .crm-reservation-card--multi-row {
   align-self: stretch;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
 }
 
 .crm-reservation-card strong,

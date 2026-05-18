@@ -67,7 +67,7 @@ describe('EcoVila Supabase foundation migration', () => {
     assert.match(sql, /type in \('small', 'large', 'hotel'\)/i, 'room type should be constrained');
     assert.match(sql, /nights_tier in \(1, 2, 3\)/i, 'pricing tier should be constrained');
     assert.match(sql, /day_type in \('weekday', 'holiday'\)/i, 'day type should be constrained');
-    assert.match(sql, /payment_type in \('cash', 'card'\)/i, 'payment type should be constrained');
+    assert.match(allSql, /payment_type in \('cash', 'card', 'office'\)/i, 'payment type should be constrained');
     assert.match(
       sql,
       /payment_status in \('pending', 'paid', 'cancelled'\)/i,

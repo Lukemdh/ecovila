@@ -14,6 +14,38 @@ function read(relativePath) {
 }
 
 describe('EcoVila Step 7 Supabase Edge Functions', () => {
+  it('keeps a live human-readable Maib payment module under payments/', () => {
+    for (const file of [
+      'payments/README.md',
+      'payments/maib/README.md',
+      'payments/maib/browser-adapter.js',
+      'payments/maib/examples/callback-approved.json',
+      'payments/maib/examples/callback-failed.json',
+    ]) {
+      assert.ok(exists(file), `${file} should exist`);
+    }
+
+    const adapter = read('payments/maib/browser-adapter.js');
+    const maibReadme = read('payments/maib/README.md');
+    const approved = JSON.parse(read('payments/maib/examples/callback-approved.json'));
+    const failed = JSON.parse(read('payments/maib/examples/callback-failed.json'));
+
+    assert.match(adapter, /startCardPayment/, 'browser adapter should expose the Maib start hook');
+    assert.match(maibReadme, /browser-adapter\.js/, 'Maib docs should point technicians to the live browser adapter');
+    assert.match(
+      maibReadme,
+      /docs\/supabase\/functions\/maib-webhook\/index\.ts/,
+      'Maib docs should point technicians to the deployable webhook entrypoint',
+    );
+
+    for (const payload of [approved, failed]) {
+      assert.ok(payload.result?.orderId, 'callback example should include result.orderId');
+      assert.ok(payload.result?.status, 'callback example should include result.status');
+      assert.ok(payload.result?.statusCode, 'callback example should include result.statusCode');
+      assert.ok(payload.signature, 'callback example should include signature');
+    }
+  });
+
   it('creates the Supabase Edge Function workspace with shared modules and tests', () => {
     for (const file of [
       'docs/supabase/config.toml',
@@ -54,7 +86,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'js/checkout.js',
       'checkout.html',
       'rezervari.html',
-      'index.html',
+      'site.html',
     ].map(read).join('\n');
 
     for (const secret of [

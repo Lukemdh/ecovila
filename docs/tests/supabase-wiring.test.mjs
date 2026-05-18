@@ -25,7 +25,7 @@ describe('EcoVila live Supabase wiring', () => {
 
   it('loads Supabase config before the shared Supabase helper on every connected page', () => {
     const pages = [
-      ['index.html', 'js/supabase-config.js', 'js/supabase.js'],
+      ['site.html', 'js/supabase-config.js', 'js/supabase.js'],
       ['rezervari.html', 'js/supabase-config.js', 'js/supabase.js'],
       ['checkout.html', 'js/supabase-config.js', 'js/supabase.js'],
       ['admin/index.html', '../js/supabase-config.js', '../js/supabase.js'],
@@ -44,7 +44,7 @@ describe('EcoVila live Supabase wiring', () => {
   });
 
   it('wires published CRM photos into the public website and booking galleries', () => {
-    const landingHtml = read('index.html');
+    const landingHtml = read('site.html');
     const mainJs = read('js/main.js');
     const bookingJs = read('js/booking.js');
 
@@ -59,7 +59,7 @@ describe('EcoVila live Supabase wiring', () => {
   });
 
   it('maps Landing tab photos to homepage slots after the hardcoded hero media', () => {
-    const landingHtml = read('index.html');
+    const landingHtml = read('site.html');
     const heroTag = landingHtml.match(/<section class="hero"[\s\S]*?>/)?.[0] || '';
     const landingSlotIndexes = Array.from(
       landingHtml.matchAll(/<img[^>]+data-photo-section="landing"[^>]+data-photo-index="(\d+)"/g),

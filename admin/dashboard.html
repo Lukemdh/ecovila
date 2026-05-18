@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EcoVila CRM | Dashboard</title>
     <meta name="description" content="CRM EcoVila pentru rezervări, recepție, poze și prețuri.">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -83,10 +86,12 @@
                   <input type="number" min="0" value="0" data-add-kids>
                 </label>
               </div>
-              <label class="crm-field">
+              <div class="crm-field crm-child-bucket-field">
                 <span>Vârste copii</span>
-                <input type="text" placeholder="5, 8, 12" data-add-kids-ages>
-              </label>
+                <div class="crm-child-buckets" data-add-child-buckets>
+                  <p class="crm-empty">Adaugă copii pentru a selecta intervalele de vârstă.</p>
+                </div>
+              </div>
               <label class="crm-field">
                 <span>Căsuțe</span>
                 <input type="text" placeholder="3, 11, 18" data-add-room-numbers>
@@ -95,15 +100,41 @@
                 <input type="checkbox" data-add-conference>
                 <span>Cameră de conferință</span>
               </label>
-              <div class="crm-form-grid crm-form-grid--two">
-                <label class="crm-field">
-                  <span>Check-in</span>
-                  <input type="date" data-add-check-in>
-                </label>
-                <label class="crm-field">
-                  <span>Check-out</span>
-                  <input type="date" data-add-check-out>
-                </label>
+              <div class="crm-add-date-picker" data-add-date-picker>
+                <span>Perioadă</span>
+                <div class="crm-add-date-summary" data-add-date-summary>
+                  <button type="button" data-add-focus-calendar>
+                    <span>Check-in</span>
+                    <strong data-add-check-in-label>--</strong>
+                  </button>
+                  <button type="button" data-add-focus-calendar>
+                    <span>Check-out</span>
+                    <strong data-add-check-out-label>--</strong>
+                  </button>
+                </div>
+                <input type="hidden" data-add-check-in>
+                <input type="hidden" data-add-check-out>
+                <div class="crm-add-range-calendar" data-add-range-calendar hidden>
+                  <div class="crm-add-range-calendar__header">
+                    <button class="crm-date-button" type="button" data-add-calendar-prev aria-label="Luna precedentă">‹</button>
+                    <strong data-add-calendar-title>Mai 2026</strong>
+                    <button class="crm-date-button" type="button" data-add-calendar-next aria-label="Luna următoare">›</button>
+                  </div>
+                  <div class="crm-add-range-calendar__weekdays" aria-hidden="true">
+                    <span>L</span>
+                    <span>Ma</span>
+                    <span>Mi</span>
+                    <span>J</span>
+                    <span>V</span>
+                    <span>S</span>
+                    <span>D</span>
+                  </div>
+                  <div class="crm-add-range-calendar__grid" data-add-calendar-grid></div>
+                  <div class="crm-add-range-calendar__footer">
+                    <button type="button" data-add-calendar-clear>Șterge</button>
+                    <button type="button" data-add-calendar-apply>Aplică</button>
+                  </div>
+                </div>
               </div>
               <label class="crm-field">
                 <span>Prenume</span>
@@ -120,13 +151,6 @@
               <label class="crm-field">
                 <span>Email</span>
                 <input type="email" data-add-email>
-              </label>
-              <label class="crm-field">
-                <span>Plată</span>
-                <select data-add-payment-type>
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
               </label>
               <label class="crm-field">
                 <span>Note</span>
@@ -483,6 +507,7 @@
     <script src="../js/supabase-config.js"></script>
     <script src="../js/supabase.js"></script>
     <script src="../js/pricing.js"></script>
+    <script src="../js/calendar.js"></script>
     <script src="js/crm-calendar.js"></script>
     <script src="js/crm-sidebar.js"></script>
     <script src="js/crm-dashboard.js"></script>

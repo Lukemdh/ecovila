@@ -83,7 +83,7 @@ describe('EcoVila Step 8 legal pages', () => {
 
   it('keeps existing public links pointed at the new legal pages', () => {
     for (const file of [
-      'index.html',
+      'site.html',
       'rezervari.html',
       'checkout.html',
       'confirmare.html',

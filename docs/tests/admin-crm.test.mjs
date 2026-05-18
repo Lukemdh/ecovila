@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
 
 const root = path.resolve(import.meta.dirname, '../..');
+const require = createRequire(import.meta.url);
+const pricing = require('../../js/pricing.js');
+const calendar = require('../../js/calendar.js');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -35,6 +39,10 @@ function formWithFields(fields) {
   return {
     querySelector(selector) {
       return fields[selector] || null;
+    },
+    querySelectorAll(selector) {
+      const result = fields[selector];
+      return Array.isArray(result) ? result : [];
     },
   };
 }
@@ -139,6 +147,16 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboardJs, /cash_expires_at:\s*null/i);
   });
 
+  it('renders the staff add form with age buckets, a range calendar, and no payment selector', () => {
+    const dashboard = read('admin/dashboard.html');
+
+    assert.match(dashboard, /data-add-child-buckets/);
+    assert.match(dashboard, /data-add-date-picker/);
+    assert.match(dashboard, /data-add-calendar-grid/);
+    assert.match(dashboard, /data-add-calendar-apply/);
+    assert.doesNotMatch(dashboard, /data-add-payment-type/);
+  });
+
   it('groups multi-room bookings into one calendar block across occupied rooms and days', () => {
     const { EcoVilaCrmCalendar: calendar } = loadAdminModule('admin/js/crm-calendar.js');
     const rooms = Array.from({ length: 6 }, (_, index) => ({
@@ -203,12 +221,88 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(pending[0].totalPrice, 2500);
   });
 
-  it('creates one staff booking group for multiple cash rooms', () => {
+  it('maps CRM child buckets, validates exact rooms, and totals mixed room selections once per group', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaCalendar: calendar,
+    });
+    const rooms = [
+      { id: 'room-3', number: 3, type: 'small', is_active: true },
+      { id: 'room-11', number: 11, type: 'large', is_active: true },
+    ];
+    const reservations = [
+      {
+        room_id: 'room-11',
+        check_in: '2026-05-18',
+        check_out: '2026-05-19',
+        payment_status: 'paid',
+        cancelled_at: null,
+      },
+    ];
+    const pricingTiers = [
+      { nights_tier: 1, day_type: 'weekday', adult_price: 1100, kid_price: 900, effective_from: '2026-05-06' },
+      { nights_tier: 1, day_type: 'holiday', adult_price: 1300, kid_price: 1000, effective_from: '2026-05-06' },
+    ];
+
+    assert.deepEqual(Array.from(sidebar.bucketValuesToAges(['0-3', '4-11', '12+'])), [3, 4, 12]);
+    assert.equal(
+      sidebar.areSelectedRoomsAvailable({
+        rooms,
+        reservations,
+        roomNumbers: [3],
+        checkIn: '2026-05-18',
+        checkOut: '2026-05-19',
+      }),
+      true,
+    );
+    assert.equal(
+      sidebar.areSelectedRoomsAvailable({
+        rooms,
+        reservations,
+        roomNumbers: [3, 11],
+        checkIn: '2026-05-18',
+        checkOut: '2026-05-19',
+      }),
+      false,
+    );
+    assert.equal(
+      sidebar.calculateStaffTotal({
+        rooms,
+        roomNumbers: [3, 11],
+        adults: 4,
+        kidsAges: [3, 4, 12],
+        checkIn: '2026-05-18',
+        checkOut: '2026-05-19',
+        pricingTiers,
+        holidays: [],
+        createdOn: '2026-05-17',
+      }).total,
+      6400,
+      'mixed-room pricing should apply the combined 5-adult room floor once to the one guest group',
+    );
+  });
+
+  it('keeps the CRM range calendar open when a rerendered calendar click originated inside the picker', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const detachedDateButton = { closest() { return null; } };
+    const pickerNode = { dataset: { addDatePicker: '' } };
+
+    assert.equal(
+      sidebar.isClickInsideAddDatePicker({
+        target: detachedDateButton,
+        composedPath() {
+          return [detachedDateButton, pickerNode];
+        },
+      }),
+      true,
+    );
+  });
+
+  it('creates one paid din oficiu staff booking group for multiple rooms', () => {
     const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
     const rows = sidebar.buildStaffReservationRows(
       formWithFields({
         '[data-add-room-numbers]': field('3, 4, 5'),
-        '[data-add-payment-type]': field('cash'),
         '[data-add-first-name]': field('Alina'),
         '[data-add-last-name]': field('Auzeac'),
         '[data-add-phone]': field('+37369857607'),
@@ -216,7 +310,7 @@ describe('EcoVila Step 9 CRM', () => {
         '[data-add-check-in]': field('2026-05-11'),
         '[data-add-check-out]': field('2026-05-20'),
         '[data-add-adults]': field('2'),
-        '[data-add-kids-ages]': field(''),
+        '[data-add-child-bucket]:checked': [],
         '[data-add-total]': field('', { dataset: { total: '9000' } }),
         '[data-add-conference]': field('', { checked: false }),
         '[data-add-notes]': field(''),
@@ -235,7 +329,16 @@ describe('EcoVila Step 9 CRM', () => {
 
     assert.equal(rows.length, 3);
     assert.deepEqual(Array.from(new Set(Array.from(rows, (row) => row.booking_group_id))), ['staff-group']);
-    assert.deepEqual(Array.from(rows, (row) => row.payment_status), ['pending', 'pending', 'pending']);
+    assert.deepEqual(Array.from(rows, (row) => row.payment_type), ['office', 'office', 'office']);
+    assert.deepEqual(Array.from(rows, (row) => row.payment_status), ['paid', 'paid', 'paid']);
+    assert.deepEqual(Array.from(rows, (row) => row.cash_expires_at), [null, null, null]);
+  });
+
+  it('renders din oficiu as a CRM detail payment label', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+
+    assert.match(dashboardJs, /office:\s*'din oficiu'/);
+    assert.match(dashboardJs, /PAYMENT_LABELS/);
   });
 
   it('adds collapsible sidebar, current-month navigation, jump date, and today stats hooks', () => {
@@ -301,6 +404,15 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(css, /\.crm-reservation-card--block\s*\{[\s\S]*z-index:\s*[1-4][\s\S]*align-self:\s*end/i);
     assert.match(css, /\.crm-reservation-card--multi-row\s*\{[\s\S]*align-self:\s*stretch/i);
     assert.match(dashboardJs, /block\.rowSpan > 1/);
+  });
+
+  it('centers tall multi-villa reservation cards as one content stack', () => {
+    const css = read('css/crm.css');
+
+    assert.match(
+      css,
+      /\.crm-reservation-card--multi-row\s*\{[\s\S]*align-content:\s*center[\s\S]*justify-items:\s*center[\s\S]*text-align:\s*center/i,
+    );
   });
 
   it('implements the shared daily reception workflow', () => {

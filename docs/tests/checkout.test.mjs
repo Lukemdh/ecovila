@@ -42,10 +42,16 @@ describe('EcoVila Step 5 checkout', () => {
       'js/pricing.js',
       'js/supabase.js',
       'js/main.js',
+      'payments/maib/browser-adapter.js',
       'js/checkout.js',
     ]) {
       assert.match(html, new RegExp(`src="${script}"`), `${script} should be loaded`);
     }
+
+    assert.ok(
+      html.indexOf('src="payments/maib/browser-adapter.js"') < html.indexOf('src="js/checkout.js"'),
+      'checkout should load the live Maib adapter before checkout.js uses it',
+    );
   });
 
   it('uses the alternate logo artwork in the checkout footer', () => {

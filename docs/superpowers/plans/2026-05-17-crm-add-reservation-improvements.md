@@ -15,7 +15,7 @@
 - `docs/tests/admin-crm.test.mjs`: CRM contract tests for the add form, office reservation rows, exact-room helpers, and total calculation.
 - `docs/tests/supabase-foundation.test.mjs`: reservation payment-type constraint coverage.
 - `admin/dashboard.html`: CRM add-form markup and script dependency order.
-- `admin/js/crm-sidebar.js`: add-form pure helpers, dynamic child-bucket rendering, date picker state, quote updates, and office reservation creation.
+- `admin/js/crm-sidebar.js`: add-form pure helpers, dynamic child-bucket rendering, date picker state, group-level mixed-room quote updates, and office reservation creation.
 - `admin/js/crm-dashboard.js`: dashboard state loading for pricing tiers/holidays and readable payment labels.
 - `css/crm.css`: child-bucket controls and CRM date-range calendar styling.
 - `js/calendar.js`: shared selected-room range availability helper.
@@ -228,7 +228,7 @@ function bucketValuesToAges(values) {
 
 function selectedRoomsFromNumbers(rooms, roomNumbers) { /* exact known-room lookup */ }
 function areSelectedRoomsAvailable(input) { /* call shared calendar.areRoomsAvailable */ }
-function calculateStaffTotal(input) { /* sum calculateStayPrice per selected room type */ }
+function calculateStaffTotal(input) { /* quote one guest group across selected rooms with combined minimum adult floors */ }
 ```
 
 - [ ] **Step 3: Switch created rows to office reservations**

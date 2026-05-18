@@ -4,6 +4,13 @@
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
 
+  const ADD_RESERVATION_LOOKAHEAD_DAYS = 365;
+  const PAYMENT_LABELS = {
+    office: 'din oficiu',
+    cash: 'cash',
+    card: 'card',
+  };
+
   function qs(selector, scope) {
     return (scope || root.document).querySelector(selector);
   }
@@ -265,7 +272,8 @@
     qs('[data-edit-name]', dialog).value = root.EcoVilaCrmCalendar.guestName(reservation);
     qs('[data-edit-phone]', dialog).value = reservation.guest_phone || '';
     qs('[data-edit-notes]', dialog).value = reservation.notes || '';
-    qs('[data-edit-payment]', dialog).textContent = `Tip plată: ${reservation.payment_type} · ${reservation.payment_status}`;
+    const paymentLabel = PAYMENT_LABELS[reservation.payment_type] || reservation.payment_type || '-';
+    qs('[data-edit-payment]', dialog).textContent = `Tip plată: ${paymentLabel} · ${reservation.payment_status}`;
     qs('[data-edit-total]', dialog).textContent = `Preț total: ${root.EcoVilaCrmApp.formatMDL(reservation.total_price)}`;
     qs('[data-delete-reservation]', dialog).onclick = () => deleteReservation(reservation);
     dialog.showModal?.();
@@ -344,18 +352,28 @@
     const endDate = root.EcoVilaCrmCalendar.addDays(state.dates[state.dates.length - 1], 1);
     const todayWindowStart = root.EcoVilaCrmCalendar.addDays(state.today, -1);
     const todayWindowEnd = root.EcoVilaCrmCalendar.addDays(state.today, 1);
-    const [rooms, reservations, pending, todayReservations] = await Promise.all([
+    const addAvailabilityStart = state.today;
+    const addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(addAvailabilityStart, ADD_RESERVATION_LOOKAHEAD_DAYS);
+    const [rooms, reservations, pending, todayReservations, pricingTiers, holidays, addReservations] = await Promise.all([
       helpers.fetchRooms(context.client),
       helpers.fetchAdminReservations(context.client, { startDate: state.startDate, endDate }),
       helpers.fetchPendingCashReservations(context.client),
       helpers.fetchAdminReservations(context.client, { startDate: todayWindowStart, endDate: todayWindowEnd }),
+      helpers.fetchPricingTiers(context.client),
+      helpers.fetchHolidays(context.client),
+      helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
     ]);
     state.rooms = rooms;
     state.reservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
     state.todayReservations = root.EcoVilaCrmCalendar.sortReservations(todayReservations);
+    state.pricingTiers = pricingTiers;
+    state.holidays = holidays;
+    state.addReservations = root.EcoVilaCrmCalendar.sortReservations(addReservations);
+    state.addAvailabilityEnd = addAvailabilityEnd;
     renderCalendar(context, state);
     renderPendingCash(context, pending);
     renderTodayStats(state);
+    state.refreshAddReservationForm?.();
     scrollCalendarToDate(state, state.focusDate || state.today);
   }
 
@@ -370,6 +388,10 @@
       rooms: [],
       reservations: [],
       todayReservations: [],
+      pricingTiers: [],
+      holidays: [],
+      addReservations: [],
+      addAvailabilityEnd: '',
       reload: () => loadDashboard(context, state),
       openReservation,
     };

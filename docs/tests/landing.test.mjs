@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const requiredFiles = [
-  'index.html',
+  'site.html',
   'css/main.css',
   'js/main.js',
   'js/translations.js',
@@ -54,7 +54,7 @@ describe('EcoVila landing page structure', () => {
   });
 
   it('includes all required landing sections and public CTAs', () => {
-    const html = read('index.html');
+    const html = read('site.html');
     const sections = [
       'hero',
       'spa',
@@ -77,7 +77,7 @@ describe('EcoVila landing page structure', () => {
   });
 
   it('references only local assets that exist', () => {
-    const html = read('index.html');
+    const html = read('site.html');
     const css = read('css/main.css');
     const combined = `${html}\n${css}`;
     const assetReferences = [...combined.matchAll(/["'(]\/?(assets\/[^"')]+)["')]/g)].map(
@@ -92,7 +92,7 @@ describe('EcoVila landing page structure', () => {
   });
 
   it('uses the alternate logo artwork in the footer', () => {
-    const html = read('index.html');
+    const html = read('site.html');
     const footer = footerMarkup(html);
 
     assert.match(footer, /src="\/assets\/logoNT\.png"/, 'footer should use the alternate PNG logo');
@@ -100,7 +100,7 @@ describe('EcoVila landing page structure', () => {
 
   it('defines the editorial hospitality design language and translation surface', () => {
     const css = read('css/main.css');
-    const html = read('index.html');
+    const html = read('site.html');
     const translations = read('js/translations.js');
 
     assert.doesNotMatch(html, /class="primary-nav"/, 'header should not include a copied white pill navigation');

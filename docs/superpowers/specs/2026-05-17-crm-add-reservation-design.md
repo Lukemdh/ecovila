@@ -53,7 +53,7 @@ The create form no longer shows a payment selector. CRM-created reservations use
 - room numbers
 - check-in/check-out range
 
-Each selected room is priced according to its own accommodation type, using current shared pricing tiers and holidays from Supabase. The total for a multi-room staff booking is the sum of the selected rooms' quotes.
+Selected rooms are priced as one guest group spanning several rooms, using current shared pricing tiers and holidays from Supabase. For mixed-room bookings, the adult minimums of the selected rooms are combined once across the group, then the group is billed once per night; the same guests are not duplicated per villa.
 
 If the form is incomplete or invalid, total remains `0 MDL` until a valid quote can be computed. Invalid states include missing dates, missing room numbers, unknown room numbers, missing child buckets, mixed unavailable rooms, or unavailable date ranges.
 

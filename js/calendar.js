@@ -58,6 +58,17 @@
     });
   }
 
+  function areRoomsAvailable(input) {
+    return (input.roomIds || []).every((roomId) => {
+      return isRoomAvailable({
+        roomId,
+        reservations: input.reservations || [],
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
+      });
+    });
+  }
+
   function getAvailableRooms(input) {
     return (input.rooms || []).filter((room) => {
       return (
@@ -259,6 +270,7 @@
   }
 
   return {
+    areRoomsAvailable,
     chooseRoomsForAssignment,
     findEarliestAvailability,
     getAvailabilityByType,
