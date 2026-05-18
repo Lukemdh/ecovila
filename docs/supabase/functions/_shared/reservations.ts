@@ -1,7 +1,7 @@
 export const CASH_EXPIRY_MINUTES = 30;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const PHONE_PATTERN = /^\+373\d{8}$/;
+const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type ReservationInput = {
@@ -128,7 +128,7 @@ export async function createReservationsWithTokens(
   };
 }
 
-export function normalizeMoldovaPhone(value: unknown) {
+export function normalizeInternationalPhone(value: unknown) {
   const compact = trim(value).replace(/[\s().-]/g, '');
 
   if (/^0\d{8}$/.test(compact)) {
@@ -190,12 +190,12 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
   }
 
   const kidsAges = normalizeKidsAges(input.kids_ages);
-  const phone = normalizeMoldovaPhone(input.guest_phone);
+  const phone = normalizeInternationalPhone(input.guest_phone);
   const email = trim(input.guest_email).toLowerCase();
   const totalPrice = numberInput(input.total_price);
 
-  if (!PHONE_PATTERN.test(phone)) {
-    throw new Error('Guest phone must use +373XXXXXXXX format.');
+  if (!INTERNATIONAL_PHONE_PATTERN.test(phone)) {
+    throw new Error('Guest phone must use a valid international format.');
   }
 
   if (!EMAIL_PATTERN.test(email)) {

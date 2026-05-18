@@ -1,21 +1,22 @@
-# Maib ePay Integration Guide
+# Maib Online Payment Integration Guide
 
-This folder contains the EcoVila files you start with when integrating or maintaining Maib ePay card payments.
+This folder contains the EcoVila files you start with when integrating or maintaining Maib online payments through MIA or standard cards.
 
-## What Maib ePay does in EcoVila
+## What Maib does in EcoVila
 
-1. The guest completes the EcoVila checkout form and chooses **card payment**.
+1. The guest completes the EcoVila checkout form and chooses **online payment**.
 2. EcoVila creates pending reservation rows in Supabase.
 3. The checkout flow calls the live browser hook in [`browser-adapter.js`](browser-adapter.js).
-4. Maib should return a hosted payment URL from that hook so the browser can redirect the guest to Maib ePay.
-5. After payment, Maib sends a server callback to EcoVila's Supabase webhook.
-6. The webhook marks the reservation as `paid` for approved callbacks or `cancelled` for failed/cancelled callbacks.
+4. EcoVila passes the already-selected online rail: `mia` for normalized `+373` numbers, `card` for other valid international numbers.
+5. Maib should return the matching hosted payment URL from that hook so the browser can redirect the guest to the correct Maib flow.
+6. After payment, Maib sends a server callback to EcoVila's Supabase webhook.
+7. The webhook marks the reservation as `paid` for approved callbacks or `cancelled` for failed/cancelled callbacks.
 
 ## Files you may need
 
 | File | Purpose | Type |
 | --- | --- | --- |
-| [`browser-adapter.js`](browser-adapter.js) | Live browser-side handoff from EcoVila checkout to Maib ePay | Live public JavaScript |
+| [`browser-adapter.js`](browser-adapter.js) | Live browser-side handoff from EcoVila checkout to Maib online payments | Live public JavaScript |
 | [`examples/callback-approved.json`](examples/callback-approved.json) | Representative approved callback structure | Reference example |
 | [`examples/callback-failed.json`](examples/callback-failed.json) | Representative failed callback structure | Reference example |
 | [`../../docs/supabase/functions/maib-webhook/index.ts`](../../docs/supabase/functions/maib-webhook/index.ts) | Deployable server callback endpoint | Supabase Edge Function |
@@ -47,8 +48,21 @@ window.EcoVilaPayments.startCardPayment({
   reservationIds,
   totalPrice,
   selection,
+  guestPhone,
+  paymentRail,
 })
 ```
+
+`startCardPayment()` is the existing public hook name kept for compatibility with the current checkout integration. Despite that legacy name, the hook receives both MIA and card traffic; use `paymentRail` to decide which Maib flow to start.
+
+EcoVila chooses the online payment rail before calling the adapter:
+
+- `guestPhone` is the normalized guest phone number.
+- `paymentRail: "mia"` means use the MIA flow.
+- `paymentRail: "card"` means use the standard Visa/Mastercard flow.
+- Current EcoVila routing rule: normalized numbers beginning with `+373` use `mia`; any other valid international number uses `card`.
+
+Honor the supplied `paymentRail` value instead of re-deriving the choice inside the adapter unless EcoVila explicitly changes this contract.
 
 The adapter should return:
 
@@ -107,8 +121,8 @@ Use the files in [`examples/`](examples/) as reference structures only. Their si
 
 ### Approved payment
 
-1. Create a test booking with card payment.
-2. Confirm `browser-adapter.js` receives `bookingGroupId`, reservation IDs, and total price.
+1. Create a test booking with online payment.
+2. Confirm `browser-adapter.js` receives `bookingGroupId`, reservation IDs, total price, `guestPhone`, and the expected `paymentRail`.
 3. Redirect the browser to the Maib-hosted payment page.
 4. Complete an approved Maib payment.
 5. Confirm the callback reaches the webhook with an `orderId` matching the booking group or reservation ID.
@@ -118,7 +132,7 @@ Use the files in [`examples/`](examples/) as reference structures only. Their si
 
 ### Failed or cancelled payment
 
-1. Create another test booking with card payment.
+1. Create another test booking with online payment.
 2. Complete a failed or cancelled Maib payment.
 3. Confirm the callback reaches the webhook with the expected order ID.
 4. Confirm signature verification passes.

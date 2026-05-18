@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const require = createRequire(import.meta.url);
-const { isRefundEligible } = require('../../js/anulare.js');
+const { isRefundEligible, normalizeInternationalPhone } = require('../../js/anulare.js');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -47,6 +47,10 @@ describe('EcoVila cancellation policy alignment', () => {
     assert.doesNotMatch(js, /case 'too_late'/);
     assert.match(js, /isRefundEligible/);
     assert.match(js, /updateRefundNote/);
+  });
+
+  it('normalizes international phone numbers for cancellation confirmation', () => {
+    assert.equal(normalizeInternationalPhone(' +40 721 234 567 '), '+40721234567');
   });
 
   it('treats the exact seventh calendar day as refundable in EcoVila time', () => {

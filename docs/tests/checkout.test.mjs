@@ -82,6 +82,8 @@ describe('EcoVila Step 5 checkout', () => {
       'data-gdpr-consent',
       'data-payment-option="card"',
       'data-payment-option="cash"',
+      'data-online-payment-title',
+      'data-online-payment-meta',
       'data-cash-disclaimer',
       'data-checkout-submit',
       'data-checkout-error',
@@ -137,7 +139,10 @@ describe('EcoVila Step 5 checkout', () => {
         'checkout.email',
         'checkout.gdpr',
         'checkout.paymentTitle',
+        'checkout.payMia',
+        'checkout.payMiaMeta',
         'checkout.payCard',
+        'checkout.payCardMeta',
         'checkout.payCash',
         'checkout.cashDisclaimer',
         'checkout.reserve',
@@ -178,7 +183,7 @@ describe('EcoVila Step 5 checkout', () => {
     assert.equal(checkout.validateCheckoutSelection({ ...validSelection, roomIds: [] }).valid, false);
   });
 
-  it('validates guest details, Moldova phone format, email, and GDPR consent', () => {
+  it('validates guest details, international phone format, email, and GDPR consent', () => {
     const checkout = loadCheckout();
 
     assert.equal(
@@ -191,11 +196,37 @@ describe('EcoVila Step 5 checkout', () => {
       }).valid,
       true,
     );
-    assert.equal(checkout.normalizeMoldovaPhone('060123456'), '+37360123456');
+    assert.equal(checkout.normalizeInternationalPhone('  +40 721 234 567 '), '+40721234567');
+    assert.equal(
+      checkout.validateGuestDetails({
+        firstName: 'Elena',
+        lastName: 'Popescu',
+        phone: '+40721234567',
+        email: 'elena@example.ro',
+        gdprAccepted: true,
+      }).valid,
+      true,
+    );
     assert.equal(checkout.validateGuestDetails({ firstName: '', lastName: 'Munteanu', phone: '+37360123456', email: 'ana@example.md', gdprAccepted: true }).valid, false);
     assert.equal(checkout.validateGuestDetails({ firstName: 'Ana', lastName: 'Munteanu', phone: '+373123', email: 'ana@example.md', gdprAccepted: true }).errors[0], 'checkout.errorPhone');
+    assert.equal(checkout.validateGuestDetails({ firstName: 'Elena', lastName: 'Popescu', phone: '0721234567', email: 'elena@example.ro', gdprAccepted: true }).errors[0], 'checkout.errorPhone');
     assert.equal(checkout.validateGuestDetails({ firstName: 'Ana', lastName: 'Munteanu', phone: '+37360123456', email: 'ana.example.md', gdprAccepted: true }).errors[0], 'checkout.errorEmail');
     assert.equal(checkout.validateGuestDetails({ firstName: 'Ana', lastName: 'Munteanu', phone: '+37360123456', email: 'ana@example.md', gdprAccepted: false }).errors[0], 'checkout.errorGdpr');
+  });
+
+  it('routes Moldovan online payments through MIA and other valid phones through card', () => {
+    const checkout = loadCheckout();
+
+    assert.equal(checkout.getPaymentRail('+37360123456'), 'mia');
+    assert.equal(checkout.getPaymentRail('+40721234567'), 'card');
+    assert.deepEqual(checkout.getOnlinePaymentCopy('+37360123456'), {
+      titleKey: 'checkout.payMia',
+      metaKey: 'checkout.payMiaMeta',
+    });
+    assert.deepEqual(checkout.getOnlinePaymentCopy('+40721234567'), {
+      titleKey: 'checkout.payCard',
+      metaKey: 'checkout.payCardMeta',
+    });
   });
 
   it('builds pending reservation payloads with client-side IDs and a 30 minute cash expiry', () => {
@@ -325,5 +356,42 @@ describe('EcoVila Step 5 checkout', () => {
         },
       },
     ]);
+  });
+
+  it('passes the normalized phone and selected online rail into the payment adapter', async () => {
+    const checkout = loadCheckout();
+    const calls = [];
+    const location = { href: '' };
+    const previousAdapter = globalThis.EcoVilaPayments;
+    const previousLocation = globalThis.location;
+
+    globalThis.EcoVilaPayments = {
+      startCardPayment(context) {
+        calls.push(context);
+        return 'https://payments.example/maib';
+      },
+    };
+    globalThis.location = location;
+
+    try {
+      await checkout.redirectAfterReservation(
+        'reservation-a',
+        'card',
+        [{ id: 'reservation-a' }],
+        { totalPrice: 3100 },
+        {
+          bookingGroupId: 'booking-group-a',
+        },
+        '+373 60 123 456',
+      );
+    } finally {
+      globalThis.EcoVilaPayments = previousAdapter;
+      globalThis.location = previousLocation;
+    }
+
+    assert.equal(location.href, 'https://payments.example/maib');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].guestPhone, '+37360123456');
+    assert.equal(calls[0].paymentRail, 'mia');
   });
 });

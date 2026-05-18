@@ -75,7 +75,11 @@ describe('EcoVila Supabase foundation migration', () => {
     );
     assert.match(sql, /created_by in \('guest', 'diana'\)/i, 'reservation creator should be constrained');
     assert.match(sql, /check_out > check_in/i, 'reservations should be night-based');
-    assert.match(sql, /guest_phone ~ '\^\\\+373\[0-9\]\{8\}\$'/i, 'guest phone format should be constrained');
+    assert.match(
+      allSql,
+      /guest_phone ~ '\^\\\+\[0-9\]\{8,15\}\$'/i,
+      'guest phone format should allow validated international numbers',
+    );
     assert.match(
       sql,
       /token text not null unique default encode\(gen_random_bytes\(32\), 'hex'\)/i,

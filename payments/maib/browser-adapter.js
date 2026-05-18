@@ -10,10 +10,12 @@
   'use strict';
 
   /**
-   * Live browser handoff for Maib ePay.
+   * Live browser handoff for Maib online payments.
    *
    * Maib technicians can replace the placeholder return value with the hosted
    * Maib payment URL once the final browser-side integration details are known.
+   * The checkout contract passes `paymentRail` so this legacy-named hook can
+   * route either MIA or standard card flows.
    * Until then, checkout intentionally receives an empty value and uses its
    * existing confirmation-page fallback.
    */

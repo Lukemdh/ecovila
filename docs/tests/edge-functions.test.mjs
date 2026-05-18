@@ -32,6 +32,10 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
 
     assert.match(adapter, /startCardPayment/, 'browser adapter should expose the Maib start hook');
     assert.match(maibReadme, /browser-adapter\.js/, 'Maib docs should point technicians to the live browser adapter');
+    assert.match(maibReadme, /paymentRail/, 'Maib docs should explain the selected payment rail contract');
+    assert.match(maibReadme, /guestPhone/, 'Maib docs should explain the normalized guest phone contract');
+    assert.match(maibReadme, /mia/, 'Maib docs should mention the MIA rail');
+    assert.match(maibReadme, /card/, 'Maib docs should mention the card rail');
     assert.match(
       maibReadme,
       /docs\/supabase\/functions\/maib-webhook\/index\.ts/,
@@ -254,14 +258,14 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     const step10 = brief.match(/Step 10:[\s\S]*?(?=Step 11:)/i)?.[0] || '';
 
     assert.match(brief, /Step 10:\s+\*\*Production Notifications & Scheduling\*\*/i);
-    assert.match(brief, /Step 11:\s+\*\*Maib ePay\*\*/i);
+    assert.match(brief, /Step 11:\s+\*\*Maib online payments\*\*/i);
     assert.match(brief, /Step 12:\s+\*\*tophost Deployment\*\*/i);
     assert.match(step10, /SMS\.md/i);
     assert.match(step10, /Resend/i);
     assert.match(step10, /Supabase cron\/schedules/i);
     assert.doesNotMatch(
       step10,
-      /Maib ePay|tophost\.md/i,
+      /Maib (?:ePay|online payments)|tophost\.md/i,
       'Step 10 should not still include Maib or tophost work',
     );
     assert.match(

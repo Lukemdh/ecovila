@@ -24,7 +24,7 @@
   const STORAGE_PENDING = 'ecovila_pending_reservation';
   const STORAGE_LANGUAGE = 'ecovila_language';
   const CASH_EXPIRY_MINUTES = 30;
-  const PHONE_PATTERN = /^\+373\d{8}$/;
+  const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
   const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const PAYMENT_TYPES = new Set(['cash', 'card']);
 
@@ -65,29 +65,32 @@
     return `reservation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  function normalizeMoldovaPhone(value) {
+  function normalizeInternationalPhone(value) {
     const compact = trimText(value).replace(/[\s().-]/g, '');
-
-    if (/^0\d{8}$/.test(compact)) {
-      return `+373${compact.slice(1)}`;
-    }
-
-    if (/^\d{8}$/.test(compact)) {
-      return `+373${compact}`;
-    }
-
-    if (/^373\d{8}$/.test(compact)) {
-      return `+${compact}`;
-    }
-
     return compact;
+  }
+
+  function getPaymentRail(phone) {
+    return normalizeInternationalPhone(phone).startsWith('+373') ? 'mia' : 'card';
+  }
+
+  function getOnlinePaymentCopy(phone) {
+    return getPaymentRail(phone) === 'mia'
+      ? {
+        titleKey: 'checkout.payMia',
+        metaKey: 'checkout.payMiaMeta',
+      }
+      : {
+        titleKey: 'checkout.payCard',
+        metaKey: 'checkout.payCardMeta',
+      };
   }
 
   function normalizeGuestDetails(details) {
     return {
       firstName: trimText(details?.firstName),
       lastName: trimText(details?.lastName),
-      phone: normalizeMoldovaPhone(details?.phone),
+      phone: normalizeInternationalPhone(details?.phone),
       email: trimText(details?.email).toLowerCase(),
       gdprAccepted: Boolean(details?.gdprAccepted),
     };
@@ -99,7 +102,7 @@
 
     if (!guest.firstName || !guest.lastName || !guest.phone || !guest.email) {
       errors.push('checkout.errorRequired');
-    } else if (!PHONE_PATTERN.test(guest.phone)) {
+    } else if (!INTERNATIONAL_PHONE_PATTERN.test(guest.phone)) {
       errors.push('checkout.errorPhone');
     } else if (!EMAIL_PATTERN.test(guest.email)) {
       errors.push('checkout.errorEmail');
@@ -338,8 +341,9 @@
     };
   }
 
-  function redirectAfterReservation(primaryId, paymentType, payloads, selection, createResult) {
+  function redirectAfterReservation(primaryId, paymentType, payloads, selection, createResult, guestPhone) {
     const paymentAdapter = root.EcoVilaPayments;
+    const normalizedGuestPhone = normalizeInternationalPhone(guestPhone);
 
     if (paymentType === 'card' && typeof paymentAdapter?.startCardPayment === 'function') {
       return Promise.resolve(paymentAdapter.startCardPayment({
@@ -348,6 +352,8 @@
         reservationIds: payloads.map((payload) => payload.id),
         totalPrice: Number(selection.totalPrice),
         selection,
+        guestPhone: normalizedGuestPhone,
+        paymentRail: getPaymentRail(normalizedGuestPhone),
       })).then((url) => {
         if (url) {
           root.location.href = url;
@@ -403,6 +409,21 @@
     setText('[data-summary-nights]', nights === 1 ? t('booking.night') : t('booking.nights', { count: nights }));
     setText('[data-summary-total]', pricing.formatMDL(state.selection.totalPrice));
     renderBreakdown(documentRef.querySelector('[data-summary-breakdown]'), state.selection);
+
+    const guestPhone = documentRef.querySelector('[data-guest-phone]')?.value || '+373';
+    const onlinePaymentCopy = getOnlinePaymentCopy(guestPhone);
+    const onlinePaymentTitle = documentRef.querySelector('[data-online-payment-title]');
+    const onlinePaymentMeta = documentRef.querySelector('[data-online-payment-meta]');
+
+    if (onlinePaymentTitle) {
+      onlinePaymentTitle.dataset.i18n = onlinePaymentCopy.titleKey;
+      onlinePaymentTitle.textContent = t(onlinePaymentCopy.titleKey);
+    }
+
+    if (onlinePaymentMeta) {
+      onlinePaymentMeta.dataset.i18n = onlinePaymentCopy.metaKey;
+      onlinePaymentMeta.textContent = t(onlinePaymentCopy.metaKey);
+    }
 
     documentRef.querySelectorAll('[data-payment-option]').forEach((button) => {
       const isSelected = button.dataset.paymentOption === state.paymentType;
@@ -473,7 +494,14 @@
       );
 
       showMessage('[data-checkout-status]', t('checkout.created'));
-      await redirectAfterReservation(primaryId, state.paymentType, payloads, state.selection, createResult);
+      await redirectAfterReservation(
+        primaryId,
+        state.paymentType,
+        payloads,
+        state.selection,
+        createResult,
+        guestValidation.guest.phone,
+      );
     } catch (error) {
       const message = String(error?.message || '');
       const key = message.includes('Missing Supabase config') ? 'checkout.errorSupabaseConfig' : 'checkout.errorCreate';
@@ -496,6 +524,7 @@
       paymentType: 'card',
     };
     const form = documentRef.querySelector('[data-checkout-form]');
+    const phoneInput = documentRef.querySelector('[data-guest-phone]');
 
     documentRef.querySelectorAll('[data-payment-option]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -507,6 +536,10 @@
     form?.addEventListener('submit', (event) => {
       event.preventDefault();
       submitCheckout(state, form);
+    });
+
+    phoneInput?.addEventListener('input', () => {
+      renderCheckout(state);
     });
 
     root.addEventListener?.('ecovila:languagechange', () => {
@@ -526,11 +559,14 @@
     STORAGE_SELECTION,
     buildReservationPayloads,
     getCashExpiry,
+    getOnlinePaymentCopy,
+    getPaymentRail,
     hasSelectedRoomNumber,
     initCheckout,
+    normalizeInternationalPhone,
     normalizeGuestDetails,
-    normalizeMoldovaPhone,
     readStoredSelection,
+    redirectAfterReservation,
     splitTotalPrice,
     validateCheckoutSelection,
     validateGuestDetails,

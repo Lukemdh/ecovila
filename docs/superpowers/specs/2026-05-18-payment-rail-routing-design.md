@@ -42,6 +42,14 @@ This is an EcoVila routing rule. Maib's implementation receives the chosen rail 
 - Cash remains the second payment option and is unchanged.
 - If the number is still incomplete while the guest is typing, the UI keeps the local/default assumption from the current field value until final validation.
 
+## Reservation Lifecycle Consistency
+
+International phone support must remain consistent after checkout:
+
+- Supabase reservation creation must accept the same normalized international format.
+- The database guest-phone constraint must allow the same format.
+- Token-based cancellation must normalize and validate the same international format, so a foreign guest can still cancel a paid reservation using the phone number originally entered at checkout.
+
 ## Browser Contract
 
 When checkout calls the live Maib adapter, it now provides:
@@ -96,6 +104,9 @@ Add coverage for:
 - checkout labels for both visible rails
 - the adapter context receiving `guestPhone` and `paymentRail`
 - Maib documentation describing the rail contract
+- Supabase reservation creation accepting normalized international numbers
+- database constraints allowing normalized international numbers
+- cancellation confirmation accepting normalized international numbers
 
 ## Non-Goals
 

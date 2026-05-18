@@ -48,6 +48,32 @@ Deno.test('buildReservationRows normalizes cash reservations with a server-side 
   ]);
 });
 
+Deno.test('buildReservationRows accepts international guest phone numbers', async () => {
+  const { buildReservationRows } = await import('../_shared/reservations.ts');
+  const rows = buildReservationRows(
+    [
+      {
+        id: 'reservation-foreign',
+        booking_group_id: '00000000-0000-4000-8000-000000000002',
+        room_id: 'room-a',
+        guest_first_name: 'Elena',
+        guest_last_name: 'Popescu',
+        guest_phone: '+40 721 234 567',
+        guest_email: 'elena@example.ro',
+        check_in: '2026-06-01',
+        check_out: '2026-06-03',
+        adults: 2,
+        kids_ages: [],
+        total_price: 5200,
+        payment_type: 'card',
+      },
+    ],
+    { now: new Date('2026-05-08T07:00:00.000Z') },
+  );
+
+  assertEquals(rows[0].guest_phone, '+40721234567');
+});
+
 Deno.test('buildReservationRows rejects unsafe guest-created reservation fields', async () => {
   const { buildReservationRows } = await import('../_shared/reservations.ts');
 

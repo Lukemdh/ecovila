@@ -5,14 +5,14 @@ This folder is the live home for EcoVila payment integrations.
 Start here whenever:
 
 - a payment provider is being connected or changed
-- a card payment redirect stops working
+- an online payment redirect stops working
 - a future maintainer needs to understand what Maib owns versus what belongs to the wider booking system
 
 ## Current providers
 
 | Provider | Purpose | Start here |
 | --- | --- | --- |
-| Maib ePay | Redirect-based card payments | [`maib/README.md`](maib/README.md) |
+| Maib | Redirect-based MIA and card payments | [`maib/README.md`](maib/README.md) |
 
 ## What this folder owns
 
@@ -29,7 +29,7 @@ Start here whenever:
 
 Those remain part of the wider booking system because they are not owned by a payment provider.
 
-## First inspection path for card-payment issues
+## First inspection path for online-payment issues
 
 1. Read [`maib/README.md`](maib/README.md).
 2. Check the live browser adapter at [`maib/browser-adapter.js`](maib/browser-adapter.js).

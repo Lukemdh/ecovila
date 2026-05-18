@@ -86,13 +86,8 @@
 
   // ── Phone normalization (same logic as checkout.js) ─────────────────────────
 
-  function normalizeMoldovaPhone(value) {
+  function normalizeInternationalPhone(value) {
     const compact = String(value || '').trim().replace(/[\s().-]/g, '');
-
-    if (/^0\d{8}$/.test(compact)) return `+373${compact.slice(1)}`;
-    if (/^\d{8}$/.test(compact)) return `+373${compact}`;
-    if (/^373\d{8}$/.test(compact)) return `+${compact}`;
-
     return compact;
   }
 
@@ -170,10 +165,10 @@
     if (!btn || !phoneInput) return;
 
     const rawPhone = phoneInput.value;
-    const normalizedPhone = normalizeMoldovaPhone(rawPhone);
+    const normalizedPhone = normalizeInternationalPhone(rawPhone);
 
     // Basic client-side check before hitting the server
-    if (!/^\+373\d{8}$/.test(normalizedPhone)) {
+    if (!/^\+\d{8,15}$/.test(normalizedPhone)) {
       if (errorEl) {
         errorEl.textContent = t('checkout.errorPhone');
         errorEl.hidden = false;
@@ -371,5 +366,5 @@
     root.document.addEventListener('DOMContentLoaded', init);
   }
 
-  return { init, isRefundEligible };
+  return { init, isRefundEligible, normalizeInternationalPhone };
 });

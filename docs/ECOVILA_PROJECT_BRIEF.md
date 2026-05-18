@@ -102,11 +102,12 @@ Step 10 also includes the production secrets and provider account work that cann
 * Register and approve the `EcoVila` sender name in SMS.md.
 * Configure scheduled calls for `expire-cash-reservations` and `send-reminders`, passing `ECOVILA_CRON_SECRET` through the `x-ecovila-secret` header or bearer token.
 
-Step 11: **Maib ePay**
-Complete card-payment production rollout:
+Step 11: **Maib online payments**
+Complete online-payment production rollout:
 
 * Add `MAIB_SIGNATURE_KEY`.
-* Configure the Maib ePay callback URL to the deployed `maib-webhook` Edge Function.
+* Configure the Maib callback URL to the deployed `maib-webhook` Edge Function.
+* Complete `payments/maib/browser-adapter.js` so normalized `+373` numbers start MIA and other valid international numbers start card payment.
 * Verify the Maib signature payload against production samples.
 
 Step 12: **tophost Deployment**
@@ -123,7 +124,7 @@ Deploy the static frontend to tophost.md and complete final public-site verifica
 |Serverless functions|Supabase Edge Functions (Deno/TypeScript)|
 |SMS notifications|SMS.md API (called from Edge Functions)|
 |Email notifications|Resend API (called from Edge Functions)|
-|Card payments|Maib ePay (redirect-based integration)|
+|Online payments|Maib (MIA for `+373`, card otherwise; redirect-based integration)|
 |Hosting|tophost.md (shared cPanel hosting — static files only, no Node.js)|
 
 **Critical note on hosting:** tophost.md is shared cPanel hosting. There is no Node.js server. All server-side logic (SMS, email, payment callbacks, timer management) MUST run in Supabase Edge Functions, not on the host. The frontend communicates with Supabase directly via the Supabase JS client (`@supabase/supabase-js` loaded from CDN).
@@ -440,12 +441,13 @@ When **"Rezervă"** is clicked (cash flow):
 3. SMS + email confirmation sent via Edge Function.
 4. Diana's CRM sidebar shows the pending payment immediately (real-time via Supabase subscription).
 
-When **"Rezervă"** is clicked (card flow):
+When **"Rezervă"** is clicked (online-payment flow):
 
 1. Reservation is created in Supabase with `payment\\\_status = 'pending'`.
-2. User is redirected to Maib ePay payment page.
-3. On successful payment → Maib ePay calls Supabase Edge Function webhook → `payment\\\_status` updated to `'paid'` → SMS + email confirmation sent.
-4. On failed/cancelled payment → reservation deleted (or marked cancelled).
+2. EcoVila chooses MIA for normalized `+373` numbers and card for other valid international numbers.
+3. User is redirected to the matching Maib-hosted payment page.
+4. On successful payment → Maib calls Supabase Edge Function webhook → `payment\\\_status` updated to `'paid'` → SMS + email confirmation sent.
+5. On failed/cancelled payment → reservation deleted (or marked cancelled).
 
 \---
 
@@ -835,7 +837,7 @@ Supabase Edge Functions (deployed to Supabase, NOT tophost):
 ├── send-sms/               ← SMS.md integration
 ├── send-email/             ← Resend integration
 ├── expire-cash-reservations/ ← Cron: cancel expired cash bookings
-├── maib-webhook/           ← Maib ePay payment callback
+├── maib-webhook/           ← Maib online-payment callback
 └── send-reminders/         ← Cron: 24h arrival reminders + 5min cash warning
 ```
 
@@ -849,7 +851,7 @@ Supabase Edge Functions (deployed to Supabase, NOT tophost):
 4. Conference room: website shows it as a feature, booking only via phone (Diana)
 5. Kids-only reservations not allowed on website; Diana can override in CRM
 6. Cash payments: 30 min timer (server-side), 1 extension available to guest, Diana sees +10 min extra
-7. Card payments: handled via Maib ePay redirect; Edge Function webhook confirms payment
+7. Online payments: Maib MIA for normalized `+373` numbers, Maib card flow otherwise; Edge Function webhook confirms payment
 8. Room auto-assign: căsuță mică decreasing (8→1), căsuță mare + hotel increasing
 9. If guest explicitly chose room number: Diana sees warning + must type "schimba" before any room swap in CRM
 10. Pricing is locked at booking creation time — price changes never affect existing reservations
