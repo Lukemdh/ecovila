@@ -40,7 +40,7 @@ Deno.serve(async (request) => {
     if (isMaibApproved(payload)) {
       const { error } = await client
         .from('reservations')
-        .update({ payment_status: 'paid', cash_expires_at: null })
+        .update({ payment_status: 'paid', cash_expires_at: null, paid_at: now })
         .in('id', reservations.map((reservation: any) => reservation.id));
 
       if (error) {

@@ -211,6 +211,7 @@
       total_price: totalParts[index] || 0,
       payment_type: 'office',
       payment_status: 'paid',
+      paid_at: (options?.now || new Date()).toISOString(),
       room_explicitly_selected: true,
       conference_room: Boolean(qs('[data-add-conference]', form)?.checked),
       notes: qs('[data-add-notes]', form)?.value?.trim() || null,

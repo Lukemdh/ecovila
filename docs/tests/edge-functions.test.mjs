@@ -278,6 +278,23 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
   });
 
+  it('stamps paid_at when cash or online reservations become paid', () => {
+    const confirmReservationPayment = read('docs/supabase/functions/confirm-reservation-payment/index.ts');
+    const maibWebhook = read('docs/supabase/functions/maib-webhook/index.ts');
+
+    assert.match(confirmReservationPayment, /const now = new Date\(\)\.toISOString\(\)/);
+    assert.match(
+      confirmReservationPayment,
+      /update\(\{\s*payment_status:\s*'paid',\s*cash_expires_at:\s*null,\s*paid_at:\s*now\s*\}\)/s,
+      'staff cash confirmation should record the actual paid_at moment',
+    );
+    assert.match(
+      maibWebhook,
+      /update\(\{\s*payment_status:\s*'paid',\s*cash_expires_at:\s*null,\s*paid_at:\s*now\s*\}\)/s,
+      'Maib approved callbacks should record the actual paid_at moment',
+    );
+  });
+
   it('routes checkout reservation creation through the Edge Function', () => {
     const supabaseHelpers = read('js/supabase.js');
     const checkout = read('js/checkout.js');

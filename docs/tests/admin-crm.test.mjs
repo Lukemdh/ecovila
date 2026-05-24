@@ -74,15 +74,24 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(login, /type="password"/i);
     assert.match(login, /crm-auth\.js/i);
 
-    for (const label of ['Dashboard', 'Situația zilnică', 'Ștergare', 'Poze', 'Prețuri']) {
+    for (const label of ['Dashboard', 'Finance', 'Situația zilnică', 'Ștergare', 'Poze', 'Prețuri']) {
       assert.match(dashboard, new RegExp(label, 'i'), `${label} tab should exist`);
     }
 
     assert.match(dashboard, /data-tab="dashboard"/i);
+    assert.match(dashboard, /data-tab="finance"/i);
     assert.match(dashboard, /data-tab="daily"/i);
     assert.match(dashboard, /data-tab="towels"/i);
     assert.match(dashboard, /data-tab="photos"/i);
     assert.match(dashboard, /data-tab="pricing"/i);
+    assert.ok(
+      dashboard.indexOf('data-tab="dashboard"') < dashboard.indexOf('data-tab="finance"'),
+      'Finance tab should sit after Dashboard',
+    );
+    assert.ok(
+      dashboard.indexOf('data-tab="finance"') < dashboard.indexOf('data-tab="daily"'),
+      'Finance tab should sit before Situația zilnică',
+    );
     assert.ok(
       dashboard.indexOf('data-tab="daily"') < dashboard.indexOf('data-tab="towels"'),
       'Stergare tab should sit after Situația zilnică',
@@ -91,6 +100,171 @@ describe('EcoVila Step 9 CRM', () => {
       dashboard.indexOf('data-tab="towels"') < dashboard.indexOf('data-tab="photos"'),
       'Stergare tab should sit before Poze',
     );
+  });
+
+  it('adds the owner finance tab with reporting controls and metric hooks', () => {
+    const dashboard = read('admin/dashboard.html');
+    const app = read('admin/js/crm-app.js');
+    const helpers = read('js/supabase.js');
+
+    for (const hook of [
+      'data-panel="finance"',
+      'data-finance-prev',
+      'data-finance-range-label',
+      'data-finance-next',
+      'data-finance-range-calendar',
+      'data-finance-calendar-grid',
+      'data-finance-mode="nights"',
+      'data-finance-mode="paid"',
+      'data-finance-commercial-total',
+      'data-finance-cash-total',
+      'data-finance-online-total',
+      'data-finance-office-total',
+      'data-finance-occupied-nights',
+      'data-finance-paid-bookings',
+      'data-finance-average-booking',
+      'data-finance-room-type="small"',
+      'data-finance-room-type="large"',
+      'data-finance-room-type="hotel"',
+      'js/crm-finance.js',
+    ]) {
+      assert.match(dashboard, new RegExp(hook), `${hook} should exist`);
+    }
+
+    assert.match(app, /EcoVilaCrmFinance\?\.init\?\.\(context\)/);
+    assert.match(app, /EcoVilaCrmFinance\?\.showCurrentMonth\?\.\(\)/);
+    assert.match(helpers, /function fetchFinanceReservations/);
+  });
+
+  it('summarizes finance rows by overlapping nights and keeps din oficiu separate', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const summary = finance.summarizeFinanceRows({
+      mode: 'nights',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-06-01',
+      rows: [
+        {
+          id: 'online-cross-month',
+          room_id: 'room-1',
+          check_in: '2026-05-30',
+          check_out: '2026-06-02',
+          total_price: 3000,
+          payment_type: 'card',
+          payment_status: 'paid',
+          paid_at: '2026-05-15T10:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+        {
+          id: 'cash-may',
+          room_id: 'room-9',
+          check_in: '2026-05-10',
+          check_out: '2026-05-12',
+          total_price: 4000,
+          payment_type: 'cash',
+          payment_status: 'paid',
+          paid_at: '2026-05-10T08:00:00.000Z',
+          rooms: { type: 'large' },
+        },
+        {
+          id: 'office-may',
+          room_id: 'room-20',
+          check_in: '2026-05-20',
+          check_out: '2026-05-23',
+          total_price: 3000,
+          payment_type: 'office',
+          payment_status: 'paid',
+          paid_at: '2026-05-18T08:00:00.000Z',
+          rooms: { type: 'hotel' },
+        },
+        {
+          id: 'cancelled-cash',
+          room_id: 'room-2',
+          check_in: '2026-05-15',
+          check_out: '2026-05-16',
+          total_price: 1000,
+          payment_type: 'cash',
+          payment_status: 'cancelled',
+          cancelled_at: '2026-05-14T09:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+      ],
+    });
+
+    assert.equal(summary.commercialTotal, 6000);
+    assert.equal(summary.cashTotal, 4000);
+    assert.equal(summary.onlineTotal, 2000);
+    assert.equal(summary.officeTotal, 3000);
+    assert.equal(summary.occupiedNights, 7);
+    assert.equal(summary.paidBookings, 2);
+    assert.equal(summary.averageBookingValue, 3000);
+    assert.equal(summary.roomTypeTotals.small, 2000);
+    assert.equal(summary.roomTypeTotals.large, 4000);
+    assert.equal(summary.roomTypeTotals.hotel, 0);
+  });
+
+  it('summarizes finance rows by actual paid_at collections', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const summary = finance.summarizeFinanceRows({
+      mode: 'paid',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-06-01',
+      rows: [
+        {
+          id: 'online-paid-may',
+          room_id: 'room-16',
+          check_in: '2026-06-10',
+          check_out: '2026-06-12',
+          total_price: 5000,
+          payment_type: 'card',
+          payment_status: 'paid',
+          paid_at: '2026-05-03T10:00:00.000Z',
+          rooms: { type: 'hotel' },
+        },
+        {
+          id: 'cash-paid-april',
+          room_id: 'room-3',
+          check_in: '2026-05-04',
+          check_out: '2026-05-05',
+          total_price: 1200,
+          payment_type: 'cash',
+          payment_status: 'paid',
+          paid_at: '2026-04-30T10:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+        {
+          id: 'mia-paid-may',
+          room_id: 'room-4',
+          check_in: '2026-06-14',
+          check_out: '2026-06-15',
+          total_price: 2500,
+          payment_type: 'mia',
+          payment_status: 'paid',
+          paid_at: '2026-05-07T10:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+        {
+          id: 'office-paid-may',
+          room_id: 'room-12',
+          check_in: '2026-05-12',
+          check_out: '2026-05-13',
+          total_price: 1000,
+          payment_type: 'office',
+          payment_status: 'paid',
+          paid_at: '2026-05-05T10:00:00.000Z',
+          rooms: { type: 'large' },
+        },
+      ],
+    });
+
+    assert.equal(summary.commercialTotal, 7500);
+    assert.equal(summary.cashTotal, 0);
+    assert.equal(summary.onlineTotal, 7500);
+    assert.equal(summary.officeTotal, 1000);
+    assert.equal(summary.occupiedNights, 4);
+    assert.equal(summary.paidBookings, 2);
+    assert.equal(summary.averageBookingValue, 3750);
+    assert.equal(summary.roomTypeTotals.small, 2500);
+    assert.equal(summary.roomTypeTotals.hotel, 5000);
   });
 
   it('accepts staff usernames as CRM login aliases', () => {

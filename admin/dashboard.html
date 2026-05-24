@@ -31,6 +31,7 @@
 
         <nav class="crm-tabs" aria-label="Secțiuni CRM">
           <button class="crm-tab is-active" type="button" data-tab="dashboard">Dashboard</button>
+          <button class="crm-tab" type="button" data-tab="finance">Finance</button>
           <button class="crm-tab" type="button" data-tab="daily">Situația zilnică</button>
           <button class="crm-tab" type="button" data-tab="towels">Ștergare</button>
           <button class="crm-tab" type="button" data-tab="photos">Poze</button>
@@ -336,6 +337,104 @@
         </dialog>
       </section>
 
+      <section class="crm-panel" data-panel="finance" aria-labelledby="finance-title">
+        <div class="crm-panel-header crm-finance-header">
+          <div>
+            <h1 id="finance-title">Finance</h1>
+            <p class="crm-panel-subtitle">Raport lunar pentru venituri, încasări și performanță.</p>
+          </div>
+          <div class="crm-date-nav crm-finance-date-nav" data-finance-range-picker>
+            <button class="crm-button crm-button--small" type="button" data-finance-prev>
+              <span aria-hidden="true">‹</span>
+              <span>Înapoi</span>
+            </button>
+            <button class="crm-date-picker-button crm-finance-range-button" type="button" data-finance-range-label>Mai 2026</button>
+            <button class="crm-button crm-button--small" type="button" data-finance-next>
+              <span>Înainte</span>
+              <span aria-hidden="true">›</span>
+            </button>
+            <div class="crm-add-range-calendar crm-finance-range-calendar" data-finance-range-calendar hidden>
+              <div class="crm-add-range-calendar__header">
+                <button class="crm-date-button" type="button" data-finance-calendar-prev aria-label="Luna precedentă">‹</button>
+                <strong data-finance-calendar-title>Mai 2026</strong>
+                <button class="crm-date-button" type="button" data-finance-calendar-next aria-label="Luna următoare">›</button>
+              </div>
+              <div class="crm-add-range-calendar__weekdays" aria-hidden="true">
+                <span>L</span>
+                <span>Ma</span>
+                <span>Mi</span>
+                <span>J</span>
+                <span>V</span>
+                <span>S</span>
+                <span>D</span>
+              </div>
+              <div class="crm-add-range-calendar__grid" data-finance-calendar-grid></div>
+              <div class="crm-add-range-calendar__footer">
+                <button type="button" data-finance-calendar-clear>Șterge</button>
+                <button type="button" data-finance-calendar-apply>Aplică</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="crm-finance-mode" role="group" aria-label="Mod raportare">
+          <button class="is-active" type="button" data-finance-mode="nights" aria-pressed="true">Nopți în perioadă</button>
+          <button type="button" data-finance-mode="paid" aria-pressed="false">Încasări</button>
+        </div>
+
+        <div class="crm-finance-summary" aria-label="Venituri pe surse">
+          <article class="crm-finance-stat crm-finance-stat--primary">
+            <span>Total comercial</span>
+            <strong data-finance-commercial-total>0 MDL</strong>
+          </article>
+          <article class="crm-finance-stat">
+            <span>Cash</span>
+            <strong data-finance-cash-total>0 MDL</strong>
+          </article>
+          <article class="crm-finance-stat">
+            <span>Online</span>
+            <strong data-finance-online-total>0 MDL</strong>
+          </article>
+          <article class="crm-finance-stat crm-finance-stat--office">
+            <span>Din oficiu</span>
+            <strong data-finance-office-total>0 MDL</strong>
+          </article>
+        </div>
+
+        <div class="crm-finance-performance" aria-label="Indicatori de performanță">
+          <article class="crm-finance-stat">
+            <span>Nopți ocupate</span>
+            <strong data-finance-occupied-nights>0</strong>
+          </article>
+          <article class="crm-finance-stat">
+            <span>Rezervări plătite</span>
+            <strong data-finance-paid-bookings>0</strong>
+          </article>
+          <article class="crm-finance-stat">
+            <span>Valoare medie rezervare</span>
+            <strong data-finance-average-booking>0 MDL</strong>
+          </article>
+        </div>
+
+        <section class="crm-finance-room-types" aria-labelledby="finance-room-types-title">
+          <h2 id="finance-room-types-title">Venit comercial pe tip de cazare</h2>
+          <div class="crm-finance-room-grid">
+            <article class="crm-finance-room-card" data-finance-room-type="small">
+              <span>Căsuță mică</span>
+              <strong data-finance-room-total>0 MDL</strong>
+            </article>
+            <article class="crm-finance-room-card" data-finance-room-type="large">
+              <span>Căsuță mare</span>
+              <strong data-finance-room-total>0 MDL</strong>
+            </article>
+            <article class="crm-finance-room-card" data-finance-room-type="hotel">
+              <span>Hotel</span>
+              <strong data-finance-room-total>0 MDL</strong>
+            </article>
+          </div>
+        </section>
+      </section>
+
       <section class="crm-panel" data-panel="daily" aria-labelledby="daily-title">
         <div class="crm-panel-header">
           <h1 id="daily-title">Situația zilnică</h1>
@@ -624,6 +723,7 @@
     <script src="js/crm-calendar.js"></script>
     <script src="js/crm-sidebar.js"></script>
     <script src="js/crm-dashboard.js"></script>
+    <script src="js/crm-finance.js"></script>
     <script src="js/crm-daily.js"></script>
     <script src="js/crm-towels.js"></script>
     <script src="js/crm-photos.js"></script>

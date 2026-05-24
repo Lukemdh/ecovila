@@ -102,6 +102,36 @@ describe('EcoVila Supabase foundation migration', () => {
     );
   });
 
+  it('adds paid_at for finance reporting by actual payment recognition time', () => {
+    const allSql = readAllMigrations();
+
+    assert.match(
+      allSql,
+      /alter table public\.reservations\s+add column if not exists paid_at timestamptz/i,
+      'reservations should store the actual paid_at timestamp for finance reports',
+    );
+    assert.match(
+      allSql,
+      /set paid_at = coalesce\(paid_at, created_at\)[\s\S]+where payment_status = 'paid'[\s\S]+paid_at is null/i,
+      'legacy paid reservations should be backfilled deterministically from created_at',
+    );
+    assert.match(
+      allSql,
+      /create index if not exists reservations_paid_at_idx[\s\S]+on public\.reservations \(paid_at\)/i,
+      'finance collections mode should have an index on paid_at',
+    );
+    assert.match(
+      allSql,
+      /create or replace function public\.set_reservation_paid_at\(\)[\s\S]+set search_path = public, pg_temp[\s\S]+new\.paid_at = now\(\)/i,
+      'paid_at should be stamped by a trigger with a fixed search_path',
+    );
+    assert.match(
+      allSql,
+      /create trigger set_reservation_paid_at_before_write[\s\S]+before insert or update of payment_status, paid_at on public\.reservations/i,
+      'the trigger should protect paid_at for future payment transitions',
+    );
+  });
+
   it('seeds exactly 25 rooms with the correct number ranges and types', () => {
     const sql = readMigration();
     const roomTuples = [...sql.matchAll(/\((\d+), '(small|large|hotel)'\)/g)].map((match) => ({

@@ -38,6 +38,7 @@ Deno.serve(async (request) => {
       reservationId,
       bookingGroupId,
     });
+    const now = new Date().toISOString();
     const ids = reservations.map((reservation: any) => reservation.id);
 
     if (!ids.length) {
@@ -57,7 +58,7 @@ Deno.serve(async (request) => {
     if (pendingIds.length) {
       const { error } = await client
         .from('reservations')
-        .update({ payment_status: 'paid', cash_expires_at: null })
+        .update({ payment_status: 'paid', cash_expires_at: null, paid_at: now })
         .in('id', pendingIds);
 
       if (error) {

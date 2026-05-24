@@ -34,6 +34,9 @@
     if (name === 'daily') {
       root.EcoVilaCrmDaily?.showToday?.();
     }
+    if (name === 'finance') {
+      root.EcoVilaCrmFinance?.showCurrentMonth?.();
+    }
     if (name === 'towels') {
       root.EcoVilaCrmTowels?.showToday?.();
     }
@@ -95,6 +98,7 @@
       };
 
       root.EcoVilaCrmDashboard?.init?.(context);
+      root.EcoVilaCrmFinance?.init?.(context);
       root.EcoVilaCrmDaily?.init?.(context);
       root.EcoVilaCrmTowels?.init?.(context);
       root.EcoVilaCrmPhotos?.init?.(context);

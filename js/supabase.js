@@ -213,6 +213,42 @@
     );
   }
 
+  function fetchFinanceReservations(client, options) {
+    let query = client
+      .from('reservations')
+      .select(
+        [
+          'id',
+          'booking_group_id',
+          'room_id',
+          'check_in',
+          'check_out',
+          'total_price',
+          'payment_type',
+          'payment_status',
+          'paid_at',
+          'cancelled_at',
+          'rooms(id, number, type)',
+        ].join(', '),
+      )
+      .eq('payment_status', 'paid')
+      .is('cancelled_at', null);
+
+    if (options?.mode === 'paid') {
+      query = query
+        .gte('paid_at', `${options.rangeStart}T00:00:00.000Z`)
+        .lt('paid_at', `${options.rangeEnd}T00:00:00.000Z`)
+        .order('paid_at', { ascending: true });
+    } else {
+      query = query
+        .gt('check_out', options?.rangeStart)
+        .lt('check_in', options?.rangeEnd)
+        .order('check_in', { ascending: true });
+    }
+
+    return unwrapSupabaseResult(query);
+  }
+
   function updateReservation(client, reservationId, values) {
     return unwrapSupabaseResult(
       client
@@ -526,6 +562,7 @@
     fetchAdminReservations,
     fetchCrmPhotos,
     fetchDailyStatuses,
+    fetchFinanceReservations,
     fetchHolidays,
     fetchPendingCashReservations,
     fetchPhotoSections,
