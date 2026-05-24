@@ -1,5 +1,11 @@
 import { handleCors } from '../_shared/cors.ts';
-import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/http.ts';
+import {
+  assertMethod,
+  errorResponse,
+  jsonResponse,
+  readJson,
+  requireStaffRole,
+} from '../_shared/http.ts';
 import { sendEmail } from '../_shared/providers.ts';
 
 Deno.serve(async (request) => {
@@ -10,6 +16,7 @@ Deno.serve(async (request) => {
 
   try {
     assertMethod(request, ['POST']);
+    requireStaffRole(request, ['diana']);
     const body = await readJson(request);
     const result = await sendEmail({
       to: body?.to,

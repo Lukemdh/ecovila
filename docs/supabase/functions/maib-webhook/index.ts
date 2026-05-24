@@ -79,7 +79,7 @@ async function findReservationsForOrder(client: any, orderId: string) {
   const { data: byGroup, error: groupError } = await client
     .from('reservations')
     .select(
-      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, check_in, check_out, total_price, payment_type, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
     .eq('booking_group_id', orderId)
     .is('cancelled_at', null);
@@ -95,7 +95,7 @@ async function findReservationsForOrder(client: any, orderId: string) {
   const { data: byReservation, error: reservationError } = await client
     .from('reservations')
     .select(
-      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, check_in, check_out, total_price, payment_type, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
     .eq('id', orderId)
     .is('cancelled_at', null);

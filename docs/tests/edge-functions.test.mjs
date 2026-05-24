@@ -72,6 +72,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
   it('adds all Step 7 function entrypoints', () => {
     for (const name of [
       'create-reservation',
+      'confirm-reservation-payment',
       'send-sms',
       'send-email',
       'expire-cash-reservations',
@@ -114,6 +115,11 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
     assert.match(
       config,
+      /\[functions\.confirm-reservation-payment\][\s\S]*?verify_jwt = true/i,
+      'confirm-reservation-payment should require a staff Supabase JWT before marking reservations paid',
+    );
+    assert.match(
+      config,
       /\[functions\.maib-webhook\][\s\S]*?verify_jwt = false/i,
       'maib-webhook must accept provider callbacks without Supabase JWTs',
     );
@@ -129,14 +135,28 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
 
   it('uses current provider endpoints and required secret names only inside Edge Functions', () => {
     const providers = read('docs/supabase/functions/_shared/providers.ts');
+    const sendSms = read('docs/supabase/functions/send-sms/index.ts');
+    const sendEmail = read('docs/supabase/functions/send-email/index.ts');
     const maib = read('docs/supabase/functions/_shared/maib.ts');
 
-    assert.match(providers, /https:\/\/api\.sms\.md\/v1\/send/, 'SMS.md REST endpoint should be used');
+    assert.match(providers, /https:\/\/api\.sms\.md\/v1\/send/, 'SMS.md authorized send endpoint should be used');
+    assert.match(providers, /url\.searchParams\.set\('token',\s*apiToken\)/, 'SMS.md token should be sent with the working legacy query parameter');
+    assert.match(providers, /url\.searchParams\.set\('message',\s*payload\.message\)/, 'SMS.md payload should use the legacy message parameter');
     assert.match(providers, /SMSMD_API_TOKEN/, 'SMS.md API token should be read from Edge Function env');
     assert.match(providers, /SMSMD_FROM/, 'SMS sender name should be read from Edge Function env');
+    assert.match(
+      sendSms,
+      /requireStaffRole\(request,\s*\['diana'\]\)/,
+      'direct send-sms endpoint should be limited to Diana while shared notification sends remain server-side',
+    );
     assert.match(providers, /https:\/\/api\.resend\.com\/emails/, 'Resend email endpoint should be used');
     assert.match(providers, /RESEND_API_KEY/, 'Resend API key should be read from Edge Function env');
     assert.match(providers, /RESEND_FROM_EMAIL/, 'Resend sender should be read from Edge Function env');
+    assert.match(
+      sendEmail,
+      /requireStaffRole\(request,\s*\['diana'\]\)/,
+      'direct send-email endpoint should be limited to Diana while shared notification sends remain server-side',
+    );
     assert.match(maib, /MAIB_SIGNATURE_KEY/, 'Maib callback signature key should be read from env');
     assert.match(maib, /verifyMaibSignature/, 'Maib webhook should have a reusable signature verifier');
   });
@@ -195,6 +215,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     const reminders = read('docs/supabase/functions/send-reminders/index.ts');
     const expiry = read('docs/supabase/functions/expire-cash-reservations/index.ts');
     const createReservation = read('docs/supabase/functions/create-reservation/index.ts');
+    const confirmReservationPayment = read('docs/supabase/functions/confirm-reservation-payment/index.ts');
     const maibWebhook = read('docs/supabase/functions/maib-webhook/index.ts');
 
     assert.match(notifications, /reserveNotificationEvent/);
@@ -210,10 +231,20 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       /export async function dispatchAndRecordNotification[\s\S]*return \{ result, recorded \};/,
       'non-cron notification callers should keep the public helper return shape',
     );
-    assert.match(
+    assert.doesNotMatch(
       createReservation,
-      /dispatchAndRecordNotification/,
-      'guest confirmation should keep using the non-cron helper',
+      /dispatchAndRecordNotification|composeBookingConfirmation|sendBookingConfirmations/,
+      'reservation creation should not send confirmation SMS/email before payment is confirmed',
+    );
+    assert.match(
+      confirmReservationPayment,
+      /dispatchScheduledNotificationOnce/,
+      'staff payment confirmation should record SMS failures and allow retries after marking cash paid',
+    );
+    assert.match(
+      confirmReservationPayment,
+      /requireStaffRole\(request,\s*\['diana'\]\)/,
+      'staff payment confirmation should enforce the Diana role inside the service-role function',
     );
     assert.match(
       maibWebhook,
@@ -223,12 +254,27 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     assert.doesNotMatch(
       createReservation,
       /dispatchScheduledNotificationOnce/,
-      'guest confirmation should not inherit scheduled duplicate-skip semantics',
+      'reservation creation should not dispatch notifications',
     );
     assert.doesNotMatch(
       maibWebhook,
       /dispatchScheduledNotificationOnce/,
       'Maib confirmation should not inherit scheduled duplicate-skip semantics',
+    );
+  });
+
+  it('lets staff payment confirmation recover paid cash rows that missed confirmation', () => {
+    const confirmReservationPayment = read('docs/supabase/functions/confirm-reservation-payment/index.ts');
+
+    assert.match(
+      confirmReservationPayment,
+      /\.in\('payment_status',\s*\[\s*'pending',\s*'paid'\s*\]\)/,
+      'payment confirmation should also load paid cash reservations so missed confirmations can be recovered',
+    );
+    assert.match(
+      confirmReservationPayment,
+      /dispatchScheduledNotificationOnce/,
+      'payment confirmation should let notification_events suppress sent duplicates and retry failed rows',
     );
   });
 

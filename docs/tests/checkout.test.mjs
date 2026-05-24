@@ -261,6 +261,7 @@ describe('EcoVila Step 5 checkout', () => {
     assert.deepEqual(payloads.map((payload) => payload.id), ['reservation-a', 'reservation-b']);
     assert.deepEqual(payloads.map((payload) => payload.room_id), ['room-a', 'room-b']);
     assert.deepEqual(payloads.map((payload) => payload.total_price), [2601, 2600]);
+    assert.deepEqual(payloads.map((payload) => payload.guest_language), ['ro', 'ro']);
     assert.deepEqual(payloads.map((payload) => payload.cash_expires_at), [
       '2026-05-07T09:30:00.000Z',
       '2026-05-07T09:30:00.000Z',
@@ -272,6 +273,7 @@ describe('EcoVila Step 5 checkout', () => {
       guest_last_name: 'Munteanu',
       guest_phone: '+37360123456',
       guest_email: 'ana@example.md',
+      guest_language: 'ro',
       check_in: '2026-06-01',
       check_out: '2026-06-03',
       adults: 2,
@@ -286,6 +288,37 @@ describe('EcoVila Step 5 checkout', () => {
       cash_extended: false,
       created_by: 'guest',
     });
+  });
+
+  it('uses the language captured on the booking selection for reservation payloads', () => {
+    const checkout = loadCheckout();
+    const payloads = checkout.buildReservationPayloads(
+      {
+        type: 'hotel',
+        checkIn: '2026-06-05',
+        checkOut: '2026-06-06',
+        adults: 2,
+        kidsAges: [],
+        roomIds: ['hotel-16'],
+        roomNumbers: [16],
+        roomExplicitlySelected: false,
+        totalPrice: 2600,
+        language: 'ru',
+      },
+      {
+        firstName: 'Elena',
+        lastName: 'Rusu',
+        phone: '+37369111222',
+        email: 'elena@example.md',
+      },
+      'card',
+      {
+        now: new Date('2026-05-07T09:00:00.000Z'),
+        createId: () => 'reservation-card',
+      },
+    );
+
+    assert.equal(payloads[0].guest_language, 'ru');
   });
 
   it('builds card reservations as pending without a cash expiry', () => {

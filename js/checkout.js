@@ -27,6 +27,7 @@
   const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
   const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const PAYMENT_TYPES = new Set(['cash', 'card']);
+  const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
   function getTranslations() {
     return root.EcoVilaTranslations || {};
@@ -68,6 +69,11 @@
   function normalizeInternationalPhone(value) {
     const compact = trimText(value).replace(/[\s().-]/g, '');
     return compact;
+  }
+
+  function normalizeLanguage(value) {
+    const language = trimText(value).toLowerCase();
+    return SUPPORTED_LANGUAGES.has(language) ? language : 'ro';
   }
 
   function getPaymentRail(phone) {
@@ -205,6 +211,7 @@
     const priceParts = splitTotalPrice(selection.totalPrice, roomIds.length);
     const cashExpiresAt = paymentType === 'cash' ? getCashExpiry(now) : null;
     const guest = guestValidation.guest;
+    const guestLanguage = normalizeLanguage(selection.language || getLanguage());
 
     return roomIds.map((roomId, index) => ({
       id: createId(),
@@ -213,6 +220,7 @@
       guest_last_name: guest.lastName,
       guest_phone: guest.phone,
       guest_email: guest.email,
+      guest_language: guestLanguage,
       check_in: selection.checkIn,
       check_out: selection.checkOut,
       adults: Number(selection.adults),
@@ -564,6 +572,7 @@
     hasSelectedRoomNumber,
     initCheckout,
     normalizeInternationalPhone,
+    normalizeLanguage,
     normalizeGuestDetails,
     readStoredSelection,
     redirectAfterReservation,

@@ -34,6 +34,9 @@
     if (name === 'daily') {
       root.EcoVilaCrmDaily?.showToday?.();
     }
+    if (name === 'towels') {
+      root.EcoVilaCrmTowels?.showToday?.();
+    }
   }
 
   function wireTabs() {
@@ -93,6 +96,7 @@
 
       root.EcoVilaCrmDashboard?.init?.(context);
       root.EcoVilaCrmDaily?.init?.(context);
+      root.EcoVilaCrmTowels?.init?.(context);
       root.EcoVilaCrmPhotos?.init?.(context);
       root.EcoVilaCrmPricing?.init?.(context);
       setActiveTab('dashboard');

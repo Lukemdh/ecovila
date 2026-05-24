@@ -41,7 +41,7 @@ async function sendCashExpiryWarnings(client: any, now: Date) {
   const { data, error } = await client
     .from('reservations')
     .select(
-      'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, check_in, check_out, total_price, payment_type, rooms(number, type)',
+      'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
     .eq('payment_type', 'cash')
     .eq('payment_status', 'pending')
@@ -70,7 +70,7 @@ async function sendArrivalReminders(client: any, now: Date) {
   const { data, error } = await client
     .from('reservations')
     .select(
-      'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, check_in, check_out, total_price, payment_type, rooms(number, type)',
+      'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
     .eq('payment_status', 'paid')
     .is('cancelled_at', null)

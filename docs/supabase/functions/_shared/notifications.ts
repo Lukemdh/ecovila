@@ -9,6 +9,7 @@ export type NotificationReservation = {
   payment_type: string;
   guest_email: string;
   guest_phone: string;
+  guest_language?: string;
   guest_first_name: string;
   guest_last_name: string;
 };
@@ -41,12 +42,14 @@ type ScheduledNotificationOptions = {
 
 const MAX_SCHEDULED_NOTIFICATION_ATTEMPTS = 3;
 const RESERVED_RETRY_TIMEOUT_MS = 3 * 60 * 1000;
+const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
 export function composeBookingConfirmation(
   reservation: NotificationReservation,
   options: { cancellationToken: string; siteUrl: string },
 ): NotificationMessage {
-  const roomCopy = roomLabel(reservation);
+  const language = reservationLanguage(reservation);
+  const roomCopy = roomLabel(reservation, 'ro');
   const cancellationLink = `${options.siteUrl}/anulare.html?token=${
     encodeURIComponent(options.cancellationToken)
   }`;
@@ -59,12 +62,11 @@ export function composeBookingConfirmation(
   return {
     sms: {
       to: reservation.guest_phone,
-      message: [
-        'EcoVila: Rezervarea dvs. a fost confirmată!',
-        `${roomCopy}, ${reservation.check_in} - ${reservation.check_out}`,
-        `Total: ${total} (${reservation.payment_type})`,
-        `Anulare (7 zile+): ${cancellationLink}`,
-      ].join('\n'),
+      message: bookingConfirmationSms({
+        language,
+        checkIn: reservation.check_in,
+        checkOut: reservation.check_out,
+      }),
     },
     email: {
       to: reservation.guest_email,
@@ -101,6 +103,7 @@ export function composeCashExpiryReminder(
   reservation: NotificationReservation,
   options: { siteUrl: string },
 ): NotificationMessage {
+  const language = reservationLanguage(reservation);
   const confirmationLink = `${options.siteUrl}/confirmare.html?id=${
     encodeURIComponent(reservation.id)
   }`;
@@ -108,10 +111,7 @@ export function composeCashExpiryReminder(
   return {
     sms: {
       to: reservation.guest_phone,
-      message: [
-        'EcoVila: Rezervarea dvs. expiră în 5 minute.',
-        `Achitați la str. Aerodromului 3 sau extindeți pe site: ${confirmationLink}`,
-      ].join('\n'),
+      message: cashExpiryReminderSms(language, confirmationLink),
     },
     email: {
       to: reservation.guest_email,
@@ -132,11 +132,12 @@ export function composeCashExpiryReminder(
 export function composeExpiredCashCancellation(
   reservation: NotificationReservation,
 ): NotificationMessage {
+  const language = reservationLanguage(reservation);
+
   return {
     sms: {
       to: reservation.guest_phone,
-      message:
-        'EcoVila: Rezervarea dvs. a fost anulată deoarece termenul de achitare a expirat.\nPuteți rezerva din nou pe ecovila.md',
+      message: expiredCashCancellationSms(language),
     },
     email: {
       to: reservation.guest_email,
@@ -156,13 +157,14 @@ export function composeExpiredCashCancellation(
 export function composeCancellationConfirmation(
   reservation: NotificationReservation,
 ): NotificationMessage {
-  const roomCopy = roomLabel(reservation);
+  const language = reservationLanguage(reservation);
+  const roomCopy = roomLabel(reservation, 'ro');
+  const smsRoomCopy = roomLabel(reservation, language);
 
   return {
     sms: {
       to: reservation.guest_phone,
-      message:
-        `EcoVila: Rezervarea dvs. (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) a fost anulată.`,
+      message: cancellationConfirmationSms(reservation, smsRoomCopy, language),
     },
     email: {
       to: reservation.guest_email,
@@ -183,14 +185,12 @@ export function composeCancellationConfirmation(
 }
 
 export function composeArrivalReminder(reservation: NotificationReservation): NotificationMessage {
+  const language = reservationLanguage(reservation);
+
   return {
     sms: {
       to: reservation.guest_phone,
-      message: [
-        'EcoVila: Vă așteptăm mâine! Check-in de la 13:00.',
-        'Vă rugăm să rețineți: accesul cu animale de companie nu este permis pe teritoriul complexului.',
-        'Adresa: str. Aerodromului 3. Ne vedem mâine!',
-      ].join('\n'),
+      message: arrivalReminderSms(language),
     },
     email: {
       to: reservation.guest_email,
@@ -212,12 +212,24 @@ export function composeArrivalReminder(reservation: NotificationReservation): No
 }
 
 export async function dispatchNotification(message: NotificationMessage) {
-  const [sms, email] = await Promise.all([
+  const [sms, email] = await Promise.allSettled([
     sendSms(message.sms),
     sendEmail(message.email),
   ]);
 
-  return { sms, email };
+  if (sms.status === 'rejected') {
+    const emailDetail = email.status === 'rejected'
+      ? `; email: ${providerErrorMessage(email.reason)}`
+      : '';
+    throw new Error(`SMS provider failed: ${providerErrorMessage(sms.reason)}${emailDetail}`);
+  }
+
+  return {
+    sms: sms.value,
+    email: email.status === 'fulfilled'
+      ? email.value
+      : { error: providerErrorMessage(email.reason) },
+  };
 }
 
 export async function reserveNotificationEvent(
@@ -284,9 +296,7 @@ export async function markNotificationEventFailed(
   const { error: updateError } = await client
     .from('notification_events')
     .update({
-      delivery_status: attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS
-        ? 'abandoned'
-        : 'failed',
+      delivery_status: attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS ? 'abandoned' : 'failed',
       last_error: error instanceof Error ? error.message : 'Notification failed.',
       completed_at: now.toISOString(),
     })
@@ -306,7 +316,13 @@ export async function dispatchAndRecordNotification(
   metadata: Record<string, unknown> = {},
 ) {
   const result = await dispatchNotification(message);
-  const recorded = await recordNotificationEvent(client, reservationId, eventType, metadata);
+  const recorded = await recordNotificationEvent(
+    client,
+    reservationId,
+    eventType,
+    metadata,
+    result,
+  );
 
   return { result, recorded };
 }
@@ -316,6 +332,7 @@ export async function recordNotificationEvent(
   reservationId: string,
   eventType: string,
   metadata: Record<string, unknown> = {},
+  providerResponse: unknown = {},
 ) {
   const completionTime = new Date().toISOString();
   const { error } = await client
@@ -328,6 +345,7 @@ export async function recordNotificationEvent(
       completed_at: completionTime,
       sent_at: completionTime,
       metadata,
+      provider_response: providerResponse,
     });
 
   if (!error) {
@@ -339,6 +357,10 @@ export async function recordNotificationEvent(
   }
 
   throw new Error(error.message || 'Could not record notification event.');
+}
+
+function providerErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error || 'Provider request failed.');
 }
 
 export async function dispatchScheduledNotificationOnce(
@@ -471,9 +493,7 @@ async function claimExistingScheduledNotificationAttempt(
       },
     );
 
-    return abandoned
-      ? { outcome: 'abandoned' as const }
-      : { outcome: 'retry_pending' as const };
+    return abandoned ? { outcome: 'abandoned' as const } : { outcome: 'retry_pending' as const };
   }
 
   const nextAttemptCount = attemptCount + 1;
@@ -553,8 +573,203 @@ function isStaleReservation(attemptedAt: string | null, now: Date) {
   return now.getTime() - new Date(attemptedAt).getTime() >= RESERVED_RETRY_TIMEOUT_MS;
 }
 
-function roomLabel(reservation: NotificationReservation) {
-  return reservation.room_number ? `Căsuța #${reservation.room_number}` : 'EcoVila';
+function reservationLanguage(reservation: NotificationReservation) {
+  const language = String(reservation.guest_language || '').trim().toLowerCase();
+  return SUPPORTED_LANGUAGES.has(language) ? language : 'ro';
+}
+
+function roomLabel(reservation: NotificationReservation, language = 'ro') {
+  if (!reservation.room_number) {
+    return 'EcoVila';
+  }
+
+  if (language === 'ru') {
+    return `Домик #${reservation.room_number}`;
+  }
+
+  if (language === 'en') {
+    return `Villa #${reservation.room_number}`;
+  }
+
+  return `Căsuța #${reservation.room_number}`;
+}
+
+function bookingConfirmationSms(input: {
+  language: string;
+  checkIn: string;
+  checkOut: string;
+}) {
+  const useShortDate = input.language === 'ru';
+  const date = formatSmsDate(input.checkIn, input.language, useShortDate);
+  const checkOutDate = formatSmsDate(input.checkOut, input.language, useShortDate);
+
+  if (input.language === 'ru') {
+    return `Бронь: ${date}, 13.00 - ${checkOutDate}, 10.00. Вход с 13.00.`;
+  }
+
+  if (input.language === 'en') {
+    return `Your reservation is confirmed: ${date}, 13.00 - ${checkOutDate}, 10.00. Access to the property: after 13.00. See you soon!`;
+  }
+
+  return `Rezervarea dvs este confirmata: ${date}, 13.00 - ${checkOutDate}, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!`;
+}
+
+function formatSmsDate(value: string, language: string, short = false) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return value;
+  }
+
+  const [, year, monthText, dayText] = match;
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const monthName = smsMonthName(month, language, short);
+
+  if (!monthName || day < 1 || day > 31) {
+    return value;
+  }
+
+  return `${day} ${monthName} ${year}`;
+}
+
+function smsMonthName(month: number, language: string, short = false) {
+  const shortMonths: Record<string, string[]> = {
+    ru: [
+      'янв',
+      'фев',
+      'мар',
+      'апр',
+      'мая',
+      'июн',
+      'июл',
+      'авг',
+      'сен',
+      'окт',
+      'ноя',
+      'дек',
+    ],
+  };
+  const months: Record<string, string[]> = {
+    ro: [
+      'Ianuarie',
+      'Februarie',
+      'Martie',
+      'Aprilie',
+      'Mai',
+      'Iunie',
+      'Iulie',
+      'August',
+      'Septembrie',
+      'Octombrie',
+      'Noiembrie',
+      'Decembrie',
+    ],
+    ru: [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря',
+    ],
+    en: [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ],
+  };
+
+  if (short) {
+    return shortMonths[language]?.[month - 1] || months[language]?.[month - 1] ||
+      months.ro[month - 1] || '';
+  }
+
+  return months[language]?.[month - 1] || months.ro[month - 1] || '';
+}
+
+function cashExpiryReminderSms(language: string, confirmationLink: string) {
+  if (language === 'ru') {
+    return [
+      'EcoVila: Ваше бронирование истекает через 5 минут.',
+      `Оплатите по адресу ул. Аэродромулуй 3 или продлите на сайте: ${confirmationLink}`,
+    ].join('\n');
+  }
+
+  if (language === 'en') {
+    return [
+      'EcoVila: Your reservation expires in 5 minutes.',
+      `Pay at str. Aerodromului 3 or extend it on the site: ${confirmationLink}`,
+    ].join('\n');
+  }
+
+  return [
+    'EcoVila: Rezervarea dvs. expiră în 5 minute.',
+    `Achitați la str. Aerodromului 3 sau extindeți pe site: ${confirmationLink}`,
+  ].join('\n');
+}
+
+function expiredCashCancellationSms(language: string) {
+  if (language === 'ru') {
+    return [
+      'EcoVila: Ваше бронирование отменено, так как срок оплаты истек.',
+      'Вы можете забронировать снова на ecovila.md',
+    ].join('\n');
+  }
+
+  if (language === 'en') {
+    return [
+      'EcoVila: Your reservation was cancelled because the payment deadline expired.',
+      'You can book again at ecovila.md',
+    ].join('\n');
+  }
+
+  return [
+    'EcoVila: Rezervarea dvs. a fost anulată deoarece termenul de achitare a expirat.',
+    'Puteți rezerva din nou pe ecovila.md',
+  ].join('\n');
+}
+
+function cancellationConfirmationSms(
+  reservation: NotificationReservation,
+  roomCopy: string,
+  language: string,
+) {
+  if (language === 'ru') {
+    return `EcoVila: Ваше бронирование (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) отменено.`;
+  }
+
+  if (language === 'en') {
+    return `EcoVila: Your reservation (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) was cancelled.`;
+  }
+
+  return `EcoVila: Rezervarea dvs. (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) a fost anulată.`;
+}
+
+function arrivalReminderSms(language: string) {
+  if (language === 'ru') {
+    return 'Ждем вас завтра в EcoVila! Заезд и доступ на территорию с 13.00. Вопросы: 060120220';
+  }
+
+  if (language === 'en') {
+    return 'We look forward to welcoming you tomorrow at EcoVila! Check-in and property access from 13.00. Questions: 060120220';
+  }
+
+  return 'Va asteptam maine la EcoVila! Check-in si acces pe teritoriu - de la 13.00. Pentru intrebari: 060120220';
 }
 
 function reservationEmailHtml(input: {

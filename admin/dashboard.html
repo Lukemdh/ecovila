@@ -32,6 +32,7 @@
         <nav class="crm-tabs" aria-label="Secțiuni CRM">
           <button class="crm-tab is-active" type="button" data-tab="dashboard">Dashboard</button>
           <button class="crm-tab" type="button" data-tab="daily">Situația zilnică</button>
+          <button class="crm-tab" type="button" data-tab="towels">Ștergare</button>
           <button class="crm-tab" type="button" data-tab="photos">Poze</button>
           <button class="crm-tab" type="button" data-tab="pricing">Prețuri</button>
         </nav>
@@ -304,6 +305,7 @@
             <strong class="crm-total" data-edit-total>Preț total: 0 MDL</strong>
             <menu class="crm-dialog-actions">
               <button class="crm-button" value="cancel">Închide</button>
+              <button class="crm-button" type="button" data-send-payment-confirmation hidden>Trimite SMS confirmare</button>
               <button class="crm-button crm-button--primary" value="save" data-save-reservation>Salvează modificări</button>
             </menu>
             <div class="crm-danger-zone">
@@ -379,6 +381,45 @@
             <div class="crm-daily-list" data-check-outs></div>
           </section>
         </div>
+        <dialog class="crm-dialog" data-daily-guest-dialog>
+          <form method="dialog" class="crm-dialog__panel" data-daily-guest-form>
+            <h2>Actualizează oaspeții</h2>
+            <p class="crm-payment-readonly" data-daily-edit-room>Camera</p>
+            <div class="crm-form-grid crm-form-grid--two">
+              <label class="crm-field">
+                <span>Adulți</span>
+                <input type="number" min="0" data-daily-edit-adults>
+              </label>
+              <label class="crm-field">
+                <span>Copii</span>
+                <input type="number" min="0" data-daily-edit-kids>
+              </label>
+            </div>
+            <div class="crm-field crm-child-bucket-field">
+              <span>Vârste copii</span>
+              <div class="crm-child-buckets" data-daily-edit-child-buckets>
+                <p class="crm-empty">Nu sunt copii în rezervare.</p>
+              </div>
+            </div>
+            <div class="crm-form-grid crm-form-grid--two">
+              <label class="crm-field">
+                <span>Zile extra</span>
+                <input type="number" min="0" max="365" value="0" data-daily-edit-extra-days>
+              </label>
+              <label class="crm-field">
+                <span>Check-out nou</span>
+                <input type="date" data-daily-edit-new-check-out readonly>
+              </label>
+            </div>
+            <p class="crm-payment-readonly" data-daily-edit-availability>Disponibilitatea se verifică la salvare.</p>
+            <p class="crm-payment-readonly" data-daily-edit-current-total>Achitat: 0 MDL</p>
+            <strong class="crm-total" data-daily-edit-supplement>De încasat suplimentar: 0 MDL · De rambursat: 0 MDL</strong>
+            <menu class="crm-dialog-actions">
+              <button class="crm-button" value="cancel">Anulează</button>
+              <button class="crm-button crm-button--primary" value="save">Salvează</button>
+            </menu>
+          </form>
+        </dialog>
         <dialog class="crm-dialog" data-checkout-note-dialog>
           <form method="dialog" class="crm-dialog__panel" data-checkout-note-form>
             <h2>Adaugă un feedback clientului</h2>
@@ -392,6 +433,78 @@
             </menu>
           </form>
         </dialog>
+      </section>
+
+      <section class="crm-panel" data-panel="towels" aria-labelledby="towels-title">
+        <div class="crm-panel-header">
+          <h1 id="towels-title">Ștergare</h1>
+          <div class="crm-date-nav">
+            <button class="crm-button crm-button--small" type="button" data-towels-prev>
+              <span aria-hidden="true">‹</span>
+              <span>Înapoi</span>
+            </button>
+            <label class="crm-date-picker-button" data-towels-date-picker>
+              <svg class="crm-date-picker-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 2v4m8-4v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"></path>
+              </svg>
+              <span data-towels-date-label>Astăzi</span>
+              <input class="crm-date-picker-button__input" type="date" data-towels-date aria-label="Alege data">
+            </label>
+            <button class="crm-button crm-button--small" type="button" data-towels-next>
+              <span>Înainte</span>
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        </div>
+        <div class="crm-towels-summary">
+          <article class="crm-towels-stat-card">
+            <span class="crm-towels-stat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4A3.5 3.5 0 0 0 5 17.5V19"></path>
+                <path d="M10.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
+                <path d="M19 19v-1.2a2.8 2.8 0 0 0-2.1-2.7"></path>
+                <path d="M15.5 5.2a2.8 2.8 0 0 1 0 5.5"></path>
+              </svg>
+            </span>
+            <span class="crm-towels-stat-copy">
+              <span>Camere active</span>
+              <strong data-towels-room-count>0</strong>
+            </span>
+          </article>
+          <article class="crm-towels-stat-card">
+            <span class="crm-towels-stat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M20 6 9 17l-5-5"></path>
+                <path d="M21 12a9 9 0 1 1-6.2-8.6"></path>
+              </svg>
+            </span>
+            <span class="crm-towels-stat-copy">
+              <span>Camere completate</span>
+              <strong data-towels-completed>0</strong>
+            </span>
+          </article>
+          <article class="crm-towels-stat-card">
+            <span class="crm-towels-stat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M6 6h12a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4Z"></path>
+                <path d="M6 10h12a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4Z"></path>
+                <path d="M6 14h12a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4Z"></path>
+              </svg>
+            </span>
+            <span class="crm-towels-stat-copy">
+              <span>Total ștergare</span>
+              <strong data-towels-total>0</strong>
+            </span>
+          </article>
+        </div>
+        <div class="crm-towels-grid" data-towels-grid></div>
+        <div class="crm-towels-save-status" data-towels-save-status>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5"></path>
+            <path d="M21 12a9 9 0 1 1-6.2-8.6"></path>
+          </svg>
+          <span>Salvat</span>
+        </div>
       </section>
 
       <section class="crm-panel" data-panel="photos" aria-labelledby="photos-title">
@@ -512,6 +625,7 @@
     <script src="js/crm-sidebar.js"></script>
     <script src="js/crm-dashboard.js"></script>
     <script src="js/crm-daily.js"></script>
+    <script src="js/crm-towels.js"></script>
     <script src="js/crm-photos.js"></script>
     <script src="js/crm-pricing.js"></script>
     <script src="js/crm-auth.js"></script>

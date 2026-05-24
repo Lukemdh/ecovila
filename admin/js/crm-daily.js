@@ -5,6 +5,11 @@
   'use strict';
 
   const DAILY_STATUS_TABLE = 'crm_daily_statuses';
+  const CHILD_BUCKET_AGES = Object.freeze({
+    '0-3': 3,
+    '4-11': 4,
+    '12+': 12,
+  });
   const CHECK_ICON = `
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -31,6 +36,170 @@
     return statuses.find((status) => status.reservation_id === reservationId) || {};
   }
 
+  function bucketValueForAge(age) {
+    const value = Number(age);
+    if (value <= 3) {
+      return '0-3';
+    }
+    if (value <= 11) {
+      return '4-11';
+    }
+    return '12+';
+  }
+
+  function kidsAgesToBuckets(kidsAges) {
+    return (Array.isArray(kidsAges) ? kidsAges : []).map(bucketValueForAge);
+  }
+
+  function bucketValuesToAges(values) {
+    return (values || [])
+      .map((value) => CHILD_BUCKET_AGES[value])
+      .filter((age) => Number.isInteger(age));
+  }
+
+  function guestCount(reservation) {
+    return Number(reservation.adults || 0) + (Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0);
+  }
+
+  function guestSummary(reservation) {
+    const adults = Number(reservation.adults || 0);
+    const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
+    return `${adults} adulți · ${kids} copii`;
+  }
+
+  function groupReservations(reservations, reservation) {
+    const groupId = reservation.booking_group_id;
+    if (!groupId) {
+      return [reservation];
+    }
+
+    const grouped = (reservations || []).filter((item) => item.booking_group_id === groupId);
+    return grouped.length ? grouped : [reservation];
+  }
+
+  function groupTotal(reservations) {
+    return (reservations || []).reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  }
+
+  function groupRooms(reservations) {
+    const seen = new Set();
+    return (reservations || [])
+      .map((reservation) => reservation.rooms)
+      .filter((room) => {
+        if (!room?.id || seen.has(room.id)) {
+          return false;
+        }
+        seen.add(room.id);
+        return true;
+      });
+  }
+
+  function addDays(date, amount) {
+    if (root.EcoVilaCrmCalendar?.addDays) {
+      return root.EcoVilaCrmCalendar.addDays(date, amount);
+    }
+    const parsed = new Date(`${date}T00:00:00Z`);
+    parsed.setUTCDate(parsed.getUTCDate() + Number(amount || 0));
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  function normalizeExtraDays(value) {
+    return Math.min(365, Math.max(0, Math.round(Number(value || 0))));
+  }
+
+  function isActiveReservation(reservation) {
+    if (!reservation || reservation.cancelled_at || reservation.payment_status === 'cancelled') {
+      return false;
+    }
+    return !reservation.payment_status || ['pending', 'paid'].includes(reservation.payment_status);
+  }
+
+  function checkDailyExtensionAvailability(input) {
+    const reservation = input.reservation;
+    const group = input.group || groupReservations(input.reservations, reservation);
+    const checkIn = reservation?.check_out;
+    const checkOut = input.checkOut;
+    if (!reservation || !checkIn || !checkOut || checkOut <= checkIn) {
+      return { available: true, conflict: null };
+    }
+
+    const groupReservationIds = new Set(group.map((item) => item.id).filter(Boolean));
+    const groupId = reservation.booking_group_id;
+    const roomIds = new Set(group.map((item) => item.room_id).filter(Boolean));
+    const conflict = (input.reservations || []).find((item) => {
+      return (
+        isActiveReservation(item) &&
+        roomIds.has(item.room_id) &&
+        !groupReservationIds.has(item.id) &&
+        (!groupId || item.booking_group_id !== groupId) &&
+        item.check_in < checkOut &&
+        checkIn < item.check_out
+      );
+    }) || null;
+
+    return {
+      available: !conflict,
+      conflict,
+    };
+  }
+
+  function towelCardsFor(reservation, type) {
+    const cards = Number(reservation.towel_cards_issued);
+    if (type === 'out' && Number.isFinite(cards) && cards > 0) {
+      return cards;
+    }
+    return guestCount(reservation);
+  }
+
+  function towelCardLine(reservation, type) {
+    const prefix = type === 'in' ? 'De eliberat' : 'De primit';
+    return `${prefix}: ${towelCardsFor(reservation, type)} cartele`;
+  }
+
+  function calculateDailySupplement(input) {
+    const reservation = input.reservation;
+    const group = groupReservations(input.reservations, reservation);
+    const kidsAges = bucketValuesToAges(input.childBuckets);
+    const adults = Math.max(0, Number(input.adults || 0));
+    const extraDays = normalizeExtraDays(input.extraDays);
+    const existingTotal = groupTotal(group);
+    const rooms = groupRooms(group);
+    const checkOut = addDays(reservation.check_out, extraDays);
+    const sidebar = root.EcoVilaCrmSidebar;
+    const quote = sidebar?.calculateStaffTotal && rooms.length
+      ? sidebar.calculateStaffTotal({
+        rooms,
+        roomNumbers: rooms.map((room) => Number(room.number)),
+        adults,
+        kidsAges,
+        checkIn: reservation.check_in,
+        checkOut,
+        pricingTiers: input.pricingTiers || [],
+        holidays: input.holidays || [],
+        createdOn: reservation.created_at ? String(reservation.created_at).slice(0, 10) : reservation.check_in,
+      })
+      : { total: existingTotal };
+    const quotedTotal = Math.max(0, Math.round(Number(quote.total || 0)));
+    const balance = quotedTotal - existingTotal;
+    const supplement = Math.max(0, balance);
+    const reimbursement = Math.max(0, -balance);
+
+    return {
+      adults,
+      balance,
+      checkOut,
+      existingTotal,
+      extraDays,
+      group,
+      kidsAges,
+      quotedTotal,
+      reservation,
+      reimbursement,
+      supplement,
+      total: quotedTotal,
+    };
+  }
+
   function syncDateControl(context, state) {
     const label = qs('[data-daily-date-label]') || qs('[data-daily-date-button]');
     const input = qs('[data-daily-date]');
@@ -49,6 +218,10 @@
   function buildDailyCard(context, state, reservation, type, status) {
     const card = root.document.createElement('article');
     const completed = type === 'in' ? Boolean(status.checked_in_at) : Boolean(status.checked_out_at);
+    const group = groupReservations(state.reservations, reservation);
+    const phone = root.EcoVilaCrmCalendar.formatCalendarPhone
+      ? root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone)
+      : reservation.guest_phone || '';
     card.className = [
       'crm-daily-card',
       `crm-daily-card--${type}`,
@@ -58,9 +231,13 @@
       <div class="crm-daily-card__details">
         <span class="crm-daily-card__room">${root.EcoVilaCrmCalendar.roomLabel(reservation)}</span>
         <strong>${root.EcoVilaCrmCalendar.guestName(reservation)}</strong>
-        <span>${reservation.guest_phone || ''}</span>
+        <span>${phone}</span>
+        <span>${guestSummary(reservation)}</span>
+        <span>Achitat: ${context.formatMDL(groupTotal(group))}</span>
+        <span class="crm-daily-card__towels">${towelCardLine(reservation, type)}</span>
       </div>
     `;
+    card.addEventListener('click', () => openDailyGuestEditor(context, state, reservation));
 
     if (!completed) {
       const button = root.document.createElement('button');
@@ -69,11 +246,12 @@
       button.setAttribute('aria-label', dailyActionLabel(type));
       button.title = dailyActionLabel(type);
       button.innerHTML = CHECK_ICON;
-      button.addEventListener('click', () => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
         if (type === 'out') {
           openCheckoutNote(context, state, reservation);
         } else {
-          saveDailyStatus(context, state, reservation, { checked_in_at: new Date().toISOString() });
+          saveCheckIn(context, state, reservation);
         }
       });
       card.appendChild(button);
@@ -120,6 +298,208 @@
       ...values,
     });
     await loadDaily(context, state);
+  }
+
+  async function saveIssuedTowelCards(context, state, reservation, cards) {
+    const group = groupReservations(state.reservations, reservation);
+    await Promise.all(group.map((item) => root.EcoVilaSupabase.updateReservation(context.client, item.id, {
+      towel_cards_issued: cards,
+    })));
+  }
+
+  async function saveCheckIn(context, state, reservation) {
+    await saveIssuedTowelCards(context, state, reservation, guestCount(reservation));
+    await saveDailyStatus(context, state, reservation, { checked_in_at: new Date().toISOString() });
+  }
+
+  function renderDailyChildBuckets(context, state) {
+    const editor = state.editor;
+    const form = qs('[data-daily-guest-form]');
+    const container = qs('[data-daily-edit-child-buckets]');
+    const kidsInput = qs('[data-daily-edit-kids]');
+    if (!editor || !form || !container || !kidsInput) {
+      return;
+    }
+
+    const count = Math.max(0, Number(kidsInput.value || 0));
+    editor.childBuckets = editor.childBuckets.slice(0, count);
+    while (editor.childBuckets.length < count) {
+      editor.childBuckets.push('4-11');
+    }
+
+    if (!count) {
+      container.innerHTML = '<p class="crm-empty">Nu sunt copii în rezervare.</p>';
+      updateDailySupplement(context, state);
+      return;
+    }
+
+    container.innerHTML = editor.childBuckets.map((value, index) => `
+      <div class="crm-child-bucket-row">
+        <span>Copil ${index + 1}</span>
+        <div class="crm-child-bucket-options">
+          ${Object.keys(CHILD_BUCKET_AGES).map((bucket) => `
+            <label class="crm-child-bucket-option">
+              <input
+                type="radio"
+                name="daily-child-bucket-${index}"
+                value="${bucket}"
+                data-daily-child-bucket
+                data-daily-child-index="${index}"
+                ${value === bucket ? 'checked' : ''}
+              >
+              <span>${bucket}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('[data-daily-child-bucket]').forEach((input) => {
+      input.addEventListener('change', () => {
+        editor.childBuckets[Number(input.dataset.dailyChildIndex)] = input.value;
+        updateDailySupplement(context, state);
+      });
+    });
+
+    updateDailySupplement(context, state);
+  }
+
+  function updateDailySupplement(context, state) {
+    const editor = state.editor;
+    const adultsInput = qs('[data-daily-edit-adults]');
+    const extraDaysInput = qs('[data-daily-edit-extra-days]');
+    const newCheckOut = qs('[data-daily-edit-new-check-out]');
+    const availability = qs('[data-daily-edit-availability]');
+    const supplement = qs('[data-daily-edit-supplement]');
+    const currentTotal = qs('[data-daily-edit-current-total]');
+    if (!editor || !adultsInput || !supplement) {
+      return null;
+    }
+
+    const quote = calculateDailySupplement({
+      reservations: state.reservations,
+      reservation: editor.reservation,
+      adults: adultsInput.value,
+      childBuckets: editor.childBuckets,
+      extraDays: extraDaysInput?.value || 0,
+      pricingTiers: state.pricingTiers,
+      holidays: state.holidays,
+    });
+    editor.quote = quote;
+    if (extraDaysInput && Number(extraDaysInput.value || 0) !== quote.extraDays) {
+      extraDaysInput.value = String(quote.extraDays);
+    }
+    if (newCheckOut) {
+      newCheckOut.value = quote.checkOut;
+    }
+    if (availability) {
+      availability.textContent = quote.extraDays > 0
+        ? 'Disponibilitatea pentru zilele extra se verifică la salvare.'
+        : 'Fără zile extra.';
+    }
+    if (currentTotal) {
+      currentTotal.textContent = `Achitat: ${context.formatMDL(quote.existingTotal)}`;
+    }
+    supplement.textContent = quote.reimbursement > 0
+      ? `De rambursat: ${context.formatMDL(quote.reimbursement)}`
+      : `De încasat suplimentar: ${context.formatMDL(quote.supplement)}`;
+    return quote;
+  }
+
+  async function fetchDailyExtensionReservations(context, quote) {
+    if (!quote?.extraDays || !root.EcoVilaSupabase?.fetchAdminReservations) {
+      return [];
+    }
+    return root.EcoVilaSupabase.fetchAdminReservations(context.client, {
+      startDate: quote.reservation?.check_out || quote.group?.[0]?.check_out || '',
+      endDate: quote.checkOut,
+    });
+  }
+
+  async function saveDailyGuestEdit(context, state) {
+    const editor = state.editor;
+    const quote = updateDailySupplement(context, state);
+    if (!editor || !quote) {
+      return;
+    }
+
+    const extensionReservations = await fetchDailyExtensionReservations(context, quote);
+    const availability = checkDailyExtensionAvailability({
+      reservations: extensionReservations,
+      group: quote.group,
+      reservation: editor.reservation,
+      checkOut: quote.checkOut,
+    });
+    if (!availability.available) {
+      throw new Error('Camerele nu sunt disponibile pentru zilele extra selectate.');
+    }
+
+    const cards = quote.adults + quote.kidsAges.length;
+    const split = root.EcoVilaCrmSidebar?.splitTotalPrice
+      ? root.EcoVilaCrmSidebar.splitTotalPrice(quote.total, quote.group.length)
+      : [quote.total];
+    await Promise.all(quote.group.map((reservation, index) => root.EcoVilaSupabase.updateReservation(context.client, reservation.id, {
+      adults: quote.adults,
+      check_out: quote.checkOut,
+      kids_ages: quote.kidsAges,
+      total_price: split[index] || 0,
+      towel_cards_issued: cards,
+    })));
+    await loadDaily(context, state);
+  }
+
+  function openDailyGuestEditor(context, state, reservation) {
+    const dialog = qs('[data-daily-guest-dialog]');
+    const form = qs('[data-daily-guest-form]');
+    const room = qs('[data-daily-edit-room]');
+    const adults = qs('[data-daily-edit-adults]');
+    const kids = qs('[data-daily-edit-kids]');
+    const extraDays = qs('[data-daily-edit-extra-days]');
+    const newCheckOut = qs('[data-daily-edit-new-check-out]');
+    if (!dialog || !form || !adults || !kids) {
+      return;
+    }
+
+    state.editor = {
+      reservation,
+      childBuckets: kidsAgesToBuckets(reservation.kids_ages),
+      quote: null,
+    };
+    adults.value = String(Number(reservation.adults || 0));
+    kids.value = String(state.editor.childBuckets.length);
+    if (extraDays) {
+      extraDays.value = '0';
+    }
+    if (newCheckOut) {
+      newCheckOut.value = reservation.check_out;
+    }
+    if (room) {
+      room.textContent = root.EcoVilaCrmCalendar.roomLabel(reservation);
+    }
+
+    form.oninput = (event) => {
+      if (event.target === kids) {
+        renderDailyChildBuckets(context, state);
+        return;
+      }
+      updateDailySupplement(context, state);
+    };
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      if (event.submitter?.value !== 'save') {
+        dialog.close?.('cancel');
+        return;
+      }
+      try {
+        await saveDailyGuestEdit(context, state);
+        dialog.close?.('save');
+      } catch (error) {
+        context.setAlert(error?.message || 'Oaspeții nu au putut fi actualizați.');
+      }
+    };
+
+    renderDailyChildBuckets(context, state);
+    dialog.showModal?.();
   }
 
   function openCheckoutNote(context, state, reservation) {
@@ -171,10 +551,17 @@
     syncDateControl(context, state);
     const nextDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, 1);
     const previousDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, -1);
-    const reservations = await root.EcoVilaSupabase.fetchAdminReservations(context.client, {
-      startDate: previousDay,
-      endDate: nextDay,
-    });
+    const [reservations, pricingTiers, holidays] = await Promise.all([
+      root.EcoVilaSupabase.fetchAdminReservations(context.client, {
+        startDate: previousDay,
+        endDate: nextDay,
+      }),
+      root.EcoVilaSupabase.fetchPricingTiers(context.client),
+      root.EcoVilaSupabase.fetchHolidays(context.client),
+    ]);
+    state.reservations = reservations;
+    state.pricingTiers = pricingTiers;
+    state.holidays = holidays;
     const checkIns = reservations.filter((reservation) => reservation.check_in === state.selectedDate);
     const checkOuts = reservations.filter((reservation) => reservation.check_out === state.selectedDate);
     const ids = [...checkIns, ...checkOuts].map((reservation) => reservation.id);
@@ -204,6 +591,10 @@
   function init(context) {
     const state = {
       selectedDate: root.EcoVilaCrmCalendar.todayISO(),
+      reservations: [],
+      pricingTiers: [],
+      holidays: [],
+      editor: null,
     };
     activeDaily = { context, state };
 
@@ -225,8 +616,12 @@
   }
 
   return {
+    bucketValuesToAges,
+    calculateDailySupplement,
+    checkDailyExtensionAvailability,
     DAILY_STATUS_TABLE,
     init,
+    kidsAgesToBuckets,
     loadDaily,
     saveDailyStatus,
     showToday,

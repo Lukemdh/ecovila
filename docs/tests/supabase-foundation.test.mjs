@@ -81,6 +81,16 @@ describe('EcoVila Supabase foundation migration', () => {
       'guest phone format should allow validated international numbers',
     );
     assert.match(
+      allSql,
+      /guest_language text not null default 'ro'/i,
+      'reservations should store the site language used during checkout',
+    );
+    assert.match(
+      allSql,
+      /guest_language in \('ro', 'ru', 'en'\)/i,
+      'reservation guest language should be constrained to supported public languages',
+    );
+    assert.match(
       sql,
       /token text not null unique default encode\(gen_random_bytes\(32\), 'hex'\)/i,
       'cancellation tokens should default to a secure random value',

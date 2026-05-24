@@ -74,14 +74,23 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(login, /type="password"/i);
     assert.match(login, /crm-auth\.js/i);
 
-    for (const label of ['Dashboard', 'Situația zilnică', 'Poze', 'Prețuri']) {
+    for (const label of ['Dashboard', 'Situația zilnică', 'Ștergare', 'Poze', 'Prețuri']) {
       assert.match(dashboard, new RegExp(label, 'i'), `${label} tab should exist`);
     }
 
     assert.match(dashboard, /data-tab="dashboard"/i);
     assert.match(dashboard, /data-tab="daily"/i);
+    assert.match(dashboard, /data-tab="towels"/i);
     assert.match(dashboard, /data-tab="photos"/i);
     assert.match(dashboard, /data-tab="pricing"/i);
+    assert.ok(
+      dashboard.indexOf('data-tab="daily"') < dashboard.indexOf('data-tab="towels"'),
+      'Stergare tab should sit after Situația zilnică',
+    );
+    assert.ok(
+      dashboard.indexOf('data-tab="towels"') < dashboard.indexOf('data-tab="photos"'),
+      'Stergare tab should sit before Poze',
+    );
   });
 
   it('accepts staff usernames as CRM login aliases', () => {
@@ -135,6 +144,7 @@ describe('EcoVila Step 9 CRM', () => {
       'Adaugă rezervare',
       'Caută rezervare',
       'Marchează ca plătit',
+      'Trimite SMS confirmare',
       'Șterge rezervarea',
       'schimba',
       'sterge',
@@ -143,8 +153,17 @@ describe('EcoVila Step 9 CRM', () => {
     }
 
     assert.match(dashboardJs, /room_explicitly_selected/i);
-    assert.match(dashboardJs, /payment_status:\s*'paid'/i);
-    assert.match(dashboardJs, /cash_expires_at:\s*null/i);
+    assert.match(dashboardJs, /confirmReservationPayment/i);
+    assert.match(
+      dashboardJs,
+      /notificationResults[\s\S]*SMS-ul nu a fost trimis/,
+      'CRM should surface payment confirmation SMS failures returned by the Edge Function',
+    );
+    assert.doesNotMatch(
+      dashboardJs,
+      /payment_status:\s*'paid'[\s\S]*cash_expires_at:\s*null/i,
+      'mark-paid should go through the Edge Function so SMS/email confirmation can be sent server-side',
+    );
   });
 
   it('renders the staff add form with age buckets, a range calendar, and no payment selector', () => {
@@ -425,6 +444,13 @@ describe('EcoVila Step 9 CRM', () => {
       'Se cazează azi',
       'Pleacă azi',
       'Adaugă un feedback clientului',
+      'Actualizează oaspeții',
+      'De încasat suplimentar',
+      'De rambursat',
+      'Zile extra',
+      'Check-out nou',
+      'De eliberat',
+      'De primit',
     ]) {
       assert.match(`${dashboard}\n${daily}`, new RegExp(label, 'i'));
     }
@@ -443,8 +469,253 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(daily, /crm_daily_statuses/i);
     assert.match(daily, /check_in/i);
     assert.match(daily, /check_out/i);
+    assert.match(daily, /towel_cards_issued/i);
+    assert.match(daily, /data-daily-edit-child-buckets/i);
+    assert.match(daily, /data-daily-edit-extra-days/i);
+    assert.match(daily, /data-daily-edit-new-check-out/i);
+    assert.match(daily, /data-daily-edit-availability/i);
     assert.match(daily, /upsert/i);
     assert.match(daily, /sortByRoomWithCompletedLast/i);
+  });
+
+  it('calculates exact daily guest supplements from editable child age buckets', () => {
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaCrmCalendar: {
+        addDays: pricing.addDays,
+        roomNumber(reservation) {
+          return Number(reservation.rooms?.number || 0);
+        },
+      },
+      EcoVilaCrmSidebar: {
+        calculateStaffTotal(input) {
+          return {
+            total: pricing.calculateStayPrice({
+              roomType: input.rooms[0].type,
+              checkIn: input.checkIn,
+              checkOut: input.checkOut,
+              adults: input.adults,
+              kidsAges: input.kidsAges,
+              pricingTiers: input.pricingTiers,
+              holidays: input.holidays,
+              createdOn: input.createdOn,
+            }).total,
+          };
+        },
+        splitTotalPrice(total) {
+          return [total];
+        },
+      },
+    });
+    const pricingTiers = [
+      { nights_tier: 1, day_type: 'weekday', adult_price: 1000, kid_price: 500, effective_from: '2026-05-01' },
+      { nights_tier: 1, day_type: 'holiday', adult_price: 1000, kid_price: 500, effective_from: '2026-05-01' },
+      { nights_tier: 2, day_type: 'weekday', adult_price: 1000, kid_price: 500, effective_from: '2026-05-01' },
+      { nights_tier: 2, day_type: 'holiday', adult_price: 1000, kid_price: 500, effective_from: '2026-05-01' },
+    ];
+    const reservation = {
+      id: 'reservation-1',
+      room_id: 'room-1',
+      booking_group_id: 'group-1',
+      check_in: '2026-05-18',
+      check_out: '2026-05-19',
+      created_at: '2026-05-17T10:00:00Z',
+      adults: 2,
+      kids_ages: [3, 12],
+      total_price: 3000,
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+
+    assert.deepEqual(daily.kidsAgesToBuckets([3, 4, 12]), ['0-3', '4-11', '12+']);
+    assert.deepEqual(daily.bucketValuesToAges(['0-3', '4-11', '12+']), [3, 4, 12]);
+    assert.equal(
+      daily.calculateDailySupplement({
+        reservations: [reservation],
+        reservation,
+        adults: 2,
+        childBuckets: ['0-3', '4-11'],
+        pricingTiers,
+        holidays: [],
+      }).supplement,
+      0,
+      'changing an older child to a standard child should not ask staff to refund',
+    );
+    assert.equal(
+      daily.calculateDailySupplement({
+        reservations: [reservation],
+        reservation,
+        adults: 1,
+        childBuckets: ['0-3'],
+        pricingTiers,
+        holidays: [],
+      }).reimbursement,
+      1000,
+      'removing billable guests should tell staff what must be reimbursed',
+    );
+    assert.equal(
+      daily.calculateDailySupplement({
+        reservations: [reservation],
+        reservation,
+        adults: 3,
+        childBuckets: ['0-3', '4-11', '12+'],
+        pricingTiers,
+        holidays: [],
+      }).supplement,
+      1500,
+      'one extra adult and one extra 12+ child should be priced exactly from selected buckets',
+    );
+    const extraNightQuote = daily.calculateDailySupplement({
+      reservations: [reservation],
+      reservation,
+      adults: 2,
+      childBuckets: ['0-3', '12+'],
+      extraDays: 1,
+      pricingTiers,
+      holidays: [],
+    });
+    assert.equal(extraNightQuote.checkOut, '2026-05-20');
+    assert.equal(extraNightQuote.supplement, 3000);
+    assert.equal(extraNightQuote.reimbursement, 0);
+    assert.equal(
+      daily.checkDailyExtensionAvailability({
+        reservations: [
+          reservation,
+          {
+            id: 'reservation-2',
+            room_id: 'room-1',
+            check_in: '2026-05-19',
+            check_out: '2026-05-20',
+            payment_status: 'paid',
+          },
+        ],
+        group: [reservation],
+        reservation,
+        checkOut: '2026-05-20',
+      }).available,
+      false,
+      'extra days should be blocked when the same room is already reserved',
+    );
+  });
+
+  it('implements the SPA towel counter tab with daily room counts', () => {
+    const dashboard = read('admin/dashboard.html');
+    const app = read('admin/js/crm-app.js');
+    const towels = read('admin/js/crm-towels.js');
+    const helpers = read('js/supabase.js');
+    const css = read('css/crm.css');
+    const migrations = allMigrations();
+
+    assert.match(dashboard, /data-panel="towels"/i);
+    assert.match(dashboard, /data-towels-date-label/i);
+    assert.match(dashboard, /data-towels-grid/i);
+    assert.match(dashboard, /data-towels-completed/i);
+    assert.match(dashboard, /data-towels-save-status/i);
+    assert.match(dashboard, /Camere completate/i);
+    assert.match(dashboard, /Salvat/i);
+    assert.doesNotMatch(dashboard, /Salvat automat/i);
+    assert.match(dashboard, /js\/crm-towels\.js/i);
+    assert.match(app, /EcoVilaCrmTowels\?\.init\?\.\(context\)/i);
+    assert.match(app, /EcoVilaCrmTowels\?\.showToday\?\.\(\)/i);
+    assert.match(towels, /crm_towel_counts/i);
+    assert.match(towels, /fetchRooms/i);
+    assert.match(towels, /upsertTowelCount/i);
+    assert.match(towels, /TOWEL_SAVE_DELAY_MS\s*=\s*5000/i);
+    assert.match(towels, /SAVE_STATUS_VISIBLE_MS\s*=\s*3000/i);
+    assert.match(towels, /completedCount/i);
+    assert.match(towels, /data-towel-room-number/i);
+    assert.match(helpers, /function fetchTowelCounts/i);
+    assert.match(helpers, /function upsertTowelCount/i);
+    assert.match(css, /crm-towels-grid/i);
+    assert.match(css, /grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/i);
+    assert.match(css, /\.crm-towels-stat-card/i);
+    assert.match(css, /\.crm-towels-save-status/i);
+    assert.match(css, /margin-top:\s*96px/i);
+    assert.match(migrations, /add column if not exists towel_cards_issued integer/i);
+    assert.match(migrations, /create table if not exists public\.crm_towel_counts/i);
+    assert.match(migrations, /alter table public\.crm_towel_counts\s+enable row level security/i);
+    assert.match(migrations, /grant select, insert, update, delete on\s+public\.crm_towel_counts\s+to authenticated/i);
+    assert.match(migrations, /create policy "CRM staff can manage towel counts"/i);
+    assert.match(migrations, /alter publication supabase_realtime add table public\.crm_towel_counts/i);
+  });
+
+  it('debounces SPA towel saves and shows a short saved status after persistence', async () => {
+    const timers = new Map();
+    const calls = [];
+    let timerId = 0;
+    const statusText = { textContent: '' };
+    const statusClasses = new Set();
+    const status = {
+      classList: {
+        add(name) {
+          statusClasses.add(name);
+        },
+        remove(name) {
+          statusClasses.delete(name);
+        },
+      },
+      querySelector(selector) {
+        return selector === 'span' ? statusText : null;
+      },
+    };
+    const { EcoVilaCrmTowels: towels } = loadAdminModule('admin/js/crm-towels.js', {
+      document: {
+        querySelector(selector) {
+          if (selector === '[data-towels-save-status]') {
+            return status;
+          }
+          if (selector === '[data-towels-save-status] span') {
+            return statusText;
+          }
+          return null;
+        },
+      },
+      setTimeout(fn, delay) {
+        timerId += 1;
+        timers.set(timerId, { fn, delay });
+        return timerId;
+      },
+      clearTimeout(id) {
+        timers.delete(id);
+      },
+      EcoVilaSupabase: {
+        fetchRooms: async () => [],
+        fetchTowelCounts: async () => [],
+        upsertTowelCount: async (client, payload) => {
+          calls.push(payload);
+          return [payload];
+        },
+      },
+    });
+    const context = {
+      client: {},
+      session: { user: { id: 'staff-1' } },
+      setAlert(message) {
+        throw new Error(message);
+      },
+    };
+    const state = {
+      selectedDate: '2026-05-24',
+      rooms: [],
+      counts: [],
+    };
+    const room = { id: 'room-1', number: 1 };
+
+    towels.scheduleTowelCountSave(context, state, room, 1);
+    towels.scheduleTowelCountSave(context, state, room, 2);
+    towels.scheduleTowelCountSave(context, state, room, 3);
+
+    assert.equal(calls.length, 0, 'rapid clicks should not write immediately');
+    const pendingSaveTimers = Array.from(timers.values()).filter((timer) => timer.delay === 5000);
+    assert.equal(pendingSaveTimers.length, 1, 'only the final rapid click should leave one save timer');
+
+    await pendingSaveTimers[0].fn();
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].towel_count, 3);
+    assert.equal(statusText.textContent, 'Salvat');
+    assert.ok(statusClasses.has('is-visible'));
+    const fadeTimer = Array.from(timers.values()).find((timer) => timer.delay === 3000);
+    assert.ok(fadeTimer, 'saved status should be scheduled to fade after 3 seconds');
   });
 
   it('implements draft photo management with first photo as cover', () => {

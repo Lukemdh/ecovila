@@ -21,18 +21,17 @@ export async function sendSms(payload: SmsPayload, options: ProviderOptions = {}
   const endpoint = optionalEnv('SMSMD_API_URL') || 'https://api.sms.md/v1/send';
   const apiToken = requiredEnv('SMSMD_API_TOKEN');
   const from = requiredEnv('SMSMD_FROM');
+  const url = new URL(endpoint);
+  url.searchParams.set('token', apiToken);
+  url.searchParams.set('from', from);
+  url.searchParams.set('to', payload.to);
+  url.searchParams.set('message', payload.message);
 
-  return sendProviderRequest(fetcher, endpoint, {
-    method: 'POST',
+  return sendProviderRequest(fetcher, url.toString(), {
+    method: 'GET',
     headers: {
-      Authorization: `Bearer ${apiToken}`,
-      'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
-    body: JSON.stringify({
-      to: payload.to,
-      from,
-      message: payload.message,
-    }),
   });
 }
 

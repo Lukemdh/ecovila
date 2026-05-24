@@ -167,11 +167,13 @@
           'guest_last_name',
           'guest_phone',
           'guest_email',
+          'guest_language',
           'check_in',
           'check_out',
           'adults',
           'kids_ages',
           'total_price',
+          'towel_cards_issued',
           'payment_type',
           'payment_status',
           'room_explicitly_selected',
@@ -203,7 +205,7 @@
     return unwrapSupabaseResult(
       client
         .from('reservations')
-        .select('id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, total_price, payment_type, payment_status, cash_expires_at, rooms(id, number, type)')
+        .select('id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_language, check_in, check_out, total_price, payment_type, payment_status, cash_expires_at, rooms(id, number, type)')
         .eq('payment_type', 'cash')
         .eq('payment_status', 'pending')
         .is('cancelled_at', null)
@@ -229,6 +231,25 @@
         .eq('booking_group_id', bookingGroupId)
         .select(),
     );
+  }
+
+  async function confirmReservationPayment(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('confirm-reservation-payment', {
+      body: {
+        reservationId: input?.reservationId || '',
+        bookingGroupId: input?.bookingGroupId || '',
+      },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
   }
 
   function insertStaffReservations(client, payloads) {
@@ -282,6 +303,24 @@
       client
         .from('crm_daily_statuses')
         .upsert(payload, { onConflict: 'reservation_id,service_date' })
+        .select(),
+    );
+  }
+
+  function fetchTowelCounts(client, serviceDate) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_towel_counts')
+        .select('room_id, service_date, towel_count, updated_by, updated_at')
+        .eq('service_date', serviceDate),
+    );
+  }
+
+  function upsertTowelCount(client, payload) {
+    return unwrapSupabaseResult(
+      client
+        .from('crm_towel_counts')
+        .upsert(payload, { onConflict: 'room_id,service_date' })
         .select(),
     );
   }
@@ -477,6 +516,7 @@
     CLIENT_OPTIONS,
     cancelPendingReservation,
     cancelReservationByToken,
+    confirmReservationPayment,
     createReservationRequest,
     extendCashReservation,
     fetchPendingReservationStatus,
@@ -493,6 +533,7 @@
     fetchPublicPhotoLibrary,
     fetchPricingTiers,
     fetchRooms,
+    fetchTowelCounts,
     getSupabaseClient,
     getSupabaseConfig,
     getCrmPhotoPublicUrl,
@@ -511,6 +552,7 @@
     deleteHoliday,
     uploadCrmPhoto,
     upsertDailyStatus,
+    upsertTowelCount,
     unwrapSupabaseResult,
   };
 });

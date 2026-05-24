@@ -3,6 +3,7 @@ export const CASH_EXPIRY_MINUTES = 30;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
 export type ReservationInput = {
   id?: string;
@@ -12,6 +13,7 @@ export type ReservationInput = {
   guest_last_name?: string;
   guest_phone?: string;
   guest_email?: string;
+  guest_language?: string;
   check_in?: string;
   check_out?: string;
   adults?: number;
@@ -35,6 +37,7 @@ export type ReservationRow = {
   guest_last_name: string;
   guest_phone: string;
   guest_email: string;
+  guest_language: string;
   check_in: string;
   check_out: string;
   adults: number;
@@ -102,7 +105,7 @@ export async function createReservationsWithTokens(
     .from('reservations')
     .insert(rows)
     .select(
-      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, check_in, check_out, adults, kids_ages, total_price, payment_type, payment_status, room_explicitly_selected, conference_room, notes, cash_expires_at, cash_extended, created_by, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, adults, kids_ages, total_price, payment_type, payment_status, room_explicitly_selected, conference_room, notes, cash_expires_at, cash_extended, created_by, rooms(number, type)',
     );
 
   if (reservationError) {
@@ -192,6 +195,7 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
   const kidsAges = normalizeKidsAges(input.kids_ages);
   const phone = normalizeInternationalPhone(input.guest_phone);
   const email = trim(input.guest_email).toLowerCase();
+  const guestLanguage = normalizeLanguage(input.guest_language);
   const totalPrice = numberInput(input.total_price);
 
   if (!INTERNATIONAL_PHONE_PATTERN.test(phone)) {
@@ -212,6 +216,7 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
     guest_last_name: requiredString(input.guest_last_name, 'Guest last name is required.'),
     guest_phone: phone,
     guest_email: email,
+    guest_language: guestLanguage,
     check_in: checkIn,
     check_out: checkOut,
     adults,
@@ -245,6 +250,7 @@ function orderReservationRow(row: ReservationRow) {
     guest_last_name: row.guest_last_name,
     guest_phone: row.guest_phone,
     guest_email: row.guest_email,
+    guest_language: row.guest_language,
     check_in: row.check_in,
     check_out: row.check_out,
     adults: row.adults,
@@ -318,4 +324,9 @@ function numberInput(value: unknown) {
 
 function trim(value: unknown) {
   return String(value ?? '').trim();
+}
+
+function normalizeLanguage(value: unknown) {
+  const language = trim(value).toLowerCase();
+  return SUPPORTED_LANGUAGES.has(language) ? language : 'ro';
 }

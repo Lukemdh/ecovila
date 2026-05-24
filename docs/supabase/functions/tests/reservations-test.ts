@@ -31,6 +31,7 @@ Deno.test('buildReservationRows normalizes cash reservations with a server-side 
       guest_last_name: 'Munteanu',
       guest_phone: '+37360123456',
       guest_email: 'ana@example.md',
+      guest_language: 'ro',
       check_in: '2026-06-01',
       check_out: '2026-06-03',
       adults: 2,
@@ -74,6 +75,49 @@ Deno.test('buildReservationRows accepts international guest phone numbers', asyn
   assertEquals(rows[0].guest_phone, '+40721234567');
 });
 
+Deno.test('buildReservationRows stores the website language used during checkout', async () => {
+  const { buildReservationRows } = await import('../_shared/reservations.ts');
+  const rows = buildReservationRows(
+    [
+      {
+        id: 'reservation-ru',
+        booking_group_id: '00000000-0000-4000-8000-000000000003',
+        room_id: 'room-a',
+        guest_first_name: 'Elena',
+        guest_last_name: 'Rusu',
+        guest_phone: '+37360123456',
+        guest_email: 'elena@example.md',
+        check_in: '2026-06-01',
+        check_out: '2026-06-03',
+        adults: 2,
+        kids_ages: [],
+        total_price: 5200,
+        payment_type: 'cash',
+        guest_language: 'ru',
+      },
+      {
+        id: 'reservation-default',
+        booking_group_id: '00000000-0000-4000-8000-000000000003',
+        room_id: 'room-b',
+        guest_first_name: 'Ana',
+        guest_last_name: 'Munteanu',
+        guest_phone: '+37369123456',
+        guest_email: 'ana@example.md',
+        check_in: '2026-06-01',
+        check_out: '2026-06-03',
+        adults: 2,
+        kids_ages: [],
+        total_price: 5200,
+        payment_type: 'cash',
+      },
+    ],
+    { now: new Date('2026-05-08T07:00:00.000Z') },
+  );
+
+  assertEquals(rows[0].guest_language, 'ru');
+  assertEquals(rows[1].guest_language, 'ro');
+});
+
 Deno.test('buildReservationRows rejects unsafe guest-created reservation fields', async () => {
   const { buildReservationRows } = await import('../_shared/reservations.ts');
 
@@ -104,20 +148,21 @@ Deno.test('buildCancellationTokenRows creates one secure token row per reservati
   ]);
 });
 
-Deno.test('composeBookingConfirmation includes cancellation and confirmation links', async () => {
+Deno.test('composeBookingConfirmation keeps links in email and sends full stay SMS', async () => {
   const { composeBookingConfirmation } = await import('../_shared/notifications.ts');
   const message = composeBookingConfirmation(
     {
       id: 'reservation-a',
       room_number: 8,
-      check_in: '2026-06-01',
-      check_out: '2026-06-03',
+      check_in: '2026-05-16',
+      check_out: '2026-05-18',
       total_price: 5200,
       payment_type: 'cash',
       guest_email: 'ana@example.md',
       guest_phone: '+37360123456',
       guest_first_name: 'Ana',
       guest_last_name: 'Munteanu',
+      guest_language: 'ro',
     },
     {
       cancellationToken: 'cancel-token',
@@ -126,35 +171,168 @@ Deno.test('composeBookingConfirmation includes cancellation and confirmation lin
   );
 
   assertEquals(message.sms.to, '+37360123456');
-  assertIncludes(message.sms.message, 'Căsuța #8');
-  assertIncludes(message.sms.message, 'https://ecovila.md/anulare.html?token=cancel-token');
+  assertEquals(
+    message.sms.message,
+    'Rezervarea dvs este confirmata: 16 Mai 2026, 13.00 - 18 Mai 2026, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!',
+  );
+  assertEquals([...message.sms.message].length <= 160, true);
+  assertEquals(message.sms.message.includes('EcoVila:'), false);
+  assertEquals(message.sms.message.includes('https://ecovila.md/anulare.html'), false);
   assertEquals(message.email.to, 'ana@example.md');
   assertIncludes(message.email.html, 'https://ecovila.md/confirmare.html?id=reservation-a');
+  assertIncludes(message.email.text, 'Anulare 7 zile+:');
 });
 
-Deno.test('composeBookingConfirmation uses the 7-day cancellation wording', async () => {
+Deno.test('composeBookingConfirmation keeps SMS inside one segment where possible', async () => {
   const { composeBookingConfirmation } = await import('../_shared/notifications.ts');
-  const message = composeBookingConfirmation(
+  const cases = [
     {
-      id: 'reservation-a',
+      language: 'ro',
+      checkIn: '2026-09-16',
+      expected: 'Rezervarea dvs este confirmata: 16 Septembrie 2026, 13.00 - 18 Septembrie 2026, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!',
+      maxLength: 160,
+    },
+    {
+      language: 'ru',
+      checkIn: '2026-09-16',
+      expected: 'Бронь: 16 сен 2026, 13.00 - 18 сен 2026, 10.00. Вход с 13.00.',
+      maxLength: 70,
+    },
+    {
+      language: 'en',
+      checkIn: '2026-09-16',
+      expected: 'Your reservation is confirmed: 16 September 2026, 13.00 - 18 September 2026, 10.00. Access to the property: after 13.00. See you soon!',
+      maxLength: 160,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const message = composeBookingConfirmation(
+      {
+        id: `reservation-${testCase.language}`,
+        room_number: 8,
+        check_in: testCase.checkIn,
+        check_out: '2026-09-18',
+        total_price: 5200,
+        payment_type: 'cash',
+        guest_email: 'guest@example.md',
+        guest_phone: '+37360123456',
+        guest_first_name: 'Ana',
+        guest_last_name: 'Munteanu',
+        guest_language: testCase.language,
+      },
+      {
+        cancellationToken: 'cancel-token',
+        siteUrl: 'https://ecovila.md',
+      },
+    );
+
+    assertEquals(message.sms.message, testCase.expected);
+    assertEquals([...message.sms.message].length <= testCase.maxLength, true);
+  }
+});
+
+Deno.test('composeArrivalReminder sends short translated SMS without sender prefix', async () => {
+  const { composeArrivalReminder } = await import('../_shared/notifications.ts');
+  const cases = [
+    {
+      language: 'ro',
+      expected:
+        'Va asteptam maine la EcoVila! Check-in si acces pe teritoriu - de la 13.00. Pentru intrebari: 060120220',
+      maxLength: 160,
+    },
+    {
+      language: 'en',
+      expected:
+        'We look forward to welcoming you tomorrow at EcoVila! Check-in and property access from 13.00. Questions: 060120220',
+      maxLength: 160,
+    },
+    {
+      language: 'ru',
+      expected:
+        'Ждем вас завтра в EcoVila! Заезд и доступ на территорию с 13.00. Вопросы: 060120220',
+      maxLength: 140,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const message = composeArrivalReminder({
+      id: `reservation-reminder-${testCase.language}`,
       room_number: 8,
-      check_in: '2026-06-01',
-      check_out: '2026-06-03',
+      check_in: '2026-09-16',
+      check_out: '2026-09-18',
       total_price: 5200,
       payment_type: 'cash',
-      guest_email: 'ana@example.md',
+      guest_email: 'guest@example.md',
       guest_phone: '+37360123456',
       guest_first_name: 'Ana',
       guest_last_name: 'Munteanu',
-    },
-    {
-      cancellationToken: 'cancel-token',
-      siteUrl: 'https://ecovila.md',
-    },
-  );
+      guest_language: testCase.language,
+    });
 
-  assertIncludes(message.sms.message, 'Anulare (7 zile+):');
-  assertIncludes(message.email.text, 'Anulare 7 zile+:');
+    assertEquals(message.sms.message, testCase.expected);
+    assertEquals(message.sms.message.includes('EcoVila:'), false);
+    assertEquals([...message.sms.message].length <= testCase.maxLength, true);
+  }
+});
+
+Deno.test('sendSms follows the SMS.md authorized legacy request shape', async () => {
+  const { sendSms } = await import('../_shared/providers.ts');
+  const originalToken = Deno.env.get('SMSMD_API_TOKEN');
+  const originalFrom = Deno.env.get('SMSMD_FROM');
+  const originalUrl = Deno.env.get('SMSMD_API_URL');
+  let request: { endpoint: string; init: RequestInit } | undefined;
+
+  Deno.env.set('SMSMD_API_TOKEN', 'test-token');
+  Deno.env.set('SMSMD_FROM', 'EcoVila');
+  Deno.env.delete('SMSMD_API_URL');
+
+  try {
+    await sendSms(
+      {
+        to: '+37369000000',
+        message: 'Comanda dvs. nr. 1042 a fost acceptata.',
+      },
+      {
+        fetcher(endpoint, init) {
+          request = { endpoint: String(endpoint), init: init || {} };
+          return Promise.resolve(
+            new Response(JSON.stringify({ id: 'msg_8f3a91bc' }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        },
+      },
+    );
+  } finally {
+    if (originalToken) {
+      Deno.env.set('SMSMD_API_TOKEN', originalToken);
+    } else {
+      Deno.env.delete('SMSMD_API_TOKEN');
+    }
+
+    if (originalFrom) {
+      Deno.env.set('SMSMD_FROM', originalFrom);
+    } else {
+      Deno.env.delete('SMSMD_FROM');
+    }
+
+    if (originalUrl) {
+      Deno.env.set('SMSMD_API_URL', originalUrl);
+    } else {
+      Deno.env.delete('SMSMD_API_URL');
+    }
+  }
+
+  const url = new URL(request?.endpoint || '');
+  assertEquals(`${url.origin}${url.pathname}`, 'https://api.sms.md/v1/send');
+  assertEquals(url.searchParams.get('token'), 'test-token');
+  assertEquals(url.searchParams.get('from'), 'EcoVila');
+  assertEquals(url.searchParams.get('to'), '+37369000000');
+  assertEquals(url.searchParams.get('message'), 'Comanda dvs. nr. 1042 a fost acceptata.');
+  assertEquals(request?.init.method, 'GET');
+  assertEquals((request?.init.headers as Record<string, string>).Accept, 'application/json');
 });
 
 Deno.test('reserveNotificationEvent returns false for duplicate rows before dispatch', async () => {
@@ -197,6 +375,121 @@ Deno.test('recordNotificationEvent stores non-cron sends as sent lifecycle rows'
   assertEquals(insertPayload?.delivery_status, 'sent');
   assertEquals(insertPayload?.attempted_at, insertPayload?.completed_at);
   assertEquals(insertPayload?.completed_at, insertPayload?.sent_at);
+});
+
+Deno.test('dispatchAndRecordNotification records SMS success when email provider fails', async () => {
+  const { dispatchAndRecordNotification } = await import('../_shared/notifications.ts');
+  const originalToken = Deno.env.get('SMSMD_API_TOKEN');
+  const originalFrom = Deno.env.get('SMSMD_FROM');
+  const originalSmsUrl = Deno.env.get('SMSMD_API_URL');
+  const originalResendKey = Deno.env.get('RESEND_API_KEY');
+  const originalResendFrom = Deno.env.get('RESEND_FROM_EMAIL');
+  const originalResendUrl = Deno.env.get('RESEND_API_URL');
+  const originalFetch = globalThis.fetch;
+  let insertPayload: Record<string, unknown> | undefined;
+
+  Deno.env.set('SMSMD_API_TOKEN', 'test-token');
+  Deno.env.set('SMSMD_FROM', 'EcoVila');
+  Deno.env.set('SMSMD_API_URL', 'https://sms.test/messages');
+  Deno.env.set('RESEND_API_KEY', 'resend-key');
+  Deno.env.set('RESEND_FROM_EMAIL', 'rezervari@ecovila.md');
+  Deno.env.set('RESEND_API_URL', 'https://email.test/emails');
+
+  globalThis.fetch = ((endpoint: string | URL | Request) => {
+    const url = String(endpoint);
+    if (url.startsWith('https://sms.test/messages?')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'msg_8f3a91bc' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }
+
+    return Promise.resolve(
+      new Response(JSON.stringify({ message: 'email domain is not verified' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  }) as typeof fetch;
+
+  const client = {
+    from() {
+      return {
+        insert(payload: Record<string, unknown>) {
+          insertPayload = payload;
+          return Promise.resolve({ error: null });
+        },
+      };
+    },
+  };
+
+  try {
+    const result = await dispatchAndRecordNotification(
+      client,
+      'reservation-a',
+      'payment_confirmation',
+      {
+        sms: {
+          to: '+37360123456',
+          message: 'Rezervarea e confirmată! Vă așteptăm pe 16 Mai 2026, după 13.00',
+        },
+        email: {
+          to: 'ana@example.md',
+          subject: 'Confirmare rezervare EcoVila',
+          html: '<p>Confirmare</p>',
+          text: 'Confirmare',
+        },
+      },
+    );
+
+    assertEquals(result.recorded, true);
+    assertEquals(result.result.sms, { id: 'msg_8f3a91bc' });
+    assertEquals(result.result.email, {
+      error: 'Provider request failed with 403: {"message":"email domain is not verified"}',
+    });
+    assertEquals(insertPayload?.delivery_status, 'sent');
+    assertEquals(insertPayload?.provider_response, result.result);
+  } finally {
+    globalThis.fetch = originalFetch;
+
+    if (originalToken) {
+      Deno.env.set('SMSMD_API_TOKEN', originalToken);
+    } else {
+      Deno.env.delete('SMSMD_API_TOKEN');
+    }
+
+    if (originalFrom) {
+      Deno.env.set('SMSMD_FROM', originalFrom);
+    } else {
+      Deno.env.delete('SMSMD_FROM');
+    }
+
+    if (originalSmsUrl) {
+      Deno.env.set('SMSMD_API_URL', originalSmsUrl);
+    } else {
+      Deno.env.delete('SMSMD_API_URL');
+    }
+
+    if (originalResendKey) {
+      Deno.env.set('RESEND_API_KEY', originalResendKey);
+    } else {
+      Deno.env.delete('RESEND_API_KEY');
+    }
+
+    if (originalResendFrom) {
+      Deno.env.set('RESEND_FROM_EMAIL', originalResendFrom);
+    } else {
+      Deno.env.delete('RESEND_FROM_EMAIL');
+    }
+
+    if (originalResendUrl) {
+      Deno.env.set('RESEND_API_URL', originalResendUrl);
+    } else {
+      Deno.env.delete('RESEND_API_URL');
+    }
+  }
 });
 
 Deno.test('markNotificationEventSent stores completion timestamps explicitly', async () => {

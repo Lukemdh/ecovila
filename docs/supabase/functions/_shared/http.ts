@@ -54,6 +54,21 @@ export function requireSharedSecret(request: Request, envName = 'ECOVILA_CRON_SE
   }
 }
 
+export function requireStaffRole(request: Request, allowedRoles: string[]) {
+  const authorization = request.headers.get('authorization') || '';
+  const token = authorization.toLowerCase().startsWith('bearer ')
+    ? authorization.slice('bearer '.length)
+    : '';
+  const claims = parseJwtPayload(token);
+  const role = String(claims?.app_metadata?.role || '');
+
+  if (!role || !allowedRoles.includes(role)) {
+    throw new HttpError(403, 'Insufficient staff permissions.');
+  }
+
+  return role;
+}
+
 function constantTimeEqual(left: string, right: string) {
   if (left.length !== right.length) {
     return false;
@@ -65,4 +80,23 @@ function constantTimeEqual(left: string, right: string) {
   }
 
   return result === 0;
+}
+
+function parseJwtPayload(token: string) {
+  if (!token) {
+    throw new HttpError(401, 'Missing authorization token.');
+  }
+
+  const payload = token.split('.')[1];
+  if (!payload) {
+    throw new HttpError(401, 'Invalid authorization token.');
+  }
+
+  try {
+    const base64 = payload.replaceAll('-', '+').replaceAll('_', '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    return JSON.parse(atob(padded));
+  } catch (_error) {
+    throw new HttpError(401, 'Invalid authorization token.');
+  }
 }

@@ -275,6 +275,12 @@
     const paymentLabel = PAYMENT_LABELS[reservation.payment_type] || reservation.payment_type || '-';
     qs('[data-edit-payment]', dialog).textContent = `Tip plată: ${paymentLabel} · ${reservation.payment_status}`;
     qs('[data-edit-total]', dialog).textContent = `Preț total: ${root.EcoVilaCrmApp.formatMDL(reservation.total_price)}`;
+    const sendConfirmation = qs('[data-send-payment-confirmation]', dialog);
+    if (sendConfirmation) {
+      const canSendConfirmation = reservation.payment_type === 'cash' && reservation.payment_status === 'paid';
+      sendConfirmation.hidden = !canSendConfirmation;
+      sendConfirmation.onclick = canSendConfirmation ? () => sendPaymentConfirmation(reservation) : null;
+    }
     qs('[data-delete-reservation]', dialog).onclick = () => deleteReservation(reservation);
     dialog.showModal?.();
   }
@@ -295,16 +301,43 @@
   }
 
   async function markPaid(context, reservationId, bookingGroupId) {
-    const values = {
-      payment_status: 'paid',
-      cash_expires_at: null,
-    };
-    if (bookingGroupId) {
-      await root.EcoVilaSupabase.updateReservationGroup(context.client, bookingGroupId, values);
-    } else {
-      await root.EcoVilaSupabase.updateReservation(context.client, reservationId, values);
-    }
+    const result = await root.EcoVilaSupabase.confirmReservationPayment(context.client, {
+      reservationId,
+      bookingGroupId,
+    });
     await activeState?.reload?.();
+    showPaymentConfirmationResult(activeState?.context || context, result);
+  }
+
+  async function sendPaymentConfirmation(reservation) {
+    const context = activeState?.context;
+    if (!context) {
+      return;
+    }
+
+    const result = await root.EcoVilaSupabase.confirmReservationPayment(context.client, {
+      reservationId: reservation.id,
+      bookingGroupId: reservation.booking_group_id,
+    });
+    await activeState?.reload?.();
+    showPaymentConfirmationResult(context, result);
+  }
+
+  function showPaymentConfirmationResult(context, result) {
+    const failures = (result?.notificationResults || []).filter((item) => {
+      return item && item.sent === false && !item.skipped_duplicate;
+    });
+
+    if (!failures.length) {
+      context?.setAlert?.('');
+      return;
+    }
+
+    const message = failures
+      .map((item) => item.error || item.reason || 'SMS-ul nu a fost trimis.')
+      .filter(Boolean)
+      .join(' ');
+    context?.setAlert?.(`Plata a fost confirmată, dar SMS-ul nu a fost trimis: ${message.slice(0, 180)}`);
   }
 
   function renderTodayStats(state) {

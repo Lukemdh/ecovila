@@ -3,6 +3,9 @@ project_id = "ecovila"
 [functions.create-reservation]
 verify_jwt = true
 
+[functions.confirm-reservation-payment]
+verify_jwt = true
+
 [functions.send-sms]
 verify_jwt = true
 
