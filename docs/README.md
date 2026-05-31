@@ -58,6 +58,7 @@ without exposing credentials. Canonical environment variable **names**:
 - `SUPABASE_SERVICE_ROLE_KEY` (alias accepted: `SERVICE_ROLE_KEY`)
 - `ECOVILA_CRON_SECRET` — shared secret for cron-triggered functions (`x-ecovila-secret` header or bearer)
 - `ECOVILA_SITE_URL` (alias accepted: `SITE_URL`) — defaults to `https://ecovila.md`
+- `ECOVILA_ALLOWED_ORIGINS` (optional, comma-separated) — CORS origin allowlist override; defaults to `https://ecovila.md`, `https://www.ecovila.md`, `https://admin.ecovila.md`, `null`, `http://localhost:3000`, `http://localhost:5173`, `http://127.0.0.1:3000`, and `http://127.0.0.1:5173`
 - `SMSMD_API_TOKEN`, `SMSMD_FROM`, `SMSMD_API_URL` (URL optional; defaults to `https://api.sms.md/v1/send`)
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_API_URL` (URL optional; defaults to `https://api.resend.com/emails`)
 - `MAIB_CLIENT_ID`, `MAIB_CLIENT_SECRET`, `MAIB_SIGNATURE_KEY`, `MAIB_BASE_URL`
@@ -100,7 +101,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 171 Node + 32 Deno tests, all passing
+# → 171 Node + 35 Deno tests, all passing
 ```
 
 The suites can also be run independently.
@@ -117,7 +118,7 @@ npm run test:node
 ```sh
 npm run test:deno
 # equivalent: cd docs/supabase/functions && deno task test
-# → 32 tests, all passing
+# → 35 tests, all passing
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named

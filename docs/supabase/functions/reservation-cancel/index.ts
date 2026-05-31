@@ -152,20 +152,24 @@ Deno.serve(async (request) => {
 
     const notificationResults = await notifyCancelledReservations(client, reservations);
 
-    return jsonResponse({
-      ok: true,
-      status: 'cancelled',
-      refunded: Boolean(refundResult),
-      refundable,
-      refundReason: refundEligibilityReason({
-        checkIn: summary.checkIn,
-        createdAt,
-      }),
-      refund: refundResult,
-      notificationResults,
-    });
+    return jsonResponse(
+      {
+        ok: true,
+        status: 'cancelled',
+        refunded: Boolean(refundResult),
+        refundable,
+        refundReason: refundEligibilityReason({
+          checkIn: summary.checkIn,
+          createdAt,
+        }),
+        refund: refundResult,
+        notificationResults,
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

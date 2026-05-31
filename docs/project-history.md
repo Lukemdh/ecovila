@@ -68,7 +68,7 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 171 Node contract tests + 32 Deno tests.
+- Tests green: 171 Node contract tests + 35 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - Notable structural quirk: backend code (`supabase/`) and tests live under `docs/`,
@@ -141,3 +141,7 @@ sessions append to the running log at the bottom.
   type-cleanup files, re-ran the typecheck/lint/Deno tests plus the full `npm test`
   suite, and corrected stale `docs/plan.md` step-block statuses so the next actionable
   cleanup step is Step 12.
+- 2026-05-31 — STEP 12 cleanup. Centralized Edge Function CORS in `_shared/cors.ts`,
+  added the optional `ECOVILA_ALLOWED_ORIGINS` override, threaded request-aware CORS
+  headers through JSON/error responses, and added Deno coverage for allowed, unknown, and
+  env-configured origins.

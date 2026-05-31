@@ -60,7 +60,7 @@ Deno.serve(async (request) => {
 
     const existing = await findExistingRefund(client, payment.pay_id);
     if (existing?.status === 'succeeded') {
-      return jsonResponse({ ok: true, result: existing.response_payload || {} });
+      return jsonResponse({ ok: true, result: existing.response_payload || {} }, {}, request);
     }
 
     await upsertRefundRequest(client, {
@@ -114,9 +114,9 @@ Deno.serve(async (request) => {
       throw new Error(paymentError.message);
     }
 
-    return jsonResponse({ ok: true, result: refund?.result || refund });
+    return jsonResponse({ ok: true, result: refund?.result || refund }, {}, request);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

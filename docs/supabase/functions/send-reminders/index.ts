@@ -58,12 +58,16 @@ Deno.serve(async (request) => {
       sendArrivalReminders(client, now),
     ]);
 
-    return jsonResponse({
-      cashWarnings,
-      arrivalReminders,
-    });
+    return jsonResponse(
+      {
+        cashWarnings,
+        arrivalReminders,
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

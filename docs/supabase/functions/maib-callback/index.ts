@@ -123,7 +123,7 @@ Deno.serve(async (request) => {
     const payment = await findPayment(client, { payId, providerPaymentId, orderId });
 
     if (payment?.processed_at && ['paid', 'failed', 'cancelled'].includes(payment.status)) {
-      return jsonResponse({ ok: true, duplicate: true, status: payment.status });
+      return jsonResponse({ ok: true, duplicate: true, status: payment.status }, {}, request);
     }
 
     const bookingGroupId = payment?.booking_group_id || orderId;
@@ -157,7 +157,7 @@ Deno.serve(async (request) => {
         ...callbackContext,
         decision: 'no_matching_reservation',
       });
-      return jsonResponse({ ok: true, matched: 0, status });
+      return jsonResponse({ ok: true, matched: 0, status }, {}, request);
     }
 
     if (status === 'paid') {
@@ -180,17 +180,21 @@ Deno.serve(async (request) => {
 
       const notificationResults = await notifyPaidReservations(client, reservations);
       console.info('Maib callback processed', { ...callbackContext, decision: 'paid' });
-      return jsonResponse({
-        ok: true,
-        status: 'paid',
-        matched: reservations.length,
-        notificationResults,
-      });
+      return jsonResponse(
+        {
+          ok: true,
+          status: 'paid',
+          matched: reservations.length,
+          notificationResults,
+        },
+        {},
+        request,
+      );
     }
 
     if (status === 'pending') {
       console.info('Maib callback processed', { ...callbackContext, decision: 'left_pending' });
-      return jsonResponse({ ok: true, status, matched: reservations.length });
+      return jsonResponse({ ok: true, status, matched: reservations.length }, {}, request);
     }
 
     const { error } = await table(client, 'reservations')
@@ -214,9 +218,9 @@ Deno.serve(async (request) => {
       decision: status === 'cancelled' ? 'cancelled' : 'failed',
     });
 
-    return jsonResponse({ ok: true, status, matched: reservations.length });
+    return jsonResponse({ ok: true, status, matched: reservations.length }, {}, request);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

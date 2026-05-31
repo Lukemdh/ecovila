@@ -84,13 +84,17 @@ Deno.serve(async (request) => {
     const ids = reservations.map((reservation) => reservation.id);
 
     if (!ids.length) {
-      return jsonResponse({
-        ok: true,
-        status: 'paid',
-        matched: 0,
-        reservationIds: [],
-        notificationResults: [],
-      });
+      return jsonResponse(
+        {
+          ok: true,
+          status: 'paid',
+          matched: 0,
+          reservationIds: [],
+          notificationResults: [],
+        },
+        {},
+        request,
+      );
     }
 
     const pendingIds = reservations
@@ -109,16 +113,20 @@ Deno.serve(async (request) => {
 
     const notificationResults = await notifyPaidReservations(client, reservations);
 
-    return jsonResponse({
-      ok: true,
-      status: 'paid',
-      matched: ids.length,
-      updated: pendingIds.length,
-      reservationIds: ids,
-      notificationResults,
-    });
+    return jsonResponse(
+      {
+        ok: true,
+        status: 'paid',
+        matched: ids.length,
+        updated: pendingIds.length,
+        reservationIds: ids,
+        notificationResults,
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

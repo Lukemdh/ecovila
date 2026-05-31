@@ -88,13 +88,17 @@ Deno.serve(async (request) => {
 
     const reservations = await findActiveReservations(client, lookup.phone);
 
-    return jsonResponse({
-      ok: true,
-      manageToken: token,
-      reservations: groupReservations(reservations),
-    });
+    return jsonResponse(
+      {
+        ok: true,
+        manageToken: token,
+        reservations: groupReservations(reservations),
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

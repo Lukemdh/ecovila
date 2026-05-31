@@ -25,8 +25,8 @@ Deno.serve(async (request) => {
       text: body?.text ? String(body.text) : undefined,
     });
 
-    return jsonResponse({ ok: true, result });
+    return jsonResponse({ ok: true, result }, {}, request);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });

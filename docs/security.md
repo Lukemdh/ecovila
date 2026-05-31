@@ -7,7 +7,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 
 | ID | Finding | Severity | Where | Status |
 |----|---------|----------|-------|--------|
-| S-1 | Wildcard `Access-Control-Allow-Origin: *` on all Edge Functions except `maib-create-payment` | Low–Medium | `docs/supabase/functions/_shared/cors.ts` | Open |
+| S-1 | Wildcard `Access-Control-Allow-Origin: *` on all Edge Functions except `maib-create-payment` | Low–Medium | `docs/supabase/functions/_shared/cors.ts` | Fixed |
 | S-2 | `requireStaffRole` reads role from JWT payload without verifying the signature (relies on gateway `verify_jwt`) | Low (Info) | `docs/supabase/functions/_shared/http.ts:62` | Open |
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
@@ -20,16 +20,16 @@ No Critical or High findings were identified. Several controls are implemented w
 ## Findings detail
 
 ### S-1 — Wildcard CORS on most Edge Functions (Low–Medium)
-`_shared/cors.ts` returns `Access-Control-Allow-Origin: *` whenever a function does not
-pass an explicit `allowedOrigins` list. Only `maib-create-payment` passes one
-(`https://ecovila.md`, `https://www.ecovila.md`, `https://admin.ecovila.md`). 
-- **Why it matters:** any origin can invoke the functions from a browser. For functions
-  gated by `verify_jwt = true` plus shared-secret/token checks the practical risk is
-  limited, but it widens the attack surface (e.g. CSRF-style abuse from a logged-in
-  victim's browser on functions that act on bearer tokens).
-- **Recommended fix:** pass the same `ALLOWED_ORIGINS` allowlist to `handleCors` /
-  `withCors` in every function, not just `maib-create-payment`. Centralize the allowlist
-  in `_shared/cors.ts` behind an env var (e.g. `ECOVILA_ALLOWED_ORIGINS`).
+Formerly, `_shared/cors.ts` returned `Access-Control-Allow-Origin: *` whenever a
+function did not pass an explicit `allowedOrigins` list. Only `maib-create-payment`
+passed a local allowlist.
+- **Why it mattered:** any origin could invoke the functions from a browser. For
+  functions gated by `verify_jwt = true` plus shared-secret/token checks the practical
+  risk was limited, but it widened the attack surface.
+- **Fixed 2026-05-31:** `_shared/cors.ts` now owns the default allowlist and optional
+  comma-separated `ECOVILA_ALLOWED_ORIGINS` override. Known origins are echoed with
+  `Vary: Origin`; unknown origins do not receive `Access-Control-Allow-Origin` and no
+  function returns a permissive wildcard by default.
 
 ### S-2 — Role claim trusted without local signature verification (Low / Info)
 `requireStaffRole` (`_shared/http.ts`) base64-decodes the JWT payload and reads

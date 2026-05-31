@@ -100,14 +100,18 @@ Deno.serve(async (request) => {
     const notificationResults = await notifyExpiredReservations(client, reservations);
     const expiredMaibSessions = await expireStaleMaibSessions(client, now);
 
-    return jsonResponse({
-      expired: ids.length,
-      reservationIds: ids,
-      notificationResults,
-      expiredMaibSessions,
-    });
+    return jsonResponse(
+      {
+        expired: ids.length,
+        reservationIds: ids,
+        notificationResults,
+        expiredMaibSessions,
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

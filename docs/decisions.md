@@ -95,6 +95,17 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   targets. Do not remove them in later sessions unless the owner explicitly reverses
   this decision.
 
+### ADR-011 — Centralize Edge Function CORS allowlist
+- **Date:** 2026-05-31.
+- **Decision:** all Supabase Edge Function CORS responses use `_shared/cors.ts`, which
+  defaults to the known EcoVila origins and can be overridden with comma-separated
+  `ECOVILA_ALLOWED_ORIGINS`.
+- **Why:** per-function allowlists left most functions on `Access-Control-Allow-Origin:
+  *`; a single helper keeps booking, checkout, CRM, cron, and payment responses aligned.
+- **Consequence:** preflight and JSON/error responses must receive the request context
+  so allowed origins are echoed precisely. Unknown origins receive no permissive CORS
+  origin header.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

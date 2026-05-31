@@ -57,19 +57,8 @@ type PaymentSessionInsert = {
   expiresAt: string;
 };
 
-const ALLOWED_ORIGINS = [
-  'https://ecovila.md',
-  'https://www.ecovila.md',
-  'https://admin.ecovila.md',
-  'null',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5173',
-];
-
 Deno.serve(async (request) => {
-  const cors = handleCors(request, { allowedOrigins: ALLOWED_ORIGINS });
+  const cors = handleCors(request);
   if (cors) {
     return cors;
   }
@@ -291,7 +280,7 @@ function json(request: Request, body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
     ...init,
     headers: {
-      ...getCorsHeaders(request, { allowedOrigins: ALLOWED_ORIGINS }),
+      ...getCorsHeaders(request),
       'Content-Type': 'application/json',
       ...(init.headers || {}),
     },

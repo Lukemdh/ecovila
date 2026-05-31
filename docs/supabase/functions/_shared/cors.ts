@@ -1,5 +1,17 @@
+import { optionalEnv } from './env.ts';
+
+export const DEFAULT_ALLOWED_ORIGINS = [
+  'https://ecovila.md',
+  'https://www.ecovila.md',
+  'https://admin.ecovila.md',
+  'null',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, x-supabase-api-version, apikey, content-type, x-ecovila-secret, x-signature, x-signature-timestamp',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -9,18 +21,30 @@ export type CorsOptions = {
   allowedOrigins?: string[];
 };
 
-export function getCorsHeaders(request?: Request, options: CorsOptions = {}) {
-  const allowedOrigins = options.allowedOrigins || [];
-  const origin = request?.headers.get('origin') || '';
+export function allowedCorsOrigins() {
+  const configured = optionalEnv('ECOVILA_ALLOWED_ORIGINS')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
-  if (!allowedOrigins.length) {
-    return corsHeaders;
+  return configured.length ? configured : DEFAULT_ALLOWED_ORIGINS;
+}
+
+export function getCorsHeaders(request?: Request, options: CorsOptions = {}) {
+  const allowedOrigins = options.allowedOrigins || allowedCorsOrigins();
+  const origin = request?.headers.get('origin') || '';
+  const headers = {
+    ...corsHeaders,
+    Vary: 'Origin',
+  };
+
+  if (!origin || !allowedOrigins.includes(origin)) {
+    return headers;
   }
 
   return {
-    ...corsHeaders,
-    'Access-Control-Allow-Origin': allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
-    Vary: 'Origin',
+    ...headers,
+    'Access-Control-Allow-Origin': origin,
   };
 }
 

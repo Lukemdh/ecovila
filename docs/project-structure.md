@@ -1,8 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 168 files are tracked in git
-after the 2026-05-31 test-runner cleanup.
+binaries, and gitignored `.superpowers/` / `.claude/`). 169 files are tracked in git
+after the 2026-05-31 CORS hardening cleanup.
 
 ## Annotated tree
 
@@ -87,7 +87,7 @@ ecovila/
             ├── maib-create-payment/, maib-callback/, maib-refund/
             ├── reservation-lookup-start/, reservation-lookup-verify/
             ├── reservation-manage-details/, reservation-cancel/
-            └── tests/          # Deno tests (maib.test.ts, reservation-manage.test.ts, reservations.test.ts)
+            └── tests/          # Deno tests (cors.test.ts, maib.test.ts, reservation-manage.test.ts, reservations.test.ts)
 ```
 
 ## Significant files / folders — responsibilities

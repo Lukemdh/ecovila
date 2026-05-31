@@ -18,14 +18,18 @@ Deno.serve(async (request) => {
     const client = createServiceClient();
     const result = await createReservationsWithTokens(client, reservations as ReservationInput[]);
 
-    return jsonResponse({
-      primaryReservationId: result.primaryReservationId,
-      bookingGroupId: result.bookingGroupId,
-      reservationIds: result.reservations.map((reservation) => reservation.id),
-      paymentType: result.reservations[0]?.payment_type || '',
-      notificationResults: [],
-    });
+    return jsonResponse(
+      {
+        primaryReservationId: result.primaryReservationId,
+        bookingGroupId: result.bookingGroupId,
+        reservationIds: result.reservations.map((reservation) => reservation.id),
+        paymentType: result.reservations[0]?.payment_type || '',
+        notificationResults: [],
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });

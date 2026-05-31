@@ -49,7 +49,7 @@ describe('EcoVila Maib Checkout integration', () => {
       'refunds should require a staff Supabase JWT',
     );
     assert.match(
-      read('docs/supabase/functions/maib-create-payment/index.ts'),
+      read('docs/supabase/functions/_shared/cors.ts'),
       /'null'/,
       'local file previews should pass CORS preflight during manual payment testing',
     );

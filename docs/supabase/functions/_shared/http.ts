@@ -10,21 +10,21 @@ export class HttpError extends Error {
   }
 }
 
-export function jsonResponse(body: unknown, init: ResponseInit = {}) {
+export function jsonResponse(body: unknown, init: ResponseInit = {}, request?: Request) {
   return new Response(JSON.stringify(body), {
     ...init,
     headers: withCors({
       'Content-Type': 'application/json',
       ...(init.headers || {}),
-    }),
+    }, request),
   });
 }
 
-export function errorResponse(error: unknown) {
+export function errorResponse(error: unknown, request?: Request) {
   const status = error instanceof HttpError ? error.status : 500;
   const message = error instanceof Error ? error.message : 'Unexpected server error.';
 
-  return jsonResponse({ error: message }, { status });
+  return jsonResponse({ error: message }, { status }, request);
 }
 
 export function assertMethod(request: Request, methods: string[]) {

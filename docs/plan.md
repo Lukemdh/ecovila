@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 12**
+**CURRENT STEP → STEP 13**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -81,7 +81,7 @@ together with the code change for that step.
 | 9 | Type cleanup: reservation lookup/manage/cancel functions | Low | DONE |
 | 10 | Type cleanup: Maib functions (`maib-*`) | Low | DONE |
 | 11 | Type cleanup: remaining functions | Low | DONE |
-| 12 | Harden CORS allowlist across all Edge Functions | Medium | TODO |
+| 12 | Harden CORS allowlist across all Edge Functions | Medium | DONE |
 | 13 | Defense-in-depth for `requireStaffRole` | Medium | TODO |
 | 14 | Relocate backend/tests out of `docs/` — owner-gated | High | TODO |
 
@@ -380,7 +380,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 12 — Harden CORS allowlist across all Edge Functions
-- Status: TODO
+- Status: DONE
 - Goal: Restrict `Access-Control-Allow-Origin` to the known EcoVila origins on every
   function, not just `maib-create-payment` (S-1).
 - Depends on: STEPs 8–11 (codebase well-typed/understood) | Why now: behavior-affecting;
@@ -400,7 +400,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   2. Make functions default to the allowlist instead of `*`.
   3. Keep `OPTIONS` preflight working for legitimate origins.
 - Verification:
-  - `deno check` / `deno lint` clean; `deno test … tests` → 32 passing.
+  - `deno check` / `deno lint` clean; `deno test … tests` → 35 passing.
   - Manual/local: a request with `Origin: https://ecovila.md` gets that origin echoed; an
     unknown origin does not receive a permissive `*`.
   - **Smoke-test the live booking/checkout/CRM flows in a browser** (this is the highest
@@ -492,3 +492,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 10 (commit: 3bec80b).** Removed all explicit `any` usage from `maib-callback` and `maib-create-payment`; verified `deno check`, no Step 10 lint findings, and 32 Deno tests; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
 - **2026-05-31 — STEP 11 (commit: f4442ab).** Removed the final explicit `any` usage from `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and `create-reservation`; verified `deno check`, clean `deno lint`, 32 Deno tests, and 171 Node tests; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
 - **2026-05-31 — STEP 10 status reconciliation (source commit: 3bec80b).** Re-read required Step 10 files, re-verified committed Step 10/11 type-cleanup state, corrected stale Step 10/11 status lines so CURRENT STEP remains Step 12; reviewed README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan with only project-history/plan changes needed.
+- **2026-05-31 — STEP 12 (commit: PENDING).** Centralized Edge Function CORS behind default EcoVila origins plus `ECOVILA_ALLOWED_ORIGINS`; verified RED/GREEN CORS tests, `deno check`, clean `deno lint`, 35 Deno tests, 171 Node tests, local CORS request checks, and Chrome smoke of booking/checkout/CRM pages; updated README, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked project-overview and bugs with no changes needed.

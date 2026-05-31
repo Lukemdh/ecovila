@@ -39,6 +39,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - HTTP plumbing is centralized: use `_shared/http.ts` (`jsonResponse`, `errorResponse`,
   `assertMethod`, `readJson`, `HttpError`, `requireSharedSecret`, `requireStaffRole`)
   and `_shared/cors.ts`. Throw `HttpError(status, msg)` rather than crafting responses.
+- CORS must stay centralized in `_shared/cors.ts`. Edge Functions should call
+  `handleCors(request)` for preflight and pass the same `request` into
+  `jsonResponse(..., ..., request)` / `errorResponse(error, request)` so normal responses
+  echo only allowed origins. Do not reintroduce per-function allowlists or `*`.
 - Env access goes through `_shared/env.ts` (`requiredEnv` / `optionalEnv`), never raw
   `Deno.env.get` in business code.
 - `deno.json` sets `singleQuote: true`, `lineWidth: 100` — match it (`deno fmt`).

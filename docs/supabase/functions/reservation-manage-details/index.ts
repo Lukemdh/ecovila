@@ -73,14 +73,18 @@ Deno.serve(async (request) => {
 
     const payment = await findMaibPayment(client, reservations[0].booking_group_id);
 
-    return jsonResponse({
-      ok: true,
-      reservation: groupReservations(reservations)[0],
-      reservations,
-      payment,
-    });
+    return jsonResponse(
+      {
+        ok: true,
+        reservation: groupReservations(reservations)[0],
+        reservations,
+        payment,
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 

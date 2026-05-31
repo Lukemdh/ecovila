@@ -23,8 +23,8 @@ Deno.serve(async (request) => {
       message: String(body?.message || ''),
     });
 
-    return jsonResponse({ ok: true, result });
+    return jsonResponse({ ok: true, result }, {}, request);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });

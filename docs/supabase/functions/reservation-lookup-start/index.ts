@@ -45,7 +45,7 @@ Deno.serve(async (request) => {
     const recentCount = await countRecentLookupAttempts(client, phone);
 
     if (recentCount >= 5) {
-      return jsonResponse({ ok: true, rateLimited: true });
+      return jsonResponse({ ok: true, rateLimited: true }, {}, request);
     }
 
     const code = createLookupCode();
@@ -78,13 +78,17 @@ Deno.serve(async (request) => {
       await sendSms({ to: phone, message: composeLookupCodeSms(code) });
     }
 
-    return jsonResponse({
-      ok: true,
-      lookupId,
-      expiresInSeconds: LOOKUP_CODE_TTL_MINUTES * 60,
-    });
+    return jsonResponse(
+      {
+        ok: true,
+        lookupId,
+        expiresInSeconds: LOOKUP_CODE_TTL_MINUTES * 60,
+      },
+      {},
+      request,
+    );
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, request);
   }
 });
 
