@@ -14,6 +14,8 @@ describe('temporary homepage holding page', () => {
     const html = read('index.html');
 
     assert.match(html, /Lucrăm la îmbunătățirea site-ului/);
+    assert.match(html, /href="tel:\+37360120220"/);
+    assert.match(html, /Pentru rezervări: 060120220/);
     assert.doesNotMatch(html, /href="rezervari\.html"/);
   });
 

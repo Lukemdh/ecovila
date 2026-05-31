@@ -58,12 +58,41 @@
       font-weight: 500;
       line-height: 1.05;
     }
+
+    .reservation-cta {
+      display: inline-flex;
+      max-width: 100%;
+      padding-bottom: 6px;
+      color: var(--ink);
+      font-size: clamp(1rem, 2vw, 1.12rem);
+      font-weight: 500;
+      line-height: 1.4;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(51, 47, 44, 0.38);
+      transition:
+        color 180ms ease,
+        border-color 180ms ease;
+    }
+
+    .reservation-cta:hover,
+    .reservation-cta:focus-visible {
+      color: var(--muted);
+      border-color: currentColor;
+    }
+
+    .reservation-cta:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 6px;
+    }
   </style>
 </head>
 <body>
   <main>
     <img src="/assets/logo.png" alt="EcoVila">
     <h1>Lucrăm la îmbunătățirea site-ului</h1>
+    <a class="reservation-cta" href="tel:+37360120220" aria-label="Sună pentru rezervări la 060120220">
+      Pentru rezervări: 060120220
+    </a>
   </main>
 </body>
 </html>
