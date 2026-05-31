@@ -11,7 +11,7 @@ High / Medium / Low.
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Open |
 | B-3 | Unused `assets/logo_small.png` | Low | Open |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
-| B-5 | `deno lint` reports 88 remaining problems | Low | Open |
+| B-5 | `deno lint` reports 87 remaining `no-explicit-any` problems | Low | Open |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 
@@ -66,8 +66,8 @@ High / Medium / Low.
   `test:deno` scripts; documented `npm test` in `docs/README.md`; recorded ADR-009.
 
 ### B-5 — `deno lint`: remaining problems (Low)
-- **Description:** 87 `no-explicit-any` and 1 `no-import-prefix` remain after the
-  Step 4 `require-await` cleanup.
+- **Description:** 87 `no-explicit-any` findings remain after the Step 5
+  `no-import-prefix` cleanup.
 - **Reproduce:** `cd docs/supabase/functions && deno lint`.
 - **Why it matters:** code-quality / type-safety debt; not a runtime failure. Typecheck
   (`deno check`) currently passes.
@@ -76,6 +76,9 @@ High / Medium / Low.
 - **2026-05-31 Step 4 note:** removed the four `require-await` findings by making
   `sendSms`, `sendEmail`, `hashManageToken`, and `hashLookupCode` regular functions
   that return their existing Promises.
+- **2026-05-31 Step 5 note:** moved the Deno std assert dependency behind the
+  `std/assert` import-map alias and changed `maib.test.ts` to use the bare specifier,
+  removing the lone `no-import-prefix` finding.
 - **Suggested fix:** address incrementally in the lint-cleanup steps of `docs/plan.md`.
 
 ### B-6 — Backend and tests under `docs/` (Low / structural)

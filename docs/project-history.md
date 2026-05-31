@@ -112,3 +112,7 @@ sessions append to the running log at the bottom.
   wrappers and reservation hash wrappers so `deno lint` no longer reports
   `require-await`; remaining lint debt is 87 `no-explicit-any` plus 1 import-prefix
   issue.
+- 2026-05-31 — STEP 5 cleanup. Added a `std/assert` Deno import-map alias in
+  `docs/supabase/functions/deno.json` and `import_map.json`, updated
+  `maib.test.ts` to use the bare specifier, and reduced lint debt to 87
+  `no-explicit-any` findings.

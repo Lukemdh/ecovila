@@ -1,4 +1,4 @@
-import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { assertEquals } from 'std/assert';
 
 Deno.test('verifyMaibCallbackSignature validates raw body HMAC and replay window', async () => {
   const { createMaibCallbackSignature, verifyMaibCallbackSignature } = await import(
@@ -53,10 +53,13 @@ Deno.test('normalizeMaibCallbackStatus accepts Maib zero processing codes as pai
     paymentMethod: 'Card',
   };
 
-  assertEquals(normalizeMaibCallbackStatus({
-    ...sandboxCallback,
-    processingStatusCode: '00',
-  }), 'paid');
+  assertEquals(
+    normalizeMaibCallbackStatus({
+      ...sandboxCallback,
+      processingStatusCode: '00',
+    }),
+    'paid',
+  );
   assertEquals(normalizeMaibCallbackStatus(sandboxCallback), 'paid');
   assertEquals(getMaibCallbackStatus(sandboxCallback), 'paid');
   assertEquals(isMaibCallbackApproved(sandboxCallback), true);
@@ -69,11 +72,14 @@ Deno.test('normalizeMaibCallbackStatus does not fail unknown or non-terminal cal
   assertEquals(normalizeMaibCallbackStatus({ paymentStatus: 'Cancelled' }), 'cancelled');
   assertEquals(normalizeMaibCallbackStatus({ paymentStatus: 'Canceled' }), 'cancelled');
   assertEquals(normalizeMaibCallbackStatus({ paymentStatus: 'Initialized' }), 'pending');
-  assertEquals(normalizeMaibCallbackStatus({
-    paymentStatus: 'Executed',
-    processingStatus: 'OK',
-    processingStatusCode: '05',
-  }), 'pending');
+  assertEquals(
+    normalizeMaibCallbackStatus({
+      paymentStatus: 'Executed',
+      processingStatus: 'OK',
+      processingStatusCode: '05',
+    }),
+    'pending',
+  );
 });
 
 Deno.test('buildMaibCheckoutPayload maps EcoVila booking context to Checkout v2 body', async () => {

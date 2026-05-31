@@ -39,6 +39,9 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Env access goes through `_shared/env.ts` (`requiredEnv` / `optionalEnv`), never raw
   `Deno.env.get` in business code.
 - `deno.json` sets `singleQuote: true`, `lineWidth: 100` — match it (`deno fmt`).
+- Import Deno/NPM dependencies through bare specifiers defined in `deno.json` /
+  `import_map.json`; do not add inline `npm:`, `jsr:`, or `https:` specifiers in
+  source or tests.
 - Privileged DB writes use the service-role client from `_shared/supabaseAdmin.ts`.
 - Guest-facing cancellation rules must be enforced server-side in both the
   `reservation-cancel` Edge Function and the latest `cancel_reservation_by_token` RPC.

@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 5**
+**CURRENT STEP → STEP 6**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -74,7 +74,7 @@ together with the code change for that step.
 | 2 | Fix Deno test discovery so the test task runs the tests | Low | DONE |
 | 3 | Document/enable a one-command test runner | Low | DONE |
 | 4 | Fix `require-await` lint violations | Low | DONE |
-| 5 | Fix `no-import-prefix` lint violation in `deno.json` | Low | TODO |
+| 5 | Fix `no-import-prefix` lint violation | Low | DONE |
 | 6 | Remove orphaned media (root `*.mp4`, `logo_small.png`) — owner-gated | Low | TODO |
 | 7 | Remove hardcoded placeholder phone defaults | Low–Med | TODO |
 | 8 | Type cleanup: `_shared/` `any` → real types | Low | TODO |
@@ -210,8 +210,8 @@ Statuses: TODO | IN PROGRESS | DONE.
 
 ---
 
-### STEP 5 — Fix `no-import-prefix` lint violation in `deno.json`
-- Status: TODO
+### STEP 5 — Fix `no-import-prefix` lint violation
+- Status: DONE
 - Goal: Remove the inline `npm:`/`jsr:`/`https:` import-prefix lint error.
 - Depends on: STEP 2 | Why now: trivial config fix, no runtime impact expected.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`,
@@ -224,6 +224,10 @@ Statuses: TODO | IN PROGRESS | DONE.
   1. Identify the offending inline prefix flagged by `deno lint`.
   2. Move the dependency mapping to the import map / proper `imports` form so the lint
      rule passes, keeping the resolved version identical.
+- Completion note: the actual `no-import-prefix` finding was the inline
+  `https://deno.land/std@0.224.0/assert/mod.ts` import in
+  `docs/supabase/functions/tests/maib.test.ts` (inferred from `deno lint` output), not
+  the already mapped `@supabase/supabase-js` import.
 - Verification:
   - `cd docs/supabase/functions && deno lint` → `no-import-prefix` error gone.
   - `deno check` (as in STEP 4) → passes; `deno test … tests` → 32 passing.
@@ -474,3 +478,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 2 (commit: 14eee8b).** Renamed Deno backend tests to `*.test.ts` so `deno task test` discovers all 32 tests; updated the Node contract test plus README, project-structure, project-history, bugs, conventions, and plan; checked project-overview, security, and decisions with no changes needed.
 - **2026-05-31 — STEP 3 (commit: c1d963c).** Added scripts-only root `package.json` plus a test-runner contract; verified `npm test` (168 Node + 32 Deno); updated README, project-structure, project-history, bugs, decisions, conventions, and plan; checked project-overview/security with no changes needed.
 - **2026-05-31 — STEP 4 (commit: 53d78c4).** Removed unnecessary `async` from `sendSms`, `sendEmail`, `hashLookupCode`, and `hashManageToken`; verified no `require-await` lint output, `deno check`, 32 Deno tests, and 168 Node tests; updated README, project-history, bugs, and plan; checked project-overview, project-structure, security, decisions, and conventions with no changes needed.
+- **2026-05-31 — STEP 5 (commit: pending).** Added the `std/assert` Deno import-map alias and changed `maib.test.ts` to use the bare specifier; verified no `no-import-prefix` lint output, `deno check`, and 32 Deno tests; updated README, project-history, bugs, conventions, and plan; checked project-overview, project-structure, security, and decisions with no changes needed.
