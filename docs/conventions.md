@@ -63,10 +63,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - **Frontend:** Node `node:test` files in `docs/tests/`, named `*.test.mjs`, run with
   `node --test 'docs/tests/**/*.test.mjs'`. They `require()` the UMD modules and also
   assert page/markup contracts.
-- **Backend:** Deno tests in `docs/supabase/functions/tests/`. **Known issue:** they are
-  named `*-test.ts`, which Deno's default discovery does not match — run them by
-  explicit path (see `docs/README.md` / `docs/bugs.md` B-1). Prefer `*.test.ts` for any
-  new test file.
+- **Backend:** Deno tests in `docs/supabase/functions/tests/`, named `*.test.ts`, run
+  from `docs/supabase/functions` with `deno task test` (or the equivalent
+  `deno test --allow-env --allow-net tests`). Keep using `*.test.ts` so Deno's default
+  directory discovery runs the tests.
 - A change that alters markup, copy, or file layout will likely require updating the
   corresponding contract test in the same commit.
 

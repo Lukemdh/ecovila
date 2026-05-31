@@ -7,7 +7,7 @@ High / Medium / Low.
 
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
-| B-1 | `deno task test` discovers 0 tests (false green) | Medium | Open |
+| B-1 | `deno task test` discovers 0 tests (false green) | Medium | Fixed |
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Open |
 | B-3 | Unused `assets/logo_small.png` | Low | Open |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Open |
@@ -17,28 +17,26 @@ High / Medium / Low.
 
 ---
 
-### B-1 — `deno task test` silently runs zero tests (Medium)
+### B-1 — `deno task test` silently ran zero tests (Medium) — Fixed 2026-05-31
 - **Description:** `docs/supabase/functions/deno.json` defines
-  `"test": "deno test --allow-env --allow-net tests"`. Running it (or
-  `deno test --allow-env --allow-net tests` from the functions dir) prints
-  **"error: No test modules found"**. The 32 real tests exist but are never run by the
-  task.
-- **Reproduce:**
+  `"test": "deno test --allow-env --allow-net tests"`. Before the fix, running it (or
+  `deno test --allow-env --allow-net tests` from the functions dir) printed
+  **"error: No test modules found"** because the 32 real tests were not discoverable.
+- **Former reproduce (before fix):**
   ```sh
   cd docs/supabase/functions
-  deno test --allow-env --allow-net tests   # → "No test modules found"
+  deno test --allow-env --allow-net tests   # used to print "No test modules found"
   ```
-- **Suspected cause:** the test files are named `maib-test.ts`,
+- **Root cause:** the test files were named `maib-test.ts`,
   `reservation-manage-test.ts`, `reservations-test.ts`. Deno's default test discovery
-  only matches `*_test.ts` / `*.test.ts` / `test.ts` — a **hyphen** before `test` does
-  not match. They run only when passed explicitly:
+  only matches `*_test.ts` / `*.test.ts` / `test.ts` — a **hyphen** before `test` did
+  not match. Before the rename, they ran only when passed explicitly:
   ```sh
   deno test --allow-env --allow-net tests/maib-test.ts tests/reservation-manage-test.ts tests/reservations-test.ts   # → 32 passed
   ```
-- **Why it matters:** CI or a developer trusting `deno task test` would see a green run
-  while testing nothing.
-- **Suggested fix:** rename files to `*.test.ts` (or `*_test.ts`), or change the task to
-  list the files / a matching glob. Update `docs/README.md` and `conventions.md` after.
+- **Fix:** renamed the Deno tests to `maib.test.ts`, `reservation-manage.test.ts`, and
+  `reservations.test.ts`; updated the Node contract test and docs. `deno task test` now
+  runs all 32 backend tests.
 
 ### B-2 — Orphaned video binaries at repo root (Low)
 - **Description:** `ecovilavideo.mp4` (~15MB) and `ecovilavideo-web.mp4` (~21MB) are
@@ -104,7 +102,7 @@ High / Medium / Low.
   refund independently of the public guest window.
 - **Verification:** covered by Node contract tests in `docs/tests/anulare.test.mjs`,
   `docs/tests/reservation-lookup-refunds.test.mjs`, `docs/tests/admin-crm.test.mjs`,
-  and Deno test `docs/supabase/functions/tests/reservation-manage-test.ts`.
+  and Deno test `docs/supabase/functions/tests/reservation-manage.test.ts`.
 
 ---
 

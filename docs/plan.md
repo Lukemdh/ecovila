@@ -66,12 +66,12 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 2**
+**CURRENT STEP → STEP 3**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
 | 1 | Add `.env.example` (secret names only) | Low | DONE |
-| 2 | Fix Deno test discovery so the test task runs the tests | Low | TODO |
+| 2 | Fix Deno test discovery so the test task runs the tests | Low | DONE |
 | 3 | Document/enable a one-command test runner | Low | TODO |
 | 4 | Fix `require-await` lint violations | Low | TODO |
 | 5 | Fix `no-import-prefix` lint violation in `deno.json` | Low | TODO |
@@ -128,13 +128,13 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 2 — Fix Deno test discovery so the test task runs the tests
-- Status: TODO
+- Status: DONE
 - Goal: Make `deno task test` actually execute the 32 backend tests (currently it finds 0).
 - Depends on: none | Why now: gives later steps a trustworthy backend verification command.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/bugs.md` (B-1),
   `docs/supabase/functions/deno.json`, the three files in
-  `docs/supabase/functions/tests/` (`maib-test.ts`, `reservation-manage-test.ts`,
-  `reservations-test.ts`), and any file that imports them (none expected).
+  `docs/supabase/functions/tests/` (`maib.test.ts`, `reservation-manage.test.ts`,
+  `reservations.test.ts`), and any file that imports them (none expected).
 - In scope: rename the three test files to `*.test.ts`, OR change the `deno.json` `test`
   task to list them / use a matching glob. Prefer renaming to `*.test.ts` (matches Deno's
   default discovery and the frontend `*.test.mjs` convention).
@@ -150,7 +150,8 @@ Statuses: TODO | IN PROGRESS | DONE.
   - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (unchanged).
 - Docs to update: `README.md` (test section — `deno task test` now works; remove the
   explicit-path workaround note), `bugs.md` (B-1 → Fixed), `conventions.md` (test naming),
-  `project-history.md`, `plan.md`. Check the rest.
+  `project-structure.md` (renamed test files), `project-history.md`, `plan.md`, and the
+  Node contract test that asserts backend test files exist. Check the rest.
 - Suggested commit message: `fix: make deno test task discover the edge function tests`
 
 ---
@@ -469,3 +470,4 @@ Statuses: TODO | IN PROGRESS | DONE.
   this 14-step plan. **Next session: STEP 1.**
 - **2026-05-31 — OFF-PLAN cancellation policy fix (commit: 577b252).** Enforced the guest online cancellation window (at least 7 calendar days before arrival or first 2 hours after creation), blocked cash online cancellation with office-only reimbursement copy, and routed paid Maib CRM cancellations through the Diana-only refund function; planned step statuses unchanged.
 - **2026-05-31 — STEP 1 (commit: 0679247).** Added root `.env.example` with blank Supabase, cron/site, SMS.md, Resend, and Maib names; verified 166 Node tests, 32 Deno tests, `deno check`, and `git check-ignore`; checked README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan.
+- **2026-05-31 — STEP 2 (commit: pending).** Renamed Deno backend tests to `*.test.ts` so `deno task test` discovers all 32 tests; updated the Node contract test plus README, project-structure, project-history, bugs, conventions, and plan; checked project-overview, security, and decisions with no changes needed.

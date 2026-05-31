@@ -104,16 +104,12 @@ node --test 'docs/tests/**/*.test.mjs'
 **Edge Function tests (Deno):**
 ```sh
 cd docs/supabase/functions
-# NOTE: `deno test tests` finds 0 tests because the files are named *-test.ts,
-# which does NOT match Deno's default discovery glob. Pass files explicitly:
-deno test --allow-env --allow-net \
-  tests/maib-test.ts tests/reservation-manage-test.ts tests/reservations-test.ts
+deno task test
 # → 32 tests, all passing
 ```
 
-The `deno task test` defined in `docs/supabase/functions/deno.json` is currently
-**broken** (it discovers 0 tests and exits "No test modules found"). See
-`docs/bugs.md`.
+The task runs `deno test --allow-env --allow-net tests`; backend test files are named
+`*.test.ts` so Deno discovers them from the `tests` directory.
 
 **Typecheck (Deno):**
 ```sh

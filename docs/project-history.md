@@ -102,3 +102,6 @@ sessions append to the running log at the bottom.
 - 2026-05-31 — STEP 1 cleanup. Added the root `.env.example` with blank Supabase,
   cron/site, SMS.md, Resend, and Maib environment-variable names, updated the developer
   README to point deployers at it, and marked security finding S-4 fixed.
+- 2026-05-31 — STEP 2 cleanup. Renamed the Deno Edge Function tests from `*-test.ts`
+  to `*.test.ts`, updated the Node file-existence contract, and documented that
+  `deno task test` now discovers and runs all 32 backend tests.

@@ -41,7 +41,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'docs/supabase/functions/_shared/providers.ts',
       'docs/supabase/functions/_shared/reservations.ts',
       'docs/supabase/functions/_shared/supabaseAdmin.ts',
-      'docs/supabase/functions/tests/reservations-test.ts',
+      'docs/supabase/functions/tests/reservations.test.ts',
     ]) {
       assert.ok(exists(file), `${file} should exist`);
     }
