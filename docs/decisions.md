@@ -73,13 +73,23 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Consequence:** the policy is enforced server-side in both `reservation-cancel` and
   the latest `cancel_reservation_by_token` RPC; browser UI only mirrors the rule.
 
+### ADR-009 — Root package manifest is scripts-only
+- **Date:** 2026-05-31.
+- **Decision:** add a minimal root `package.json` to expose `npm test`,
+  `npm run test:node`, and `npm run test:deno`, with no dependencies, dev dependencies,
+  build script, or install requirement.
+- **Why:** the repository has two test suites in different runtimes; one root command
+  lowers onboarding friction while preserving ADR-001's no-build/static-hosting
+  constraint.
+- **Consequence:** `npm test` is the canonical full local verification command for the
+  frontend contract suite plus Deno Edge Function tests. New scripts must remain
+  tooling-only unless a future ADR explicitly changes the no-build posture.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
 
 - Should `docs/supabase/` and `docs/tests/` move to the repo root (`supabase/`,
   `tests/`) to match Supabase CLI conventions? (See B-6.) — **undecided.**
-- Should a minimal `package.json` exist purely to document test scripts, given the
-  no-build philosophy? (See B-4.) — **undecided.**
 - Are the root `*.mp4` files and `logo_small.png` truly removable? (See B-2, B-3.) —
   **needs confirmation.**

@@ -68,7 +68,7 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 166 Node contract tests + 32 Deno tests.
+- Tests green: 168 Node contract tests + 32 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - Notable structural quirk: backend code (`supabase/`) and tests live under `docs/`,
@@ -105,3 +105,6 @@ sessions append to the running log at the bottom.
 - 2026-05-31 — STEP 2 cleanup. Renamed the Deno Edge Function tests from `*-test.ts`
   to `*.test.ts`, updated the Node file-existence contract, and documented that
   `deno task test` now discovers and runs all 32 backend tests.
+- 2026-05-31 — STEP 3 cleanup. Added a dependency-free root `package.json` with
+  `npm test` / `test:node` / `test:deno`, added a Node contract test for the test
+  runner, documented the canonical command, and recorded ADR-009.

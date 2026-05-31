@@ -10,7 +10,7 @@ High / Medium / Low.
 | B-1 | `deno task test` discovers 0 tests (false green) | Medium | Fixed |
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Open |
 | B-3 | Unused `assets/logo_small.png` | Low | Open |
-| B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Open |
+| B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
 | B-5 | `deno lint` reports 92 problems | Low | Open |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
@@ -56,15 +56,14 @@ High / Medium / Low.
 - **Suspected cause:** superseded by `logo.png` / `logoNT.png`.
 - **Suggested fix:** confirm and remove. Low priority.
 
-### B-4 — No `package.json` / documented frontend test scripts (Low)
-- **Description:** the Node suite is run with `node --test 'docs/tests/**/*.test.mjs'`
-  but there is no manifest documenting it; discovery is tribal knowledge. (The `.claude`
-  permissions file hints at the intended commands.)
-- **Why it matters:** onboarding friction; easy to run tests incorrectly (see the failed
-  `node --test docs/tests/` attempt, which errors because it's not a glob).
-- **Suggested fix:** add a minimal `package.json` with `test` / `test:deno` scripts, or
-  document the exact commands prominently (done in `docs/README.md`). Decide in
-  `docs/decisions.md` whether a manifest is wanted given the no-build philosophy.
+### B-4 — No `package.json` / documented frontend test scripts (Low) — Fixed 2026-05-31
+- **Description:** the Node suite was run with `node --test 'docs/tests/**/*.test.mjs'`
+  but there was no manifest documenting it; discovery was tribal knowledge. (The
+  `.claude` permissions file hinted at the intended commands.)
+- **Why it mattered:** onboarding friction; easy to run tests incorrectly (see the failed
+  `node --test docs/tests/` attempt, which errors because it is not the recursive glob).
+- **Fix:** added a dependency-free root `package.json` with `test`, `test:node`, and
+  `test:deno` scripts; documented `npm test` in `docs/README.md`; recorded ADR-009.
 
 ### B-5 — `deno lint`: 92 problems (Low)
 - **Description:** 87 `no-explicit-any`, 4 `require-await` (async functions with no

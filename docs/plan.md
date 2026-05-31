@@ -66,13 +66,13 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 3**
+**CURRENT STEP → STEP 4**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
 | 1 | Add `.env.example` (secret names only) | Low | DONE |
 | 2 | Fix Deno test discovery so the test task runs the tests | Low | DONE |
-| 3 | Document/enable a one-command test runner | Low | TODO |
+| 3 | Document/enable a one-command test runner | Low | DONE |
 | 4 | Fix `require-await` lint violations | Low | TODO |
 | 5 | Fix `no-import-prefix` lint violation in `deno.json` | Low | TODO |
 | 6 | Remove orphaned media (root `*.mp4`, `logo_small.png`) — owner-gated | Low | TODO |
@@ -157,7 +157,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 3 — Document/enable a one-command test runner
-- Status: TODO
+- Status: DONE
 - Goal: Provide one obvious way to run both suites, and decide whether a minimal
   `package.json` should exist (no deps) purely for `test` scripts.
 - Depends on: STEP 2 | Why now: after discovery is fixed, lock in the canonical commands.
@@ -173,7 +173,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   2. Implement the chosen option (scripts only; no `dependencies`).
   3. Ensure both commands run from the repo root.
 - Verification:
-  - The documented command(s) run both suites green: 166 Node + 32 Deno.
+  - The documented command runs both suites green: `npm test` → 168 Node + 32 Deno.
 - Docs to update: `README.md`, `decisions.md` (resolve the open question), `bugs.md`
   (B-4 → Fixed/closed), `conventions.md` if scripts are added, `project-history.md`,
   `plan.md`. Check the rest.
@@ -202,7 +202,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   - `cd docs/supabase/functions && deno lint` → the 4 `require-await` errors are gone.
   - `cd docs/supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
   - `deno test --allow-env --allow-net tests` → 32 passing.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing.
+  - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing.
 - Docs to update: `bugs.md` (B-5 partial), `conventions.md` if guidance changes,
   `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `fix: resolve deno require-await lint warnings`
@@ -247,7 +247,7 @@ Statuses: TODO | IN PROGRESS | DONE.
      unless explicitly approved).
 - Verification:
   - Both greps return no references.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing.
+  - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing.
   - Manual: `site.html` still loads `assets/videos/ecovila-hero.mp4`.
 - Docs to update: `project-structure.md` (drop the removed entries), `bugs.md`
   (B-2/B-3 → Fixed), `project-history.md`, `plan.md`. Check the rest.
@@ -271,7 +271,7 @@ Statuses: TODO | IN PROGRESS | DONE.
      fabricated number. Keep `+373` only as a non-committal input *placeholder attribute*
      if desired, never as a stored value.
 - Verification:
-  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (update a contract test only
+  - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing (update a contract test only
     if it explicitly asserts the old default; record any such change).
   - Manual: submitting checkout/CRM-add with an empty phone is rejected, not silently
     filled.
@@ -361,7 +361,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   - `deno check` (full) → passes.
   - `cd docs/supabase/functions && deno lint` → **0 problems** (assuming STEPs 4,5,8–10
     done).
-  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 166.
+  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 168.
 - Docs to update: `bugs.md` (B-5 → Fixed/closed once lint is clean), `conventions.md`
   (drop the "lint debt" note), `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `refactor: type remaining edge functions; deno lint clean`
@@ -446,7 +446,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   3. Update every doc that references the old paths (this whole doc set references
      `docs/supabase` and `docs/tests`).
 - Verification:
-  - `node --test 'tests/**/*.test.mjs'` → 166 passing at the new path.
+  - `node --test 'tests/**/*.test.mjs'` → 168 passing at the new path.
   - `cd supabase/functions && deno test --allow-env --allow-net tests` → 32 passing.
   - `deno check` / `deno lint` clean at new paths.
   - `grep -rn "docs/tests\|docs/supabase" .` → only intentional historical references in
@@ -471,3 +471,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — OFF-PLAN cancellation policy fix (commit: 577b252).** Enforced the guest online cancellation window (at least 7 calendar days before arrival or first 2 hours after creation), blocked cash online cancellation with office-only reimbursement copy, and routed paid Maib CRM cancellations through the Diana-only refund function; planned step statuses unchanged.
 - **2026-05-31 — STEP 1 (commit: 0679247).** Added root `.env.example` with blank Supabase, cron/site, SMS.md, Resend, and Maib names; verified 166 Node tests, 32 Deno tests, `deno check`, and `git check-ignore`; checked README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan.
 - **2026-05-31 — STEP 2 (commit: 14eee8b).** Renamed Deno backend tests to `*.test.ts` so `deno task test` discovers all 32 tests; updated the Node contract test plus README, project-structure, project-history, bugs, conventions, and plan; checked project-overview, security, and decisions with no changes needed.
+- **2026-05-31 — STEP 3 (commit: pending).** Added scripts-only root `package.json` plus a test-runner contract; verified `npm test` (168 Node + 32 Deno); updated README, project-structure, project-history, bugs, decisions, conventions, and plan; checked project-overview/security with no changes needed.

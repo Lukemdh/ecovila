@@ -1,8 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 166 files are tracked in git
-after the 2026-05-31 Deno test-discovery cleanup.
+binaries, and gitignored `.superpowers/` / `.claude/`). 168 files are tracked in git
+after the 2026-05-31 test-runner cleanup.
 
 ## Annotated tree
 
@@ -17,6 +17,7 @@ ecovila/
 ├── politica-confidentialitate.html  # Privacy policy (legal)
 ├── termeni-conditii.html       # Terms & conditions (legal)
 ├── design.md                   # Design language reference (palette, type, components)
+├── package.json                # Dependency-free npm scripts for Node + Deno tests
 ├── favicon.ico
 ├── .env.example                # Blank Edge Function secret-name template (safe to commit)
 ├── ecovilavideo.mp4            # ORPHANED ~15MB — not referenced by any page (see bugs.md)
@@ -73,7 +74,7 @@ ecovila/
     ├── superpowers/
     │   ├── plans/              # Per-step implementation plans (10 files)
     │   └── specs/             # Per-step design specs (9 files)
-    ├── tests/                  # Node node:test contract/unit suites (14 *.test.mjs)
+    ├── tests/                  # Node node:test contract/unit suites (15 *.test.mjs)
     └── supabase/
         ├── config.toml         # Per-function verify_jwt settings
         ├── migrations/         # 23 timestamped SQL migrations (20260506 → 20260531)
@@ -113,6 +114,7 @@ ecovila/
 | `docs/supabase/config.toml` | Declares which functions require a verified JWT. |
 | `docs/tests/*.test.mjs` | Node contract/behavior tests (require browser JS via CommonJS shim). |
 | `docs/supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
+| `package.json` | Scripts-only test manifest (`npm test`, `test:node`, `test:deno`); no dependencies or build step. |
 | `docs/ECOVILA_PROJECT_BRIEF.md` | Authoritative business/product spec. |
 | `docs/superpowers/plans|specs/` | Historical per-step planning/design records. |
 

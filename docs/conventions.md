@@ -60,11 +60,17 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   reads of guest data must go through safe RPCs, not direct table selects.
 
 ## Tests
-- **Frontend:** Node `node:test` files in `docs/tests/`, named `*.test.mjs`, run with
-  `node --test 'docs/tests/**/*.test.mjs'`. They `require()` the UMD modules and also
-  assert page/markup contracts.
+- Root `package.json` is allowed only for dependency-free test scripts. It must not add
+  runtime dependencies, dev dependencies, a build step, or an install requirement unless
+  a future ADR explicitly changes ADR-001 / ADR-009.
+- **Full suite:** run `npm test` from the repository root. It runs the Node contract
+  suite first, then the Deno Edge Function suite.
+- **Frontend:** Node `node:test` files in `docs/tests/`, named `*.test.mjs`, run via
+  `npm run test:node` (equivalent to `node --test 'docs/tests/**/*.test.mjs'`). They
+  `require()` the UMD modules and also assert page/markup contracts.
 - **Backend:** Deno tests in `docs/supabase/functions/tests/`, named `*.test.ts`, run
-  from `docs/supabase/functions` with `deno task test` (or the equivalent
+  via `npm run test:deno` from the repository root (equivalent to
+  `cd docs/supabase/functions && deno task test`, which runs
   `deno test --allow-env --allow-net tests`). Keep using `*.test.ts` so Deno's default
   directory discovery runs the tests.
 - A change that alters markup, copy, or file layout will likely require updating the

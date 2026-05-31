@@ -24,15 +24,19 @@ Verified versions present on the audit machine (2026-05-31):
 | Deno | 2.6.5 | Edge Function runtime, typecheck, lint, and Deno tests |
 | Supabase CLI | 2.101.0 | DB migrations and Edge Function deploy |
 
-There is **no `package.json`** and **no npm install step**. The Supabase JS client is
-loaded in the browser from a CDN (`https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`).
-The Edge Functions resolve `@supabase/supabase-js` via `npm:` through Deno's import map.
+The root `package.json` is **scripts-only** (`npm test`, `npm run test:node`,
+`npm run test:deno`) and has no dependencies, dev dependencies, build script, or npm
+install step. The Supabase JS client is loaded in the browser from a CDN
+(`https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`). The Edge Functions resolve
+`@supabase/supabase-js` via `npm:` through Deno's import map.
 
 ---
 
 ## Install
 
-Nothing to install for the frontend — it is static files served directly.
+Nothing to install for the frontend — it is static files served directly. The root
+`package.json` only documents test scripts; do not run `npm install` for normal local
+work.
 
 For the backend you need the Deno and Supabase CLI tools above. Edge Function
 dependencies are resolved on demand by Deno (no vendoring committed).
@@ -92,19 +96,27 @@ through the Supabase CLI; they are not bundled locally.
 
 ## Test
 
-Two independent suites. Both pass as of 2026-05-31 (166 + 32).
+One canonical command runs both suites from the repository root:
+
+```sh
+npm test
+# → 168 Node + 32 Deno tests, all passing
+```
+
+The suites can also be run independently.
 
 **Frontend / contract tests (Node):**
 ```sh
 # from the repository root
-node --test 'docs/tests/**/*.test.mjs'
-# → 166 tests, 16 suites, all passing
+npm run test:node
+# equivalent: node --test 'docs/tests/**/*.test.mjs'
+# → 168 tests, 17 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
-cd docs/supabase/functions
-deno task test
+npm run test:deno
+# equivalent: cd docs/supabase/functions && deno task test
 # → 32 tests, all passing
 ```
 
