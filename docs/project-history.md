@@ -116,3 +116,6 @@ sessions append to the running log at the bottom.
   `docs/supabase/functions/deno.json` and `import_map.json`, updated
   `maib.test.ts` to use the bare specifier, and reduced lint debt to 87
   `no-explicit-any` findings.
+- 2026-05-31 — STEP 6 cleanup. Reconfirmed that the two root `ecovilavideo*.mp4`
+  files and `assets/logo_small.png` have no scoped frontend references, then recorded
+  the owner decision to keep them.

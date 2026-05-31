@@ -8,8 +8,8 @@ High / Medium / Low.
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
 | B-1 | `deno task test` discovers 0 tests (false green) | Medium | Fixed |
-| B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Open |
-| B-3 | Unused `assets/logo_small.png` | Low | Open |
+| B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Accepted |
+| B-3 | Unused `assets/logo_small.png` | Low | Accepted |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
 | B-5 | `deno lint` reports 87 remaining `no-explicit-any` problems | Low | Open |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
@@ -38,7 +38,7 @@ High / Medium / Low.
   `reservations.test.ts`; updated the Node contract test and docs. `deno task test` now
   runs all 32 backend tests.
 
-### B-2 — Orphaned video binaries at repo root (Low)
+### B-2 — Orphaned video binaries at repo root (Low) — Accepted 2026-05-31
 - **Description:** `ecovilavideo.mp4` (~15MB) and `ecovilavideo-web.mp4` (~21MB) are
   tracked in git but referenced by no page. The hero video actually used by `site.html`
   is `assets/videos/ecovila-hero.mp4`.
@@ -46,15 +46,16 @@ High / Medium / Low.
 - **Suspected cause:** leftovers from the 2026-05-12 hero-video revamp / the
   "ecovila2 backup" sync.
 - **Why it matters:** ~36MB of dead weight in the repo and on any static deploy.
-- **Suggested fix:** confirm with owner, then remove from the working tree (and consider
-  history cleanup). Do **not** delete without confirmation — flagged per AGENTS safety
-  rule.
+- **Owner decision:** keep `ecovilavideo.mp4` and `ecovilavideo-web.mp4` in the working
+  tree despite no current references. Do not remove these files in later cleanup unless
+  the owner explicitly reverses this decision.
 
-### B-3 — Unused `assets/logo_small.png` (Low)
+### B-3 — Unused `assets/logo_small.png` (Low) — Accepted 2026-05-31
 - **Description:** no references in any HTML/CSS/JS.
 - **Reproduce:** `grep -rn "logo_small" . --include='*.html' --include='*.js' --include='*.css'` → none.
 - **Suspected cause:** superseded by `logo.png` / `logoNT.png`.
-- **Suggested fix:** confirm and remove. Low priority.
+- **Owner decision:** keep `assets/logo_small.png` despite no current references. Do not
+  remove this file in later cleanup unless the owner explicitly reverses this decision.
 
 ### B-4 — No `package.json` / documented frontend test scripts (Low) — Fixed 2026-05-31
 - **Description:** the Node suite was run with `node --test 'docs/tests/**/*.test.mjs'`

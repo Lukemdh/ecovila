@@ -20,13 +20,13 @@ ecovila/
 ├── package.json                # Dependency-free npm scripts for Node + Deno tests
 ├── favicon.ico
 ├── .env.example                # Blank Edge Function secret-name template (safe to commit)
-├── ecovilavideo.mp4            # ORPHANED ~15MB — not referenced by any page (see bugs.md)
-├── ecovilavideo-web.mp4        # ORPHANED ~21MB — not referenced by any page (see bugs.md)
+├── ecovilavideo.mp4            # Unreferenced owner-retained video asset (~14MB; see bugs.md)
+├── ecovilavideo-web.mp4        # Unreferenced owner-retained video asset (~21MB; see bugs.md)
 ├── .gitignore
 │
 ├── assets/                     # Static media
 │   ├── logo.png, logoNT.png    # logo.png = header, logoNT.png = footer
-│   ├── logo_small.png          # UNUSED — no references (see bugs.md)
+│   ├── logo_small.png          # Unreferenced owner-retained logo asset (see bugs.md)
 │   ├── apple-touch-icon.png, favicon-16x16.png, favicon-32x32.png
 │   ├── videos/ecovila-hero.mp4 # Hero video used by site.html (~3.8MB)
 │   └── photos/                 # Placeholder SVGs + hero poster, grouped by area
@@ -146,6 +146,6 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
   `js/checkout.js:80`; the downstream Maib behavior is **inferred** from function names
   and tests, not exhaustively traced.
 - `assets/logo_small.png` and the two root `*.mp4` files appear unused (no references
-  found) — flagged in `docs/bugs.md`, not yet confirmed dead with the owner.
+  found) but are owner-retained per the 2026-05-31 Step 6 decision in `docs/bugs.md`.
 - The placement of backend code and tests under `docs/` (rather than a top-level
   `supabase/` and `tests/`) is unusual; intent is **Unknown — needs owner input**.

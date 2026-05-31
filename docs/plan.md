@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 6**
+**CURRENT STEP → STEP 7**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -75,7 +75,7 @@ together with the code change for that step.
 | 3 | Document/enable a one-command test runner | Low | DONE |
 | 4 | Fix `require-await` lint violations | Low | DONE |
 | 5 | Fix `no-import-prefix` lint violation | Low | DONE |
-| 6 | Remove orphaned media (root `*.mp4`, `logo_small.png`) — owner-gated | Low | TODO |
+| 6 | Resolve orphaned media owner decision | Low | DONE |
 | 7 | Remove hardcoded placeholder phone defaults | Low–Med | TODO |
 | 8 | Type cleanup: `_shared/` `any` → real types | Low | TODO |
 | 9 | Type cleanup: reservation lookup/manage/cancel functions | Low | TODO |
@@ -236,9 +236,10 @@ Statuses: TODO | IN PROGRESS | DONE.
 
 ---
 
-### STEP 6 — Remove orphaned media (root `*.mp4`, `logo_small.png`) — owner-gated
-- Status: TODO
-- Goal: Remove unreferenced large binaries and the unused logo to slim the repo.
+### STEP 6 — Resolve orphaned media owner decision
+- Status: DONE
+- Goal: Decide whether to remove unreferenced large binaries and the unused logo to slim
+  the repo.
 - Depends on: none | Why now: low risk once confirmed; do not delete ambiguous files
   without owner confirmation (AGENTS safety rule).
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/bugs.md` (B-2, B-3).
@@ -250,13 +251,16 @@ Statuses: TODO | IN PROGRESS | DONE.
   2. **Flag to the human and get confirmation** that these are removable.
   3. On confirmation, `git rm` the files (working-tree removal only; no history rewrite
      unless explicitly approved).
+- Completion note: owner explicitly declined removal, so the files were kept and B-2/B-3
+  were marked Accepted instead of Fixed.
 - Verification:
   - Both greps return no references.
   - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing.
   - Manual: `site.html` still loads `assets/videos/ecovila-hero.mp4`.
-- Docs to update: `project-structure.md` (drop the removed entries), `bugs.md`
-  (B-2/B-3 → Fixed), `project-history.md`, `plan.md`. Check the rest.
-- Suggested commit message: `chore: remove unreferenced media assets`
+- Docs to update: `project-structure.md` (drop the removed entries if removed, or mark
+  owner-retained if kept), `bugs.md` (B-2/B-3 → Fixed or Accepted),
+  `project-history.md`, `plan.md`. Check the rest.
+- Suggested commit message: `docs: record owner decision for unreferenced media`
 
 ---
 
@@ -479,3 +483,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 3 (commit: c1d963c).** Added scripts-only root `package.json` plus a test-runner contract; verified `npm test` (168 Node + 32 Deno); updated README, project-structure, project-history, bugs, decisions, conventions, and plan; checked project-overview/security with no changes needed.
 - **2026-05-31 — STEP 4 (commit: 53d78c4).** Removed unnecessary `async` from `sendSms`, `sendEmail`, `hashLookupCode`, and `hashManageToken`; verified no `require-await` lint output, `deno check`, 32 Deno tests, and 168 Node tests; updated README, project-history, bugs, and plan; checked project-overview, project-structure, security, decisions, and conventions with no changes needed.
 - **2026-05-31 — STEP 5 (commit: 311bdba).** Added the `std/assert` Deno import-map alias and changed `maib.test.ts` to use the bare specifier; verified no `no-import-prefix` lint output, `deno check`, and 32 Deno tests; updated README, project-history, bugs, conventions, and plan; checked project-overview, project-structure, security, and decisions with no changes needed.
+- **2026-05-31 — STEP 6 (commit: pending).** Reconfirmed no scoped references to `ecovilavideo.mp4`, `ecovilavideo-web.mp4`, or `assets/logo_small.png`; owner declined removal, so the files were kept and B-2/B-3 were marked Accepted; verified 168 Node tests; updated project-structure, project-history, bugs, decisions, and plan; checked README, project-overview, security, and conventions with no changes needed.

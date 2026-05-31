@@ -85,11 +85,19 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   frontend contract suite plus Deno Edge Function tests. New scripts must remain
   tooling-only unless a future ADR explicitly changes the no-build posture.
 
+### ADR-010 — Keep unreferenced legacy media assets
+- **Date:** 2026-05-31.
+- **Decision:** keep `ecovilavideo.mp4`, `ecovilavideo-web.mp4`, and
+  `assets/logo_small.png` in the repository even though scoped reference checks find no
+  current HTML/JS/CSS usage.
+- **Why:** owner explicitly declined Step 6 removal.
+- **Consequence:** these files are considered owner-retained assets, not active cleanup
+  targets. Do not remove them in later sessions unless the owner explicitly reverses
+  this decision.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
 
 - Should `docs/supabase/` and `docs/tests/` move to the repo root (`supabase/`,
   `tests/`) to match Supabase CLI conventions? (See B-6.) — **undecided.**
-- Are the root `*.mp4` files and `logo_small.png` truly removable? (See B-2, B-3.) —
-  **needs confirmation.**
