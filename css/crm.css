@@ -30,6 +30,15 @@
   display: none !important;
 }
 
+.crm-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 html {
   min-width: 1180px;
   background: var(--crm-surface);
@@ -1033,6 +1042,88 @@ h2 {
 .crm-panel[data-panel="towels"] .crm-date-nav .crm-button {
   min-height: 43px;
   padding: 9px 16px;
+}
+
+.crm-daily-titlebar {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 14px;
+}
+
+.crm-daily-search {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: rgba(255, 253, 249, 0.9);
+  box-shadow: 0 8px 18px rgba(39, 48, 39, 0.06);
+  transition: width 220ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.crm-daily-search:focus-within,
+.crm-daily-search.has-value {
+  width: min(340px, 42vw);
+  border-color: rgba(96, 108, 56, 0.42);
+  box-shadow: 0 12px 24px rgba(39, 48, 39, 0.1);
+}
+
+.crm-daily-search__button {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--crm-moss);
+  cursor: pointer;
+  padding: 12px;
+}
+
+.crm-daily-search__button svg {
+  width: 19px;
+  height: 19px;
+}
+
+.crm-daily-search__button circle,
+.crm-daily-search__button path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.crm-daily-search__field {
+  display: block;
+  min-width: 0;
+}
+
+.crm-daily-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--crm-ink);
+  opacity: 0;
+  padding: 0 14px 0 0;
+  transition: opacity 160ms ease;
+}
+
+.crm-daily-search:focus-within input,
+.crm-daily-search.has-value input {
+  opacity: 1;
+}
+
+.crm-daily-search input::placeholder {
+  color: var(--crm-muted);
 }
 
 .crm-finance-header {

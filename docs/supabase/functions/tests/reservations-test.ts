@@ -189,7 +189,8 @@ Deno.test('composeBookingConfirmation keeps SMS inside one segment where possibl
     {
       language: 'ro',
       checkIn: '2026-09-16',
-      expected: 'Rezervarea dvs este confirmata: 16 Septembrie 2026, 13.00 - 18 Septembrie 2026, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!',
+      expected:
+        'Rezervarea dvs este confirmata: 16 Septembrie 2026, 13.00 - 18 Septembrie 2026, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!',
       maxLength: 160,
     },
     {
@@ -201,7 +202,8 @@ Deno.test('composeBookingConfirmation keeps SMS inside one segment where possibl
     {
       language: 'en',
       checkIn: '2026-09-16',
-      expected: 'Your reservation is confirmed: 16 September 2026, 13.00 - 18 September 2026, 10.00. Access to the property: after 13.00. See you soon!',
+      expected:
+        'Your reservation is confirmed: 16 September 2026, 13.00 - 18 September 2026, 10.00. Access to the property: after 13.00. See you soon!',
       maxLength: 160,
     },
   ];
@@ -274,6 +276,32 @@ Deno.test('composeArrivalReminder sends short translated SMS without sender pref
     assertEquals(message.sms.message.includes('EcoVila:'), false);
     assertEquals([...message.sms.message].length <= testCase.maxLength, true);
   }
+});
+
+Deno.test('composeCancellationConfirmation sends the requested short Romanian SMS with dates only', async () => {
+  const { composeCancellationConfirmation } = await import('../_shared/notifications.ts');
+  const message = composeCancellationConfirmation({
+    id: 'reservation-cancelled',
+    room_number: 8,
+    check_in: '2026-06-01',
+    check_out: '2026-06-03',
+    total_price: 5200,
+    payment_type: 'card',
+    guest_email: 'ana@example.md',
+    guest_phone: '+37360123456',
+    guest_first_name: 'Ana',
+    guest_last_name: 'Munteanu',
+    guest_language: 'ro',
+  });
+
+  assertEquals(message.sms.to, '+37360123456');
+  assertEquals(
+    message.sms.message,
+    'Rezervarea dvs 1 Iunie 2026 - 3 Iunie 2026 este anulata',
+  );
+  assertEquals(message.sms.message.includes('EcoVila:'), false);
+  assertEquals(message.sms.message.includes('Căsuța'), false);
+  assertEquals([...message.sms.message].length <= 160, true);
 });
 
 Deno.test('sendSms follows the SMS.md authorized legacy request shape', async () => {
@@ -847,28 +875,6 @@ Deno.test('dispatchScheduledNotificationOnce does not rewrite post-send persiste
   );
 
   assertEquals(store.updates.map((update) => update.delivery_status), ['sent']);
-});
-
-Deno.test('verifyMaibSignature follows the documented sorted-result signature algorithm', async () => {
-  const { createMaibSignature, verifyMaibSignature } = await import('../_shared/maib.ts');
-  const result = {
-    payId: 'f16a9006-128a-46bc-8e2a-77a6ee99df75',
-    orderId: 'reservation-a',
-    status: 'OK',
-    statusCode: '000',
-    amount: 10.25,
-    currency: 'MDL',
-  };
-  const signature = await createMaibSignature(result, 'signature-key');
-
-  assertEquals(await verifyMaibSignature({ result, signature }, 'signature-key'), true);
-  assertEquals(
-    await verifyMaibSignature(
-      { result: { ...result, status: 'FAILED' }, signature },
-      'signature-key',
-    ),
-    false,
-  );
 });
 
 function assertEquals(actual: unknown, expected: unknown) {

@@ -18,5 +18,23 @@ verify_jwt = false
 [functions.send-reminders]
 verify_jwt = false
 
-[functions.maib-webhook]
+[functions.maib-create-payment]
+verify_jwt = true
+
+[functions.maib-callback]
 verify_jwt = false
+
+[functions.maib-refund]
+verify_jwt = true
+
+[functions.reservation-lookup-start]
+verify_jwt = true
+
+[functions.reservation-lookup-verify]
+verify_jwt = true
+
+[functions.reservation-manage-details]
+verify_jwt = true
+
+[functions.reservation-cancel]
+verify_jwt = true

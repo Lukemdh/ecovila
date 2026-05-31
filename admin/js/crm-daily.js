@@ -67,6 +67,77 @@
     return `${adults} adulți · ${kids} copii`;
   }
 
+  function normalizeSearchText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  function digitsOnly(value) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  function isShortNumericQuery(query) {
+    const compact = normalizeSearchText(query).replace(/\s/g, '');
+    const digits = digitsOnly(query);
+    return Boolean(digits && digits.length <= 2 && compact === digits);
+  }
+
+  function dailyReservationRoomNumber(reservation) {
+    const calendar = root.EcoVilaCrmCalendar || {};
+    return calendar.roomNumber
+      ? calendar.roomNumber(reservation)
+      : reservation.rooms?.number || '';
+  }
+
+  function dailyReservationSearchText(reservation) {
+    const calendar = root.EcoVilaCrmCalendar || {};
+    const roomNumber = dailyReservationRoomNumber(reservation);
+    const roomLabel = calendar.roomLabel
+      ? calendar.roomLabel(reservation)
+      : `Camera ${roomNumber}`;
+    const guestName = calendar.guestName
+      ? calendar.guestName(reservation)
+      : [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(' ');
+    const formattedPhone = calendar.formatCalendarPhone
+      ? calendar.formatCalendarPhone(reservation.guest_phone)
+      : reservation.guest_phone || '';
+
+    return [
+      roomNumber,
+      roomLabel,
+      reservation.guest_first_name,
+      reservation.guest_last_name,
+      guestName,
+      reservation.guest_phone,
+      formattedPhone,
+    ].filter(Boolean).join(' ');
+  }
+
+  function dailyReservationMatchesSearch(reservation, query) {
+    const normalizedQuery = normalizeSearchText(query);
+    const queryDigits = digitsOnly(query);
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const searchText = dailyReservationSearchText(reservation);
+    if (isShortNumericQuery(query)) {
+      return String(dailyReservationRoomNumber(reservation)).startsWith(queryDigits);
+    }
+
+    return (
+      normalizeSearchText(searchText).includes(normalizedQuery) ||
+      Boolean(queryDigits && digitsOnly(searchText).includes(queryDigits))
+    );
+  }
+
+  function filterDailyReservations(reservations, query) {
+    return (reservations || []).filter((reservation) => dailyReservationMatchesSearch(reservation, query));
+  }
+
   function groupReservations(reservations, reservation) {
     const groupId = reservation.booking_group_id;
     if (!groupId) {
@@ -261,6 +332,15 @@
   }
 
   function emptyState(context, state, type) {
+    if (state.dailySearchQuery) {
+      return `
+        <div class="crm-daily-empty">
+          <strong>Nu există rezultate pentru căutarea curentă.</strong>
+          <span>Încearcă numărul camerei, numele clientului sau telefonul.</span>
+        </div>
+      `;
+    }
+
     const selectedIsToday = state.selectedDate === root.EcoVilaCrmCalendar.todayISO();
     const dateLabel = selectedIsToday ? 'de astăzi' : `din ${context.formatDate(state.selectedDate)}`;
     const body = type === 'in'
@@ -524,7 +604,8 @@
   }
 
   function renderSection(context, state, container, reservations, statuses, type) {
-    const cards = reservations.map((reservation) => {
+    const visibleReservations = filterDailyReservations(reservations, state.dailySearchQuery);
+    const cards = visibleReservations.map((reservation) => {
       const status = statusFor(statuses, reservation.id);
       return {
         reservation,
@@ -547,6 +628,11 @@
     });
   }
 
+  function renderDailySections(context, state) {
+    renderSection(context, state, qs('[data-check-ins]'), state.checkIns, state.statuses, 'in');
+    renderSection(context, state, qs('[data-check-outs]'), state.checkOuts, state.statuses, 'out');
+  }
+
   async function loadDaily(context, state) {
     syncDateControl(context, state);
     const nextDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, 1);
@@ -567,8 +653,10 @@
     const ids = [...checkIns, ...checkOuts].map((reservation) => reservation.id);
     const statuses = await root.EcoVilaSupabase.fetchDailyStatuses(context.client, state.selectedDate, ids);
 
-    renderSection(context, state, qs('[data-check-ins]'), checkIns, statuses, 'in');
-    renderSection(context, state, qs('[data-check-outs]'), checkOuts, statuses, 'out');
+    state.checkIns = checkIns;
+    state.checkOuts = checkOuts;
+    state.statuses = statuses;
+    renderDailySections(context, state);
   }
 
   function setSelectedDate(context, state, date) {
@@ -592,13 +680,38 @@
     const state = {
       selectedDate: root.EcoVilaCrmCalendar.todayISO(),
       reservations: [],
+      checkIns: [],
+      checkOuts: [],
+      statuses: [],
       pricingTiers: [],
       holidays: [],
       editor: null,
+      dailySearchQuery: '',
     };
     activeDaily = { context, state };
 
     const dateInput = qs('[data-daily-date]');
+    const searchForm = qs('[data-daily-search-form]');
+    const searchInput = qs('[data-daily-search]');
+    const searchToggle = qs('[data-daily-search-toggle]');
+    const syncSearchState = () => {
+      state.dailySearchQuery = searchInput?.value || '';
+      searchForm?.classList.toggle('has-value', Boolean(state.dailySearchQuery.trim()));
+    };
+
+    searchForm?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      searchInput?.focus();
+    });
+    searchToggle?.addEventListener('click', () => {
+      searchInput?.focus();
+    });
+    searchInput?.addEventListener('input', () => {
+      syncSearchState();
+      renderDailySections(context, state);
+    });
+    searchInput?.addEventListener('blur', syncSearchState);
+
     dateInput?.addEventListener('change', () => {
       setSelectedDate(context, state, dateInput.value || state.selectedDate);
       loadDaily(context, state);
@@ -620,6 +733,8 @@
     calculateDailySupplement,
     checkDailyExtensionAvailability,
     DAILY_STATUS_TABLE,
+    dailyReservationMatchesSearch,
+    filterDailyReservations,
     init,
     kidsAgesToBuckets,
     loadDaily,

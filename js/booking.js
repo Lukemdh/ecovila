@@ -197,17 +197,16 @@
 
   function mergePublishedPhotos(library) {
     Object.entries(PHOTO_TYPE_SECTIONS).forEach(([type, section]) => {
-      const urls = (library?.[section] || [])
-        .map((photo) => photo.url)
-        .filter(Boolean);
+      const photos = (library?.[section] || [])
+        .filter((photo) => photoUrl(photo, 'preview'));
 
-      if (!urls.length) {
+      if (!photos.length) {
         return;
       }
 
-      cardImages[type] = urls[0];
-      typeImages[type] = urls[0];
-      typeGalleries[type] = urls;
+      cardImages[type] = photoUrl(photos[0], 'card');
+      typeImages[type] = photoUrl(photos[0], 'full');
+      typeGalleries[type] = photos;
     });
   }
 
@@ -340,6 +339,24 @@
       listItem.textContent = item;
       container.appendChild(listItem);
     });
+  }
+
+  function photoUrl(photo, variant) {
+    if (!photo) {
+      return '';
+    }
+
+    if (typeof photo === 'string') {
+      return photo;
+    }
+
+    const key = `${variant || 'preview'}Url`;
+    return photo[key] || photo.url || photo.previewUrl || photo.originalUrl || '';
+  }
+
+  function prepareLazyImage(image) {
+    image.loading = 'lazy';
+    image.decoding = 'async';
   }
 
   function markImageOrientation(image) {
@@ -605,6 +622,7 @@
       card.classList.toggle('is-unavailable-party', isUnavailableForParty);
       card.classList.toggle('is-selected', isSelected && !isUnavailableForParty);
       const cardImage = card.querySelector('[data-card-image]');
+      prepareLazyImage(cardImage);
       cardImage.src = cardImages[type];
       markImageOrientation(cardImage);
       card.querySelector('[data-card-title]').textContent = getCardTitle(type, info.neededUnits);
@@ -680,6 +698,11 @@
   }
 
   let suppressCalendarClose = false;
+  const lookupState = {
+    lookupId: '',
+    manageToken: '',
+    reservations: [],
+  };
 
   function selectDate(date) {
     if (!state.checkIn || state.checkOut || date <= state.checkIn) {
@@ -784,11 +807,12 @@
     const modal = document.querySelector('[data-booking-modal]');
     const gallery = typeGalleries[type] || [typeImages[type]];
     const activeIndex = Math.min(state.modalImageIndex, gallery.length - 1);
-    const activeImage = gallery[activeIndex] || typeImages[type];
+    const activeImage = photoUrl(gallery[activeIndex], 'full') || typeImages[type];
     const galleryElement = modal.querySelector('[data-booking-modal-gallery]');
 
     galleryElement.dataset.imageCount = String(gallery.length);
     const activeImageElement = modal.querySelector('[data-booking-modal-image]');
+    prepareLazyImage(activeImageElement);
     activeImageElement.src = activeImage;
     markImageOrientation(activeImageElement);
     modal.querySelector('[data-booking-modal-title]').textContent = t(`accommodation.${type}.title`);
@@ -805,7 +829,8 @@
       button.type = 'button';
       button.classList.toggle('is-active', index === activeIndex);
       button.setAttribute('aria-label', `${t('booking.image')} ${index + 1}`);
-      thumbnail.src = image;
+      prepareLazyImage(thumbnail);
+      thumbnail.src = photoUrl(image, 'thumbnail');
       thumbnail.alt = '';
       markImageOrientation(thumbnail);
       button.appendChild(thumbnail);
@@ -1050,6 +1075,153 @@
     document.body.style.overflow = '';
   }
 
+  function normalizeLookupPhone(value) {
+    return String(value || '').trim().replace(/[\s().-]/g, '');
+  }
+
+  function openReservationLookup() {
+    const modal = document.querySelector('[data-reservation-lookup-modal]');
+    const error = document.querySelector('[data-lookup-error]');
+    const phoneStep = document.querySelector('[data-lookup-phone-step]');
+    const codeStep = document.querySelector('[data-lookup-code-step]');
+    const results = document.querySelector('[data-lookup-results]');
+
+    lookupState.lookupId = '';
+    lookupState.manageToken = '';
+    lookupState.reservations = [];
+    if (error) error.hidden = true;
+    if (phoneStep) phoneStep.hidden = false;
+    if (codeStep) codeStep.hidden = true;
+    if (results) {
+      results.hidden = true;
+      results.innerHTML = '';
+    }
+    if (!modal) return;
+    showModal(modal);
+    document.querySelector('[data-lookup-phone]')?.focus();
+  }
+
+  function setLookupError(message) {
+    const error = document.querySelector('[data-lookup-error]');
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = false;
+  }
+
+  async function startReservationLookup() {
+    const button = document.querySelector('[data-lookup-start]');
+    const phoneInput = document.querySelector('[data-lookup-phone]');
+    const phone = normalizeLookupPhone(phoneInput?.value);
+
+    if (!/^\+\d{8,15}$/.test(phone)) {
+      setLookupError(t('checkout.errorPhone'));
+      phoneInput?.focus();
+      return;
+    }
+
+    if (!supabaseHelpers) {
+      setLookupError(t('checkout.errorSupabaseConfig'));
+      return;
+    }
+
+    if (button) button.disabled = true;
+    const error = document.querySelector('[data-lookup-error]');
+    if (error) error.hidden = true;
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const result = await supabaseHelpers.startReservationLookup(client, phone);
+      lookupState.lookupId = result.lookupId || '';
+      const phoneStep = document.querySelector('[data-lookup-phone-step]');
+      const codeStep = document.querySelector('[data-lookup-code-step]');
+      if (phoneStep) phoneStep.hidden = true;
+      if (codeStep) codeStep.hidden = false;
+      document.querySelector('[data-lookup-code]')?.focus();
+    } catch {
+      setLookupError(t('booking.lookupError'));
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  function openManagedReservation(reservation) {
+    const reservationId = reservation?.primaryReservationId || '';
+    if (!reservationId || !lookupState.manageToken) {
+      setLookupError(t('booking.lookupError'));
+      return;
+    }
+
+    window.location.href = `confirmare.html?id=${encodeURIComponent(reservationId)}&manage=${
+      encodeURIComponent(lookupState.manageToken)
+    }`;
+  }
+
+  function renderLookupResults(reservations) {
+    const results = document.querySelector('[data-lookup-results]');
+    if (!results) return;
+
+    results.innerHTML = '';
+    results.hidden = false;
+
+    if (!reservations.length) {
+      const empty = document.createElement('p');
+      empty.textContent = t('booking.lookupNoReservations');
+      results.appendChild(empty);
+      return;
+    }
+
+    if (reservations.length === 1) {
+      openManagedReservation(reservations[0]);
+      return;
+    }
+
+    const title = document.createElement('p');
+    title.textContent = t('booking.lookupChooseReservation');
+    results.appendChild(title);
+
+    reservations.forEach((reservation) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'booking-lookup__result';
+      button.textContent = `${formatDate(reservation.checkIn)} - ${formatDate(reservation.checkOut)} · ${
+        pricing.formatMDL(reservation.totalPrice || 0)
+      }`;
+      button.addEventListener('click', () => openManagedReservation(reservation));
+      results.appendChild(button);
+    });
+  }
+
+  async function verifyReservationLookup() {
+    const button = document.querySelector('[data-lookup-verify]');
+    const codeInput = document.querySelector('[data-lookup-code]');
+    const code = String(codeInput?.value || '').replace(/\D/g, '').slice(0, 4);
+
+    if (!lookupState.lookupId || code.length !== 4) {
+      setLookupError(t('booking.lookupCodeError'));
+      codeInput?.focus();
+      return;
+    }
+
+    if (button) button.disabled = true;
+    const error = document.querySelector('[data-lookup-error]');
+    if (error) error.hidden = true;
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const result = await supabaseHelpers.verifyReservationLookup(client, {
+        lookupId: lookupState.lookupId,
+        code,
+      });
+      lookupState.manageToken = result.manageToken || '';
+      lookupState.reservations = Array.isArray(result.reservations) ? result.reservations : [];
+      renderLookupResults(lookupState.reservations);
+    } catch {
+      setLookupError(t('booking.lookupCodeError'));
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function bindEvents() {
     document.querySelectorAll('[data-counter]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -1107,6 +1279,19 @@
     if (continueButton) {
       continueButton.addEventListener('click', continueToCheckout);
     }
+
+    document.querySelector('[data-reservation-lookup-open]')?.addEventListener('click', openReservationLookup);
+    document.querySelector('[data-lookup-start]')?.addEventListener('click', startReservationLookup);
+    document.querySelector('[data-lookup-verify]')?.addEventListener('click', verifyReservationLookup);
+    document.querySelector('[data-lookup-phone]')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') startReservationLookup();
+    });
+    document.querySelector('[data-lookup-code]')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') verifyReservationLookup();
+    });
+    document.querySelectorAll('[data-lookup-close]').forEach((button) => {
+      button.addEventListener('click', closeAllModals);
+    });
 
     document.querySelector('[data-booking-modal-prev]').addEventListener('click', () => moveDetailsImage(-1));
     document.querySelector('[data-booking-modal-next]').addEventListener('click', () => moveDetailsImage(1));

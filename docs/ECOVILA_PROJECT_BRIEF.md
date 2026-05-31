@@ -66,7 +66,9 @@ Add server-side logic:
 * `send-email`
 * `expire-cash-reservations`
 * `send-reminders`
-* `maib-webhook`
+* `maib-create-payment`
+* `maib-callback`
+* `maib-refund`
 
 Step 8: **Legal Pages**
 Implement:
@@ -105,10 +107,10 @@ Step 10 also includes the production secrets and provider account work that cann
 Step 11: **Maib online payments**
 Complete online-payment production rollout:
 
-* Add `MAIB_SIGNATURE_KEY`.
-* Configure the Maib callback URL to the deployed `maib-webhook` Edge Function.
-* Complete `payments/maib/browser-adapter.js` so normalized `+373` numbers start MIA and other valid international numbers start card payment.
-* Verify the Maib signature payload against production samples.
+* Add Supabase Edge Function secrets: `MAIB_CLIENT_ID`, `MAIB_CLIENT_SECRET`, `MAIB_SIGNATURE_KEY`, and `MAIB_BASE_URL`.
+* Configure the Maib callback URL to the deployed `maib-callback` Edge Function.
+* Checkout calls `maib-create-payment` after reservation creation and redirects to Maib's hosted Checkout URL.
+* Verify raw-body `X-Signature` + `X-Signature-Timestamp` callbacks against Maib Checkout production samples.
 
 Step 12: **tophost Deployment**
 Deploy the static frontend to tophost.md and complete final public-site verification.
@@ -445,9 +447,10 @@ When **"Rezervă"** is clicked (online-payment flow):
 
 1. Reservation is created in Supabase with `payment\\\_status = 'pending'`.
 2. EcoVila chooses MIA for normalized `+373` numbers and card for other valid international numbers.
-3. User is redirected to the matching Maib-hosted payment page.
-4. On successful payment → Maib calls Supabase Edge Function webhook → `payment\\\_status` updated to `'paid'` → SMS + email confirmation sent.
-5. On failed/cancelled payment → reservation deleted (or marked cancelled).
+3. `maib-create-payment` creates a Maib hosted Checkout session and stores the in-flight payment guard.
+4. User is redirected to the matching Maib-hosted payment page.
+5. On successful payment → Maib calls `maib-callback` → `payment\\\_status` updated to `'paid'` → SMS + email confirmation sent.
+6. On failed/cancelled payment → the reservation is marked `cancelled`; stale sessions are released after timeout.
 
 \---
 
@@ -476,7 +479,7 @@ Accessed via a unique link sent in the SMS/email confirmation: `/anulare?token=C
 
 1. Page loads, fetches reservation by token.
 2. Shows: reservation details (dates, accommodation type, room number, total paid).
-3. Shows refund eligibility based on the legal policy: at least 7 calendar days before check-in is refundable; later cancellations remain possible online but are non-refundable.
+3. Shows refund eligibility based on the legal policy: cancellations are refundable if there are 7 calendar days or fewer before check-in, or if the reservation was created less than 2 hours ago. Other cancellations remain possible online but are non-refundable.
 
    * If YES → show **"Anulează rezervarea"** button and the refundable message.
    * If NO → keep the **"Anulează rezervarea"** button available and show the non-refundable message.
@@ -709,8 +712,9 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Guest-initiated (via cancellation link):
 
-* **At least 7 calendar days before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
-* **Less than 7 calendar days before check-in:** Allowed online. Room freed immediately. Cancellation SMS + email sent. Paid amount is not refunded.
+* **7 calendar days or fewer before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
+* **Less than 2 hours after reservation creation:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
+* **Outside both refund windows:** Allowed online. Room freed immediately. Cancellation SMS + email sent. Paid amount is not refunded.
 
 ### Diana-initiated (from CRM):
 
@@ -720,8 +724,9 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Refund policy (display in T\&C and on cancellation page):
 
-* Cancellation at least 7 calendar days before arrival → full refund
-* Less than 7 calendar days → no refund
+* 7 calendar days or fewer before arrival → full refund
+* Less than 2 hours after reservation creation → full refund
+* Outside both refund windows → no refund
 
 \---
 
@@ -774,7 +779,7 @@ Must include:
 Must include:
 
 * Booking and payment terms
-* Cancellation policy (7-calendar-day refund conditions)
+* Cancellation policy (7-day or 2-hour refund conditions)
 * Check-in / check-out times (13:00 / 10:00)
 * House rules: no pets, no outside food/drinks on premises, access only for paying guests
 * Pricing disclaimer (prices in MDL, all-inclusive)
@@ -836,8 +841,10 @@ ecovila.md (tophost.md hosting)
 Supabase Edge Functions (deployed to Supabase, NOT tophost):
 ├── send-sms/               ← SMS.md integration
 ├── send-email/             ← Resend integration
-├── expire-cash-reservations/ ← Cron: cancel expired cash bookings
-├── maib-webhook/           ← Maib online-payment callback
+├── expire-cash-reservations/ ← Cron: cancel expired cash bookings + stale Maib sessions
+├── maib-create-payment/    ← Browser-triggered Maib hosted Checkout session
+├── maib-callback/          ← Maib signed server-to-server callback
+├── maib-refund/            ← Staff-triggered Maib refund initiation
 └── send-reminders/         ← Cron: 24h arrival reminders + 5min cash warning
 ```
 
@@ -851,11 +858,11 @@ Supabase Edge Functions (deployed to Supabase, NOT tophost):
 4. Conference room: website shows it as a feature, booking only via phone (Diana)
 5. Kids-only reservations not allowed on website; Diana can override in CRM
 6. Cash payments: 30 min timer (server-side), 1 extension available to guest, Diana sees +10 min extra
-7. Online payments: Maib MIA for normalized `+373` numbers, Maib card flow otherwise; Edge Function webhook confirms payment
+7. Online payments: Maib MIA for normalized `+373` numbers, Maib card flow otherwise; signed `maib-callback` confirms payment
 8. Room auto-assign: căsuță mică decreasing (8→1), căsuță mare + hotel increasing
 9. If guest explicitly chose room number: Diana sees warning + must type "schimba" before any room swap in CRM
 10. Pricing is locked at booking creation time — price changes never affect existing reservations
-11. Cancellation: guest can cancel at least 7 calendar days before arrival for a refund; later cancellations remain possible online but are non-refundable
+11. Cancellation: guest can cancel for a refund when there are 7 calendar days or fewer before arrival, or less than 2 hours have passed since reservation creation; other cancellations remain possible online but are non-refundable
 12. All SMS/email via Edge Functions (never from browser — API keys stay server-side)
 13. CRM is desktop-only, Romanian-only, Supabase Auth protected
 14. Legal compliance: Legea 195/2024 (Moldova GDPR, in force Aug 23 2026), full privacy policy, cookie consent, T\&C required

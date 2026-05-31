@@ -14,39 +14,17 @@ function read(relativePath) {
 }
 
 describe('EcoVila Step 7 Supabase Edge Functions', () => {
-  it('keeps a live human-readable Maib payment module under payments/', () => {
+  it('removes the old placeholder Maib payment module', () => {
     for (const file of [
       'payments/README.md',
       'payments/maib/README.md',
       'payments/maib/browser-adapter.js',
       'payments/maib/examples/callback-approved.json',
       'payments/maib/examples/callback-failed.json',
+      'docs/supabase/functions/maib-webhook/index.ts',
+      'docs/PAYMENTS_OWNER_CHECKLIST.md',
     ]) {
-      assert.ok(exists(file), `${file} should exist`);
-    }
-
-    const adapter = read('payments/maib/browser-adapter.js');
-    const maibReadme = read('payments/maib/README.md');
-    const approved = JSON.parse(read('payments/maib/examples/callback-approved.json'));
-    const failed = JSON.parse(read('payments/maib/examples/callback-failed.json'));
-
-    assert.match(adapter, /startCardPayment/, 'browser adapter should expose the Maib start hook');
-    assert.match(maibReadme, /browser-adapter\.js/, 'Maib docs should point technicians to the live browser adapter');
-    assert.match(maibReadme, /paymentRail/, 'Maib docs should explain the selected payment rail contract');
-    assert.match(maibReadme, /guestPhone/, 'Maib docs should explain the normalized guest phone contract');
-    assert.match(maibReadme, /mia/, 'Maib docs should mention the MIA rail');
-    assert.match(maibReadme, /card/, 'Maib docs should mention the card rail');
-    assert.match(
-      maibReadme,
-      /docs\/supabase\/functions\/maib-webhook\/index\.ts/,
-      'Maib docs should point technicians to the deployable webhook entrypoint',
-    );
-
-    for (const payload of [approved, failed]) {
-      assert.ok(payload.result?.orderId, 'callback example should include result.orderId');
-      assert.ok(payload.result?.status, 'callback example should include result.status');
-      assert.ok(payload.result?.statusCode, 'callback example should include result.statusCode');
-      assert.ok(payload.signature, 'callback example should include signature');
+      assert.equal(exists(file), false, `${file} should be removed`);
     }
   });
 
@@ -77,7 +55,9 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'send-email',
       'expire-cash-reservations',
       'send-reminders',
-      'maib-webhook',
+      'maib-create-payment',
+      'maib-callback',
+      'maib-refund',
     ]) {
       const file = `docs/supabase/functions/${name}/index.ts`;
       assert.ok(exists(file), `${file} should exist`);
@@ -105,6 +85,16 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     }
   });
 
+  it('allows current Supabase browser client headers through Edge Function CORS preflight', () => {
+    const cors = read('docs/supabase/functions/_shared/cors.ts');
+
+    assert.match(
+      cors,
+      /x-supabase-api-version/,
+      'Supabase JS function calls should pass browser CORS preflight with current client headers',
+    );
+  });
+
   it('configures public and server-only function JWT behavior explicitly', () => {
     const config = read('docs/supabase/config.toml');
 
@@ -120,8 +110,18 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
     assert.match(
       config,
-      /\[functions\.maib-webhook\][\s\S]*?verify_jwt = false/i,
-      'maib-webhook must accept provider callbacks without Supabase JWTs',
+      /\[functions\.maib-create-payment\][\s\S]*?verify_jwt = true/i,
+      'maib-create-payment should require a Supabase JWT from the browser anon key',
+    );
+    assert.match(
+      config,
+      /\[functions\.maib-callback\][\s\S]*?verify_jwt = false/i,
+      'maib-callback must accept provider callbacks without Supabase JWTs',
+    );
+    assert.match(
+      config,
+      /\[functions\.maib-refund\][\s\S]*?verify_jwt = true/i,
+      'maib-refund should require a staff Supabase JWT',
     );
 
     for (const cronFunction of ['expire-cash-reservations', 'send-reminders']) {
@@ -157,8 +157,11 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       /requireStaffRole\(request,\s*\['diana'\]\)/,
       'direct send-email endpoint should be limited to Diana while shared notification sends remain server-side',
     );
+    assert.match(maib, /MAIB_CLIENT_ID/, 'Maib client id should be read from env');
+    assert.match(maib, /MAIB_CLIENT_SECRET/, 'Maib client secret should be read from env');
     assert.match(maib, /MAIB_SIGNATURE_KEY/, 'Maib callback signature key should be read from env');
-    assert.match(maib, /verifyMaibSignature/, 'Maib webhook should have a reusable signature verifier');
+    assert.match(maib, /MAIB_BASE_URL/, 'Maib base URL should be read from env');
+    assert.match(maib, /verifyMaibCallbackSignature/, 'Maib callback should have a reusable raw-body signature verifier');
   });
 
   it('adds idempotency storage for scheduled notification jobs', () => {
@@ -187,7 +190,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     assert.match(
       migrations,
       /alter table public\.reservations[\s\S]*add column if not exists booking_group_id uuid/i,
-      'Edge reservation creation should group multi-room bookings for Maib webhooks',
+      'Edge reservation creation should group multi-room bookings for Maib callbacks',
     );
   });
 
@@ -216,7 +219,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     const expiry = read('docs/supabase/functions/expire-cash-reservations/index.ts');
     const createReservation = read('docs/supabase/functions/create-reservation/index.ts');
     const confirmReservationPayment = read('docs/supabase/functions/confirm-reservation-payment/index.ts');
-    const maibWebhook = read('docs/supabase/functions/maib-webhook/index.ts');
+    const maibCallback = read('docs/supabase/functions/maib-callback/index.ts');
 
     assert.match(notifications, /reserveNotificationEvent/);
     assert.match(notifications, /markNotificationEventSent/);
@@ -247,9 +250,14 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'staff payment confirmation should enforce the Diana role inside the service-role function',
     );
     assert.match(
-      maibWebhook,
-      /dispatchAndRecordNotification/,
-      'Maib confirmation should keep using the non-cron helper',
+      maibCallback,
+      /dispatchPaymentConfirmationOnce/,
+      'Maib confirmation should reserve notification events before sending',
+    );
+    assert.match(
+      maibCallback,
+      /delivery_status:\s*'reserved'/,
+      'Maib confirmation should reserve notification events before sending',
     );
     assert.doesNotMatch(
       createReservation,
@@ -257,9 +265,9 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'reservation creation should not dispatch notifications',
     );
     assert.doesNotMatch(
-      maibWebhook,
-      /dispatchScheduledNotificationOnce/,
-      'Maib confirmation should not inherit scheduled duplicate-skip semantics',
+      maibCallback,
+      /dispatchAndRecordNotification/,
+      'Maib confirmation should not send before reserving idempotency rows',
     );
   });
 
@@ -280,7 +288,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
 
   it('stamps paid_at when cash or online reservations become paid', () => {
     const confirmReservationPayment = read('docs/supabase/functions/confirm-reservation-payment/index.ts');
-    const maibWebhook = read('docs/supabase/functions/maib-webhook/index.ts');
+    const maibCallback = read('docs/supabase/functions/maib-callback/index.ts');
 
     assert.match(confirmReservationPayment, /const now = new Date\(\)\.toISOString\(\)/);
     assert.match(
@@ -289,8 +297,8 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'staff cash confirmation should record the actual paid_at moment',
     );
     assert.match(
-      maibWebhook,
-      /update\(\{\s*payment_status:\s*'paid',\s*cash_expires_at:\s*null,\s*paid_at:\s*now\s*\}\)/s,
+      maibCallback,
+      /payment_status:\s*'paid'[\s\S]*payment_in_progress:\s*false[\s\S]*paid_at:\s*now/s,
       'Maib approved callbacks should record the actual paid_at moment',
     );
   });
@@ -333,7 +341,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
     assert.match(
       brief,
-      /Cancellation:\s+guest can cancel at least 7 calendar days before arrival/i,
+      /Cancellation:\s+guest can cancel for a refund when there are 7 calendar days or fewer before arrival/i,
     );
   });
 });

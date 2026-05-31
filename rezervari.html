@@ -44,9 +44,9 @@
       <section class="booking-shell" aria-labelledby="booking-title">
         <div class="booking-intro">
           <h1 id="booking-title" data-i18n="booking.title">Rezervări</h1>
-          <p data-i18n="booking.lead">
-            Disponibilitatea se actualizează după persoanele și datele selectate.
-          </p>
+          <button class="booking-lookup-link" type="button" data-reservation-lookup-open data-i18n="booking.lookupCta">
+            Ai deja o rezervare?
+          </button>
         </div>
 
         <section class="booking-panel booking-panel--selector" aria-labelledby="booking-selector-title">
@@ -143,7 +143,7 @@
 
           <div class="booking-stay-grid">
             <article class="booking-stay-card" data-stay-card="small" tabindex="0">
-              <img src="/assets/photos/small-villa/exterior.svg" alt="" data-card-image>
+              <img src="/assets/photos/small-villa/exterior.svg" alt="" loading="lazy" decoding="async" data-card-image>
               <div class="booking-stay-card__body">
                 <span class="soldout-badge" data-soldout-badge hidden data-i18n="booking.soldOut">Epuizat</span>
                 <h3 data-card-title>Căsuță Mică</h3>
@@ -171,7 +171,7 @@
             </article>
 
             <article class="booking-stay-card" data-stay-card="large" tabindex="0">
-              <img src="/assets/photos/large-villa/exterior.svg" alt="" data-card-image>
+              <img src="/assets/photos/large-villa/exterior.svg" alt="" loading="lazy" decoding="async" data-card-image>
               <div class="booking-stay-card__body">
                 <span class="soldout-badge" data-soldout-badge hidden data-i18n="booking.soldOut">Epuizat</span>
                 <h3 data-card-title>Căsuță Mare</h3>
@@ -199,7 +199,7 @@
             </article>
 
             <article class="booking-stay-card" data-stay-card="hotel" tabindex="0">
-              <img src="/assets/photos/hotel/room.svg" alt="" data-card-image>
+              <img src="/assets/photos/hotel/room.svg" alt="" loading="lazy" decoding="async" data-card-image>
               <div class="booking-stay-card__body">
                 <span class="soldout-badge" data-soldout-badge hidden data-i18n="booking.soldOut">Epuizat</span>
                 <h3 data-card-title>Cameră în Hotel</h3>
@@ -235,6 +235,34 @@
         </section>
       </section>
     </main>
+
+    <div class="booking-modal" data-reservation-lookup-modal hidden role="dialog" aria-modal="true" aria-labelledby="reservation-lookup-title">
+      <div class="booking-modal__backdrop" data-lookup-close></div>
+      <div class="booking-modal__panel booking-lookup">
+        <button class="booking-modal__close" type="button" data-lookup-close aria-label="Închide">×</button>
+        <h2 id="reservation-lookup-title" data-i18n="booking.lookupTitle">Găsește rezervarea</h2>
+        <p data-i18n="booking.lookupLead">Introdu numărul folosit la rezervare. Îți trimitem un cod prin SMS.</p>
+
+        <div class="booking-lookup__step" data-lookup-phone-step>
+          <label for="reservation-lookup-phone" data-i18n="checkout.phone">Telefon</label>
+          <input id="reservation-lookup-phone" type="tel" value="+373" autocomplete="tel" inputmode="tel" data-lookup-phone>
+          <button class="editorial-button editorial-button--filled" type="button" data-lookup-start>
+            <span data-i18n="booking.lookupSendCode">Trimite codul</span>
+          </button>
+        </div>
+
+        <div class="booking-lookup__step" data-lookup-code-step hidden>
+          <label for="reservation-lookup-code" data-i18n="booking.lookupCodeLabel">Cod SMS</label>
+          <input id="reservation-lookup-code" type="text" inputmode="numeric" maxlength="4" autocomplete="one-time-code" data-lookup-code>
+          <button class="editorial-button editorial-button--filled" type="button" data-lookup-verify>
+            <span data-i18n="booking.lookupVerify">Verifică</span>
+          </button>
+        </div>
+
+        <div class="booking-lookup__results" data-lookup-results hidden></div>
+        <p class="booking-error" data-lookup-error hidden></p>
+      </div>
+    </div>
 
     <footer class="site-footer" id="footer">
       <div class="section-inner site-footer__grid">
@@ -314,7 +342,7 @@
         <div class="booking-details-gallery" data-booking-modal-gallery>
           <div class="booking-details-gallery__main">
             <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-booking-modal-prev aria-label="Imaginea precedentă">‹</button>
-            <img src="/assets/photos/small-villa/interior.svg" alt="" data-booking-modal-image>
+            <img src="/assets/photos/small-villa/interior.svg" alt="" loading="lazy" decoding="async" data-booking-modal-image>
             <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-booking-modal-next aria-label="Imaginea următoare">›</button>
             <div class="booking-details-gallery__dots" data-booking-modal-dots aria-hidden="true"></div>
           </div>

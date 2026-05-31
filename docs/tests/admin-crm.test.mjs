@@ -652,6 +652,58 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(daily, /sortByRoomWithCompletedLast/i);
   });
 
+  it('adds an expandable daily search by room, guest name, surname, and phone', () => {
+    const dashboard = read('admin/dashboard.html');
+    const css = read('css/crm.css');
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      EcoVilaCrmCalendar: {
+        roomNumber(reservation) {
+          return Number(reservation.rooms?.number || 0);
+        },
+        roomLabel(reservation) {
+          return `Camera ${reservation.rooms?.number || ''}`;
+        },
+        guestName(reservation) {
+          return [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(' ');
+        },
+        formatCalendarPhone(phone) {
+          return String(phone || '').replace(/^\+373(\d{3})(\d{3})(\d{2})$/, '+373 $1 $2 $3');
+        },
+      },
+    });
+    const reservation = {
+      guest_first_name: 'Ion',
+      guest_last_name: 'Țurcanu',
+      guest_phone: '+37368983660',
+      rooms: { number: 12 },
+    };
+    const differentRoomWithPhoneFragment = {
+      guest_first_name: 'Ana',
+      guest_last_name: 'Popescu',
+      guest_phone: '+37360111222',
+      rooms: { number: 18 },
+    };
+
+    for (const hook of [
+      'data-daily-titlebar',
+      'data-daily-search-form',
+      'data-daily-search-toggle',
+      'data-daily-search',
+    ]) {
+      assert.match(dashboard, new RegExp(hook), `${hook} should exist`);
+    }
+
+    assert.match(css, /\.crm-daily-search\s*\{[\s\S]*width:\s*44px/i);
+    assert.match(css, /\.crm-daily-search:focus-within[\s\S]*\.crm-daily-search\.has-value[\s\S]*width:\s*min\(340px,\s*42vw\)/i);
+    assert.equal(typeof daily.dailyReservationMatchesSearch, 'function');
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, '12'), true);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, 'Ion'), true);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, 'turcanu'), true);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, '689 836'), true);
+    assert.equal(daily.dailyReservationMatchesSearch(differentRoomWithPhoneFragment, '12'), false);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, 'popescu'), false);
+  });
+
   it('calculates exact daily guest supplements from editable child age buckets', () => {
     const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
       EcoVilaPricing: pricing,
@@ -979,6 +1031,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(capturedUpload.storagePath, 'landing/forest.jpg');
     assert.equal(capturedUpload.file, file);
     assert.equal(capturedUpload.options.upsert, false);
+    assert.equal(capturedUpload.options.cacheControl, '31536000');
   });
 
   it('keeps Landing homepage position labels while showing the visual main-image label', () => {

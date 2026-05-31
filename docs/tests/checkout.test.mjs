@@ -42,16 +42,10 @@ describe('EcoVila Step 5 checkout', () => {
       'js/pricing.js',
       'js/supabase.js',
       'js/main.js',
-      'payments/maib/browser-adapter.js',
       'js/checkout.js',
     ]) {
       assert.match(html, new RegExp(`src="${script}"`), `${script} should be loaded`);
     }
-
-    assert.ok(
-      html.indexOf('src="payments/maib/browser-adapter.js"') < html.indexOf('src="js/checkout.js"'),
-      'checkout should load the live Maib adapter before checkout.js uses it',
-    );
   });
 
   it('uses the alternate logo artwork in the checkout footer', () => {
@@ -363,7 +357,7 @@ describe('EcoVila Step 5 checkout', () => {
             data: {
               primaryReservationId: 'reservation-a',
               bookingGroupId: 'booking-group-a',
-              reservationIds: ['reservation-a'],
+              reservationIds: ['server-reservation-a'],
             },
             error: null,
           });
@@ -376,7 +370,7 @@ describe('EcoVila Step 5 checkout', () => {
     assert.deepEqual(result, {
       primaryReservationId: 'reservation-a',
       bookingGroupId: 'booking-group-a',
-      reservationIds: ['reservation-a'],
+      reservationIds: ['server-reservation-a'],
     });
     assert.deepEqual(calls, [
       {
@@ -391,18 +385,19 @@ describe('EcoVila Step 5 checkout', () => {
     ]);
   });
 
-  it('passes the normalized phone and selected online rail into the payment adapter', async () => {
+  it('passes the normalized phone and selected online rail into maib-create-payment', async () => {
     const checkout = loadCheckout();
+    const supabaseHelpers = require('../../js/supabase.js');
     const calls = [];
     const location = { href: '' };
-    const previousAdapter = globalThis.EcoVilaPayments;
     const previousLocation = globalThis.location;
+    const previousGetClient = supabaseHelpers.getSupabaseClient;
+    const previousCreatePayment = supabaseHelpers.createMaibPaymentRequest;
 
-    globalThis.EcoVilaPayments = {
-      startCardPayment(context) {
-        calls.push(context);
-        return 'https://payments.example/maib';
-      },
+    supabaseHelpers.getSupabaseClient = () => ({ marker: 'client' });
+    supabaseHelpers.createMaibPaymentRequest = (client, context) => {
+      calls.push({ client, context });
+      return Promise.resolve({ payUrl: 'https://payments.example/maib' });
     };
     globalThis.location = location;
 
@@ -414,17 +409,29 @@ describe('EcoVila Step 5 checkout', () => {
         { totalPrice: 3100 },
         {
           bookingGroupId: 'booking-group-a',
+          reservationIds: ['server-reservation-a'],
         },
         '+373 60 123 456',
       );
     } finally {
-      globalThis.EcoVilaPayments = previousAdapter;
       globalThis.location = previousLocation;
+      supabaseHelpers.getSupabaseClient = previousGetClient;
+      supabaseHelpers.createMaibPaymentRequest = previousCreatePayment;
     }
 
     assert.equal(location.href, 'https://payments.example/maib');
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].guestPhone, '+37360123456');
-    assert.equal(calls[0].paymentRail, 'mia');
+    assert.deepEqual(calls[0], {
+      client: { marker: 'client' },
+      context: {
+        primaryReservationId: 'reservation-a',
+        bookingGroupId: 'booking-group-a',
+        reservationIds: ['server-reservation-a'],
+        totalPrice: 3100,
+        selection: { totalPrice: 3100 },
+        guestPhone: '+37360123456',
+        paymentRail: 'mia',
+      },
+    });
   });
 });

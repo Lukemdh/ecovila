@@ -349,22 +349,33 @@
     };
   }
 
+  function getReservationIdsForPayment(payloadsOrIds, createResult) {
+    if (Array.isArray(createResult?.reservationIds) && createResult.reservationIds.length) {
+      return createResult.reservationIds.map((id) => String(id)).filter(Boolean);
+    }
+
+    return (Array.isArray(payloadsOrIds) ? payloadsOrIds : [])
+      .map((item) => typeof item === 'string' ? item : item?.id)
+      .map((id) => String(id || '').trim())
+      .filter(Boolean);
+  }
+
   function redirectAfterReservation(primaryId, paymentType, payloads, selection, createResult, guestPhone) {
-    const paymentAdapter = root.EcoVilaPayments;
     const normalizedGuestPhone = normalizeInternationalPhone(guestPhone);
 
-    if (paymentType === 'card' && typeof paymentAdapter?.startCardPayment === 'function') {
-      return Promise.resolve(paymentAdapter.startCardPayment({
+    if (paymentType === 'card') {
+      const client = supabaseHelpers.getSupabaseClient();
+      return supabaseHelpers.createMaibPaymentRequest(client, {
         primaryReservationId: primaryId,
         bookingGroupId: createResult?.bookingGroupId || primaryId,
-        reservationIds: payloads.map((payload) => payload.id),
+        reservationIds: getReservationIdsForPayment(payloads, createResult),
         totalPrice: Number(selection.totalPrice),
         selection,
         guestPhone: normalizedGuestPhone,
         paymentRail: getPaymentRail(normalizedGuestPhone),
-      })).then((url) => {
-        if (url) {
-          root.location.href = url;
+      }).then((result) => {
+        if (result?.payUrl) {
+          root.location.href = result.payUrl;
           return;
         }
 
@@ -457,6 +468,7 @@
   async function submitCheckout(state, form) {
     showMessage('[data-checkout-error]', '');
     showMessage('[data-checkout-status]', '');
+    let reservationCreated = false;
 
     const guestValidation = validateGuestDetails(collectGuestDetails(form));
 
@@ -501,7 +513,11 @@
         }),
       );
 
-      showMessage('[data-checkout-status]', t('checkout.created'));
+      reservationCreated = true;
+      showMessage(
+        '[data-checkout-status]',
+        t(state.paymentType === 'card' ? 'checkout.createdOnline' : 'checkout.createdCash'),
+      );
       await redirectAfterReservation(
         primaryId,
         state.paymentType,
@@ -512,7 +528,12 @@
       );
     } catch (error) {
       const message = String(error?.message || '');
-      const key = message.includes('Missing Supabase config') ? 'checkout.errorSupabaseConfig' : 'checkout.errorCreate';
+      const key = message.includes('Missing Supabase config')
+        ? 'checkout.errorSupabaseConfig'
+        : reservationCreated && state.paymentType === 'card'
+          ? 'checkout.errorPaymentStart'
+          : 'checkout.errorCreate';
+      showMessage('[data-checkout-status]', '');
       showMessage('[data-checkout-error]', t(key));
     } finally {
       setSubmitting(false);
@@ -569,6 +590,7 @@
     getCashExpiry,
     getOnlinePaymentCopy,
     getPaymentRail,
+    getReservationIdsForPayment,
     hasSelectedRoomNumber,
     initCheckout,
     normalizeInternationalPhone,

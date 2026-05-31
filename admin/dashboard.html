@@ -437,7 +437,21 @@
 
       <section class="crm-panel" data-panel="daily" aria-labelledby="daily-title">
         <div class="crm-panel-header">
-          <h1 id="daily-title">Situația zilnică</h1>
+          <div class="crm-daily-titlebar" data-daily-titlebar>
+            <h1 id="daily-title">Situația zilnică</h1>
+            <form class="crm-daily-search" role="search" data-daily-search-form>
+              <button class="crm-daily-search__button" type="button" data-daily-search-toggle aria-label="Caută în situația zilnică">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="m16.5 16.5 4 4"></path>
+                </svg>
+              </button>
+              <label class="crm-daily-search__field">
+                <span class="crm-sr-only">Caută după cameră, nume sau telefon</span>
+                <input type="search" placeholder="Caută" autocomplete="off" data-daily-search>
+              </label>
+            </form>
+          </div>
           <div class="crm-date-nav">
             <button class="crm-button crm-button--small" type="button" data-daily-prev>Înapoi</button>
             <label class="crm-date-picker-button" data-daily-date-picker>

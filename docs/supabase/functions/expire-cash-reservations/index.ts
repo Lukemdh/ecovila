@@ -7,6 +7,8 @@ import {
 } from '../_shared/notifications.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
 
+const CARD_PAYMENT_START_GRACE_MINUTES = 15;
+
 Deno.serve(async (request) => {
   const cors = handleCors(request);
   if (cors) {
@@ -52,16 +54,120 @@ Deno.serve(async (request) => {
     }
 
     const notificationResults = await notifyExpiredReservations(client, reservations);
+    const expiredMaibSessions = await expireStaleMaibSessions(client, now);
 
     return jsonResponse({
       expired: ids.length,
       reservationIds: ids,
       notificationResults,
+      expiredMaibSessions,
     });
   } catch (error) {
     return errorResponse(error);
   }
 });
+
+async function expireStaleMaibSessions(client: any, now: string) {
+  const expiredInFlightIds = await expireInFlightMaibSessions(client, now);
+  const orphanedIds = await expireUnstartedCardReservations(client, now);
+
+  return {
+    expired: expiredInFlightIds.length + orphanedIds.length,
+    reservationIds: [...expiredInFlightIds, ...orphanedIds],
+    orphaned: orphanedIds.length,
+  };
+}
+
+async function expireInFlightMaibSessions(client: any, now: string) {
+  const { data, error: selectError } = await client
+    .from('reservations')
+    .select('id')
+    .eq('payment_type', 'card')
+    .eq('payment_status', 'pending')
+    .eq('payment_in_progress', true)
+    .is('cancelled_at', null)
+    .lt('payment_session_expires_at', now);
+
+  if (selectError) {
+    throw new Error(selectError.message);
+  }
+
+  const ids = (data || []).map((reservation: any) => reservation.id);
+
+  if (!ids.length) {
+    return [];
+  }
+
+  const { error: updateError } = await client
+    .from('reservations')
+    .update({
+      payment_status: 'cancelled',
+      payment_in_progress: false,
+      payment_session_expires_at: null,
+      cancelled_at: now,
+      cancellation_reason: 'maib_session_expired',
+    })
+    .in('id', ids);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { error: paymentUpdateError } = await client
+    .from('maib_payments')
+    .update({
+      status: 'cancelled',
+      updated_at: now,
+    })
+    .in('status', ['created', 'pending'])
+    .lt('expires_at', now);
+
+  if (paymentUpdateError) {
+    throw new Error(paymentUpdateError.message);
+  }
+
+  return ids;
+}
+
+async function expireUnstartedCardReservations(client: any, now: string) {
+  const graceThreshold = new Date(
+    new Date(now).getTime() - CARD_PAYMENT_START_GRACE_MINUTES * 60 * 1000,
+  ).toISOString();
+  const { data, error: selectError } = await client
+    .from('reservations')
+    .select('id')
+    .eq('payment_type', 'card')
+    .eq('payment_status', 'pending')
+    .eq('payment_in_progress', false)
+    .is('cancelled_at', null)
+    .lt('created_at', graceThreshold);
+
+  if (selectError) {
+    throw new Error(selectError.message);
+  }
+
+  const ids = (data || []).map((reservation: any) => reservation.id);
+
+  if (!ids.length) {
+    return [];
+  }
+
+  const { error: updateError } = await client
+    .from('reservations')
+    .update({
+      payment_status: 'cancelled',
+      payment_session_expires_at: null,
+      cancelled_at: now,
+      cancellation_reason: 'maib_payment_not_started',
+    })
+    .in('id', ids);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  return ids;
+}
 
 async function notifyExpiredReservations(client: any, reservations: any[]) {
   const results = [];

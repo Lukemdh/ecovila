@@ -16,9 +16,14 @@
   const STORAGE_LANGUAGE = 'ecovila_language';
   const WARNING_MS = 10 * 60 * 1000;   // 10 minutes
   const CRITICAL_MS = 3 * 60 * 1000;   // 3 minutes
+  const CARD_STATUS_POLL_MS = 5000;
+  const CARD_STATUS_POLL_LIMIT = 180;
 
   let _timerInterval = null;
+  let _cardPollTimeout = null;
+  let _cardPollAttempts = 0;
   let _expiresAt = 0;
+  let _managedContext = null;
 
   // ── Translation helper ──────────────────────────────────────────────────────
 
@@ -81,6 +86,14 @@
   function getReservationId() {
     try {
       return new URLSearchParams(root.location?.search).get('id') || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getManageToken() {
+    try {
+      return new URLSearchParams(root.location?.search).get('manage') || '';
     } catch {
       return '';
     }
@@ -198,6 +211,77 @@
     });
   }
 
+  function renderManagedSummary(summary, reservations) {
+    if (!summary) return;
+
+    const rows = Array.isArray(reservations) ? reservations : [];
+    const nights = pricing ? pricing.enumerateNights(summary.checkIn, summary.checkOut).length : 0;
+    const roomLabels = Array.isArray(summary.roomLabels) ? summary.roomLabels : [];
+
+    setText('[data-summary-dates]', `${formatDate(summary.checkIn)} – ${formatDate(summary.checkOut)}`);
+    setText('[data-summary-nights]', nights === 1 ? t('booking.night') : t('booking.nights', { count: nights }));
+    setText('[data-summary-guests]', formatManagedGuests(rows));
+    setText('[data-summary-accommodation]', roomLabels.join(', ') || '--');
+    setText('[data-summary-total]', pricing ? pricing.formatMDL(summary.totalPrice || 0) : `${summary.totalPrice || 0} MDL`);
+
+    const roomsRow = el('[data-summary-rooms-row]');
+    if (roomsRow) roomsRow.hidden = !roomLabels.length;
+    setText('[data-summary-rooms]', roomLabels.join(', ') || '--');
+
+    renderManagedBreakdown(rows, summary);
+  }
+
+  function formatManagedGuests(reservations) {
+    const rows = Array.isArray(reservations) ? reservations : [];
+    const adults = rows.reduce((sum, row) => sum + Number(row.adults || 0), 0);
+    const kids = rows.flatMap((row) => Array.isArray(row.kids_ages) ? row.kids_ages : []);
+    const adultsCopy = adults === 1 ? t('checkout.oneAdult') : t('checkout.adultsCount', { count: adults });
+    const kidsCopy = kids.length === 1 ? t('checkout.oneChild') : t('checkout.childrenCount', { count: kids.length });
+    const ages = kids.length ? ` (${kids.join(', ')})` : '';
+
+    return `${adultsCopy} · ${kidsCopy}${ages}`;
+  }
+
+  function renderManagedBreakdown(reservations, summary) {
+    const container = el('[data-summary-breakdown]');
+    if (!container) return;
+
+    container.innerHTML = '';
+    const rows = Array.isArray(reservations) ? reservations : [];
+
+    if (!rows.length) {
+      const row = root.document.createElement('li');
+      const label = root.document.createElement('span');
+      const price = root.document.createElement('strong');
+      label.textContent = `${formatDate(summary.checkIn)} – ${formatDate(summary.checkOut)}`;
+      price.textContent = pricing ? pricing.formatMDL(summary.totalPrice || 0) : `${summary.totalPrice || 0} MDL`;
+      row.append(label, price);
+      container.appendChild(row);
+      return;
+    }
+
+    rows.forEach((reservation) => {
+      const row = root.document.createElement('li');
+      const label = root.document.createElement('span');
+      const price = root.document.createElement('strong');
+      label.textContent = `${roomLabel(reservation)} · ${formatDate(reservation.check_in)}`;
+      price.textContent = pricing ? pricing.formatMDL(reservation.total_price || 0) : `${reservation.total_price || 0} MDL`;
+      row.append(label, price);
+      container.appendChild(row);
+    });
+  }
+
+  function roomLabel(reservation) {
+    const room = Array.isArray(reservation?.rooms) ? reservation.rooms[0] : reservation?.rooms;
+    const type = room?.type || 'hotel';
+    const typeLabel = type === 'small'
+      ? t('accommodation.small.title')
+      : type === 'large'
+        ? t('accommodation.large.title')
+        : t('accommodation.hotel.title');
+    return room?.number ? `${typeLabel} #${room.number}` : typeLabel;
+  }
+
   // ── State rendering ─────────────────────────────────────────────────────────
 
   function showLoadingState() {
@@ -238,6 +322,11 @@
         return;
       }
     } else {
+      if (serverStatus?.payment_status === 'cancelled') {
+        showExpiredOverlay(true);
+        return;
+      }
+
       const isPaid = serverStatus?.payment_status === 'paid';
       const titleKey = isPaid ? 'confirmare.successTitle' : 'confirmare.cardPendingTitle';
       const leadKey = isPaid ? 'confirmare.successLead' : 'confirmare.cardPendingText';
@@ -247,6 +336,196 @@
       const leadEl = el('[data-i18n="confirmare.successLead"]');
       if (leadEl) leadEl.textContent = t(leadKey);
     }
+  }
+
+  async function loadManagedReservation(reservationId, manageToken) {
+    const client = supabaseHelpers.getSupabaseClient();
+    return supabaseHelpers.fetchManagedReservationDetails(client, { reservationId, manageToken });
+  }
+
+  function renderManagedReservation(details, reservationId, manageToken) {
+    const summary = details?.reservation || null;
+    if (!summary) {
+      throw new Error('Missing reservation details.');
+    }
+
+    _managedContext = { details, reservationId, manageToken };
+
+    renderManagedSummary(summary, details.reservations || []);
+    showContentState(summary.paymentType || 'card', {
+      payment_status: summary.paymentStatus,
+      payment_type: summary.paymentType,
+    });
+    hide('[data-cash-panel]');
+    hide('[data-success-panel]');
+
+    renderManagePanel(summary, details.payment || null, reservationId, manageToken);
+    setText('[data-confirmare-lead]', t('confirmare.manageLead'));
+  }
+
+  function renderManagePanel(summary, payment, reservationId, manageToken) {
+    const panel = el('[data-manage-panel]');
+    if (!panel) return;
+
+    panel.hidden = false;
+
+    const statusEl = el('[data-managed-status]');
+    if (statusEl) {
+      statusEl.textContent = managedStatusLabel(summary, payment);
+      statusEl.classList.toggle('cf-badge--paid', summary.paymentStatus === 'paid' || payment?.status === 'refunded');
+      statusEl.classList.toggle('cf-badge--pending', summary.paymentStatus !== 'paid' && payment?.status !== 'refunded');
+    }
+
+    const paidCard = summary.paymentType === 'card' && summary.paymentStatus === 'paid';
+    const alreadyRefunded = payment?.status === 'refunded' || Boolean(payment?.refunded_at);
+    const refundable = paidCard && summary.refundable && !alreadyRefunded;
+    const note = alreadyRefunded
+      ? t('confirmare.alreadyRefunded')
+      : refundable
+        ? t('confirmare.refundEligible')
+        : paidCard
+          ? t('confirmare.refundIneligible')
+          : t('confirmare.cancelOnly');
+
+    setText('[data-managed-refund-note]', note);
+
+    const cancelBtn = el('[data-managed-cancel-btn]');
+    if (cancelBtn) {
+      cancelBtn.disabled = summary.paymentStatus === 'cancelled';
+      setBtnText(
+        cancelBtn,
+        refundable ? t('confirmare.cancelAndRefund') : t('confirmare.cancelWithoutRefund'),
+      );
+      cancelBtn.onclick = showManagedCancelConfirm;
+    }
+
+    const cancelYes = el('[data-managed-cancel-yes]');
+    if (cancelYes) {
+      cancelYes.onclick = () => handleManagedCancel(reservationId, manageToken);
+    }
+
+    const cancelNo = el('[data-managed-cancel-no]');
+    if (cancelNo) {
+      cancelNo.onclick = hideManagedCancelConfirm;
+    }
+  }
+
+  function managedStatusLabel(summary, payment) {
+    if (payment?.status === 'refunded' || payment?.refunded_at) {
+      return t('confirmare.statusRefunded');
+    }
+    if (summary.paymentStatus === 'cancelled') {
+      return t('confirmare.statusCancelled');
+    }
+    if (summary.paymentStatus === 'paid') {
+      return t('confirmare.statusPaid');
+    }
+    if (summary.paymentType === 'cash') {
+      return t('confirmare.statusPending');
+    }
+    return t('confirmare.statusPaymentProcessing');
+  }
+
+  function showManagedCancelConfirm() {
+    hide('[data-managed-actions]');
+    show('[data-managed-cancel-confirm]');
+    hide('[data-managed-action-error]');
+  }
+
+  function hideManagedCancelConfirm() {
+    show('[data-managed-actions]');
+    hide('[data-managed-cancel-confirm]');
+  }
+
+  async function handleManagedCancel(reservationId, manageToken) {
+    const yesBtn = el('[data-managed-cancel-yes]');
+    if (!yesBtn) return;
+
+    yesBtn.disabled = true;
+    setBtnText(yesBtn, t('confirmare.cancelling'));
+    hide('[data-managed-action-error]');
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const result = await supabaseHelpers.cancelManagedReservation(client, { reservationId, manageToken });
+
+      hideManagedCancelConfirm();
+      const cancelBtn = el('[data-managed-cancel-btn]');
+      if (cancelBtn) {
+        cancelBtn.disabled = true;
+        setBtnText(cancelBtn, t('confirmare.cancelledTitle'));
+      }
+
+      setText('[data-confirmare-lead]', t('confirmare.cancelledTitle'));
+      setText('[data-managed-status]', t(result?.refunded ? 'confirmare.statusRefunded' : 'confirmare.statusCancelled'));
+      setText(
+        '[data-managed-refund-note]',
+        result?.refunded ? t('confirmare.cancelledWithRefund') : t('confirmare.cancelledWithoutRefund'),
+      );
+
+      if (_managedContext?.details?.reservation) {
+        _managedContext.details.reservation.paymentStatus = 'cancelled';
+      }
+    } catch {
+      yesBtn.disabled = false;
+      setBtnText(yesBtn, t('confirmare.cancelYes'));
+      setText('[data-managed-action-error]', t('confirmare.cancelError'));
+      show('[data-managed-action-error]');
+    }
+  }
+
+  function isTerminalCardStatus(serverStatus) {
+    return serverStatus?.payment_status === 'paid' || serverStatus?.payment_status === 'cancelled';
+  }
+
+  function clearCardStatusPolling() {
+    if (_cardPollTimeout !== null) {
+      root.clearTimeout?.(_cardPollTimeout);
+      _cardPollTimeout = null;
+    }
+  }
+
+  function startCardStatusPolling(reservationId, serverStatus) {
+    clearCardStatusPolling();
+    _cardPollAttempts = 0;
+
+    if (isTerminalCardStatus(serverStatus)) {
+      return;
+    }
+
+    scheduleCardStatusPoll(reservationId);
+  }
+
+  function scheduleCardStatusPoll(reservationId) {
+    if (_cardPollAttempts >= CARD_STATUS_POLL_LIMIT || !root.setTimeout) {
+      return;
+    }
+
+    _cardPollTimeout = root.setTimeout(() => pollCardReservationStatus(reservationId), CARD_STATUS_POLL_MS);
+  }
+
+  async function pollCardReservationStatus(reservationId) {
+    _cardPollTimeout = null;
+    _cardPollAttempts += 1;
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const rows = await supabaseHelpers.fetchPendingReservationStatus(client, reservationId);
+      const serverStatus = rows?.[0] || null;
+      const paymentType = serverStatus?.payment_type || 'card';
+
+      if (serverStatus) {
+        showContentState(paymentType, serverStatus);
+      }
+
+      if (paymentType === 'cash' || isTerminalCardStatus(serverStatus)) {
+        return;
+      }
+    } catch {
+      // Keep the pending payment state visible and try again until the polling window closes.
+    }
+
+    scheduleCardStatusPoll(reservationId);
   }
 
   // ── Countdown timer ─────────────────────────────────────────────────────────
@@ -402,6 +681,7 @@
 
   async function init() {
     const reservationId = getReservationId();
+    const manageToken = getManageToken();
 
     if (!reservationId) {
       showErrorState();
@@ -409,6 +689,28 @@
     }
 
     showLoadingState();
+
+    if (manageToken) {
+      try {
+        const details = await loadManagedReservation(reservationId, manageToken);
+        renderManagedReservation(details, reservationId, manageToken);
+      } catch {
+        showErrorState();
+        return;
+      }
+
+      root.addEventListener?.('ecovila:languagechange', () => {
+        applyI18nToPage();
+        if (_managedContext) {
+          renderManagedReservation(
+            _managedContext.details,
+            _managedContext.reservationId,
+            _managedContext.manageToken,
+          );
+        }
+      });
+      return;
+    }
 
     const selection = readStorage(STORAGE_SELECTION);
     const pending = readStorage(STORAGE_PENDING);
@@ -458,6 +760,10 @@
     const cancelNo = el('[data-cancel-no]');
     cancelNo?.addEventListener('click', hideCancelConfirm);
 
+    if (paymentType === 'card') {
+      startCardStatusPolling(reservationIdCaptured, serverStatus);
+    }
+
     // Re-render on language change
     root.addEventListener?.('ecovila:languagechange', () => {
       applyI18nToPage();
@@ -469,5 +775,5 @@
     root.document.addEventListener('DOMContentLoaded', init);
   }
 
-  return { init };
+  return { init, loadManagedReservation, handleManagedCancel };
 });

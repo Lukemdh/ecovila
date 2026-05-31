@@ -128,6 +128,24 @@
     });
   }
 
+  function photoUrl(photo, variant) {
+    if (!photo) {
+      return '';
+    }
+
+    if (typeof photo === 'string') {
+      return photo;
+    }
+
+    const key = `${variant || 'preview'}Url`;
+    return photo[key] || photo.url || photo.previewUrl || photo.originalUrl || '';
+  }
+
+  function prepareLazyImage(image) {
+    image.loading = 'lazy';
+    image.decoding = 'async';
+  }
+
   function fillModal(type) {
     const modal = document.querySelector('[data-booking-modal]');
     if (!modal) {
@@ -136,9 +154,12 @@
 
     const gallery = typeGalleries[type] || [accommodationImages[type]];
     const activeIndex = Math.min(state.modalImageIndex, gallery.length - 1);
+    const activePhoto = gallery[activeIndex];
 
     modal.querySelector('[data-booking-modal-gallery]').dataset.imageCount = String(gallery.length);
-    modal.querySelector('[data-booking-modal-image]').src = gallery[activeIndex];
+    const modalImage = modal.querySelector('[data-booking-modal-image]');
+    prepareLazyImage(modalImage);
+    modalImage.src = photoUrl(activePhoto, 'full');
     modal.querySelector('[data-booking-modal-title]').textContent = t(`accommodation.${type}.title`);
     modal.querySelector('[data-booking-modal-body]').textContent = t(`accommodation.${type}.details`);
 
@@ -147,13 +168,14 @@
 
     const thumbnails = modal.querySelector('[data-booking-modal-thumbnails]');
     thumbnails.innerHTML = '';
-    gallery.forEach((src, index) => {
+    gallery.forEach((photo, index) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.setAttribute('aria-label', `Imaginea ${index + 1}`);
       btn.classList.toggle('is-active', index === activeIndex);
       const thumb = document.createElement('img');
-      thumb.src = src;
+      prepareLazyImage(thumb);
+      thumb.src = photoUrl(photo, 'thumbnail');
       thumb.alt = '';
       btn.appendChild(thumb);
       btn.addEventListener('click', () => {
@@ -265,11 +287,14 @@
   }
 
   function applyImageElement(element, photo) {
-    if (!photo?.url) {
+    const url = photoUrl(photo, element.dataset.photoVariant || 'preview');
+
+    if (!url) {
       return;
     }
 
-    element.src = photo.url;
+    prepareLazyImage(element);
+    element.src = url;
     element.alt = photo.alt || '';
   }
 
@@ -284,25 +309,30 @@
       const section = element.dataset.photoBackground;
       const photo = photoAt(library, section, 0);
 
-      if (!photo?.url) {
+      const url = photoUrl(photo, element.dataset.photoVariant || 'wide');
+
+      if (!url) {
         return;
       }
 
       element.style.backgroundImage = [
         'linear-gradient(180deg, rgba(18, 15, 13, 0.28), rgba(18, 15, 13, 0.62))',
-        cssImageUrl(photo.url),
+        cssImageUrl(url),
       ].join(', ');
     });
 
     Object.entries(accommodationPhotoSections).forEach(([type, section]) => {
       const photos = library?.[section] || [];
-      const urls = photos.map((p) => p?.url).filter(Boolean);
+      const displayPhotos = photos.filter((photo) => photoUrl(photo, 'preview'));
 
-      if (urls.length > 0) {
-        typeGalleries[type] = urls;
-        accommodationImages[type] = urls[0];
+      if (displayPhotos.length > 0) {
+        typeGalleries[type] = displayPhotos;
+        accommodationImages[type] = displayPhotos[0];
         const cardImg = document.querySelector(`img[data-accommodation-type="${type}"]`);
-        if (cardImg) cardImg.src = urls[0];
+        if (cardImg) {
+          prepareLazyImage(cardImg);
+          cardImg.src = photoUrl(displayPhotos[0], cardImg.dataset.photoVariant || 'card');
+        }
       }
     });
   }

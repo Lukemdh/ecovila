@@ -98,6 +98,21 @@ describe('EcoVila landing page structure', () => {
     assert.match(footer, /src="\/assets\/logoNT\.png"/, 'footer should use the alternate PNG logo');
   });
 
+  it('marks public photo surfaces for lazy asynchronous loading', () => {
+    const html = read('site.html');
+    const photoTags = Array.from(
+      html.matchAll(/<img[^>]+(?:data-photo-section|data-accommodation-type|data-booking-modal-image)[^>]*>/g),
+      (match) => match[0],
+    );
+
+    assert.ok(photoTags.length >= 10, 'landing page should expose public photo tags');
+
+    for (const tag of photoTags) {
+      assert.match(tag, /loading="lazy"/, `${tag} should lazy-load`);
+      assert.match(tag, /decoding="async"/, `${tag} should decode asynchronously`);
+    }
+  });
+
   it('defines the editorial hospitality design language and translation surface', () => {
     const css = read('css/main.css');
     const html = read('site.html');

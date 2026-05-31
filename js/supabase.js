@@ -17,6 +17,16 @@
     }),
   });
 
+  const PHOTO_BUCKET = 'ecovila-photos';
+  const PHOTO_CACHE_CONTROL = '31536000';
+  const PHOTO_VARIANTS = Object.freeze({
+    preview: Object.freeze({ width: 1400, height: 1050, quality: 72, resize: 'cover' }),
+    wide: Object.freeze({ width: 2200, height: 950, quality: 72, resize: 'cover' }),
+    card: Object.freeze({ width: 900, height: 600, quality: 72, resize: 'cover' }),
+    thumbnail: Object.freeze({ width: 360, height: 240, quality: 65, resize: 'cover' }),
+    full: Object.freeze({ width: 1800, height: 1200, quality: 78, resize: 'cover' }),
+  });
+
   function queryMeta(documentRef, selector, attribute) {
     return documentRef?.querySelector?.(selector)?.getAttribute(attribute) || '';
   }
@@ -146,6 +156,95 @@
 
     const result = await client.functions.invoke('create-reservation', {
       body: { reservations: payloads },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  async function createMaibPaymentRequest(client, context) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('maib-create-payment', {
+      body: context,
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  async function startReservationLookup(client, phone) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-lookup-start', {
+      body: { phone },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  async function verifyReservationLookup(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-lookup-verify', {
+      body: {
+        lookupId: input?.lookupId || '',
+        code: input?.code || '',
+      },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  async function fetchManagedReservationDetails(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-manage-details', {
+      body: {
+        manageToken: input?.manageToken || '',
+        reservationId: input?.reservationId || '',
+      },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  async function cancelManagedReservation(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-cancel', {
+      body: {
+        manageToken: input?.manageToken || '',
+        reservationId: input?.reservationId || '',
+      },
     });
 
     if (result.error) {
@@ -385,15 +484,37 @@
 
   function uploadCrmPhoto(client, path, file, options) {
     return client.storage
-      .from('ecovila-photos')
-      .upload(path, file, { upsert: options?.upsert === true, cacheControl: '3600' });
+      .from(PHOTO_BUCKET)
+      .upload(path, file, { upsert: options?.upsert === true, cacheControl: PHOTO_CACHE_CONTROL });
   }
 
-  function getCrmPhotoPublicUrl(client, storagePath) {
+  function getPhotoTransform(options) {
+    if (options?.transform) {
+      return options.transform;
+    }
+
+    return PHOTO_VARIANTS[options?.variant] || null;
+  }
+
+  function getCrmPhotoPublicUrl(client, storagePath, options) {
+    const transform = getPhotoTransform(options);
+    const publicUrlOptions = transform ? { transform } : undefined;
+
     return client.storage
-      .from('ecovila-photos')
-      .getPublicUrl(storagePath)
+      .from(PHOTO_BUCKET)
+      .getPublicUrl(storagePath, publicUrlOptions)
       .data?.publicUrl || '';
+  }
+
+  function getCrmPhotoUrlSet(client, storagePath) {
+    return {
+      originalUrl: getCrmPhotoPublicUrl(client, storagePath),
+      previewUrl: getCrmPhotoPublicUrl(client, storagePath, { variant: 'preview' }),
+      wideUrl: getCrmPhotoPublicUrl(client, storagePath, { variant: 'wide' }),
+      cardUrl: getCrmPhotoPublicUrl(client, storagePath, { variant: 'card' }),
+      thumbnailUrl: getCrmPhotoPublicUrl(client, storagePath, { variant: 'thumbnail' }),
+      fullUrl: getCrmPhotoPublicUrl(client, storagePath, { variant: 'full' }),
+    };
   }
 
   function insertCrmPhoto(client, payload) {
@@ -444,7 +565,8 @@
 
     (photos || []).forEach((photo) => {
       const slug = photo.crm_photo_sections?.slug || photo.section_slug || '';
-      const publicUrl = photo.publicUrl || getCrmPhotoPublicUrl(client, photo.storage_path);
+      const urlSet = photo.urls || getCrmPhotoUrlSet(client, photo.storage_path);
+      const publicUrl = photo.publicUrl || urlSet.previewUrl || urlSet.originalUrl;
 
       if (!slug || !publicUrl) {
         return;
@@ -457,6 +579,12 @@
       library[slug].push({
         id: photo.id || '',
         url: publicUrl,
+        originalUrl: urlSet.originalUrl || publicUrl,
+        previewUrl: urlSet.previewUrl || publicUrl,
+        wideUrl: urlSet.wideUrl || publicUrl,
+        cardUrl: urlSet.cardUrl || publicUrl,
+        thumbnailUrl: urlSet.thumbnailUrl || publicUrl,
+        fullUrl: urlSet.fullUrl || publicUrl,
         storagePath: photo.storage_path || '',
         alt: photo.alt_text || '',
         sortOrder: Number(photo.sort_order || 999),
@@ -550,10 +678,17 @@
 
   return {
     CLIENT_OPTIONS,
+    PHOTO_CACHE_CONTROL,
+    PHOTO_VARIANTS,
     cancelPendingReservation,
     cancelReservationByToken,
     confirmReservationPayment,
+    createMaibPaymentRequest,
     createReservationRequest,
+    startReservationLookup,
+    verifyReservationLookup,
+    fetchManagedReservationDetails,
+    cancelManagedReservation,
     extendCashReservation,
     fetchPendingReservationStatus,
     fetchReservationByToken,
@@ -574,6 +709,7 @@
     getSupabaseClient,
     getSupabaseConfig,
     getCrmPhotoPublicUrl,
+    getCrmPhotoUrlSet,
     groupPublishedPhotos,
     insertCrmPhoto,
     insertHoliday,

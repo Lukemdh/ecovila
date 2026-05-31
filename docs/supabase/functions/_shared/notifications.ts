@@ -159,12 +159,11 @@ export function composeCancellationConfirmation(
 ): NotificationMessage {
   const language = reservationLanguage(reservation);
   const roomCopy = roomLabel(reservation, 'ro');
-  const smsRoomCopy = roomLabel(reservation, language);
 
   return {
     sms: {
       to: reservation.guest_phone,
-      message: cancellationConfirmationSms(reservation, smsRoomCopy, language),
+      message: cancellationConfirmationSms(reservation, language),
     },
     email: {
       to: reservation.guest_email,
@@ -746,18 +745,21 @@ function expiredCashCancellationSms(language: string) {
 
 function cancellationConfirmationSms(
   reservation: NotificationReservation,
-  roomCopy: string,
   language: string,
 ) {
+  const useShortDate = language === 'ru';
+  const checkIn = formatSmsDate(reservation.check_in, language, useShortDate);
+  const checkOut = formatSmsDate(reservation.check_out, language, useShortDate);
+
   if (language === 'ru') {
-    return `EcoVila: Ваше бронирование (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) отменено.`;
+    return `Бронь ${checkIn} - ${checkOut} отменена.`;
   }
 
   if (language === 'en') {
-    return `EcoVila: Your reservation (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) was cancelled.`;
+    return `Your reservation ${checkIn} - ${checkOut} was cancelled.`;
   }
 
-  return `EcoVila: Rezervarea dvs. (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) a fost anulată.`;
+  return `Rezervarea dvs ${checkIn} - ${checkOut} este anulata`;
 }
 
 function arrivalReminderSms(language: string) {

@@ -29,14 +29,14 @@ function latestCancellationRpcSql() {
 }
 
 describe('EcoVila cancellation policy alignment', () => {
-  it('keeps online cancellation available and explains the 7-day refund split on the page', () => {
+  it('keeps online cancellation available and explains the 7-day or 2-hour refund split on the page', () => {
     const html = read('anulare.html');
 
     assert.doesNotMatch(html, /data-anulare-too-late/);
     assert.doesNotMatch(html, /72\s*(de\s*)?ore|72\+/i);
     assert.match(html, /data-anulare-refund-note/);
-    assert.match(html, /cel puțin 7 zile calendaristice/i);
-    assert.match(html, /mai puțin de 7 zile calendaristice/i);
+    assert.match(html, /7 zile calendaristice sau mai puțin/i);
+    assert.match(html, /mai puțin de 2 ore/i);
   });
 
   it('uses refund eligibility copy instead of a 72-hour client-side cancellation block', () => {
@@ -53,11 +53,15 @@ describe('EcoVila cancellation policy alignment', () => {
     assert.equal(normalizeInternationalPhone(' +40 721 234 567 '), '+40721234567');
   });
 
-  it('treats the exact seventh calendar day as refundable in EcoVila time', () => {
+  it('treats the exact seventh calendar day and fresh bookings as refundable in EcoVila time', () => {
     const noonUtcOnMay16 = new Date('2026-05-16T12:00:00Z');
 
     assert.equal(isRefundEligible('2026-05-23', noonUtcOnMay16), true);
-    assert.equal(isRefundEligible('2026-05-22', noonUtcOnMay16), false);
+    assert.equal(isRefundEligible('2026-05-24', noonUtcOnMay16), false);
+    assert.equal(
+      isRefundEligible('2026-05-30', noonUtcOnMay16, '2026-05-16T10:30:00.000Z'),
+      true,
+    );
   });
 
   it('keeps translations aligned with the 7-day refundable and non-refundable messages', () => {

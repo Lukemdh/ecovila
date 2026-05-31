@@ -259,7 +259,7 @@
                   type="button"
                   data-cancel-no
                 >
-                  <span data-i18n="confirmare.cancelNo">Nu, menți</span>
+                  <span data-i18n="confirmare.cancelNo">Nu, menține</span>
                 </button>
               </div>
             </div>
@@ -304,6 +304,56 @@
                 Înapoi la pagina principală
               </a>
             </div>
+          </section>
+
+          <!-- RIGHT: Reservation management panel -->
+          <section class="co-card cf-manage" aria-labelledby="cf-manage-title" data-manage-panel hidden>
+            <div class="cf-card-header">
+              <h2 id="cf-manage-title" class="co-card__title" data-i18n="confirmare.manageTitle">
+                Gestionează rezervarea
+              </h2>
+              <span class="cf-badge cf-badge--pending" data-managed-status>--</span>
+            </div>
+
+            <p class="cf-manage__policy" data-i18n="confirmare.refundPolicy">
+              Rambursarea este posibilă doar dacă mai sunt 7 zile sau mai puțin până la sosire sau dacă rezervarea a fost creată de mai puțin de 2 ore.
+            </p>
+
+            <p class="cf-manage__note" data-managed-refund-note></p>
+
+            <div class="cf-actions" data-managed-actions>
+              <button
+                class="cf-btn cf-btn--danger-outline"
+                type="button"
+                data-managed-cancel-btn
+              >
+                <span data-i18n="confirmare.manageCancel">Anulează rezervarea</span>
+              </button>
+            </div>
+
+            <div class="cf-cancel-confirm" data-managed-cancel-confirm hidden>
+              <p data-i18n="confirmare.managedCancelQuestion">
+                Ești sigur că vrei să anulezi această rezervare?
+              </p>
+              <div class="cf-cancel-confirm__actions">
+                <button
+                  class="cf-btn cf-btn--danger-filled"
+                  type="button"
+                  data-managed-cancel-yes
+                >
+                  <span data-i18n="confirmare.cancelYes">Da, anulează</span>
+                </button>
+                <button
+                  class="cf-btn cf-btn--ghost"
+                  type="button"
+                  data-managed-cancel-no
+                >
+                  <span data-i18n="confirmare.cancelNo">Nu, menține</span>
+                </button>
+              </div>
+            </div>
+
+            <p class="booking-error" data-managed-action-error hidden></p>
           </section>
 
         </div><!-- /.checkout-grid -->

@@ -1,0 +1,104 @@
+import { handleCors } from '../_shared/cors.ts';
+import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
+import {
+  createManageToken,
+  groupReservations,
+  hashLookupCode,
+  hashManageToken,
+  LOOKUP_MAX_ATTEMPTS,
+  MANAGE_TOKEN_TTL_MINUTES,
+  minutesFromNow,
+  normalizeLookupCode,
+  todayIso,
+} from '../_shared/reservationManage.ts';
+import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+
+Deno.serve(async (request) => {
+  const cors = handleCors(request);
+  if (cors) return cors;
+
+  try {
+    assertMethod(request, ['POST']);
+    const body = await readJson(request);
+    const lookupId = String(body?.lookupId || '').trim();
+    const code = normalizeLookupCode(body?.code);
+
+    if (!lookupId || code.length !== 4) {
+      throw new HttpError(400, 'lookupId and a 4-digit code are required.');
+    }
+
+    const client = createServiceClient();
+    const lookup = await findLookup(client, lookupId);
+
+    if (!lookup || new Date(lookup.expires_at).getTime() < Date.now()) {
+      throw new HttpError(401, 'Invalid or expired verification code.');
+    }
+
+    if (Number(lookup.attempts || 0) >= LOOKUP_MAX_ATTEMPTS) {
+      throw new HttpError(429, 'Too many verification attempts.');
+    }
+
+    const expectedHash = await hashLookupCode(lookupId, code);
+    if (expectedHash !== lookup.code_hash) {
+      await client
+        .from('reservation_lookup_codes')
+        .update({ attempts: Number(lookup.attempts || 0) + 1 })
+        .eq('id', lookupId);
+      throw new HttpError(401, 'Invalid verification code.');
+    }
+
+    await client
+      .from('reservation_lookup_codes')
+      .update({ verified_at: new Date().toISOString() })
+      .eq('id', lookupId);
+
+    const token = createManageToken();
+    const tokenHash = await hashManageToken(token);
+    const { error: tokenError } = await client
+      .from('reservation_manage_tokens')
+      .insert({
+        token_hash: tokenHash,
+        phone: lookup.phone,
+        expires_at: minutesFromNow(MANAGE_TOKEN_TTL_MINUTES),
+      });
+
+    if (tokenError) throw new Error(tokenError.message);
+
+    const reservations = await findActiveReservations(client, lookup.phone);
+
+    return jsonResponse({
+      ok: true,
+      manageToken: token,
+      reservations: groupReservations(reservations),
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+});
+
+async function findLookup(client: any, lookupId: string) {
+  const { data, error } = await client
+    .from('reservation_lookup_codes')
+    .select('id, phone, code_hash, attempts, expires_at')
+    .eq('id', lookupId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function findActiveReservations(client: any, phone: string) {
+  const { data, error } = await client
+    .from('reservations')
+    .select(
+      'id, booking_group_id, guest_phone, check_in, check_out, total_price, payment_type, payment_status, created_at, cancelled_at, rooms(number, type)',
+    )
+    .eq('guest_phone', phone)
+    .in('payment_status', ['pending', 'paid'])
+    .is('cancelled_at', null)
+    .gte('check_out', todayIso())
+    .order('check_in', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}

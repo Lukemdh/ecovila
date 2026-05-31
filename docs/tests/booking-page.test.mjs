@@ -344,6 +344,21 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(js, /dataset\.orientation/, 'orientation marking should expose image orientation to CSS and browser checks');
   });
 
+  it('marks booking photo previews and modal images for lazy asynchronous loading', () => {
+    const html = read('rezervari.html');
+    const photoTags = Array.from(
+      html.matchAll(/<img[^>]+(?:data-card-image|data-booking-modal-image)[^>]*>/g),
+      (match) => match[0],
+    );
+
+    assert.ok(photoTags.length >= 4, 'booking page should expose card and modal photo tags');
+
+    for (const tag of photoTags) {
+      assert.match(tag, /loading="lazy"/, `${tag} should lazy-load`);
+      assert.match(tag, /decoding="async"/, `${tag} should decode asynchronously`);
+    }
+  });
+
   it('removes vertical guide-line backgrounds from the reservation experience', () => {
     const css = read('css/booking.css');
     const bookingPageBlock = css.match(/\.booking-page\s*{[^}]*}/s)?.[0] || '';

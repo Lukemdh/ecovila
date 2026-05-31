@@ -152,7 +152,7 @@
     setText('[data-res-guests]', formatGuests(reservation.adults, reservation.kids_ages));
     setText('[data-res-room]', formatRoomLabel(reservation.room_type, reservation.room_number));
     setText('[data-res-total]', pricing ? pricing.formatMDL(reservation.total_price) : `${reservation.total_price} MDL`);
-    updateRefundNote(reservation.check_in);
+    updateRefundNote(reservation.check_in, reservation.created_at);
   }
 
   // ── Cancellation submit ─────────────────────────────────────────────────────
@@ -192,10 +192,12 @@
             root.sessionStorage?.setItem(SESSION_KEY, '1');
             root.sessionStorage?.setItem(
               SESSION_REFUND_KEY,
-              isRefundEligible(activeReservation?.check_in) ? 'eligible' : 'ineligible',
+              isRefundEligible(activeReservation?.check_in, new Date(), activeReservation?.created_at)
+                ? 'eligible'
+                : 'ineligible',
             );
           } catch { /* ignore */ }
-          updateRefundNote(activeReservation?.check_in);
+          updateRefundNote(activeReservation?.check_in, activeReservation?.created_at);
           showState('[data-anulare-success]');
           break;
 
@@ -256,15 +258,21 @@
     return `${byType.year}-${byType.month}-${byType.day}`;
   }
 
-  function isRefundEligible(checkInDate, now = new Date()) {
+  function isRefundEligible(checkInDate, now = new Date(), createdAt) {
     const checkInValue = dateValue(checkInDate);
     const todayValue = dateValue(currentBusinessDate(now));
+    const createdAtValue = createdAt ? new Date(createdAt).getTime() : Number.NaN;
 
     if (!Number.isFinite(checkInValue) || !Number.isFinite(todayValue)) {
       return false;
     }
 
-    return (checkInValue - todayValue) / DAY_MS >= 7;
+    const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
+    const insideArrivalWindow = daysUntilCheckIn >= 0 && daysUntilCheckIn <= 7;
+    const ageMs = now.getTime() - createdAtValue;
+    const insideCreationGrace = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 60 * 1000;
+
+    return insideArrivalWindow || insideCreationGrace;
   }
 
   function setRefundNoteByEligibility(eligible) {
@@ -273,12 +281,12 @@
     });
   }
 
-  function updateRefundNote(checkInDate) {
+  function updateRefundNote(checkInDate, createdAt) {
     if (!checkInDate) {
       return;
     }
 
-    setRefundNoteByEligibility(isRefundEligible(checkInDate));
+    setRefundNoteByEligibility(isRefundEligible(checkInDate, new Date(), createdAt));
   }
 
   function readStoredRefundEligibility() {
@@ -293,7 +301,7 @@
 
   function refreshRefundNotesForCurrentState() {
     if (activeReservation?.check_in) {
-      updateRefundNote(activeReservation.check_in);
+      updateRefundNote(activeReservation.check_in, activeReservation.created_at);
       return;
     }
 
