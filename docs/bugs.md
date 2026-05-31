@@ -11,7 +11,7 @@ High / Medium / Low.
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Open |
 | B-3 | Unused `assets/logo_small.png` | Low | Open |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
-| B-5 | `deno lint` reports 92 problems | Low | Open |
+| B-5 | `deno lint` reports 88 remaining problems | Low | Open |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 
@@ -65,15 +65,17 @@ High / Medium / Low.
 - **Fix:** added a dependency-free root `package.json` with `test`, `test:node`, and
   `test:deno` scripts; documented `npm test` in `docs/README.md`; recorded ADR-009.
 
-### B-5 — `deno lint`: 92 problems (Low)
-- **Description:** 87 `no-explicit-any`, 4 `require-await` (async functions with no
-  await: `sendSms`, `sendEmail`, `hashManageToken`, `hashLookupCode`), 1
-  `no-import-prefix` (inline `npm:` in `deno.json`).
+### B-5 — `deno lint`: remaining problems (Low)
+- **Description:** 87 `no-explicit-any` and 1 `no-import-prefix` remain after the
+  Step 4 `require-await` cleanup.
 - **Reproduce:** `cd docs/supabase/functions && deno lint`.
 - **Why it matters:** code-quality / type-safety debt; not a runtime failure. Typecheck
   (`deno check`) currently passes.
 - **2026-05-31 note:** the off-plan cancellation fix removed the lone
   `maib-refund` `no-explicit-any` while preserving B-5 as open lint debt.
+- **2026-05-31 Step 4 note:** removed the four `require-await` findings by making
+  `sendSms`, `sendEmail`, `hashManageToken`, and `hashLookupCode` regular functions
+  that return their existing Promises.
 - **Suggested fix:** address incrementally in the lint-cleanup steps of `docs/plan.md`.
 
 ### B-6 — Backend and tests under `docs/` (Low / structural)

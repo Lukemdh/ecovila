@@ -108,3 +108,7 @@ sessions append to the running log at the bottom.
 - 2026-05-31 — STEP 3 cleanup. Added a dependency-free root `package.json` with
   `npm test` / `test:node` / `test:deno`, added a Node contract test for the test
   runner, documented the canonical command, and recorded ADR-009.
+- 2026-05-31 — STEP 4 cleanup. Removed unnecessary `async` from the SMS/email provider
+  wrappers and reservation hash wrappers so `deno lint` no longer reports
+  `require-await`; remaining lint debt is 87 `no-explicit-any` plus 1 import-prefix
+  issue.

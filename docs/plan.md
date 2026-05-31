@@ -66,14 +66,14 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 4**
+**CURRENT STEP → STEP 5**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
 | 1 | Add `.env.example` (secret names only) | Low | DONE |
 | 2 | Fix Deno test discovery so the test task runs the tests | Low | DONE |
 | 3 | Document/enable a one-command test runner | Low | DONE |
-| 4 | Fix `require-await` lint violations | Low | TODO |
+| 4 | Fix `require-await` lint violations | Low | DONE |
 | 5 | Fix `no-import-prefix` lint violation in `deno.json` | Low | TODO |
 | 6 | Remove orphaned media (root `*.mp4`, `logo_small.png`) — owner-gated | Low | TODO |
 | 7 | Remove hardcoded placeholder phone defaults | Low–Med | TODO |
@@ -182,7 +182,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 4 — Fix `require-await` lint violations
-- Status: TODO
+- Status: DONE
 - Goal: Resolve the 4 `require-await` lint errors without changing behavior.
 - Depends on: STEP 2 | Why now: trivial, isolated, improves lint baseline early.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/conventions.md` (Edge
@@ -199,7 +199,8 @@ Statuses: TODO | IN PROGRESS | DONE.
      making the body actually async, or returning the value directly, both work — pick the
      minimal change that satisfies lint and keeps tests green).
 - Verification:
-  - `cd docs/supabase/functions && deno lint` → the 4 `require-await` errors are gone.
+  - `cd docs/supabase/functions && deno lint` → the 4 `require-await` errors are gone
+    (88 unrelated lint findings remain for later steps).
   - `cd docs/supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
   - `deno test --allow-env --allow-net tests` → 32 passing.
   - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing.
@@ -472,3 +473,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 1 (commit: 0679247).** Added root `.env.example` with blank Supabase, cron/site, SMS.md, Resend, and Maib names; verified 166 Node tests, 32 Deno tests, `deno check`, and `git check-ignore`; checked README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan.
 - **2026-05-31 — STEP 2 (commit: 14eee8b).** Renamed Deno backend tests to `*.test.ts` so `deno task test` discovers all 32 tests; updated the Node contract test plus README, project-structure, project-history, bugs, conventions, and plan; checked project-overview, security, and decisions with no changes needed.
 - **2026-05-31 — STEP 3 (commit: c1d963c).** Added scripts-only root `package.json` plus a test-runner contract; verified `npm test` (168 Node + 32 Deno); updated README, project-structure, project-history, bugs, decisions, conventions, and plan; checked project-overview/security with no changes needed.
+- **2026-05-31 — STEP 4 (commit: pending).** Removed unnecessary `async` from `sendSms`, `sendEmail`, `hashLookupCode`, and `hashManageToken`; verified no `require-await` lint output, `deno check`, 32 Deno tests, and 168 Node tests; updated README, project-history, bugs, and plan; checked project-overview, project-structure, security, decisions, and conventions with no changes needed.

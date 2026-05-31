@@ -16,7 +16,7 @@ export type ProviderOptions = {
   fetcher?: typeof fetch;
 };
 
-export async function sendSms(payload: SmsPayload, options: ProviderOptions = {}) {
+export function sendSms(payload: SmsPayload, options: ProviderOptions = {}) {
   const fetcher = options.fetcher || fetch;
   const endpoint = optionalEnv('SMSMD_API_URL') || 'https://api.sms.md/v1/send';
   const apiToken = requiredEnv('SMSMD_API_TOKEN');
@@ -35,7 +35,7 @@ export async function sendSms(payload: SmsPayload, options: ProviderOptions = {}
   });
 }
 
-export async function sendEmail(payload: EmailPayload, options: ProviderOptions = {}) {
+export function sendEmail(payload: EmailPayload, options: ProviderOptions = {}) {
   const fetcher = options.fetcher || fetch;
   const endpoint = optionalEnv('RESEND_API_URL') || 'https://api.resend.com/emails';
   const apiKey = requiredEnv('RESEND_API_KEY');

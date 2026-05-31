@@ -54,7 +54,7 @@ export function createManageToken() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function hashLookupCode(
+export function hashLookupCode(
   lookupId: string,
   code: string,
   secret = requiredEnv('ECOVILA_CRON_SECRET'),
@@ -64,7 +64,7 @@ export async function hashLookupCode(
   );
 }
 
-export async function hashManageToken(
+export function hashManageToken(
   token: string,
   secret = requiredEnv('ECOVILA_CRON_SECRET'),
 ) {
