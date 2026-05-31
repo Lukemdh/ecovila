@@ -62,9 +62,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Reservation management entrypoints (`reservation-lookup-*`,
   `reservation-manage-details`, `reservation-cancel`) follow the same typed-client
   pattern with local row and query-builder shapes instead of `client: any`.
-- **Lint debt:** the codebase has 49 `no-explicit-any` violations, all outside
-  `_shared/` and the reservation management entrypoints. New code should prefer real
-  types; do not add new `any`.
+- **Lint debt:** the codebase has 21 `no-explicit-any` violations, all in the Step 11
+  entrypoints (`confirm-reservation-payment`, `expire-cash-reservations`,
+  `send-reminders`, `create-reservation`). New code should prefer real types; do not
+  add new `any`.
 
 ## SQL migrations
 - One file per change under `docs/supabase/migrations/`, named

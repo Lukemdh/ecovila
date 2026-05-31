@@ -129,3 +129,7 @@ sessions append to the running log at the bottom.
 - 2026-05-31 — STEP 9 cleanup. Removed all explicit `any` usage from the reservation
   lookup, manage-details, and guest cancellation Edge Function entrypoints; remaining
   Deno lint debt is 49 `no-explicit-any` findings outside those files.
+- 2026-05-31 — STEP 10 cleanup. Removed all explicit `any` usage from the Maib callback
+  and payment-creation Edge Function entrypoints with local payment, reservation,
+  session, and query-builder types; remaining Deno lint debt is 21 `no-explicit-any`
+  findings in the Step 11 entrypoints.

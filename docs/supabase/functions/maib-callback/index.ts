@@ -11,6 +11,94 @@ import {
 } from '../_shared/maib.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): QueryBuilder<T>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  limit(count: number): QueryBuilder<T>;
+  single(): Promise<SupabaseQueryResult<T>>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+type MaibPaymentRow = {
+  pay_id: string;
+  provider_payment_id?: string | null;
+  booking_group_id: string;
+  status: string;
+  processed_at?: string | null;
+};
+
+type PaymentLookupInput = {
+  payId?: string;
+  providerPaymentId?: string;
+  orderId?: string;
+};
+
+type ReservationRoomJoin = {
+  number?: number | string | null;
+  type?: string | null;
+};
+
+type RawPaymentReservationRow = {
+  id: string;
+  booking_group_id: string;
+  room_id?: string | null;
+  guest_first_name: string;
+  guest_last_name: string;
+  guest_phone: string;
+  guest_email: string;
+  guest_language?: string | null;
+  check_in: string;
+  check_out: string;
+  total_price: number | string;
+  payment_type: string;
+  payment_status: string;
+  rooms?: ReservationRoomJoin | ReservationRoomJoin[] | null;
+  room_number?: number | string | null;
+  room_type?: string | null;
+};
+
+type PaymentReservationRow = Omit<RawPaymentReservationRow, 'rooms'> & {
+  room_number?: number;
+  room_type?: string | null;
+};
+
+type UpsertPaymentCallbackInput = {
+  existingPayId?: string | null;
+  payId?: string | null;
+  providerPaymentId?: string;
+  bookingGroupId: string;
+  status: string;
+  payload: Record<string, unknown>;
+  processedAt: string | null;
+  updatedAt: string;
+  reservations: PaymentReservationRow[];
+};
+
+type CancellationTokenRow = {
+  reservation_id?: string;
+  token?: string | null;
+};
+
+type NotificationEventRow = {
+  id: string;
+};
+
+type PaymentConfirmationDispatchResult = {
+  sent: boolean;
+  skipped_duplicate?: boolean;
+  error?: string;
+};
+
+type PaymentConfirmationNotificationResult = PaymentConfirmationDispatchResult & {
+  reservationId: string;
+};
 
 Deno.serve(async (request) => {
   try {
@@ -22,7 +110,7 @@ Deno.serve(async (request) => {
       throw new HttpError(401, 'Invalid Maib signature.');
     }
 
-    const payload = parseMaibCallback(rawBody);
+    const payload = parseMaibCallback(rawBody) as Record<string, unknown>;
     const orderId = getMaibCallbackOrderId(payload);
     const payId = getMaibCallbackPayId(payload);
     const providerPaymentId = getMaibProviderPaymentId(payload);
@@ -65,14 +153,16 @@ Deno.serve(async (request) => {
     };
 
     if (!reservations.length) {
-      console.info('Maib callback processed', { ...callbackContext, decision: 'no_matching_reservation' });
+      console.info('Maib callback processed', {
+        ...callbackContext,
+        decision: 'no_matching_reservation',
+      });
       return jsonResponse({ ok: true, matched: 0, status });
     }
 
     if (status === 'paid') {
-      const ids = reservations.map((reservation: any) => reservation.id);
-      const { error } = await client
-        .from('reservations')
+      const ids = reservations.map((reservation) => reservation.id);
+      const { error } = await table(client, 'reservations')
         .update({
           payment_status: 'paid',
           cash_expires_at: null,
@@ -103,8 +193,7 @@ Deno.serve(async (request) => {
       return jsonResponse({ ok: true, status, matched: reservations.length });
     }
 
-    const { error } = await client
-      .from('reservations')
+    const { error } = await table(client, 'reservations')
       .update({
         payment_status: 'cancelled',
         payment_in_progress: false,
@@ -112,7 +201,7 @@ Deno.serve(async (request) => {
         cancelled_at: now,
         cancellation_reason: status === 'cancelled' ? 'maib_cancelled' : 'maib_failed',
       })
-      .in('id', reservations.map((reservation: any) => reservation.id))
+      .in('id', reservations.map((reservation) => reservation.id))
       .eq('payment_status', 'pending')
       .is('cancelled_at', null);
 
@@ -132,12 +221,12 @@ Deno.serve(async (request) => {
 });
 
 async function findPayment(
-  client: any,
-  input: { payId?: string; providerPaymentId?: string; orderId?: string },
+  client: SupabaseClient,
+  input: PaymentLookupInput,
 ) {
   if (input.payId) {
     const byPayId = await maybeSinglePayment(
-      client.from('maib_payments').select('*').eq('pay_id', input.payId),
+      table<MaibPaymentRow>(client, 'maib_payments').select('*').eq('pay_id', input.payId),
     );
     if (byPayId) {
       return byPayId;
@@ -146,7 +235,9 @@ async function findPayment(
 
   if (input.providerPaymentId) {
     const byProviderPaymentId = await maybeSinglePayment(
-      client.from('maib_payments').select('*').eq('provider_payment_id', input.providerPaymentId),
+      table<MaibPaymentRow>(client, 'maib_payments')
+        .select('*')
+        .eq('provider_payment_id', input.providerPaymentId),
     );
     if (byProviderPaymentId) {
       return byProviderPaymentId;
@@ -155,8 +246,7 @@ async function findPayment(
 
   if (input.orderId) {
     return await maybeSinglePayment(
-      client
-        .from('maib_payments')
+      table<MaibPaymentRow>(client, 'maib_payments')
         .select('*')
         .eq('booking_group_id', input.orderId)
         .order('created_at', { ascending: false })
@@ -167,7 +257,7 @@ async function findPayment(
   return null;
 }
 
-async function maybeSinglePayment(query: any) {
+async function maybeSinglePayment(query: QueryBuilder<MaibPaymentRow>) {
   const { data, error } = await query.maybeSingle();
 
   if (error) {
@@ -177,9 +267,8 @@ async function maybeSinglePayment(query: any) {
   return data;
 }
 
-async function findReservationsForBookingGroup(client: any, bookingGroupId: string) {
-  const { data, error } = await client
-    .from('reservations')
+async function findReservationsForBookingGroup(client: SupabaseClient, bookingGroupId: string) {
+  const { data, error } = await table<RawPaymentReservationRow[]>(client, 'reservations')
     .select(
       'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, rooms(number, type)',
     )
@@ -195,7 +284,7 @@ async function findReservationsForBookingGroup(client: any, bookingGroupId: stri
   return (data || []).map(withRoomFields);
 }
 
-async function upsertPaymentCallback(client: any, input: any) {
+async function upsertPaymentCallback(client: SupabaseClient, input: UpsertPaymentCallbackInput) {
   const values = {
     provider_payment_id: input.providerPaymentId || null,
     status: input.status,
@@ -205,8 +294,7 @@ async function upsertPaymentCallback(client: any, input: any) {
   };
 
   if (input.existingPayId) {
-    const { error } = await client
-      .from('maib_payments')
+    const { error } = await table(client, 'maib_payments')
       .update(values)
       .eq('pay_id', input.existingPayId);
 
@@ -220,16 +308,15 @@ async function upsertPaymentCallback(client: any, input: any) {
     return;
   }
 
-  const { error } = await client
-    .from('maib_payments')
+  const { error } = await table(client, 'maib_payments')
     .insert({
       pay_id: input.payId,
       provider_payment_id: input.providerPaymentId || null,
       booking_group_id: input.bookingGroupId,
       primary_reservation_id: input.reservations[0]?.id || null,
-      reservation_ids: input.reservations.map((reservation: any) => reservation.id),
+      reservation_ids: input.reservations.map((reservation) => reservation.id),
       amount: input.reservations.reduce(
-        (total: number, reservation: any) => total + Number(reservation.total_price || 0),
+        (total, reservation) => total + Number(reservation.total_price || 0),
         0,
       ),
       currency: 'MDL',
@@ -247,16 +334,18 @@ async function upsertPaymentCallback(client: any, input: any) {
   }
 }
 
-async function notifyPaidReservations(client: any, reservations: any[]) {
-  const results = [];
+async function notifyPaidReservations(
+  client: SupabaseClient,
+  reservations: PaymentReservationRow[],
+) {
+  const results: PaymentConfirmationNotificationResult[] = [];
   const siteUrl = getSiteUrl();
 
   for (const reservation of reservations) {
     try {
       let token = await findCancellationToken(client, reservation.id);
       if (!token) {
-        const { data, error } = await client
-          .from('cancellation_tokens')
+        const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
           .insert([{ reservation_id: reservation.id, token: createSecureToken() }])
           .select('reservation_id, token')
           .single();
@@ -284,14 +373,13 @@ async function notifyPaidReservations(client: any, reservations: any[]) {
 }
 
 async function dispatchPaymentConfirmationOnce(
-  client: any,
-  reservation: any,
+  client: SupabaseClient,
+  reservation: PaymentReservationRow,
   cancellationToken: string,
   siteUrl: string,
-) {
+): Promise<PaymentConfirmationDispatchResult> {
   const now = new Date().toISOString();
-  const { data, error } = await client
-    .from('notification_events')
+  const { data, error } = await table<NotificationEventRow>(client, 'notification_events')
     .insert({
       reservation_id: reservation.id,
       event_type: 'payment_confirmation',
@@ -310,6 +398,9 @@ async function dispatchPaymentConfirmationOnce(
 
   if (error) {
     throw new Error(error.message);
+  }
+  if (!data?.id) {
+    throw new Error('Notification event reservation did not return an id.');
   }
 
   const message = composePaymentConfirmation(reservation, cancellationToken, siteUrl);
@@ -335,8 +426,7 @@ async function dispatchPaymentConfirmationOnce(
 
   const smsSent = !errors.some((entry) => entry.startsWith('SMS:'));
   const completedAt = new Date().toISOString();
-  const { error: updateError } = await client
-    .from('notification_events')
+  const { error: updateError } = await table(client, 'notification_events')
     .update({
       delivery_status: smsSent ? 'sent' : 'failed',
       sent_at: smsSent ? completedAt : null,
@@ -357,9 +447,8 @@ async function dispatchPaymentConfirmationOnce(
   };
 }
 
-async function findCancellationToken(client: any, reservationId: string) {
-  const { data, error } = await client
-    .from('cancellation_tokens')
+async function findCancellationToken(client: SupabaseClient, reservationId: string) {
+  const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
     .select('token')
     .eq('reservation_id', reservationId)
     .eq('used', false)
@@ -372,7 +461,7 @@ async function findCancellationToken(client: any, reservationId: string) {
   return data?.token || '';
 }
 
-function withRoomFields(reservation: any) {
+function withRoomFields(reservation: RawPaymentReservationRow): PaymentReservationRow {
   const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
 
   return {
@@ -382,13 +471,21 @@ function withRoomFields(reservation: any) {
   };
 }
 
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
+}
+
 function createSecureToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function composePaymentConfirmation(reservation: any, cancellationToken: string, siteUrl: string) {
+function composePaymentConfirmation(
+  reservation: PaymentReservationRow,
+  cancellationToken: string,
+  siteUrl: string,
+) {
   const language = String(reservation.guest_language || 'ro').toLowerCase();
   const roomCopy = roomLabel(reservation, language);
   const confirmationLink = `${siteUrl}/confirmare.html?id=${encodeURIComponent(reservation.id)}`;
@@ -419,8 +516,12 @@ function composePaymentConfirmation(reservation: any, cancellationToken: string,
       row(label(language, 'room'), roomCopy),
       row(label(language, 'total'), `${reservation.total_price} MDL`),
       '</table>',
-      `<p><a href="${escapeAttribute(confirmationLink)}">${escapeHtml(label(language, 'confirm'))}</a></p>`,
-      `<p><a href="${escapeAttribute(cancelLink)}">${escapeHtml(label(language, 'cancel'))}</a></p>`,
+      `<p><a href="${escapeAttribute(confirmationLink)}">${
+        escapeHtml(label(language, 'confirm'))
+      }</a></p>`,
+      `<p><a href="${escapeAttribute(cancelLink)}">${
+        escapeHtml(label(language, 'cancel'))
+      }</a></p>`,
       '</body></html>',
     ].join(''),
   };
@@ -466,7 +567,7 @@ function label(language: string, key: string) {
   return labels[language]?.[key] || labels.ro[key] || key;
 }
 
-function roomLabel(reservation: any, language: string) {
+function roomLabel(reservation: PaymentReservationRow, language: string) {
   if (!reservation.room_number) return 'EcoVila';
   if (language === 'ru') return `Домик #${reservation.room_number}`;
   if (language === 'en') return `Villa #${reservation.room_number}`;

@@ -7,6 +7,55 @@ import {
   MAIB_PAYMENT_SESSION_MINUTES,
 } from '../_shared/maib.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): Promise<SupabaseQueryResult>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  gt(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  limit(count: number): QueryBuilder<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+type PaymentRail = 'mia' | 'card';
+
+type PayableReservationRow = {
+  id: string;
+  booking_group_id: string;
+  guest_first_name: string;
+  guest_last_name: string;
+  guest_phone: string;
+  guest_email: string;
+  guest_language?: string | null;
+  total_price: number | string;
+  payment_type: string;
+  payment_status: string;
+  cancelled_at?: string | null;
+};
+
+type ReusablePaymentRow = {
+  pay_id: string;
+  checkout_url: string;
+  expires_at?: string | null;
+  status?: string | null;
+};
+
+type PaymentSessionInsert = {
+  payId: string;
+  bookingGroupId: string;
+  primaryReservationId: string;
+  reservationIds: string[];
+  amount: number;
+  paymentRail: PaymentRail;
+  checkoutUrl: string;
+  raw: Record<string, unknown>;
+  expiresAt: string;
+};
 
 const ALLOWED_ORIGINS = [
   'https://ecovila.md',
@@ -52,7 +101,7 @@ Deno.serve(async (request) => {
     }
 
     const amount = reservations.reduce(
-      (total: number, reservation: any) => total + Number(reservation.total_price || 0),
+      (total, reservation) => total + Number(reservation.total_price || 0),
       0,
     );
     const now = new Date();
@@ -74,7 +123,7 @@ Deno.serve(async (request) => {
       guestEmail: firstReservation.guest_email,
       guestName: `${firstReservation.guest_first_name} ${firstReservation.guest_last_name}`,
       guestPhone: firstReservation.guest_phone,
-      language: firstReservation.guest_language,
+      language: firstReservation.guest_language || undefined,
       createdAt: now.toISOString(),
       callbackUrl: getMaibCallbackUrl(),
       successUrl,
@@ -87,7 +136,7 @@ Deno.serve(async (request) => {
       payId: checkout.payId,
       bookingGroupId,
       primaryReservationId,
-      reservationIds: reservations.map((reservation: any) => reservation.id),
+      reservationIds: reservations.map((reservation) => reservation.id),
       amount,
       paymentRail,
       checkoutUrl: checkout.payUrl,
@@ -96,7 +145,7 @@ Deno.serve(async (request) => {
     });
     await markReservationsInProgress(
       client,
-      reservations.map((reservation: any) => reservation.id),
+      reservations.map((reservation) => reservation.id),
       expiresAt,
     );
 
@@ -116,12 +165,11 @@ Deno.serve(async (request) => {
 });
 
 async function findPayableReservations(
-  client: any,
+  client: SupabaseClient,
   bookingGroupId: string,
   requestedReservationIds: string[],
 ) {
-  const { data, error } = await client
-    .from('reservations')
+  const { data, error } = await table<PayableReservationRow[]>(client, 'reservations')
     .select(
       'id, booking_group_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, total_price, payment_type, payment_status, cancelled_at',
     )
@@ -139,7 +187,7 @@ async function findPayableReservations(
     throw new HttpError(404, 'No pending card reservation was found for this booking group.');
   }
 
-  const actualIds = new Set(reservations.map((reservation: any) => String(reservation.id)));
+  const actualIds = new Set(reservations.map((reservation) => String(reservation.id)));
   const requestedIds = new Set(requestedReservationIds);
   if (requestedIds.size && [...requestedIds].some((id) => !actualIds.has(id))) {
     throw new HttpError(400, 'Reservation ids do not match the booking group.');
@@ -148,9 +196,8 @@ async function findPayableReservations(
   return reservations;
 }
 
-async function findReusablePayment(client: any, bookingGroupId: string) {
-  const { data, error } = await client
-    .from('maib_payments')
+async function findReusablePayment(client: SupabaseClient, bookingGroupId: string) {
+  const { data, error } = await table<ReusablePaymentRow>(client, 'maib_payments')
     .select('pay_id, checkout_url, expires_at, status')
     .eq('booking_group_id', bookingGroupId)
     .in('status', ['created', 'pending'])
@@ -166,9 +213,8 @@ async function findReusablePayment(client: any, bookingGroupId: string) {
   return data;
 }
 
-async function insertPaymentSession(client: any, session: any) {
-  const { error } = await client
-    .from('maib_payments')
+async function insertPaymentSession(client: SupabaseClient, session: PaymentSessionInsert) {
+  const { error } = await table(client, 'maib_payments')
     .insert({
       pay_id: session.payId,
       booking_group_id: session.bookingGroupId,
@@ -189,12 +235,11 @@ async function insertPaymentSession(client: any, session: any) {
 }
 
 async function markReservationsInProgress(
-  client: any,
+  client: SupabaseClient,
   reservationIds: string[],
   expiresAt: string,
 ) {
-  const { error } = await client
-    .from('reservations')
+  const { error } = await table(client, 'reservations')
     .update({
       payment_in_progress: true,
       payment_session_expires_at: expiresAt,
@@ -206,9 +251,9 @@ async function markReservationsInProgress(
   }
 }
 
-function normalizePrimaryReservationId(value: unknown, reservations: any[]) {
+function normalizePrimaryReservationId(value: unknown, reservations: PayableReservationRow[]) {
   const requested = String(value || '').trim();
-  const ids = reservations.map((reservation: any) => String(reservation.id));
+  const ids = reservations.map((reservation) => String(reservation.id));
   return ids.includes(requested) ? requested : ids[0];
 }
 
@@ -236,6 +281,10 @@ function normalizePaymentRail(value: unknown) {
 
 function getClientIp(request: Request) {
   return (request.headers.get('x-forwarded-for') || '').split(',')[0].trim();
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }
 
 function json(request: Request, body: unknown, init: ResponseInit = {}) {

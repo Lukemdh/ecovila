@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 10**
+**CURRENT STEP → STEP 11**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -79,7 +79,7 @@ together with the code change for that step.
 | 7 | Remove hardcoded placeholder phone defaults | Low–Med | DONE |
 | 8 | Type cleanup: `_shared/` `any` → real types | Low | DONE |
 | 9 | Type cleanup: reservation lookup/manage/cancel functions | Low | DONE |
-| 10 | Type cleanup: Maib functions (`maib-*`) | Low | TODO |
+| 10 | Type cleanup: Maib functions (`maib-*`) | Low | DONE |
 | 11 | Type cleanup: remaining functions | Low | TODO |
 | 12 | Harden CORS allowlist across all Edge Functions | Medium | TODO |
 | 13 | Defense-in-depth for `requireStaffRole` | Medium | TODO |
@@ -489,3 +489,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 7 (commit: 7784bbb).** Removed checkout/CRM fabricated phone defaults, kept `+373` as placeholder-only copy, added contract coverage for empty-phone rejection, and verified `npm test` (171 Node + 32 Deno); updated README, project-history, security, conventions, and plan; checked project-overview, project-structure, bugs, and decisions with no changes needed.
 - **2026-05-31 — STEP 8 (commit: 097dc6a).** Removed all `_shared/` explicit `any` usage with shared Supabase client/result aliases and typed helper payloads; verified `deno check`, no `_shared/` lint findings, 32 Deno tests, and full `npm test`; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
 - **2026-05-31 — STEP 9 (commit: af26332).** Removed all explicit `any` usage from reservation lookup, manage-details, and guest cancellation Edge Function entrypoints with typed Supabase clients and local row/query shapes; verified `deno check`, no Step 9 lint findings, 32 Deno tests, and full `npm test`; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
+- **2026-05-31 — STEP 10 (commit: pending).** Removed all explicit `any` usage from `maib-callback` and `maib-create-payment`; verified `deno check`, no Step 10 lint findings, and 32 Deno tests; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
