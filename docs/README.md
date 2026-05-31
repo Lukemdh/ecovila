@@ -46,9 +46,9 @@ project URL and the **anon** JWT. The anon key is public by design (RLS enforces
 access control) and is safe to commit.
 
 The Edge Functions require server-side secrets, set as **Supabase Edge Function
-secrets** (never committed, no `.env` in the repo). There is currently **no
-`.env.example`** — creating one is a cleanup step in `docs/plan.md`. Required secret
-**names** (no values):
+secrets** (never committed, no `.env` in the repo). The committed root `.env.example`
+lists the canonical names only, with blank values, so deployers can copy the shape
+without exposing credentials. Canonical environment variable **names**:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` (alias accepted: `SERVICE_ROLE_KEY`)

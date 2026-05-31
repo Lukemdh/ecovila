@@ -99,3 +99,6 @@ sessions append to the running log at the bottom.
   blocked cash online cancellation with office-only reimbursement copy, and routed paid
   Maib CRM cancellations through the Diana-only refund function. No planned cleanup step
   was advanced.
+- 2026-05-31 — STEP 1 cleanup. Added the root `.env.example` with blank Supabase,
+  cron/site, SMS.md, Resend, and Maib environment-variable names, updated the developer
+  README to point deployers at it, and marked security finding S-4 fixed.

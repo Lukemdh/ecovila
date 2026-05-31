@@ -66,11 +66,11 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 1**
+**CURRENT STEP → STEP 2**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
-| 1 | Add `.env.example` (secret names only) | Low | TODO |
+| 1 | Add `.env.example` (secret names only) | Low | DONE |
 | 2 | Fix Deno test discovery so the test task runs the tests | Low | TODO |
 | 3 | Document/enable a one-command test runner | Low | TODO |
 | 4 | Fix `require-await` lint violations | Low | TODO |
@@ -97,7 +97,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 1 — Add `.env.example` (secret names only)
-- Status: TODO
+- Status: DONE
 - Goal: Provide a committed `.env.example` listing required Edge Function secret **names**
   (no values), so deployers know what to set.
 - Depends on: none | Why now: lowest risk, no application code, unblocks onboarding.
@@ -116,12 +116,13 @@ Statuses: TODO | IN PROGRESS | DONE.
   3. Verify `.gitignore` does not exclude it (`!.env.example` is present).
 - Verification:
   - `git check-ignore .env.example` returns nothing (file is trackable).
-  - `node --test 'docs/tests/**/*.test.mjs'` → 164 passing (unchanged).
+  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (unchanged).
   - Manual: every name in `.env.example` matches a name read in code; no secret values.
 - Docs to update on completion: `README.md` (point env section at `.env.example`),
-  `security.md` (mark S-4 addressed), `bugs.md` (B-4 partially addressed — keep open for
-  test-runner part), `project-history.md` (append), `plan.md` (status+tracker+log).
-  Check the rest and note no change.
+  `security.md` (mark S-4 addressed), `project-structure.md` (new root file),
+  `project-history.md` (append), `plan.md` (status+tracker+log). Check `bugs.md`
+  (B-4 is the test-runner issue and remains open), `decisions.md`, `conventions.md`,
+  and `project-overview.md` and note no change.
 - Suggested commit message: `docs: add .env.example with required secret names`
 
 ---
@@ -146,7 +147,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Verification:
   - `cd docs/supabase/functions && deno test --allow-env --allow-net tests` → **32 passed**
     (no "No test modules found").
-  - `node --test 'docs/tests/**/*.test.mjs'` → 164 passing (unchanged).
+  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (unchanged).
 - Docs to update: `README.md` (test section — `deno task test` now works; remove the
   explicit-path workaround note), `bugs.md` (B-1 → Fixed), `conventions.md` (test naming),
   `project-history.md`, `plan.md`. Check the rest.
@@ -171,7 +172,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   2. Implement the chosen option (scripts only; no `dependencies`).
   3. Ensure both commands run from the repo root.
 - Verification:
-  - The documented command(s) run both suites green: 164 Node + 32 Deno.
+  - The documented command(s) run both suites green: 166 Node + 32 Deno.
 - Docs to update: `README.md`, `decisions.md` (resolve the open question), `bugs.md`
   (B-4 → Fixed/closed), `conventions.md` if scripts are added, `project-history.md`,
   `plan.md`. Check the rest.
@@ -200,7 +201,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   - `cd docs/supabase/functions && deno lint` → the 4 `require-await` errors are gone.
   - `cd docs/supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
   - `deno test --allow-env --allow-net tests` → 32 passing.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 164 passing.
+  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing.
 - Docs to update: `bugs.md` (B-5 partial), `conventions.md` if guidance changes,
   `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `fix: resolve deno require-await lint warnings`
@@ -245,7 +246,7 @@ Statuses: TODO | IN PROGRESS | DONE.
      unless explicitly approved).
 - Verification:
   - Both greps return no references.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 164 passing.
+  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing.
   - Manual: `site.html` still loads `assets/videos/ecovila-hero.mp4`.
 - Docs to update: `project-structure.md` (drop the removed entries), `bugs.md`
   (B-2/B-3 → Fixed), `project-history.md`, `plan.md`. Check the rest.
@@ -269,7 +270,7 @@ Statuses: TODO | IN PROGRESS | DONE.
      fabricated number. Keep `+373` only as a non-committal input *placeholder attribute*
      if desired, never as a stored value.
 - Verification:
-  - `node --test 'docs/tests/**/*.test.mjs'` → 164 passing (update a contract test only
+  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (update a contract test only
     if it explicitly asserts the old default; record any such change).
   - Manual: submitting checkout/CRM-add with an empty phone is rejected, not silently
     filled.
@@ -359,7 +360,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   - `deno check` (full) → passes.
   - `cd docs/supabase/functions && deno lint` → **0 problems** (assuming STEPs 4,5,8–10
     done).
-  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 164.
+  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 166.
 - Docs to update: `bugs.md` (B-5 → Fixed/closed once lint is clean), `conventions.md`
   (drop the "lint debt" note), `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `refactor: type remaining edge functions; deno lint clean`
@@ -444,7 +445,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   3. Update every doc that references the old paths (this whole doc set references
      `docs/supabase` and `docs/tests`).
 - Verification:
-  - `node --test 'tests/**/*.test.mjs'` → 164 passing at the new path.
+  - `node --test 'tests/**/*.test.mjs'` → 166 passing at the new path.
   - `cd supabase/functions && deno test --allow-env --allow-net tests` → 32 passing.
   - `deno check` / `deno lint` clean at new paths.
   - `grep -rn "docs/tests\|docs/supabase" .` → only intentional historical references in
@@ -466,4 +467,5 @@ Statuses: TODO | IN PROGRESS | DONE.
   (S-1), unverified role-claim decode (S-2), placeholder phones (S-5), and the
   backend/tests-under-`docs/` quirk (B-6). Authored the full doc set under `docs/` and
   this 14-step plan. **Next session: STEP 1.**
-- **2026-05-31 — OFF-PLAN cancellation policy fix (commit: pending until commit).** Enforced the guest online cancellation window (at least 7 calendar days before arrival or first 2 hours after creation), blocked cash online cancellation with office-only reimbursement copy, and routed paid Maib CRM cancellations through the Diana-only refund function; planned step statuses unchanged.
+- **2026-05-31 — OFF-PLAN cancellation policy fix (commit: 577b252).** Enforced the guest online cancellation window (at least 7 calendar days before arrival or first 2 hours after creation), blocked cash online cancellation with office-only reimbursement copy, and routed paid Maib CRM cancellations through the Diana-only refund function; planned step statuses unchanged.
+- **2026-05-31 — STEP 1 (commit: pending).** Added root `.env.example` with blank Supabase, cron/site, SMS.md, Resend, and Maib names; verified 166 Node tests, 32 Deno tests, `deno check`, and `git check-ignore`; checked README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan.

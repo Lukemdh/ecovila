@@ -10,7 +10,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-1 | Wildcard `Access-Control-Allow-Origin: *` on all Edge Functions except `maib-create-payment` | Low–Medium | `docs/supabase/functions/_shared/cors.ts` | Open |
 | S-2 | `requireStaffRole` reads role from JWT payload without verifying the signature (relies on gateway `verify_jwt`) | Low (Info) | `docs/supabase/functions/_shared/http.ts:62` | Open |
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
-| S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Open |
+| S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Open |
 | S-6 | 87 `no-explicit-any` lint violations weaken type safety on server code | Low | `docs/supabase/functions/_shared/*.ts` | Open |
 
@@ -48,9 +48,10 @@ needed beyond confirming RLS coverage. **Confirm no service-role key is ever com
 (none found in tracked files as of this audit).
 
 ### S-4 — Missing `.env.example` (Low)
-Required Edge Function secret *names* are only discoverable by reading code or the brief.
-- **Recommended fix:** add a `.env.example` listing names only (see `docs/README.md`
-  for the list) — this is a step in `docs/plan.md`.
+Required Edge Function secret *names* were only discoverable by reading code or the
+brief.
+- **Fixed 2026-05-31:** added a committed root `.env.example` with the canonical
+  Supabase, cron/site, SMS.md, Resend, and Maib names only; all values are blank.
 
 ### S-5 — Hardcoded placeholder phones (Low)
 `admin/js/crm-sidebar.js:205` defaults a missing phone to `+37300000000`, and

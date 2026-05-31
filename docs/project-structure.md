@@ -1,8 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 165 files are tracked in git
-after the 2026-05-31 off-plan cancellation-policy migration is committed.
+binaries, and gitignored `.superpowers/` / `.claude/`). 166 files are tracked in git
+after the 2026-05-31 `.env.example` cleanup commit.
 
 ## Annotated tree
 
@@ -18,6 +18,7 @@ ecovila/
 ├── termeni-conditii.html       # Terms & conditions (legal)
 ├── design.md                   # Design language reference (palette, type, components)
 ├── favicon.ico
+├── .env.example                # Blank Edge Function secret-name template (safe to commit)
 ├── ecovilavideo.mp4            # ORPHANED ~15MB — not referenced by any page (see bugs.md)
 ├── ecovilavideo-web.mp4        # ORPHANED ~21MB — not referenced by any page (see bugs.md)
 ├── .gitignore
