@@ -9,6 +9,74 @@ import {
   refundEligibilityReason,
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import type { NotificationMessage } from '../_shared/notifications.ts';
+import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): Promise<SupabaseQueryResult>;
+  update(payload: unknown): QueryBuilder<T>;
+  upsert(payload: unknown, options?: Record<string, unknown>): Promise<SupabaseQueryResult>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  limit(count: number): QueryBuilder<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+type ManageTokenRow = {
+  phone: string;
+  expires_at: string;
+};
+
+type PrimaryReservationRow = {
+  booking_group_id: string;
+};
+
+type CancellationReservationRow = ReservationGroupRow & {
+  id: string;
+  booking_group_id: string;
+  check_in: string;
+  check_out: string;
+  guest_first_name?: string | null;
+  guest_last_name?: string | null;
+  guest_phone: string;
+  guest_email: string;
+  guest_language?: string | null;
+  cancelled_at?: string | null;
+};
+
+type MaibPaymentRow = {
+  pay_id: string;
+  provider_payment_id?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  status?: string | null;
+  refund_payload?: unknown;
+  refunded_at?: string | null;
+};
+
+type MaibRefundRow = {
+  status?: string | null;
+  response_payload?: Record<string, unknown> | null;
+};
+
+type MaibRefundProviderResponse = Record<string, unknown> & {
+  result?: {
+    refundId?: string | number | null;
+  };
+  refundId?: string | number | null;
+};
+
+type CancellationNotificationResult = {
+  reservationId: string;
+  sent: boolean;
+  skipped_duplicate?: boolean;
+  result?: Record<string, unknown>;
+  error?: string;
+};
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -101,10 +169,9 @@ Deno.serve(async (request) => {
   }
 });
 
-async function validateManageToken(client: any, token: string) {
+async function validateManageToken(client: SupabaseClient, token: string) {
   const tokenHash = await hashManageToken(token);
-  const { data, error } = await client
-    .from('reservation_manage_tokens')
+  const { data, error } = await table<ManageTokenRow>(client, 'reservation_manage_tokens')
     .select('phone, expires_at')
     .eq('token_hash', tokenHash)
     .maybeSingle();
@@ -117,9 +184,15 @@ async function validateManageToken(client: any, token: string) {
   return data;
 }
 
-async function findActiveReservationGroup(client: any, reservationId: string, phone: string) {
-  const { data: primary, error: primaryError } = await client
-    .from('reservations')
+async function findActiveReservationGroup(
+  client: SupabaseClient,
+  reservationId: string,
+  phone: string,
+) {
+  const { data: primary, error: primaryError } = await table<PrimaryReservationRow>(
+    client,
+    'reservations',
+  )
     .select('booking_group_id')
     .eq('id', reservationId)
     .eq('guest_phone', phone)
@@ -128,8 +201,7 @@ async function findActiveReservationGroup(client: any, reservationId: string, ph
   if (primaryError) throw new Error(primaryError.message);
   if (!primary) return [];
 
-  const { data, error } = await client
-    .from('reservations')
+  const { data, error } = await table<CancellationReservationRow[]>(client, 'reservations')
     .select(
       'id, booking_group_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, created_at, cancelled_at, rooms(number, type)',
     )
@@ -142,15 +214,18 @@ async function findActiveReservationGroup(client: any, reservationId: string, ph
   return data || [];
 }
 
-function earliestCreatedAt(reservations: Array<Record<string, unknown>>) {
+function earliestCreatedAt(reservations: CancellationReservationRow[]) {
   return reservations.reduce((min, reservation) => {
     const createdAt = String(reservation.created_at || '');
     return !min || createdAt < min ? createdAt : min;
   }, '');
 }
 
-async function notifyCancelledReservations(client: any, reservations: any[]) {
-  const results = [];
+async function notifyCancelledReservations(
+  client: SupabaseClient,
+  reservations: CancellationReservationRow[],
+) {
+  const results: CancellationNotificationResult[] = [];
 
   for (const reservation of reservations) {
     try {
@@ -193,10 +268,13 @@ async function notifyCancelledReservations(client: any, reservations: any[]) {
   return results;
 }
 
-async function reserveNotificationEvent(client: any, reservationId: string, eventType: string) {
+async function reserveNotificationEvent(
+  client: SupabaseClient,
+  reservationId: string,
+  eventType: string,
+) {
   const now = new Date().toISOString();
-  const { error } = await client
-    .from('notification_events')
+  const { error } = await table(client, 'notification_events')
     .insert({
       reservation_id: reservationId,
       event_type: eventType,
@@ -212,14 +290,13 @@ async function reserveNotificationEvent(client: any, reservationId: string, even
 }
 
 async function markNotificationEventSent(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   providerResponse: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  const { error } = await client
-    .from('notification_events')
+  const { error } = await table(client, 'notification_events')
     .update({
       delivery_status: 'sent',
       provider_response: providerResponse,
@@ -234,13 +311,12 @@ async function markNotificationEventSent(
 }
 
 async function markNotificationEventFailed(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   error: unknown,
 ) {
-  const { error: updateError } = await client
-    .from('notification_events')
+  const { error: updateError } = await table(client, 'notification_events')
     .update({
       delivery_status: 'failed',
       last_error: error instanceof Error ? error.message : 'Notification failed.',
@@ -254,7 +330,9 @@ async function markNotificationEventFailed(
   }
 }
 
-function composeCancellationConfirmation(reservation: any) {
+function composeCancellationConfirmation(
+  reservation: CancellationReservationRow,
+): NotificationMessage {
   const roomCopy = roomLabel(reservation);
   const period = formatSmsPeriod(reservation);
   const fullName = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`
@@ -284,7 +362,7 @@ function composeCancellationConfirmation(reservation: any) {
   };
 }
 
-function roomLabel(reservation: any) {
+function roomLabel(reservation: CancellationReservationRow) {
   const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
   const type = room?.type || reservation.room_type || 'hotel';
   const number = room?.number || reservation.room_number;
@@ -292,7 +370,7 @@ function roomLabel(reservation: any) {
   return number ? `${typeLabel} #${number}` : typeLabel;
 }
 
-function formatSmsPeriod(reservation: any) {
+function formatSmsPeriod(reservation: CancellationReservationRow) {
   return `${formatSmsDate(reservation.check_in)} - ${formatSmsDate(reservation.check_out)}`;
 }
 
@@ -344,9 +422,8 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#039;');
 }
 
-async function findMaibPayment(client: any, bookingGroupId: string) {
-  const { data, error } = await client
-    .from('maib_payments')
+async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {
+  const { data, error } = await table<MaibPaymentRow>(client, 'maib_payments')
     .select('pay_id, provider_payment_id, amount, currency, status, refund_payload, refunded_at')
     .eq('booking_group_id', bookingGroupId)
     .order('created_at', { ascending: false })
@@ -357,7 +434,11 @@ async function findMaibPayment(client: any, bookingGroupId: string) {
   return data || null;
 }
 
-async function createRefund(client: any, payment: any, bookingGroupId: string) {
+async function createRefund(
+  client: SupabaseClient,
+  payment: MaibPaymentRow,
+  bookingGroupId: string,
+) {
   const existing = await findExistingRefund(client, payment.pay_id);
   if (existing?.status === 'succeeded') {
     return existing.response_payload || {};
@@ -367,8 +448,7 @@ async function createRefund(client: any, payment: any, bookingGroupId: string) {
   const reason = 'guest_request';
   const now = new Date().toISOString();
 
-  const { error: insertError } = await client
-    .from('maib_refunds')
+  const { error: insertError } = await table(client, 'maib_refunds')
     .upsert({
       pay_id: payment.pay_id,
       booking_group_id: bookingGroupId,
@@ -384,12 +464,15 @@ async function createRefund(client: any, payment: any, bookingGroupId: string) {
 
   try {
     const providerPayId = payment.provider_payment_id || payment.pay_id;
-    const refund = await refundMaibPayment(providerPayId, amount, reason);
+    const refund = await refundMaibPayment(
+      providerPayId,
+      amount,
+      reason,
+    ) as MaibRefundProviderResponse;
     const providerRefundId = String(refund?.result?.refundId || refund?.refundId || '').trim() ||
       null;
 
-    await client
-      .from('maib_refunds')
+    await table(client, 'maib_refunds')
       .update({
         status: 'succeeded',
         response_payload: refund,
@@ -399,8 +482,7 @@ async function createRefund(client: any, payment: any, bookingGroupId: string) {
       })
       .eq('pay_id', payment.pay_id);
 
-    await client
-      .from('maib_payments')
+    await table(client, 'maib_payments')
       .update({
         status: 'refunded',
         refund_payload: refund,
@@ -411,8 +493,7 @@ async function createRefund(client: any, payment: any, bookingGroupId: string) {
 
     return refund?.result || refund;
   } catch (error) {
-    await client
-      .from('maib_refunds')
+    await table(client, 'maib_refunds')
       .update({
         status: 'failed',
         error_message: error instanceof Error ? error.message : 'Refund failed.',
@@ -423,13 +504,16 @@ async function createRefund(client: any, payment: any, bookingGroupId: string) {
   }
 }
 
-async function findExistingRefund(client: any, payId: string) {
-  const { data, error } = await client
-    .from('maib_refunds')
+async function findExistingRefund(client: SupabaseClient, payId: string) {
+  const { data, error } = await table<MaibRefundRow>(client, 'maib_refunds')
     .select('status, response_payload')
     .eq('pay_id', payId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   return data;
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }

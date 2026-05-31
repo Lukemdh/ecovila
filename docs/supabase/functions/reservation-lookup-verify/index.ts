@@ -12,6 +12,28 @@ import {
   todayIso,
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): Promise<SupabaseQueryResult>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  gte(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+type LookupCodeRow = {
+  id: string;
+  phone: string;
+  code_hash: string;
+  attempts?: number | string | null;
+  expires_at: string;
+};
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -76,9 +98,8 @@ Deno.serve(async (request) => {
   }
 });
 
-async function findLookup(client: any, lookupId: string) {
-  const { data, error } = await client
-    .from('reservation_lookup_codes')
+async function findLookup(client: SupabaseClient, lookupId: string) {
+  const { data, error } = await table<LookupCodeRow>(client, 'reservation_lookup_codes')
     .select('id, phone, code_hash, attempts, expires_at')
     .eq('id', lookupId)
     .maybeSingle();
@@ -87,9 +108,8 @@ async function findLookup(client: any, lookupId: string) {
   return data;
 }
 
-async function findActiveReservations(client: any, phone: string) {
-  const { data, error } = await client
-    .from('reservations')
+async function findActiveReservations(client: SupabaseClient, phone: string) {
+  const { data, error } = await table<ReservationGroupRow[]>(client, 'reservations')
     .select(
       'id, booking_group_id, guest_phone, check_in, check_out, total_price, payment_type, payment_status, created_at, cancelled_at, rooms(number, type)',
     )
@@ -101,4 +121,8 @@ async function findActiveReservations(client: any, phone: string) {
 
   if (error) throw new Error(error.message);
   return data || [];
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }

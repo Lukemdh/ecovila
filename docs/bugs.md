@@ -11,7 +11,7 @@ High / Medium / Low.
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Accepted |
 | B-3 | Unused `assets/logo_small.png` | Low | Accepted |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
-| B-5 | `deno lint` reports 70 remaining `no-explicit-any` problems | Low | Open |
+| B-5 | `deno lint` reports 49 remaining `no-explicit-any` problems | Low | Open |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 
@@ -67,8 +67,8 @@ High / Medium / Low.
   `test:deno` scripts; documented `npm test` in `docs/README.md`; recorded ADR-009.
 
 ### B-5 — `deno lint`: remaining problems (Low)
-- **Description:** 70 `no-explicit-any` findings remain after the Step 8 `_shared/`
-  cleanup.
+- **Description:** 49 `no-explicit-any` findings remain after the Step 9 reservation
+  management cleanup.
 - **Reproduce:** `cd docs/supabase/functions && deno lint`.
 - **Why it matters:** code-quality / type-safety debt; not a runtime failure. Typecheck
   (`deno check`) currently passes.
@@ -84,6 +84,10 @@ High / Medium / Low.
   shared Supabase client/result aliases and typed notification, reservation, Maib, and
   reservation-management helper payloads. `deno lint --json` now reports 70
   `no-explicit-any` diagnostics total and 0 under `_shared/`.
+- **2026-05-31 Step 9 note:** removed all explicit `any` usage from
+  `reservation-lookup-start`, `reservation-lookup-verify`, `reservation-manage-details`,
+  and `reservation-cancel`. `deno lint --json` now reports 49 `no-explicit-any`
+  diagnostics total and 0 under those four files.
 - **Suggested fix:** address incrementally in the lint-cleanup steps of `docs/plan.md`.
 
 ### B-6 — Backend and tests under `docs/` (Low / structural)

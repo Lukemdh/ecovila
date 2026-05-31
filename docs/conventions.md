@@ -59,8 +59,12 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `SupabaseClient` / `SupabaseQueryResult` types from `_shared/supabaseAdmin.ts` and add
   local row/builder payload types where needed. Do not reintroduce `client: any` in
   `_shared/`.
-- **Lint debt:** the codebase has 70 `no-explicit-any` violations, all outside
-  `_shared/`. New code should prefer real types; do not add new `any`.
+- Reservation management entrypoints (`reservation-lookup-*`,
+  `reservation-manage-details`, `reservation-cancel`) follow the same typed-client
+  pattern with local row and query-builder shapes instead of `client: any`.
+- **Lint debt:** the codebase has 49 `no-explicit-any` violations, all outside
+  `_shared/` and the reservation management entrypoints. New code should prefer real
+  types; do not add new `any`.
 
 ## SQL migrations
 - One file per change under `docs/supabase/migrations/`, named

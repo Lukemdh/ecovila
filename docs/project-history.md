@@ -126,3 +126,6 @@ sessions append to the running log at the bottom.
   shared Supabase client/result aliases plus typed notification, reservation, Maib, and
   reservation-management helper payloads; remaining Deno lint debt is 70
   `no-explicit-any` findings outside `_shared/`.
+- 2026-05-31 — STEP 9 cleanup. Removed all explicit `any` usage from the reservation
+  lookup, manage-details, and guest cancellation Edge Function entrypoints; remaining
+  Deno lint debt is 49 `no-explicit-any` findings outside those files.

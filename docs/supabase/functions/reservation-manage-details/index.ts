@@ -2,6 +2,52 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import { groupReservations, hashManageToken } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  limit(count: number): QueryBuilder<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+type ManageTokenRow = {
+  phone: string;
+  expires_at: string;
+};
+
+type PrimaryReservationRow = {
+  booking_group_id: string;
+};
+
+type ReservationDetailRow = ReservationGroupRow & {
+  booking_group_id: string;
+  check_in: string;
+  check_out: string;
+  room_id?: string | null;
+  guest_first_name?: string | null;
+  guest_last_name?: string | null;
+  guest_phone?: string | null;
+  guest_email?: string | null;
+  guest_language?: string | null;
+  adults?: number | string | null;
+  kids_ages?: unknown[] | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+};
+
+type MaibPaymentRow = {
+  pay_id?: string | null;
+  provider_payment_id?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  payment_rail?: string | null;
+  status?: string | null;
+  refunded_at?: string | null;
+};
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -38,10 +84,9 @@ Deno.serve(async (request) => {
   }
 });
 
-async function validateManageToken(client: any, token: string) {
+async function validateManageToken(client: SupabaseClient, token: string) {
   const tokenHash = await hashManageToken(token);
-  const { data, error } = await client
-    .from('reservation_manage_tokens')
+  const { data, error } = await table<ManageTokenRow>(client, 'reservation_manage_tokens')
     .select('phone, expires_at')
     .eq('token_hash', tokenHash)
     .maybeSingle();
@@ -51,17 +96,18 @@ async function validateManageToken(client: any, token: string) {
     throw new HttpError(401, 'Invalid or expired manage token.');
   }
 
-  await client
-    .from('reservation_manage_tokens')
+  await table(client, 'reservation_manage_tokens')
     .update({ last_used_at: new Date().toISOString() })
     .eq('token_hash', tokenHash);
 
   return data;
 }
 
-async function findReservationGroup(client: any, reservationId: string, phone: string) {
-  const { data: primary, error: primaryError } = await client
-    .from('reservations')
+async function findReservationGroup(client: SupabaseClient, reservationId: string, phone: string) {
+  const { data: primary, error: primaryError } = await table<PrimaryReservationRow>(
+    client,
+    'reservations',
+  )
     .select('booking_group_id')
     .eq('id', reservationId)
     .eq('guest_phone', phone)
@@ -70,8 +116,7 @@ async function findReservationGroup(client: any, reservationId: string, phone: s
   if (primaryError) throw new Error(primaryError.message);
   if (!primary) return [];
 
-  const { data, error } = await client
-    .from('reservations')
+  const { data, error } = await table<ReservationDetailRow[]>(client, 'reservations')
     .select(
       'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, adults, kids_ages, total_price, payment_type, payment_status, created_at, cancelled_at, cancellation_reason, rooms(number, type)',
     )
@@ -83,9 +128,8 @@ async function findReservationGroup(client: any, reservationId: string, phone: s
   return data || [];
 }
 
-async function findMaibPayment(client: any, bookingGroupId: string) {
-  const { data, error } = await client
-    .from('maib_payments')
+async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {
+  const { data, error } = await table<MaibPaymentRow>(client, 'maib_payments')
     .select('pay_id, provider_payment_id, amount, currency, payment_rail, status, refunded_at')
     .eq('booking_group_id', bookingGroupId)
     .order('created_at', { ascending: false })
@@ -94,4 +138,8 @@ async function findMaibPayment(client: any, bookingGroupId: string) {
 
   if (error) throw new Error(error.message);
   return data || null;
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }

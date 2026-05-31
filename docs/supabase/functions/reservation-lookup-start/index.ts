@@ -12,6 +12,26 @@ import {
   todayIso,
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryResult<T = unknown> = SupabaseQueryResult<T> & {
+  count?: number | null;
+};
+
+type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
+  select(columns: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  insert(payload: unknown): QueryBuilder<T>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  gte(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  single(): Promise<QueryResult<T>>;
+};
+
+type LookupCodeInsertRow = {
+  id: string;
+};
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -68,10 +88,9 @@ Deno.serve(async (request) => {
   }
 });
 
-async function countRecentLookupAttempts(client: any, phone: string) {
+async function countRecentLookupAttempts(client: SupabaseClient, phone: string) {
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const { count, error } = await client
-    .from('reservation_lookup_codes')
+  const { count, error } = await table(client, 'reservation_lookup_codes')
     .select('id', { count: 'exact', head: true })
     .eq('phone', phone)
     .gte('created_at', since);
@@ -80,9 +99,8 @@ async function countRecentLookupAttempts(client: any, phone: string) {
   return count || 0;
 }
 
-async function hasActiveReservations(client: any, phone: string) {
-  const { count, error } = await client
-    .from('reservations')
+async function hasActiveReservations(client: SupabaseClient, phone: string) {
+  const { count, error } = await table(client, 'reservations')
     .select('id', { count: 'exact', head: true })
     .eq('guest_phone', phone)
     .in('payment_status', ['pending', 'paid'])
@@ -91,4 +109,8 @@ async function hasActiveReservations(client: any, phone: string) {
 
   if (error) throw new Error(error.message);
   return Boolean(count);
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }
