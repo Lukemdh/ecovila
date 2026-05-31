@@ -1,4 +1,5 @@
 import { sendEmail, sendSms } from './providers.ts';
+import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
 export type NotificationReservation = {
   id: string;
@@ -33,6 +34,21 @@ type NotificationEventRow = {
   delivery_status: NotificationDeliveryStatus;
   attempt_count: number;
   attempted_at: string | null;
+};
+
+type NotificationEventPatch = Record<string, unknown>;
+
+type NotificationEventFilter<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  eq(column: string, value: unknown): NotificationEventFilter<T>;
+  is(column: string, value: unknown): NotificationEventFilter<T>;
+  select(columns: string): NotificationEventFilter<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T>>;
+};
+
+type NotificationEventsTable = {
+  insert(payload: NotificationEventPatch): Promise<SupabaseQueryResult>;
+  update(payload: NotificationEventPatch): NotificationEventFilter;
+  select(columns: string): NotificationEventFilter<NotificationEventRow>;
 };
 
 type ScheduledNotificationOptions = {
@@ -232,14 +248,13 @@ export async function dispatchNotification(message: NotificationMessage) {
 }
 
 export async function reserveNotificationEvent(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   metadata: Record<string, unknown> = {},
   now = new Date(),
 ) {
-  const { error } = await client
-    .from('notification_events')
+  const { error } = await notificationEvents(client)
     .insert({
       reservation_id: reservationId,
       event_type: eventType,
@@ -261,14 +276,13 @@ export async function reserveNotificationEvent(
 }
 
 export async function markNotificationEventSent(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   providerResponse: Record<string, unknown> = {},
 ) {
   const completionTime = new Date().toISOString();
-  const { error } = await client
-    .from('notification_events')
+  const { error } = await notificationEvents(client)
     .update({
       delivery_status: 'sent',
       provider_response: providerResponse,
@@ -285,15 +299,14 @@ export async function markNotificationEventSent(
 }
 
 export async function markNotificationEventFailed(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   error: unknown,
   attemptCount = 1,
   now = new Date(),
 ) {
-  const { error: updateError } = await client
-    .from('notification_events')
+  const { error: updateError } = await notificationEvents(client)
     .update({
       delivery_status: attemptCount >= MAX_SCHEDULED_NOTIFICATION_ATTEMPTS ? 'abandoned' : 'failed',
       last_error: error instanceof Error ? error.message : 'Notification failed.',
@@ -308,7 +321,7 @@ export async function markNotificationEventFailed(
 }
 
 export async function dispatchAndRecordNotification(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   message: NotificationMessage,
@@ -327,15 +340,14 @@ export async function dispatchAndRecordNotification(
 }
 
 export async function recordNotificationEvent(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   metadata: Record<string, unknown> = {},
   providerResponse: unknown = {},
 ) {
   const completionTime = new Date().toISOString();
-  const { error } = await client
-    .from('notification_events')
+  const { error } = await notificationEvents(client)
     .insert({
       reservation_id: reservationId,
       event_type: eventType,
@@ -363,7 +375,7 @@ function providerErrorMessage(error: unknown) {
 }
 
 export async function dispatchScheduledNotificationOnce(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   message: NotificationMessage,
@@ -411,7 +423,7 @@ export async function dispatchScheduledNotificationOnce(
 }
 
 async function claimScheduledNotificationAttempt(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   metadata: Record<string, unknown>,
@@ -457,7 +469,7 @@ async function claimScheduledNotificationAttempt(
 }
 
 async function claimExistingScheduledNotificationAttempt(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   existing: NotificationEventRow,
@@ -516,12 +528,11 @@ async function claimExistingScheduledNotificationAttempt(
 }
 
 async function readNotificationEvent(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
 ): Promise<NotificationEventRow | null> {
-  const { data, error } = await client
-    .from('notification_events')
+  const { data, error } = await notificationEvents(client)
     .select('delivery_status, attempt_count, attempted_at')
     .eq('reservation_id', reservationId)
     .eq('event_type', eventType)
@@ -535,14 +546,13 @@ async function readNotificationEvent(
 }
 
 async function updateScheduledNotificationIfUnchanged(
-  client: any,
+  client: SupabaseClient,
   reservationId: string,
   eventType: string,
   existing: NotificationEventRow,
   patch: Record<string, unknown>,
 ) {
-  let query = client
-    .from('notification_events')
+  let query = notificationEvents(client)
     .update(patch)
     .eq('reservation_id', reservationId)
     .eq('event_type', eventType)
@@ -562,6 +572,10 @@ async function updateScheduledNotificationIfUnchanged(
   }
 
   return Boolean(data);
+}
+
+function notificationEvents(client: SupabaseClient) {
+  return client.from('notification_events') as NotificationEventsTable;
 }
 
 function isStaleReservation(attemptedAt: string | null, now: Date) {

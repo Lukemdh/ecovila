@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 8**
+**CURRENT STEP → STEP 9**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -77,7 +77,7 @@ together with the code change for that step.
 | 5 | Fix `no-import-prefix` lint violation | Low | DONE |
 | 6 | Resolve orphaned media owner decision | Low | DONE |
 | 7 | Remove hardcoded placeholder phone defaults | Low–Med | DONE |
-| 8 | Type cleanup: `_shared/` `any` → real types | Low | TODO |
+| 8 | Type cleanup: `_shared/` `any` → real types | Low | DONE |
 | 9 | Type cleanup: reservation lookup/manage/cancel functions | Low | TODO |
 | 10 | Type cleanup: Maib functions (`maib-*`) | Low | TODO |
 | 11 | Type cleanup: remaining functions | Low | TODO |
@@ -293,7 +293,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 8 — Type cleanup: `_shared/` `any` → real types
-- Status: TODO
+- Status: DONE
 - Goal: Remove `no-explicit-any` in the shared backend modules (~17 across
   notifications/reservations/maib/reservationManage).
 - Depends on: STEP 2 | Why now: shared types first so per-function steps reuse them.
@@ -487,3 +487,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 5 (commit: 311bdba).** Added the `std/assert` Deno import-map alias and changed `maib.test.ts` to use the bare specifier; verified no `no-import-prefix` lint output, `deno check`, and 32 Deno tests; updated README, project-history, bugs, conventions, and plan; checked project-overview, project-structure, security, and decisions with no changes needed.
 - **2026-05-31 — STEP 6 (commit: aa1cc08).** Reconfirmed no scoped references to `ecovilavideo.mp4`, `ecovilavideo-web.mp4`, or `assets/logo_small.png`; owner declined removal, so the files were kept and B-2/B-3 were marked Accepted; verified 168 Node tests; updated project-structure, project-history, bugs, decisions, and plan; checked README, project-overview, security, and conventions with no changes needed.
 - **2026-05-31 — STEP 7 (commit: 7784bbb).** Removed checkout/CRM fabricated phone defaults, kept `+373` as placeholder-only copy, added contract coverage for empty-phone rejection, and verified `npm test` (171 Node + 32 Deno); updated README, project-history, security, conventions, and plan; checked project-overview, project-structure, bugs, and decisions with no changes needed.
+- **2026-05-31 — STEP 8 (commit: pending).** Removed all `_shared/` explicit `any` usage with shared Supabase client/result aliases and typed helper payloads; verified `deno check`, no `_shared/` lint findings, 32 Deno tests, and full `npm test`; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.

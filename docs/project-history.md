@@ -122,3 +122,7 @@ sessions append to the running log at the bottom.
 - 2026-05-31 — STEP 7 cleanup. Removed fabricated phone defaults from checkout and CRM
   add-reservation flows, kept `+373` only as placeholder copy, and added contract tests
   for empty-phone rejection.
+- 2026-05-31 — STEP 8 cleanup. Removed all `_shared/` explicit `any` usage by adding
+  shared Supabase client/result aliases plus typed notification, reservation, Maib, and
+  reservation-management helper payloads; remaining Deno lint debt is 70
+  `no-explicit-any` findings outside `_shared/`.

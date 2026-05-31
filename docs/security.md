@@ -12,7 +12,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
-| S-6 | 87 `no-explicit-any` lint violations weaken type safety on server code | Low | `docs/supabase/functions/_shared/*.ts` | Open |
+| S-6 | 70 remaining `no-explicit-any` lint violations weaken type safety on server code | Low | `docs/supabase/functions/*/index.ts` | Open |
 
 No Critical or High findings were identified. Several controls are implemented well
 (see "Positive controls" below).
@@ -63,9 +63,11 @@ number.
   phone values, and row building no longer substitutes `+37300000000`.
 
 ### S-6 — `no-explicit-any` on server code (Low)
-87 `any` types (mostly `client: any` Supabase params) reduce compile-time safety in the
-Edge Functions. Not a vulnerability by itself but raises the chance of unchecked data
-handling. Fix as part of the lint-cleanup steps in `docs/plan.md`.
+70 `any` types remain in Edge Function entrypoints after the 2026-05-31 shared-helper
+cleanup. The `_shared/` modules now use typed Supabase client/result aliases plus
+specific row/payload shapes. The remaining findings are not vulnerabilities by
+themselves but raise the chance of unchecked data handling. Fix as part of the
+lint-cleanup steps in `docs/plan.md`.
 
 ## Positive controls (verified)
 

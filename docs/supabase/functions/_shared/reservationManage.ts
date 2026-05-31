@@ -26,6 +26,25 @@ export type ReservationGroupSummary = {
   refundReason: string;
 };
 
+export type ReservationGroupRow = {
+  id?: string;
+  booking_group_id?: string | null;
+  check_in?: string | null;
+  check_out?: string | null;
+  created_at?: string | null;
+  total_price?: number | string | null;
+  payment_type?: string | null;
+  payment_status?: string | null;
+  room_number?: number | string | null;
+  room_type?: string | null;
+  rooms?: ReservationGroupRoom | ReservationGroupRoom[] | null;
+};
+
+type ReservationGroupRoom = {
+  number?: number | string | null;
+  type?: string | null;
+};
+
 export function normalizePhone(value: unknown) {
   return String(value || '').trim().replace(/[\s().-]/g, '');
 }
@@ -110,8 +129,11 @@ export function refundEligibilityReason(input: RefundEligibilityInput) {
   return 'creation_grace';
 }
 
-export function groupReservations(rows: any[], now = new Date()): ReservationGroupSummary[] {
-  const groups = new Map<string, any[]>();
+export function groupReservations(
+  rows: ReservationGroupRow[],
+  now = new Date(),
+): ReservationGroupSummary[] {
+  const groups = new Map<string, ReservationGroupRow[]>();
 
   rows.forEach((row) => {
     const key = String(row.booking_group_id || row.id);
@@ -167,7 +189,7 @@ export function todayIso(now = new Date()) {
   return now.toISOString().slice(0, 10);
 }
 
-function roomLabel(row: any) {
+function roomLabel(row: ReservationGroupRow) {
   const room = Array.isArray(row.rooms) ? row.rooms[0] : row.rooms;
   const number = room?.number || row.room_number;
   const type = room?.type || row.room_type || 'hotel';

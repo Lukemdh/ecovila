@@ -1,3 +1,5 @@
+import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
+
 export const CASH_EXPIRY_MINUTES = 30;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,6 +62,25 @@ export type ReservationRecord = ReservationRow & {
   rooms?: { number?: number; type?: string } | { number?: number; type?: string }[] | null;
 };
 
+type RoomRelation = {
+  number?: number | string | null;
+  type?: string | null;
+};
+
+type ReservationRoomFields = {
+  rooms?: RoomRelation | RoomRelation[] | null;
+  room_number?: number | string | null;
+  room_type?: string | null;
+};
+
+type InsertSelectBuilder<T> = {
+  select(columns: string): Promise<SupabaseQueryResult<T[]>>;
+};
+
+type InsertTable<T> = {
+  insert(payload: unknown): InsertSelectBuilder<T>;
+};
+
 export type CancellationTokenRow = {
   reservation_id: string;
   token: string;
@@ -96,13 +117,15 @@ export function buildCancellationTokenRows(
 }
 
 export async function createReservationsWithTokens(
-  client: any,
+  client: SupabaseClient,
   inputs: ReservationInput[],
   options: { now?: Date } = {},
 ) {
   const rows = buildReservationRows(inputs, options);
-  const { data: reservations, error: reservationError } = await client
-    .from('reservations')
+  const { data: reservations, error: reservationError } = await insertTable<ReservationRecord>(
+    client,
+    'reservations',
+  )
     .insert(rows)
     .select(
       'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, adults, kids_ages, total_price, payment_type, payment_status, room_explicitly_selected, conference_room, notes, cash_expires_at, cash_extended, created_by, rooms(number, type)',
@@ -114,8 +137,10 @@ export async function createReservationsWithTokens(
 
   const normalizedReservations = (reservations || []).map(withRoomFields);
   const tokenRows = buildCancellationTokenRows(normalizedReservations);
-  const { data: cancellationTokens, error: tokenError } = await client
-    .from('cancellation_tokens')
+  const { data: cancellationTokens, error: tokenError } = await insertTable<CancellationTokenRow>(
+    client,
+    'cancellation_tokens',
+  )
     .insert(tokenRows)
     .select('reservation_id, token');
 
@@ -149,7 +174,7 @@ export function normalizeInternationalPhone(value: unknown) {
   return compact;
 }
 
-export function withRoomFields(reservation: any) {
+export function withRoomFields<T extends ReservationRoomFields>(reservation: T) {
   const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
 
   return {
@@ -157,6 +182,10 @@ export function withRoomFields(reservation: any) {
     room_number: Number(room?.number || reservation.room_number || 0) || undefined,
     room_type: room?.type || reservation.room_type,
   };
+}
+
+function insertTable<T>(client: SupabaseClient, table: string) {
+  return client.from(table) as InsertTable<T>;
 }
 
 function normalizeReservationInput(input: ReservationInput, now: Date, bookingGroupId: string) {

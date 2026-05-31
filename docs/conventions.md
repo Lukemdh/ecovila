@@ -55,8 +55,12 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   constant-time helper; verify external callbacks (Maib) by signature + replay window.
 - Declare each function's `verify_jwt` in `docs/supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
-- **Lint debt:** the codebase has 87 `no-explicit-any` violations (mostly `client: any`).
-  New code should prefer real types; do not add new `any`.
+- Shared helpers that accept a service-role Supabase client import the shared
+  `SupabaseClient` / `SupabaseQueryResult` types from `_shared/supabaseAdmin.ts` and add
+  local row/builder payload types where needed. Do not reintroduce `client: any` in
+  `_shared/`.
+- **Lint debt:** the codebase has 70 `no-explicit-any` violations, all outside
+  `_shared/`. New code should prefer real types; do not add new `any`.
 
 ## SQL migrations
 - One file per change under `docs/supabase/migrations/`, named

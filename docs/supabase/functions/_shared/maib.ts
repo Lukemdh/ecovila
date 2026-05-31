@@ -39,6 +39,12 @@ type SignatureVerificationOptions = {
   toleranceMs?: number;
 };
 
+type MaibErrorItem = {
+  errorMessage?: string;
+  message?: string;
+  errorCode?: string | number;
+};
+
 const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
 export function getMaibBaseUrl() {
@@ -290,14 +296,27 @@ export function getMaibCallbackUrl() {
   return `${requiredEnv('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1/maib-callback`;
 }
 
-function formatMaibError(body: any, fallback: string) {
-  const errors = Array.isArray(body?.errors) ? body.errors : [];
+function formatMaibError(body: unknown, fallback: string) {
+  const errors = isRecord(body) && Array.isArray(body.errors) ? body.errors : [];
   const message = errors
-    .map((error: any) => error?.errorMessage || error?.message || error?.errorCode)
+    .map((error) => maibErrorMessage(error))
     .filter(Boolean)
     .join('; ');
 
   return message || fallback;
+}
+
+function maibErrorMessage(error: unknown) {
+  if (!isRecord(error)) {
+    return '';
+  }
+
+  const item = error as MaibErrorItem;
+  return String(item.errorMessage || item.message || item.errorCode || '');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
 }
 
 function normalizeAmount(value: unknown) {
