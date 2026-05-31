@@ -1,7 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 154 files are tracked in git.
+binaries, and gitignored `.superpowers/` / `.claude/`). 165 files are tracked in git
+after the 2026-05-31 off-plan cancellation-policy migration is committed.
 
 ## Annotated tree
 
@@ -11,8 +12,8 @@ ecovila/
 ├── site.html                   # Full landing page (reachable directly; not linked from index.html)
 ├── rezervari.html              # Booking page (party + dates + accommodation + room selection)
 ├── checkout.html               # Checkout: summary, guest form, GDPR, cash/card
-├── confirmare.html             # Confirmation + manage: cash countdown, extend, cancel, refund
-├── anulare.html                # Token + phone self-service cancellation
+├── confirmare.html             # Confirmation + manage: cash countdown, extend, online cancel, refund
+├── anulare.html                # Token + phone self-service cancellation policy
 ├── politica-confidentialitate.html  # Privacy policy (legal)
 ├── termeni-conditii.html       # Terms & conditions (legal)
 ├── design.md                   # Design language reference (palette, type, components)
@@ -74,7 +75,7 @@ ecovila/
     ├── tests/                  # Node node:test contract/unit suites (14 *.test.mjs)
     └── supabase/
         ├── config.toml         # Per-function verify_jwt settings
-        ├── migrations/         # 22 timestamped SQL migrations (20260506 → 20260527)
+        ├── migrations/         # 23 timestamped SQL migrations (20260506 → 20260531)
         └── functions/          # Deno/TypeScript Edge Functions
             ├── deno.json, import_map.json, deno.lock
             ├── _shared/        # cors, env, http, maib, notifications, providers,
@@ -95,11 +96,11 @@ ecovila/
 | `site.html` | Full marketing landing page; directly reachable, not linked from `index.html`. |
 | `rezervari.html` + `js/booking.js` | Booking UI and controller; availability, party, room selection. |
 | `checkout.html` + `js/checkout.js` | Checkout UI; builds reservation, picks Maib rail by phone country code. |
-| `confirmare.html` + `js/confirmare.js` | Post-booking state: cash timer, extend, cancel, refund display. |
-| `anulare.html` + `js/anulare.js` | Token + phone self-service cancellation. |
+| `confirmare.html` + `js/confirmare.js` | Post-booking state: cash timer, extend, online cancellation eligibility, refund display. |
+| `anulare.html` + `js/anulare.js` | Token + phone self-service cancellation with 7-day / 2-hour and cash-office rules. |
 | `js/pricing.js` | Pure pricing/billing/date engine. Shared by frontend + CRM + Node tests. |
 | `js/calendar.js` | Shared calendar/date logic (booking page + CRM calendar). |
-| `js/supabase.js` | All DB reads/writes and Edge Function calls from the browser. |
+| `js/supabase.js` | All DB reads/writes and Edge Function calls from the browser, including staff Maib refund calls. |
 | `js/supabase-config.js` | Supabase URL + public anon key (frozen object). |
 | `js/translations.js` | RO/RU/EN string tables consumed via `data-i18n`. |
 | `js/main.js` | Shared header, sticky behavior, language switching. |
@@ -131,7 +132,8 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
 3. `js/pricing.js` computes billable guests and stay price client-side for display.
 4. Mutations (create reservation, cancel, refund, lookup) call Edge Functions through
    `js/supabase.js`, which enforce server-side rules, talk to Maib/SMS.md/Resend, and
-   write with the service-role client (`_shared/supabaseAdmin.ts`).
+   write with the service-role client (`_shared/supabaseAdmin.ts`). Guest cancellation is
+   also enforced by the latest `cancel_reservation_by_token` RPC for legacy token links.
 5. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
    role (`diana` full CRUD, `angela` read-only).
 

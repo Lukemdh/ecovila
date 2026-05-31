@@ -70,8 +70,9 @@ describe('EcoVila Step 8 legal pages', () => {
     assert.match(article, /Textul juridic este afișat în limba română\./);
     assert.match(article, /Check-in și check-out/);
     assert.match(article, /Reguli pentru piscină și SPA/);
-    assert.match(article, /7 zile calendaristice sau mai puțin/);
+    assert.match(article, /cel puțin 7 zile calendaristice/);
     assert.match(article, /mai puțin de 2 ore/);
+    assert.match(article, /cash doar la oficiul EcoVila/);
   });
 
   it('keeps legal body copy Romanian-only instead of wiring it to translations', () => {

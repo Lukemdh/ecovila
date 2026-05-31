@@ -181,6 +181,27 @@
     return result.data || {};
   }
 
+  async function refundMaibPaymentRequest(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('maib-refund', {
+      body: {
+        payId: input?.payId || '',
+        bookingGroupId: input?.bookingGroupId || '',
+        amount: input?.amount ?? null,
+        reason: input?.reason || 'crm_cancellation',
+      },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
   async function startReservationLookup(client, phone) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -684,6 +705,7 @@
     cancelReservationByToken,
     confirmReservationPayment,
     createMaibPaymentRequest,
+    refundMaibPaymentRequest,
     createReservationRequest,
     startReservationLookup,
     verifyReservationLookup,

@@ -18,7 +18,8 @@ The product has two surfaces:
 ## Target users
 
 - **Guests** — book accommodation, pay by cash (hold) or card (Maib online), receive
-  SMS/email confirmations, and self-manage/cancel via a secure token + phone lookup.
+  SMS/email confirmations, and self-manage eligible online cancellations via a secure
+  token + phone lookup.
 - **Diana** (role `diana`) — full CRUD staff operator: reservations, pricing, holidays,
   photos, towels/daily counts, finance reporting.
 - **Angela** (role `angela`) — read-only staff role (partly implemented).
@@ -33,9 +34,10 @@ The product has two surfaces:
   cash-vs-card choice, creates a pending reservation. Card path routes to Maib (MIA for
   `+373` phones, hosted card Checkout otherwise — *inferred from* `js/checkout.js:80`).
 - **Confirmation / management** (`confirmare.html`): cash countdown timer, one-time
-  extension, cancellation, and refund state for card bookings.
+  extension, online cancellation eligibility, and refund state for card bookings.
 - **Cancellation** (`anulare.html`): token-based + phone-verified self-service
-  cancellation aligned with a 7-day refund policy (per git history and migrations).
+  cancellation only at least 7 calendar days before arrival or within 2 hours of
+  creation; cash reimbursements are office-only.
 - **Legal** (`politica-confidentialitate.html`, `termeni-conditii.html`): Moldova
   privacy/consumer content, Romanian-only body copy.
 - **CRM** (`admin/dashboard.html`): tabbed dashboard — `dashboard` (reservation
@@ -65,8 +67,9 @@ The product has two surfaces:
   never retro-repriced.
 - **Cash hold**: cash reservations get `cash_expires_at`; expired holds are released by
   the `expire-cash-reservations` function. Guests may extend once (`cash_extended`).
-- **Manage / cancellation tokens**: secure tokens (hashed in DB) let guests look up and
-  cancel their own reservation without authentication.
+- **Manage / cancellation tokens**: secure tokens (hashed in DB) let guests look up their
+  own reservation without authentication. Online cancellation is blocked for cash
+  reservations and for reservations outside the 7-day / 2-hour public window.
 
 ## External services / dependencies
 
@@ -116,7 +119,9 @@ cash path waits on `cash_expires_at`; card path → `maib-create-payment` → Ma
 Checkout → `maib-callback` (HMAC-verified) confirms payment → confirmation SMS/email via
 `send-sms` / `send-email`. Self-service management goes through
 `reservation-lookup-start` / `reservation-lookup-verify` / `reservation-manage-details`
-/ `reservation-cancel` (token + phone OTP, all server-side).
+/ `reservation-cancel` (token + phone OTP + cancellation policy, all server-side).
+CRM cancellations of paid Maib bookings call the staff-only `maib-refund` function and
+can refund independently of the public guest window.
 
 ## Status (as of 2026-05-31)
 

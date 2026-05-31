@@ -377,9 +377,12 @@
     }
 
     const paidCard = summary.paymentType === 'card' && summary.paymentStatus === 'paid';
+    const isCash = summary.paymentType === 'cash';
     const alreadyRefunded = payment?.status === 'refunded' || Boolean(payment?.refunded_at);
     const refundable = paidCard && summary.refundable && !alreadyRefunded;
-    const note = alreadyRefunded
+    const note = isCash
+      ? t('confirmare.cashOfficeRefund')
+      : alreadyRefunded
       ? t('confirmare.alreadyRefunded')
       : refundable
         ? t('confirmare.refundEligible')
@@ -391,7 +394,10 @@
 
     const cancelBtn = el('[data-managed-cancel-btn]');
     if (cancelBtn) {
-      cancelBtn.disabled = summary.paymentStatus === 'cancelled';
+      const canCancelOnline = summary.paymentStatus !== 'cancelled' &&
+        !isCash &&
+        (summary.refundable || alreadyRefunded);
+      cancelBtn.disabled = !canCancelOnline;
       setBtnText(
         cancelBtn,
         refundable ? t('confirmare.cancelAndRefund') : t('confirmare.cancelWithoutRefund'),

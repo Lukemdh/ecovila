@@ -292,12 +292,41 @@
       return;
     }
 
-    await root.EcoVilaSupabase.updateReservation(activeState.context.client, reservation.id, {
-      payment_status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
-      cancellation_reason: 'Anulat din CRM',
-    });
-    await activeState.reload();
+    const context = activeState?.context;
+    if (!context?.client) {
+      return;
+    }
+
+    try {
+      if (reservation.payment_type === 'card' && reservation.payment_status === 'paid') {
+        await root.EcoVilaSupabase.refundMaibPaymentRequest(context.client, {
+          bookingGroupId: reservation.booking_group_id,
+          reason: 'crm_cancellation',
+        });
+      }
+
+      const cancellation = {
+        payment_status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: 'Anulat din CRM',
+      };
+
+      if (reservation.booking_group_id) {
+        await root.EcoVilaSupabase.updateReservationGroup(
+          context.client,
+          reservation.booking_group_id,
+          cancellation,
+        );
+      } else {
+        await root.EcoVilaSupabase.updateReservation(context.client, reservation.id, cancellation);
+      }
+
+      context.setAlert?.('');
+      await activeState.reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Anularea a eșuat.';
+      context.setAlert?.(`Rezervarea nu a fost anulată: ${message.slice(0, 180)}`);
+    }
   }
 
   async function markPaid(context, reservationId, bookingGroupId) {

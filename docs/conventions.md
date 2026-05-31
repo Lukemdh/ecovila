@@ -40,11 +40,16 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `Deno.env.get` in business code.
 - `deno.json` sets `singleQuote: true`, `lineWidth: 100` — match it (`deno fmt`).
 - Privileged DB writes use the service-role client from `_shared/supabaseAdmin.ts`.
+- Guest-facing cancellation rules must be enforced server-side in both the
+  `reservation-cancel` Edge Function and the latest `cancel_reservation_by_token` RPC.
+  Browser code may disable buttons and show policy copy, but must not be the only
+  enforcement point. Staff Maib refunds remain Diana-only through `maib-refund` and do
+  not reuse the public guest refund window.
 - Secrets/signatures: hash tokens before storage; compare secrets/signatures with the
   constant-time helper; verify external callbacks (Maib) by signature + replay window.
 - Declare each function's `verify_jwt` in `docs/supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
-- **Lint debt:** the codebase has 88 `no-explicit-any` violations (mostly `client: any`).
+- **Lint debt:** the codebase has 87 `no-explicit-any` violations (mostly `client: any`).
   New code should prefer real types; do not add new `any`.
 
 ## SQL migrations

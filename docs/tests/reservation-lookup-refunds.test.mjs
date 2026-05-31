@@ -96,6 +96,38 @@ describe('EcoVila reservation lookup and refunds', () => {
     assert.match(confirmare, /handleManagedCancel/, 'confirmation script should cancel through the manage endpoint');
     assert.match(translations, /confirmare\.refundEligible/, 'refund eligibility copy should be translated');
     assert.match(translations, /confirmare\.refundIneligible/, 'non-refundable copy should be translated');
+    assert.match(translations, /confirmare\.cashOfficeRefund/, 'cash office-only reimbursement copy should be translated');
+  });
+
+  it('blocks late and cash online managed cancellation while keeping CRM MAIB refunds staff-driven', () => {
+    const cancelFunction = read('docs/supabase/functions/reservation-cancel/index.ts');
+    const refundFunction = read('docs/supabase/functions/maib-refund/index.ts');
+
+    assert.match(
+      cancelFunction,
+      /summary\.paymentType === 'cash'[\s\S]*HttpError\(409/,
+      'cash reservations should be refused by the online managed cancellation endpoint',
+    );
+    assert.match(
+      cancelFunction,
+      /!refundable[\s\S]*HttpError\(409/,
+      'late reservations outside the public window should be refused online',
+    );
+    assert.match(
+      cancelFunction,
+      /paidCard && refundable/,
+      'guest MAIB refunds should still require the public refund window',
+    );
+    assert.match(
+      refundFunction,
+      /bookingGroupId/,
+      'staff MAIB refunds should be able to locate a payment by booking group from CRM',
+    );
+    assert.doesNotMatch(
+      refundFunction,
+      /isRefundEligible|refundEligibilityReason/,
+      'staff MAIB refunds should not enforce the public guest cancellation window',
+    );
   });
 
   it('keeps the managed reservation panel in the first right-column slot', () => {

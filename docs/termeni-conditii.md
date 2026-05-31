@@ -138,15 +138,15 @@ Această clauză nu exclude răspunderea EcoVila în cazurile în care legea int
 
 Clientul poate solicita anularea rezervării prin e-mail la rezervari@ecovila.md sau prin alt canal confirmat de EcoVila.
 
-Sumele achitate se rambursează numai dacă solicitarea de anulare este recepționată de EcoVila cu cel puțin 7 zile calendaristice înainte de data începerii rezervării.
+Sumele achitate se rambursează numai dacă solicitarea de anulare este recepționată de EcoVila cu cel puțin 7 zile calendaristice înainte de data începerii rezervării ori dacă rezervarea a fost creată de mai puțin de 2 ore.
 
-Dacă solicitarea de anulare este recepționată cu mai puțin de 7 zile calendaristice înainte de data începerii rezervării, suma achitată nu se rambursează.
+Dacă solicitarea de anulare este recepționată în afara acestor două situații, anularea online și rambursarea online nu sunt disponibile.
 
 Rambursarea aprobată se efectuează în maximum 14 zile lucrătoare de la confirmarea anulării și a dreptului la rambursare.
 
 Rambursarea se face, de regulă, prin aceeași metodă de plată prin care s-a efectuat achitarea:
 
-- Plata cash se rambursează cash.
+- Plata cash se rambursează cash doar la oficiul EcoVila.
 - Plata cu cardul se rambursează pe card.
 - Plata prin transfer se rambursează prin transfer.
 

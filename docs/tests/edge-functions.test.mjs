@@ -341,7 +341,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     );
     assert.match(
       brief,
-      /Cancellation:\s+guest can cancel for a refund when there are 7 calendar days or fewer before arrival/i,
+      /Cancellation:\s+guest can cancel online when there are at least 7 calendar days before arrival/i,
     );
   });
 });

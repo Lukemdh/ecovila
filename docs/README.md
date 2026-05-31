@@ -92,13 +92,13 @@ through the Supabase CLI; they are not bundled locally.
 
 ## Test
 
-Two independent suites. Both pass as of 2026-05-31 (164 + 32).
+Two independent suites. Both pass as of 2026-05-31 (166 + 32).
 
 **Frontend / contract tests (Node):**
 ```sh
 # from the repository root
 node --test 'docs/tests/**/*.test.mjs'
-# → 164 tests, 16 suites, all passing
+# → 166 tests, 16 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
@@ -126,7 +126,7 @@ deno check $(find . -name '*.ts' -not -path './tests/*')
 ```sh
 cd docs/supabase/functions
 deno lint
-# → 93 problems (88 no-explicit-any, 4 require-await, 1 no-import-prefix) as of 2026-05-31
+# → 92 problems (87 no-explicit-any, 4 require-await, 1 no-import-prefix) as of 2026-05-31
 ```
 
 There is no linter or typechecker configured for the browser JS.

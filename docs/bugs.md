@@ -1,8 +1,9 @@
 # Bugs & Broken Behavior — EcoVila
 
-Found during the Phase 0 audit (2026-05-31). Running log; update Status as bugs are
-fixed. These are distinct from the cleanup *tasks* in `docs/plan.md` (though some plan
-steps fix bugs listed here). Severities: Critical / High / Medium / Low.
+Found during the Phase 0 audit (2026-05-31) and later off-plan bugfix sessions. Running
+log; update Status as bugs are fixed. These are distinct from the cleanup *tasks* in
+`docs/plan.md` (though some plan steps fix bugs listed here). Severities: Critical /
+High / Medium / Low.
 
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
@@ -10,8 +11,9 @@ steps fix bugs listed here). Severities: Critical / High / Medium / Low.
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Open |
 | B-3 | Unused `assets/logo_small.png` | Low | Open |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Open |
-| B-5 | `deno lint` reports 93 problems | Low | Open |
+| B-5 | `deno lint` reports 92 problems | Low | Open |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
+| B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 
 ---
 
@@ -66,13 +68,15 @@ steps fix bugs listed here). Severities: Critical / High / Medium / Low.
   document the exact commands prominently (done in `docs/README.md`). Decide in
   `docs/decisions.md` whether a manifest is wanted given the no-build philosophy.
 
-### B-5 — `deno lint`: 93 problems (Low)
-- **Description:** 88 `no-explicit-any`, 4 `require-await` (async functions with no
+### B-5 — `deno lint`: 92 problems (Low)
+- **Description:** 87 `no-explicit-any`, 4 `require-await` (async functions with no
   await: `sendSms`, `sendEmail`, `hashManageToken`, `hashLookupCode`), 1
   `no-import-prefix` (inline `npm:` in `deno.json`).
 - **Reproduce:** `cd docs/supabase/functions && deno lint`.
 - **Why it matters:** code-quality / type-safety debt; not a runtime failure. Typecheck
   (`deno check`) currently passes.
+- **2026-05-31 note:** the off-plan cancellation fix removed the lone
+  `maib-refund` `no-explicit-any` while preserving B-5 as open lint debt.
 - **Suggested fix:** address incrementally in the lint-cleanup steps of `docs/plan.md`.
 
 ### B-6 — Backend and tests under `docs/` (Low / structural)
@@ -86,6 +90,21 @@ steps fix bugs listed here). Severities: Critical / High / Medium / Low.
 - **Suggested fix:** treat any move as a **higher-risk, late** plan step (it touches the
   Supabase CLI workflow and every test path). Confirm intent with owner first — intent
   is currently Unknown.
+
+### B-7 — Online cancellation policy was too permissive (Medium) — Fixed 2026-05-31
+- **Description:** guest-facing cancellation paths allowed online cancellation when fewer
+  than 7 calendar days remained and more than 2 hours had passed since reservation
+  creation, and cash-paid reservations were not blocked from online cancellation.
+- **Fix:** updated the shared refund eligibility helper, the `reservation-cancel` Edge
+  Function, the legacy `cancel_reservation_by_token` RPC, and public confirmation /
+  cancellation UI copy. Online guest cancellation is now available only at least 7
+  calendar days before arrival or within the first 2 hours after creation. Cash-paid
+  reservations show office-only reimbursement copy and are blocked online. CRM
+  cancellations of paid Maib bookings call the Diana-only `maib-refund` function and can
+  refund independently of the public guest window.
+- **Verification:** covered by Node contract tests in `docs/tests/anulare.test.mjs`,
+  `docs/tests/reservation-lookup-refunds.test.mjs`, `docs/tests/admin-crm.test.mjs`,
+  and Deno test `docs/supabase/functions/tests/reservation-manage-test.ts`.
 
 ---
 

@@ -68,7 +68,7 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 164 Node contract tests + 32 Deno tests.
+- Tests green: 166 Node contract tests + 32 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - Notable structural quirk: backend code (`supabase/`) and tests live under `docs/`,
@@ -94,3 +94,8 @@ sessions append to the running log at the bottom.
   project-history, security, bugs, plan, decisions, conventions). Verified: 164 Node
   tests pass, 32 Deno tests pass, `deno check` passes, `deno lint` reports 93 problems.
   Next: execute `docs/plan.md` STEP 1.
+- 2026-05-31 — OFF-PLAN cancellation policy fix. Changed guest online cancellation to
+  require at least 7 calendar days before arrival or the first 2 hours after creation,
+  blocked cash online cancellation with office-only reimbursement copy, and routed paid
+  Maib CRM cancellations through the Diana-only refund function. No planned cleanup step
+  was advanced.

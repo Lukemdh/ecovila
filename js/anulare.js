@@ -152,7 +152,8 @@
     setText('[data-res-guests]', formatGuests(reservation.adults, reservation.kids_ages));
     setText('[data-res-room]', formatRoomLabel(reservation.room_type, reservation.room_number));
     setText('[data-res-total]', pricing ? pricing.formatMDL(reservation.total_price) : `${reservation.total_price} MDL`);
-    updateRefundNote(reservation.check_in, reservation.created_at);
+    updateRefundNote(reservation.check_in, reservation.created_at, reservation.payment_type);
+    updateCancelAvailability(reservation);
   }
 
   // ── Cancellation submit ─────────────────────────────────────────────────────
@@ -197,7 +198,7 @@
                 : 'ineligible',
             );
           } catch { /* ignore */ }
-          updateRefundNote(activeReservation?.check_in, activeReservation?.created_at);
+          updateRefundNote(activeReservation?.check_in, activeReservation?.created_at, activeReservation?.payment_type);
           showState('[data-anulare-success]');
           break;
 
@@ -213,6 +214,24 @@
 
         case 'already_cancelled':
           showState('[data-anulare-already-cancelled]');
+          break;
+
+        case 'too_late':
+          btn.disabled = true;
+          setBtnText(btn, t('anulare.cancelButton'));
+          if (errorEl) {
+            errorEl.textContent = t('anulare.tooLateText');
+            errorEl.hidden = false;
+          }
+          break;
+
+        case 'cash_office':
+          btn.disabled = true;
+          setBtnText(btn, t('anulare.cancelButton'));
+          if (errorEl) {
+            errorEl.textContent = t('anulare.cashOfficeNote');
+            errorEl.hidden = false;
+          }
           break;
 
         case 'not_found':
@@ -268,25 +287,48 @@
     }
 
     const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
-    const insideArrivalWindow = daysUntilCheckIn >= 0 && daysUntilCheckIn <= 7;
+    const insideAdvanceWindow = daysUntilCheckIn >= 7;
     const ageMs = now.getTime() - createdAtValue;
     const insideCreationGrace = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 60 * 1000;
 
-    return insideArrivalWindow || insideCreationGrace;
+    return insideAdvanceWindow || insideCreationGrace;
   }
 
-  function setRefundNoteByEligibility(eligible) {
+  function setRefundNoteByKey(key) {
     root.document?.querySelectorAll('[data-anulare-refund-note]').forEach((node) => {
-      node.textContent = t(eligible ? 'anulare.refundEligibleNote' : 'anulare.refundIneligibleNote');
+      node.textContent = t(key);
     });
   }
 
-  function updateRefundNote(checkInDate, createdAt) {
+  function setRefundNoteByEligibility(eligible) {
+    setRefundNoteByKey(eligible ? 'anulare.refundEligibleNote' : 'anulare.refundIneligibleNote');
+  }
+
+  function updateRefundNote(checkInDate, createdAt, paymentType) {
+    if (paymentType === 'cash') {
+      setRefundNoteByKey('anulare.cashOfficeNote');
+      return;
+    }
+
     if (!checkInDate) {
       return;
     }
 
     setRefundNoteByEligibility(isRefundEligible(checkInDate, new Date(), createdAt));
+  }
+
+  function updateCancelAvailability(reservation) {
+    const btn = el('[data-anulare-cancel-btn]');
+    if (!btn) return;
+
+    const isCash = reservation?.payment_type === 'cash';
+    const canCancelOnline = !isCash && isRefundEligible(
+      reservation?.check_in,
+      new Date(),
+      reservation?.created_at,
+    );
+
+    btn.disabled = !canCancelOnline;
   }
 
   function readStoredRefundEligibility() {
@@ -301,7 +343,7 @@
 
   function refreshRefundNotesForCurrentState() {
     if (activeReservation?.check_in) {
-      updateRefundNote(activeReservation.check_in, activeReservation.created_at);
+      updateRefundNote(activeReservation.check_in, activeReservation.created_at, activeReservation.payment_type);
       return;
     }
 

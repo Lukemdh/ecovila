@@ -328,16 +328,18 @@ Statuses: TODO | IN PROGRESS | DONE.
 
 ### STEP 10 — Type cleanup: Maib functions (`maib-*`)
 - Status: TODO
-- Goal: Remove `any` in `maib-callback` (17), `maib-create-payment` (11), `maib-refund` (1).
+- Goal: Remove `any` in `maib-callback` (17) and `maib-create-payment` (11).
 - Depends on: STEP 8 | Why now: groups the highest-density payment files together.
-- Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/conventions.md`, the three
-  `maib-*` `index.ts` files, and `_shared/maib.ts`.
-- In scope: those three `index.ts` files only.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/conventions.md`,
+  `maib-callback/index.ts`, `maib-create-payment/index.ts`, and `_shared/maib.ts`.
+- In scope: those two `index.ts` files only. (`maib-refund`'s previous lone `any` was
+  removed by the 2026-05-31 off-plan cancellation policy fix.)
 - Out of scope: signature/verification logic changes (S-1/S-2 are separate steps).
 - Actions: replace each `any` with precise types for Maib payloads/DB rows.
 - Verification:
-  - `deno check` (full) → passes; `deno lint` → no `no-explicit-any` in the `maib-*`
-    entrypoints; `deno test … tests` → 32 passing (Maib tests still green).
+  - `deno check` (full) → passes; `deno lint` → no `no-explicit-any` in
+    `maib-callback` / `maib-create-payment`; `deno test … tests` → 32 passing
+    (Maib tests still green).
 - Docs to update: `bugs.md` (B-5 progress), `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `refactor: type maib edge functions (remove any)`
 
@@ -464,3 +466,4 @@ Statuses: TODO | IN PROGRESS | DONE.
   (S-1), unverified role-claim decode (S-2), placeholder phones (S-5), and the
   backend/tests-under-`docs/` quirk (B-6). Authored the full doc set under `docs/` and
   this 14-step plan. **Next session: STEP 1.**
+- **2026-05-31 — OFF-PLAN cancellation policy fix (commit: pending until commit).** Enforced the guest online cancellation window (at least 7 calendar days before arrival or first 2 hours after creation), blocked cash online cancellation with office-only reimbursement copy, and routed paid Maib CRM cancellations through the Diana-only refund function; planned step statuses unchanged.

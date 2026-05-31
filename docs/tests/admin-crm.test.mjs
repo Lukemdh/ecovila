@@ -340,6 +340,24 @@ describe('EcoVila Step 9 CRM', () => {
     );
   });
 
+  it('routes paid MAIB CRM cancellations through the staff refund function before cancelling the group', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    const helpers = read('js/supabase.js');
+
+    assert.match(helpers, /function refundMaibPaymentRequest/, 'Supabase helpers should expose the staff refund Edge Function');
+    assert.match(helpers, /functions\.invoke\('maib-refund'/, 'CRM refunds should call the maib-refund Edge Function');
+    assert.match(
+      dashboardJs,
+      /payment_type === 'card'[\s\S]*payment_status === 'paid'[\s\S]*refundMaibPaymentRequest/s,
+      'paid MAIB reservations cancelled in CRM should be refunded before cancellation',
+    );
+    assert.match(
+      dashboardJs,
+      /payment_status:\s*'cancelled'[\s\S]*updateReservationGroup/s,
+      'CRM cancellation should cancel the full booking group after any required refund',
+    );
+  });
+
   it('renders the staff add form with age buckets, a range calendar, and no payment selector', () => {
     const dashboard = read('admin/dashboard.html');
 

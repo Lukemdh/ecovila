@@ -29,22 +29,23 @@ function latestCancellationRpcSql() {
 }
 
 describe('EcoVila cancellation policy alignment', () => {
-  it('keeps online cancellation available and explains the 7-day or 2-hour refund split on the page', () => {
+  it('explains the online cancellation window and cash office reimbursement on the page', () => {
     const html = read('anulare.html');
 
-    assert.doesNotMatch(html, /data-anulare-too-late/);
     assert.doesNotMatch(html, /72\s*(de\s*)?ore|72\+/i);
     assert.match(html, /data-anulare-refund-note/);
-    assert.match(html, /7 zile calendaristice sau mai puțin/i);
+    assert.match(html, /cel puțin 7 zile calendaristice/i);
     assert.match(html, /mai puțin de 2 ore/i);
+    assert.match(html, /cash[\s\S]*oficiu/i);
   });
 
-  it('uses refund eligibility copy instead of a 72-hour client-side cancellation block', () => {
+  it('handles server-side late and cash-office online cancellation refusals', () => {
     const js = read('js/anulare.js');
 
     assert.doesNotMatch(js, /isWithin72Hours/);
     assert.doesNotMatch(js, /showTooLate/);
-    assert.doesNotMatch(js, /case 'too_late'/);
+    assert.match(js, /case 'too_late'/);
+    assert.match(js, /case 'cash_office'/);
     assert.match(js, /isRefundEligible/);
     assert.match(js, /updateRefundNote/);
   });
@@ -57,7 +58,7 @@ describe('EcoVila cancellation policy alignment', () => {
     const noonUtcOnMay16 = new Date('2026-05-16T12:00:00Z');
 
     assert.equal(isRefundEligible('2026-05-23', noonUtcOnMay16), true);
-    assert.equal(isRefundEligible('2026-05-24', noonUtcOnMay16), false);
+    assert.equal(isRefundEligible('2026-05-22', noonUtcOnMay16), false);
     assert.equal(
       isRefundEligible('2026-05-30', noonUtcOnMay16, '2026-05-16T10:30:00.000Z'),
       true,
@@ -69,17 +70,22 @@ describe('EcoVila cancellation policy alignment', () => {
 
     assert.match(translations, /anulare\.refundEligibleNote/);
     assert.match(translations, /anulare\.refundIneligibleNote/);
-    assert.doesNotMatch(translations, /anulare\.tooLateTitle/);
-    assert.doesNotMatch(translations, /anulare\.tooLateText/);
+    assert.match(translations, /anulare\.tooLateText/);
+    assert.match(translations, /anulare\.cashOfficeNote/);
     assert.doesNotMatch(translations, /72\+\s*hours|72\+\s*ore|72\+\s*часа/i);
   });
 
-  it('removes the server-side late-cancellation refusal from the latest RPC definition', () => {
+  it('enforces the online cancellation window and cash-office rule in the latest RPC definition', () => {
     const rpc = latestCancellationRpcSql();
 
     assert.ok(rpc, 'latest cancel_reservation_by_token RPC should exist');
-    assert.doesNotMatch(rpc, /too_late/i);
     assert.doesNotMatch(rpc, /72\s+hours/i);
+    assert.match(rpc, /v_payment_type/i);
+    assert.match(rpc, /v_created_at/i);
+    assert.match(rpc, /return 'cash_office';/i);
+    assert.match(rpc, /return 'too_late';/i);
+    assert.match(rpc, /now\(\) >= v_created_at/i);
+    assert.match(rpc, /interval '2 hours'/i);
     assert.match(rpc, /return 'cancelled';/i);
   });
 });

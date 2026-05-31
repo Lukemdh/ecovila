@@ -33,12 +33,28 @@ Deno.serve(async (request) => {
     }
 
     const summary = groupReservations(reservations)[0];
-    const payment = await findMaibPayment(client, summary.bookingGroupId);
     const paidCard = summary.paymentType === 'card' && summary.paymentStatus === 'paid';
+    const createdAt = earliestCreatedAt(reservations);
     const refundable = isRefundEligible({
       checkIn: summary.checkIn,
-      createdAt: reservations[0].created_at,
+      createdAt,
     });
+
+    if (summary.paymentType === 'cash') {
+      throw new HttpError(
+        409,
+        'Cash reservations cannot be cancelled online. Reimbursement is available only at the office.',
+      );
+    }
+
+    if (!refundable) {
+      throw new HttpError(
+        409,
+        'Online cancellation is available only at least 7 days before arrival or within 2 hours of booking.',
+      );
+    }
+
+    const payment = await findMaibPayment(client, summary.bookingGroupId);
     let refundResult = null;
 
     if (paidCard && refundable) {
@@ -75,7 +91,7 @@ Deno.serve(async (request) => {
       refundable,
       refundReason: refundEligibilityReason({
         checkIn: summary.checkIn,
-        createdAt: reservations[0].created_at,
+        createdAt,
       }),
       refund: refundResult,
       notificationResults,
@@ -126,6 +142,13 @@ async function findActiveReservationGroup(client: any, reservationId: string, ph
   return data || [];
 }
 
+function earliestCreatedAt(reservations: Array<Record<string, unknown>>) {
+  return reservations.reduce((min, reservation) => {
+    const createdAt = String(reservation.created_at || '');
+    return !min || createdAt < min ? createdAt : min;
+  }, '');
+}
+
 async function notifyCancelledReservations(client: any, reservations: any[]) {
   const results = [];
 
@@ -156,7 +179,8 @@ async function notifyCancelledReservations(client: any, reservations: any[]) {
     } catch (error) {
       console.error('Guest cancellation notification failed', error);
       await markNotificationEventFailed(client, reservation.id, 'guest_cancellation', error).catch(
-        (recordError) => console.error('Guest cancellation notification record failed', recordError),
+        (recordError) =>
+          console.error('Guest cancellation notification record failed', recordError),
       );
       results.push({
         reservationId: reservation.id,
@@ -225,13 +249,16 @@ async function markNotificationEventFailed(
     .eq('reservation_id', reservationId)
     .eq('event_type', eventType);
 
-  if (updateError) throw new Error(updateError.message || 'Could not mark cancellation notification failed.');
+  if (updateError) {
+    throw new Error(updateError.message || 'Could not mark cancellation notification failed.');
+  }
 }
 
 function composeCancellationConfirmation(reservation: any) {
   const roomCopy = roomLabel(reservation);
   const period = formatSmsPeriod(reservation);
-  const fullName = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`.trim();
+  const fullName = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`
+    .trim();
 
   return {
     sms: {
@@ -358,7 +385,8 @@ async function createRefund(client: any, payment: any, bookingGroupId: string) {
   try {
     const providerPayId = payment.provider_payment_id || payment.pay_id;
     const refund = await refundMaibPayment(providerPayId, amount, reason);
-    const providerRefundId = String(refund?.result?.refundId || refund?.refundId || '').trim() || null;
+    const providerRefundId = String(refund?.result?.refundId || refund?.refundId || '').trim() ||
+      null;
 
     await client
       .from('maib_refunds')

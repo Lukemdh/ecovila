@@ -12,7 +12,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Open |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Open |
-| S-6 | 88 `no-explicit-any` lint violations weaken type safety on server code | Low | `docs/supabase/functions/_shared/*.ts` | Open |
+| S-6 | 87 `no-explicit-any` lint violations weaken type safety on server code | Low | `docs/supabase/functions/_shared/*.ts` | Open |
 
 No Critical or High findings were identified. Several controls are implemented well
 (see "Positive controls" below).
@@ -60,7 +60,7 @@ secrets, but the staff default could create reservations with a bogus contact nu
   fake number.
 
 ### S-6 — `no-explicit-any` on server code (Low)
-88 `any` types (mostly `client: any` Supabase params) reduce compile-time safety in the
+87 `any` types (mostly `client: any` Supabase params) reduce compile-time safety in the
 Edge Functions. Not a vulnerability by itself but raises the chance of unchecked data
 handling. Fix as part of the lint-cleanup steps in `docs/plan.md`.
 
@@ -79,6 +79,10 @@ handling. Fix as part of the lint-cleanup steps in `docs/plan.md`.
   "public-safe availability RPC without exposing guest reservation details").
 - **Guest-created reservation fields are sanitized** server-side
   (`buildReservationRows` "rejects unsafe guest-created reservation fields", tested).
+- **Guest cancellation/refund windows are enforced server-side** in both
+  `reservation-cancel` and the latest `cancel_reservation_by_token` RPC; browser UI copy
+  mirrors the policy but is not the control point. Staff Maib refunds still require the
+  JWT-verified, Diana-only `maib-refund` function.
 - **Per-function `verify_jwt`** is declared in `config.toml`; public callbacks
   (`maib-callback`) and cron jobs run with `verify_jwt = false` but enforce their own
   signature/shared-secret checks.

@@ -59,6 +59,20 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Consequence:** moving or renaming files/markup can break tests by design; update
   tests deliberately, and keep `docs/` consistent (the Definition of Done).
 
+### ADR-008 — Guest online cancellation window vs. staff refund authority
+- **Date:** 2026-05-31.
+- **Decision:** guest-facing online cancellation is available only when there are at
+  least 7 calendar days before arrival, or when the reservation was created less than 2
+  hours ago. Cash-paid reservations are not cancelled or reimbursed online; they direct
+  guests to the EcoVila office. Diana-initiated CRM cancellation of paid Maib bookings
+  may refund through the staff-only `maib-refund` function regardless of the public guest
+  window.
+- **Why:** the public self-service flow should match the current business policy and
+  avoid online cash reimbursement, while staff need an override path for operational
+  cancellations.
+- **Consequence:** the policy is enforced server-side in both `reservation-cancel` and
+  the latest `cancel_reservation_by_token` RPC; browser UI only mirrors the rule.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

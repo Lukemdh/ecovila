@@ -54,8 +54,8 @@ Implement `checkout.html` and `js/checkout.js`:
 Step 6: **Confirmation \& Cancellation**
 Implement:
 
-* `confirmare.html`: cash countdown, extend once, cancel reservation
-* `anulare.html`: token-based cancellation, 72-hour rule, phone confirmation
+* `confirmare.html`: cash countdown, extend once, policy-gated online cancellation
+* `anulare.html`: token-based cancellation, 7-day / 2-hour rule, phone confirmation
 
 Step 7: **Supabase Edge Functions**
 Add server-side logic:
@@ -479,10 +479,10 @@ Accessed via a unique link sent in the SMS/email confirmation: `/anulare?token=C
 
 1. Page loads, fetches reservation by token.
 2. Shows: reservation details (dates, accommodation type, room number, total paid).
-3. Shows refund eligibility based on the legal policy: cancellations are refundable if there are 7 calendar days or fewer before check-in, or if the reservation was created less than 2 hours ago. Other cancellations remain possible online but are non-refundable.
+3. Shows online cancellation eligibility based on the legal policy: cancellations are available if there are at least 7 calendar days before check-in, or if the reservation was created less than 2 hours ago. Cash-paid reservations direct guests to office-only reimbursement.
 
    * If YES → show **"Anulează rezervarea"** button and the refundable message.
-   * If NO → keep the **"Anulează rezervarea"** button available and show the non-refundable message.
+   * If NO → disable online cancellation and show the office/contact message.
 4. When "Anulează" is clicked → ask for phone number confirmation (must match `guest\\\_phone` on the reservation).
 5. On match → reservation cancelled, room freed, cancellation SMS + email sent, token marked as used.
 
@@ -712,9 +712,10 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Guest-initiated (via cancellation link):
 
-* **7 calendar days or fewer before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
+* **At least 7 calendar days before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
 * **Less than 2 hours after reservation creation:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
-* **Outside both refund windows:** Allowed online. Room freed immediately. Cancellation SMS + email sent. Paid amount is not refunded.
+* **Outside both refund windows:** Not available online. Guest must contact EcoVila.
+* **Cash-paid reservations:** Not cancelled or reimbursed online; reimbursement is handled only at the EcoVila office.
 
 ### Diana-initiated (from CRM):
 
@@ -724,9 +725,10 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Refund policy (display in T\&C and on cancellation page):
 
-* 7 calendar days or fewer before arrival → full refund
+* At least 7 calendar days before arrival → full refund
 * Less than 2 hours after reservation creation → full refund
-* Outside both refund windows → no refund
+* Outside both refund windows → no online cancellation/refund
+* Cash-paid reservations → reimbursement only at the EcoVila office
 
 \---
 
@@ -862,7 +864,7 @@ Supabase Edge Functions (deployed to Supabase, NOT tophost):
 8. Room auto-assign: căsuță mică decreasing (8→1), căsuță mare + hotel increasing
 9. If guest explicitly chose room number: Diana sees warning + must type "schimba" before any room swap in CRM
 10. Pricing is locked at booking creation time — price changes never affect existing reservations
-11. Cancellation: guest can cancel for a refund when there are 7 calendar days or fewer before arrival, or less than 2 hours have passed since reservation creation; other cancellations remain possible online but are non-refundable
+11. Cancellation: guest can cancel online when there are at least 7 calendar days before arrival, or less than 2 hours have passed since reservation creation; cash-paid reservations are reimbursed only at the EcoVila office; Diana-initiated CRM MAIB cancellations can refund regardless of the public online window
 12. All SMS/email via Edge Functions (never from browser — API keys stay server-side)
 13. CRM is desktop-only, Romanian-only, Supabase Auth protected
 14. Legal compliance: Legea 195/2024 (Moldova GDPR, in force Aug 23 2026), full privacy policy, cookie consent, T\&C required

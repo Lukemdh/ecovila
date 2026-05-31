@@ -5,6 +5,7 @@ export const MANAGE_TOKEN_TTL_MINUTES = 30;
 export const LOOKUP_MAX_ATTEMPTS = 5;
 export const REFUND_GRACE_MS = 2 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const BUSINESS_TIME_ZONE = 'Europe/Chisinau';
 
 export type RefundEligibilityInput = {
   checkIn: string;
@@ -58,7 +59,9 @@ export async function hashLookupCode(
   code: string,
   secret = requiredEnv('ECOVILA_CRON_SECRET'),
 ) {
-  return sha256Hex(['reservation_lookup_code', lookupId, normalizeLookupCode(code), secret].join(':'));
+  return sha256Hex(
+    ['reservation_lookup_code', lookupId, normalizeLookupCode(code), secret].join(':'),
+  );
 }
 
 export async function hashManageToken(
@@ -74,7 +77,7 @@ export function minutesFromNow(minutes: number, now = new Date()) {
 
 export function isRefundEligible(input: RefundEligibilityInput) {
   const now = input.now || new Date();
-  const todayValue = dateValue(now.toISOString().slice(0, 10));
+  const todayValue = dateValue(currentBusinessDate(now));
   const checkInValue = dateValue(input.checkIn);
   const createdAtValue = new Date(input.createdAt).getTime();
 
@@ -83,11 +86,11 @@ export function isRefundEligible(input: RefundEligibilityInput) {
   }
 
   const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
-  const insideArrivalWindow = daysUntilCheckIn >= 0 && daysUntilCheckIn <= 7;
+  const insideAdvanceWindow = daysUntilCheckIn >= 7;
   const ageMs = now.getTime() - createdAtValue;
   const insideCreationGrace = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < REFUND_GRACE_MS;
 
-  return insideArrivalWindow || insideCreationGrace;
+  return insideAdvanceWindow || insideCreationGrace;
 }
 
 export function refundEligibilityReason(input: RefundEligibilityInput) {
@@ -96,11 +99,11 @@ export function refundEligibilityReason(input: RefundEligibilityInput) {
   }
 
   const now = input.now || new Date();
-  const todayValue = dateValue(now.toISOString().slice(0, 10));
+  const todayValue = dateValue(currentBusinessDate(now));
   const checkInValue = dateValue(input.checkIn);
   const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
 
-  if (daysUntilCheckIn >= 0 && daysUntilCheckIn <= 7) {
+  if (daysUntilCheckIn >= 7) {
     return 'arrival_window';
   }
 
@@ -122,12 +125,18 @@ export function groupReservations(rows: any[], now = new Date()): ReservationGro
     );
     const primary = sorted[0];
     const totalPrice = sorted.reduce((sum, row) => sum + Number(row.total_price || 0), 0);
-    const checkIn = sorted.reduce((min, row) =>
-      !min || String(row.check_in) < min ? String(row.check_in) : min, '');
-    const checkOut = sorted.reduce((max, row) =>
-      !max || String(row.check_out) > max ? String(row.check_out) : max, '');
-    const createdAt = sorted.reduce((min, row) =>
-      !min || String(row.created_at) < min ? String(row.created_at) : min, '');
+    const checkIn = sorted.reduce(
+      (min, row) => !min || String(row.check_in) < min ? String(row.check_in) : min,
+      '',
+    );
+    const checkOut = sorted.reduce(
+      (max, row) => !max || String(row.check_out) > max ? String(row.check_out) : max,
+      '',
+    );
+    const createdAt = sorted.reduce(
+      (min, row) => !min || String(row.created_at) < min ? String(row.created_at) : min,
+      '',
+    );
 
     return {
       primaryReservationId: String(primary.id),
@@ -172,6 +181,18 @@ function dateValue(dateString: string) {
     return Number.NaN;
   }
   return Date.UTC(year, month - 1, day);
+}
+
+function currentBusinessDate(now: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
 async function sha256Hex(value: string) {
