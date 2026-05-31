@@ -340,7 +340,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 10 — Type cleanup: Maib functions (`maib-*`)
-- Status: TODO
+- Status: DONE
 - Goal: Remove `any` in `maib-callback` (17) and `maib-create-payment` (11).
 - Depends on: STEP 8 | Why now: groups the highest-density payment files together.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/conventions.md`,
@@ -359,7 +359,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 11 — Type cleanup: remaining functions
-- Status: TODO
+- Status: DONE
 - Goal: Remove the last `any` in `confirm-reservation-payment` (7),
   `expire-cash-reservations` (8), `send-reminders` (5), `create-reservation` (1).
 - Depends on: STEP 8 | Why now: clears the remaining lint debt so `deno lint` is clean.
@@ -491,3 +491,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 9 (commit: af26332).** Removed all explicit `any` usage from reservation lookup, manage-details, and guest cancellation Edge Function entrypoints with typed Supabase clients and local row/query shapes; verified `deno check`, no Step 9 lint findings, 32 Deno tests, and full `npm test`; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
 - **2026-05-31 — STEP 10 (commit: 3bec80b).** Removed all explicit `any` usage from `maib-callback` and `maib-create-payment`; verified `deno check`, no Step 10 lint findings, and 32 Deno tests; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
 - **2026-05-31 — STEP 11 (commit: f4442ab).** Removed the final explicit `any` usage from `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and `create-reservation`; verified `deno check`, clean `deno lint`, 32 Deno tests, and 171 Node tests; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
+- **2026-05-31 — STEP 10 status reconciliation (source commit: 3bec80b).** Re-read required Step 10 files, re-verified committed Step 10/11 type-cleanup state, corrected stale Step 10/11 status lines so CURRENT STEP remains Step 12; reviewed README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan with only project-history/plan changes needed.

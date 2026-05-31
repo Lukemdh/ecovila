@@ -137,3 +137,7 @@ sessions append to the running log at the bottom.
   `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and
   `create-reservation`; `deno lint` now passes cleanly across all Edge Function source
   and tests.
+- 2026-05-31 — STEP 10/11 plan-status reconciliation. Re-read the Maib and remaining
+  type-cleanup files, re-ran the typecheck/lint/Deno tests plus the full `npm test`
+  suite, and corrected stale `docs/plan.md` step-block statuses so the next actionable
+  cleanup step is Step 12.
