@@ -8,6 +8,38 @@ import {
   dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
+import type { NotificationMessage, NotificationReservation } from '../_shared/notifications.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  gte(column: string, value: unknown): QueryBuilder<T>;
+  lte(column: string, value: unknown): QueryBuilder<T>;
+};
+
+type RoomJoin = {
+  number?: number | string | null;
+  type?: string | null;
+};
+
+type ReminderReservationRow = NotificationReservation & {
+  room_id?: string | null;
+  rooms?: RoomJoin | RoomJoin[] | null;
+};
+
+type NotificationDispatchResult = Awaited<ReturnType<typeof dispatchScheduledNotificationOnce>>;
+
+type NotificationResult = {
+  reservationId: string;
+  sent: boolean;
+  skipped_duplicate?: boolean;
+  abandoned?: boolean;
+  retry_pending?: boolean;
+  result?: NotificationDispatchResult['result'];
+  error?: string;
+};
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -35,11 +67,10 @@ Deno.serve(async (request) => {
   }
 });
 
-async function sendCashExpiryWarnings(client: any, now: Date) {
+async function sendCashExpiryWarnings(client: SupabaseClient, now: Date) {
   const windowStart = new Date(now.getTime() + 4 * 60 * 1000).toISOString();
   const windowEnd = new Date(now.getTime() + 6 * 60 * 1000).toISOString();
-  const { data, error } = await client
-    .from('reservations')
+  const { data, error } = await table<ReminderReservationRow[]>(client, 'reservations')
     .select(
       'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
@@ -57,18 +88,18 @@ async function sendCashExpiryWarnings(client: any, now: Date) {
     client,
     (data || []).map(withRoomFields),
     'cash_expiry_warning',
-    (reservation) => composeCashExpiryReminder(reservation, { siteUrl: getSiteUrl() }),
+    (reservation) =>
+      composeCashExpiryReminder(reservationForNotification(reservation), { siteUrl: getSiteUrl() }),
   );
 }
 
-async function sendArrivalReminders(client: any, now: Date) {
+async function sendArrivalReminders(client: SupabaseClient, now: Date) {
   const tomorrow = new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth(),
     now.getUTCDate() + 1,
   )).toISOString().slice(0, 10);
-  const { data, error } = await client
-    .from('reservations')
+  const { data, error } = await table<ReminderReservationRow[]>(client, 'reservations')
     .select(
       'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
@@ -89,12 +120,12 @@ async function sendArrivalReminders(client: any, now: Date) {
 }
 
 async function notifyEach(
-  client: any,
-  reservations: any[],
+  client: SupabaseClient,
+  reservations: ReminderReservationRow[],
   eventType: string,
-  createMessage: (reservation: any) => ReturnType<typeof composeArrivalReminder>,
+  createMessage: (reservation: ReminderReservationRow) => NotificationMessage,
 ) {
-  const results = [];
+  const results: NotificationResult[] = [];
 
   for (const reservation of reservations) {
     try {
@@ -120,4 +151,15 @@ async function notifyEach(
   }
 
   return results;
+}
+
+function reservationForNotification(reservation: ReminderReservationRow): NotificationReservation {
+  return {
+    ...reservation,
+    guest_language: reservation.guest_language || undefined,
+  };
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }

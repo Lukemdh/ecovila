@@ -6,6 +6,50 @@ import {
   dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
+import type { NotificationReservation } from '../_shared/notifications.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  lt(column: string, value: unknown): QueryBuilder<T>;
+};
+
+type RoomJoin = {
+  number?: number | string | null;
+  type?: string | null;
+};
+
+type ExpirableReservationRow = NotificationReservation & {
+  booking_group_id: string;
+  room_id?: string | null;
+  rooms?: RoomJoin | RoomJoin[] | null;
+};
+
+type ReservationIdRow = {
+  id: string;
+};
+
+type MaibSessionExpiryResult = {
+  expired: number;
+  reservationIds: string[];
+  orphaned: number;
+};
+
+type NotificationDispatchResult = Awaited<ReturnType<typeof dispatchScheduledNotificationOnce>>;
+
+type NotificationResult = {
+  reservationId: string;
+  sent: boolean;
+  skipped_duplicate?: boolean;
+  abandoned?: boolean;
+  retry_pending?: boolean;
+  result?: NotificationDispatchResult['result'];
+  error?: string;
+};
 
 const CARD_PAYMENT_START_GRACE_MINUTES = 15;
 
@@ -21,8 +65,9 @@ Deno.serve(async (request) => {
 
     const client = createServiceClient();
     const now = new Date().toISOString();
-    const { data: expiredReservations, error: selectError } = await client
-      .from('reservations')
+    const { data: expiredReservations, error: selectError } = await table<
+      ExpirableReservationRow[]
+    >(client, 'reservations')
       .select(
         'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
       )
@@ -36,11 +81,10 @@ Deno.serve(async (request) => {
     }
 
     const reservations = (expiredReservations || []).map(withRoomFields);
-    const ids = reservations.map((reservation: any) => reservation.id);
+    const ids = reservations.map((reservation) => reservation.id);
 
     if (ids.length) {
-      const { error: updateError } = await client
-        .from('reservations')
+      const { error: updateError } = await table(client, 'reservations')
         .update({
           payment_status: 'cancelled',
           cancelled_at: now,
@@ -67,7 +111,10 @@ Deno.serve(async (request) => {
   }
 });
 
-async function expireStaleMaibSessions(client: any, now: string) {
+async function expireStaleMaibSessions(
+  client: SupabaseClient,
+  now: string,
+): Promise<MaibSessionExpiryResult> {
   const expiredInFlightIds = await expireInFlightMaibSessions(client, now);
   const orphanedIds = await expireUnstartedCardReservations(client, now);
 
@@ -78,9 +125,8 @@ async function expireStaleMaibSessions(client: any, now: string) {
   };
 }
 
-async function expireInFlightMaibSessions(client: any, now: string) {
-  const { data, error: selectError } = await client
-    .from('reservations')
+async function expireInFlightMaibSessions(client: SupabaseClient, now: string) {
+  const { data, error: selectError } = await table<ReservationIdRow[]>(client, 'reservations')
     .select('id')
     .eq('payment_type', 'card')
     .eq('payment_status', 'pending')
@@ -92,14 +138,13 @@ async function expireInFlightMaibSessions(client: any, now: string) {
     throw new Error(selectError.message);
   }
 
-  const ids = (data || []).map((reservation: any) => reservation.id);
+  const ids = (data || []).map((reservation) => reservation.id);
 
   if (!ids.length) {
     return [];
   }
 
-  const { error: updateError } = await client
-    .from('reservations')
+  const { error: updateError } = await table(client, 'reservations')
     .update({
       payment_status: 'cancelled',
       payment_in_progress: false,
@@ -113,8 +158,7 @@ async function expireInFlightMaibSessions(client: any, now: string) {
     throw new Error(updateError.message);
   }
 
-  const { error: paymentUpdateError } = await client
-    .from('maib_payments')
+  const { error: paymentUpdateError } = await table(client, 'maib_payments')
     .update({
       status: 'cancelled',
       updated_at: now,
@@ -129,12 +173,11 @@ async function expireInFlightMaibSessions(client: any, now: string) {
   return ids;
 }
 
-async function expireUnstartedCardReservations(client: any, now: string) {
+async function expireUnstartedCardReservations(client: SupabaseClient, now: string) {
   const graceThreshold = new Date(
     new Date(now).getTime() - CARD_PAYMENT_START_GRACE_MINUTES * 60 * 1000,
   ).toISOString();
-  const { data, error: selectError } = await client
-    .from('reservations')
+  const { data, error: selectError } = await table<ReservationIdRow[]>(client, 'reservations')
     .select('id')
     .eq('payment_type', 'card')
     .eq('payment_status', 'pending')
@@ -146,14 +189,13 @@ async function expireUnstartedCardReservations(client: any, now: string) {
     throw new Error(selectError.message);
   }
 
-  const ids = (data || []).map((reservation: any) => reservation.id);
+  const ids = (data || []).map((reservation) => reservation.id);
 
   if (!ids.length) {
     return [];
   }
 
-  const { error: updateError } = await client
-    .from('reservations')
+  const { error: updateError } = await table(client, 'reservations')
     .update({
       payment_status: 'cancelled',
       payment_session_expires_at: null,
@@ -169,8 +211,11 @@ async function expireUnstartedCardReservations(client: any, now: string) {
   return ids;
 }
 
-async function notifyExpiredReservations(client: any, reservations: any[]) {
-  const results = [];
+async function notifyExpiredReservations(
+  client: SupabaseClient,
+  reservations: ExpirableReservationRow[],
+) {
+  const results: NotificationResult[] = [];
 
   for (const reservation of reservations) {
     try {
@@ -178,7 +223,7 @@ async function notifyExpiredReservations(client: any, reservations: any[]) {
         client,
         reservation.id,
         'cash_expired',
-        composeExpiredCashCancellation(reservation),
+        composeExpiredCashCancellation(reservationForNotification(reservation)),
       );
       results.push({
         reservationId: reservation.id,
@@ -196,4 +241,15 @@ async function notifyExpiredReservations(client: any, reservations: any[]) {
   }
 
   return results;
+}
+
+function reservationForNotification(reservation: ExpirableReservationRow): NotificationReservation {
+  return {
+    ...reservation,
+    guest_language: reservation.guest_language || undefined,
+  };
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }

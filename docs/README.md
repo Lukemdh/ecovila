@@ -134,7 +134,7 @@ deno check $(find . -name '*.ts' -not -path './tests/*')
 ```sh
 cd docs/supabase/functions
 deno lint
-# → 21 problems (all no-explicit-any in the remaining Step 11 entrypoints) as of 2026-05-31
+# → passes, no problems
 ```
 
 There is no linter or typechecker configured for the browser JS.

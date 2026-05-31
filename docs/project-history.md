@@ -133,3 +133,7 @@ sessions append to the running log at the bottom.
   and payment-creation Edge Function entrypoints with local payment, reservation,
   session, and query-builder types; remaining Deno lint debt is 21 `no-explicit-any`
   findings in the Step 11 entrypoints.
+- 2026-05-31 — STEP 11 cleanup. Removed the final explicit `any` usage from
+  `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and
+  `create-reservation`; `deno lint` now passes cleanly across all Edge Function source
+  and tests.

@@ -11,7 +11,7 @@ High / Medium / Low.
 | B-2 | Orphaned ~36MB of unreferenced video binaries committed at repo root | Low | Accepted |
 | B-3 | Unused `assets/logo_small.png` | Low | Accepted |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
-| B-5 | `deno lint` reports 21 remaining `no-explicit-any` problems | Low | Open |
+| B-5 | `deno lint` reported remaining `no-explicit-any` problems | Low | Fixed |
 | B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 
@@ -66,12 +66,12 @@ High / Medium / Low.
 - **Fix:** added a dependency-free root `package.json` with `test`, `test:node`, and
   `test:deno` scripts; documented `npm test` in `docs/README.md`; recorded ADR-009.
 
-### B-5 — `deno lint`: remaining problems (Low)
-- **Description:** 21 `no-explicit-any` findings remain after the Step 10 Maib
-  entrypoint cleanup.
-- **Reproduce:** `cd docs/supabase/functions && deno lint`.
-- **Why it matters:** code-quality / type-safety debt; not a runtime failure. Typecheck
-  (`deno check`) currently passes.
+### B-5 — `deno lint`: remaining problems (Low) — Fixed 2026-05-31
+- **Description:** `deno lint` formerly reported `no-explicit-any` findings in Edge
+  Function helpers and entrypoints.
+- **Former reproduce:** `cd docs/supabase/functions && deno lint`.
+- **Why it mattered:** code-quality / type-safety debt; not a runtime failure.
+  Typecheck (`deno check`) continued to pass throughout the cleanup.
 - **2026-05-31 note:** the off-plan cancellation fix removed the lone
   `maib-refund` `no-explicit-any` while preserving B-5 as open lint debt.
 - **2026-05-31 Step 4 note:** removed the four `require-await` findings by making
@@ -91,7 +91,9 @@ High / Medium / Low.
 - **2026-05-31 Step 10 note:** removed all explicit `any` usage from `maib-callback`
   and `maib-create-payment` with typed payment/reservation/session row shapes.
   `deno lint` now reports 21 `no-explicit-any` findings, all in the Step 11 entrypoints.
-- **Suggested fix:** address incrementally in the lint-cleanup steps of `docs/plan.md`.
+- **2026-05-31 Step 11 note:** removed the final explicit `any` usage from
+  `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and
+  `create-reservation`. `deno lint` now passes with 0 problems.
 
 ### B-6 — Backend and tests under `docs/` (Low / structural)
 - **Description:** `docs/supabase/` (migrations + Edge Functions) and `docs/tests/`

@@ -14,6 +14,48 @@ import {
   dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
 import { buildCancellationTokenRows, withRoomFields } from '../_shared/reservations.ts';
+import type { NotificationReservation } from '../_shared/notifications.ts';
+import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): QueryBuilder<T>;
+  update(payload: unknown): QueryBuilder<T>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  single(): Promise<SupabaseQueryResult<T>>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+type RoomJoin = {
+  number?: number | string | null;
+  type?: string | null;
+};
+
+type ConfirmableReservationRow = NotificationReservation & {
+  booking_group_id: string;
+  room_id?: string | null;
+  payment_status: 'pending' | 'paid' | string;
+  rooms?: RoomJoin | RoomJoin[] | null;
+};
+
+type CancellationTokenRow = {
+  reservation_id?: string;
+  token?: string | null;
+};
+
+type NotificationDispatchResult = Awaited<ReturnType<typeof dispatchScheduledNotificationOnce>>;
+
+type NotificationResult = {
+  reservationId: string;
+  sent: boolean;
+  skipped_duplicate?: boolean;
+  abandoned?: boolean;
+  retry_pending?: boolean;
+  result?: NotificationDispatchResult['result'];
+  error?: string;
+};
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -39,7 +81,7 @@ Deno.serve(async (request) => {
       bookingGroupId,
     });
     const now = new Date().toISOString();
-    const ids = reservations.map((reservation: any) => reservation.id);
+    const ids = reservations.map((reservation) => reservation.id);
 
     if (!ids.length) {
       return jsonResponse({
@@ -52,12 +94,11 @@ Deno.serve(async (request) => {
     }
 
     const pendingIds = reservations
-      .filter((reservation: any) => reservation.payment_status === 'pending')
-      .map((reservation: any) => reservation.id);
+      .filter((reservation) => reservation.payment_status === 'pending')
+      .map((reservation) => reservation.id);
 
     if (pendingIds.length) {
-      const { error } = await client
-        .from('reservations')
+      const { error } = await table(client, 'reservations')
         .update({ payment_status: 'paid', cash_expires_at: null, paid_at: now })
         .in('id', pendingIds);
 
@@ -82,11 +123,10 @@ Deno.serve(async (request) => {
 });
 
 async function findConfirmableReservations(
-  client: any,
+  client: SupabaseClient,
   input: { reservationId?: string; bookingGroupId?: string },
 ) {
-  let query = client
-    .from('reservations')
+  let query = table<ConfirmableReservationRow[]>(client, 'reservations')
     .select(
       'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, rooms(number, type)',
     )
@@ -107,8 +147,11 @@ async function findConfirmableReservations(
   return (data || []).map(withRoomFields);
 }
 
-async function notifyPaidReservations(client: any, reservations: any[]) {
-  const results = [];
+async function notifyPaidReservations(
+  client: SupabaseClient,
+  reservations: ConfirmableReservationRow[],
+) {
+  const results: NotificationResult[] = [];
   const siteUrl = getSiteUrl();
 
   for (const reservation of reservations) {
@@ -116,8 +159,7 @@ async function notifyPaidReservations(client: any, reservations: any[]) {
       let token = await findCancellationToken(client, reservation.id);
       if (!token) {
         const tokenRows = buildCancellationTokenRows([reservation]);
-        const { data, error } = await client
-          .from('cancellation_tokens')
+        const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
           .insert(tokenRows)
           .select('reservation_id, token')
           .single();
@@ -133,7 +175,7 @@ async function notifyPaidReservations(client: any, reservations: any[]) {
         client,
         reservation.id,
         'payment_confirmation',
-        composeBookingConfirmation(reservation, {
+        composeBookingConfirmation(reservationForNotification(reservation), {
           cancellationToken: token,
           siteUrl,
         }),
@@ -156,9 +198,8 @@ async function notifyPaidReservations(client: any, reservations: any[]) {
   return results;
 }
 
-async function findCancellationToken(client: any, reservationId: string) {
-  const { data, error } = await client
-    .from('cancellation_tokens')
+async function findCancellationToken(client: SupabaseClient, reservationId: string) {
+  const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
     .select('token')
     .eq('reservation_id', reservationId)
     .eq('used', false)
@@ -169,6 +210,19 @@ async function findCancellationToken(client: any, reservationId: string) {
   }
 
   return data?.token || '';
+}
+
+function reservationForNotification(
+  reservation: ConfirmableReservationRow,
+): NotificationReservation {
+  return {
+    ...reservation,
+    guest_language: reservation.guest_language || undefined,
+  };
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
 }
 
 function optionalString(value: unknown) {

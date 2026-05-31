@@ -1,7 +1,8 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/http.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
-import { createReservationsWithTokens, ReservationInput } from '../_shared/reservations.ts';
+import { createReservationsWithTokens } from '../_shared/reservations.ts';
+import type { ReservationInput } from '../_shared/reservations.ts';
 
 Deno.serve(async (request) => {
   const cors = handleCors(request);
@@ -20,7 +21,7 @@ Deno.serve(async (request) => {
     return jsonResponse({
       primaryReservationId: result.primaryReservationId,
       bookingGroupId: result.bookingGroupId,
-      reservationIds: result.reservations.map((reservation: any) => reservation.id),
+      reservationIds: result.reservations.map((reservation) => reservation.id),
       paymentType: result.reservations[0]?.payment_type || '',
       notificationResults: [],
     });

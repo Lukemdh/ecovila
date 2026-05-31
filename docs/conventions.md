@@ -62,10 +62,9 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Reservation management entrypoints (`reservation-lookup-*`,
   `reservation-manage-details`, `reservation-cancel`) follow the same typed-client
   pattern with local row and query-builder shapes instead of `client: any`.
-- **Lint debt:** the codebase has 21 `no-explicit-any` violations, all in the Step 11
-  entrypoints (`confirm-reservation-payment`, `expire-cash-reservations`,
-  `send-reminders`, `create-reservation`). New code should prefer real types; do not
-  add new `any`.
+- `deno lint` is expected to pass cleanly for all Edge Function source and tests. New
+  server code should use real types (`SupabaseClient`, `SupabaseQueryResult`, local
+  row/query-builder shapes, or `unknown` + narrowing) and must not add explicit `any`.
 
 ## SQL migrations
 - One file per change under `docs/supabase/migrations/`, named
