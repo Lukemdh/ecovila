@@ -429,7 +429,7 @@
     setText('[data-summary-total]', pricing.formatMDL(state.selection.totalPrice));
     renderBreakdown(documentRef.querySelector('[data-summary-breakdown]'), state.selection);
 
-    const guestPhone = documentRef.querySelector('[data-guest-phone]')?.value || '+373';
+    const guestPhone = documentRef.querySelector('[data-guest-phone]')?.value || '';
     const onlinePaymentCopy = getOnlinePaymentCopy(guestPhone);
     const onlinePaymentTitle = documentRef.querySelector('[data-online-payment-title]');
     const onlinePaymentMeta = documentRef.querySelector('[data-online-payment-meta]');

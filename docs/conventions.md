@@ -19,6 +19,9 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - `'use strict';` at the top of each module factory.
 - DOM is selected via `data-*` attributes (e.g. `[data-crm-app]`, `[data-guest-phone]`),
   not by id/class coupling. Keep using `data-` hooks for behavior.
+- Do not silently persist fabricated defaults for guest data. Hints such as `+373` may
+  appear as input placeholders, but required fields must validate and block submission
+  instead of storing placeholder values.
 - Naming: `camelCase` functions/vars, `UPPER_SNAKE` module constants, `EcoVila*`
   PascalCase globals. Files are `kebab-case.js`; CRM modules are `crm-*.js`.
 - Script load order matters (no bundler): CDN supabase-js → `supabase-config.js` →

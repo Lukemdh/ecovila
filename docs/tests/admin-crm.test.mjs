@@ -365,6 +365,9 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboard, /data-add-date-picker/);
     assert.match(dashboard, /data-add-calendar-grid/);
     assert.match(dashboard, /data-add-calendar-apply/);
+    assert.match(dashboard, /<input type="tel" placeholder="\+373" data-add-phone required>/);
+    assert.doesNotMatch(dashboard, /<input type="tel" value="\+373" data-add-phone/);
+    assert.doesNotMatch(dashboard, /<input type="tel" value="\+373" data-search-phone/);
     assert.doesNotMatch(dashboard, /data-add-payment-type/);
   });
 
@@ -543,6 +546,56 @@ describe('EcoVila Step 9 CRM', () => {
     assert.deepEqual(Array.from(rows, (row) => row.payment_type), ['office', 'office', 'office']);
     assert.deepEqual(Array.from(rows, (row) => row.payment_status), ['paid', 'paid', 'paid']);
     assert.deepEqual(Array.from(rows, (row) => row.cash_expires_at), [null, null, null]);
+  });
+
+  it('does not substitute a fake phone when the CRM add form phone is empty', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const rows = sidebar.buildStaffReservationRows(
+      formWithFields({
+        '[data-add-room-numbers]': field('1'),
+        '[data-add-first-name]': field('Ana'),
+        '[data-add-last-name]': field('Munteanu'),
+        '[data-add-phone]': field(''),
+        '[data-add-email]': field('ana@example.md'),
+        '[data-add-check-in]': field('2026-06-01'),
+        '[data-add-check-out]': field('2026-06-02'),
+        '[data-add-adults]': field('2'),
+        '[data-add-child-bucket]:checked': [],
+        '[data-add-total]': field('', { dataset: { total: '1900' } }),
+        '[data-add-conference]': field('', { checked: false }),
+        '[data-add-notes]': field(''),
+      }),
+      [{ id: 'room-1', number: 1 }],
+      { role: 'diana' },
+      {
+        createGroupId: () => 'staff-group',
+        now: new Date('2026-05-08T09:00:00.000Z'),
+      },
+    );
+
+    assert.equal(rows[0].guest_phone, '');
+    assert.notEqual(rows[0].guest_phone, '+37300000000');
+  });
+
+  it('blocks CRM add submit when the phone is empty', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const message = sidebar.validateAddForm(
+      {
+        rooms: [{ id: 'room-1', number: 1 }],
+        reservations: [],
+      },
+      formWithFields({
+        '[data-add-room-numbers]': field('1'),
+        '[data-add-kids]': field('0'),
+        '[data-add-check-in]': field('2026-06-01'),
+        '[data-add-check-out]': field('2026-06-02'),
+        '[data-add-phone]': field(''),
+        '[data-add-total]': field('', { dataset: { total: '1900' } }),
+      }),
+      { childBuckets: [] },
+    );
+
+    assert.equal(message, 'Introdu un telefon valid în format internațional.');
   });
 
   it('renders din oficiu as a CRM detail payment label', () => {

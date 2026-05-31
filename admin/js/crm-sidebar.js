@@ -9,6 +9,7 @@
     '4-11': 4,
     '12+': 12,
   });
+  const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
 
   function qs(selector, scope) {
     return (scope || root.document).querySelector(selector);
@@ -202,7 +203,7 @@
       room_id: room.id,
       guest_first_name: qs('[data-add-first-name]', form)?.value?.trim() || 'Client',
       guest_last_name: qs('[data-add-last-name]', form)?.value?.trim() || 'CRM',
-      guest_phone: qs('[data-add-phone]', form)?.value?.trim() || '+37300000000',
+      guest_phone: qs('[data-add-phone]', form)?.value?.trim() || '',
       guest_email: qs('[data-add-email]', form)?.value?.trim() || 'rezervari@ecovila.md',
       check_in: qs('[data-add-check-in]', form)?.value,
       check_out: qs('[data-add-check-out]', form)?.value,
@@ -581,6 +582,9 @@
     if (!checkIn || !checkOut || checkOut <= checkIn) {
       return 'Alege check-in și check-out.';
     }
+    if (!INTERNATIONAL_PHONE_PATTERN.test(qs('[data-add-phone]', form)?.value?.trim() || '')) {
+      return 'Introdu un telefon valid în format internațional.';
+    }
     if (!areSelectedRoomsAvailable({
       rooms: state.rooms || [],
       reservations: getAddAvailabilityReservations(state),
@@ -686,5 +690,6 @@
     renderSearchResults,
     selectedRoomsFromNumbers,
     splitTotalPrice,
+    validateAddForm,
   };
 });

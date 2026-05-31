@@ -208,6 +208,16 @@ describe('EcoVila Step 5 checkout', () => {
     assert.equal(checkout.validateGuestDetails({ firstName: 'Ana', lastName: 'Munteanu', phone: '+37360123456', email: 'ana@example.md', gdprAccepted: false }).errors[0], 'checkout.errorGdpr');
   });
 
+  it('keeps the checkout phone prefix as a placeholder instead of a submitted default', () => {
+    const html = read('checkout.html');
+    const checkoutScript = read('js/checkout.js');
+    const phoneInput = html.match(/<input[^>]*data-guest-phone[^>]*>/)?.[0] || '';
+
+    assert.match(phoneInput, /placeholder="\+373"/);
+    assert.doesNotMatch(phoneInput, /\svalue="\+373"/);
+    assert.doesNotMatch(checkoutScript, /\|\|\s*['"]\+373['"]/);
+  });
+
   it('routes Moldovan online payments through MIA and other valid phones through card', () => {
     const checkout = loadCheckout();
 

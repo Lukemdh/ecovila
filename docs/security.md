@@ -11,7 +11,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-2 | `requireStaffRole` reads role from JWT payload without verifying the signature (relies on gateway `verify_jwt`) | Low (Info) | `docs/supabase/functions/_shared/http.ts:62` | Open |
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
-| S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Open |
+| S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
 | S-6 | 87 `no-explicit-any` lint violations weaken type safety on server code | Low | `docs/supabase/functions/_shared/*.ts` | Open |
 
 No Critical or High findings were identified. Several controls are implemented well
@@ -54,11 +54,13 @@ brief.
   Supabase, cron/site, SMS.md, Resend, and Maib names only; all values are blank.
 
 ### S-5 — Hardcoded placeholder phones (Low)
-`admin/js/crm-sidebar.js:205` defaults a missing phone to `+37300000000`, and
-`js/checkout.js:432` seeds the input with `+373`. These are UX placeholders, not
-secrets, but the staff default could create reservations with a bogus contact number.
-- **Recommended fix:** require a valid phone server-side; avoid silently substituting a
-  fake number.
+Formerly, `admin/js/crm-sidebar.js:205` defaulted a missing phone to `+37300000000`, and
+`js/checkout.js:432` seeded the input with `+373`. These are UX placeholders, not
+secrets, but the staff default could have created reservations with a bogus contact
+number.
+- **Fixed 2026-05-31:** checkout and CRM phone fields now use `+373` only as placeholder
+  copy, not as a submitted value; CRM add-reservation validation blocks empty/invalid
+  phone values, and row building no longer substitutes `+37300000000`.
 
 ### S-6 — `no-explicit-any` on server code (Low)
 87 `any` types (mostly `client: any` Supabase params) reduce compile-time safety in the

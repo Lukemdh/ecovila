@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 7**
+**CURRENT STEP → STEP 8**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -76,7 +76,7 @@ together with the code change for that step.
 | 4 | Fix `require-await` lint violations | Low | DONE |
 | 5 | Fix `no-import-prefix` lint violation | Low | DONE |
 | 6 | Resolve orphaned media owner decision | Low | DONE |
-| 7 | Remove hardcoded placeholder phone defaults | Low–Med | TODO |
+| 7 | Remove hardcoded placeholder phone defaults | Low–Med | DONE |
 | 8 | Type cleanup: `_shared/` `any` → real types | Low | TODO |
 | 9 | Type cleanup: reservation lookup/manage/cancel functions | Low | TODO |
 | 10 | Type cleanup: Maib functions (`maib-*`) | Low | TODO |
@@ -173,7 +173,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   2. Implement the chosen option (scripts only; no `dependencies`).
   3. Ensure both commands run from the repo root.
 - Verification:
-  - The documented command runs both suites green: `npm test` → 168 Node + 32 Deno.
+  - The documented command runs both suites green: `npm test` → 171 Node + 32 Deno.
 - Docs to update: `README.md`, `decisions.md` (resolve the open question), `bugs.md`
   (B-4 → Fixed/closed), `conventions.md` if scripts are added, `project-history.md`,
   `plan.md`. Check the rest.
@@ -203,7 +203,7 @@ Statuses: TODO | IN PROGRESS | DONE.
     (88 unrelated lint findings remain for later steps).
   - `cd docs/supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
   - `deno test --allow-env --allow-net tests` → 32 passing.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing.
+  - `node --test 'docs/tests/**/*.test.mjs'` → 171 passing.
 - Docs to update: `bugs.md` (B-5 partial), `conventions.md` if guidance changes,
   `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `fix: resolve deno require-await lint warnings`
@@ -255,7 +255,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   were marked Accepted instead of Fixed.
 - Verification:
   - Both greps return no references.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing.
+  - `node --test 'docs/tests/**/*.test.mjs'` → 171 passing.
   - Manual: `site.html` still loads `assets/videos/ecovila-hero.mp4`.
 - Docs to update: `project-structure.md` (drop the removed entries if removed, or mark
   owner-retained if kept), `bugs.md` (B-2/B-3 → Fixed or Accepted),
@@ -265,7 +265,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 7 — Remove hardcoded placeholder phone defaults
-- Status: TODO
+- Status: DONE
 - Goal: Stop silently substituting fake phone numbers for reservations.
 - Depends on: none | Why now: small, security-adjacent (S-5), independent.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/security.md` (S-5),
@@ -279,8 +279,10 @@ Statuses: TODO | IN PROGRESS | DONE.
      with proper required-field handling (block submit / surface an error) rather than a
      fabricated number. Keep `+373` only as a non-committal input *placeholder attribute*
      if desired, never as a stored value.
+- Completion note: also converted the CRM search phone prefix to placeholder-only for
+  consistency, although it was not a stored reservation value.
 - Verification:
-  - `node --test 'docs/tests/**/*.test.mjs'` → 168 passing (update a contract test only
+  - `node --test 'docs/tests/**/*.test.mjs'` → 171 passing (update a contract test only
     if it explicitly asserts the old default; record any such change).
   - Manual: submitting checkout/CRM-add with an empty phone is rejected, not silently
     filled.
@@ -370,7 +372,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   - `deno check` (full) → passes.
   - `cd docs/supabase/functions && deno lint` → **0 problems** (assuming STEPs 4,5,8–10
     done).
-  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 168.
+  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 171.
 - Docs to update: `bugs.md` (B-5 → Fixed/closed once lint is clean), `conventions.md`
   (drop the "lint debt" note), `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `refactor: type remaining edge functions; deno lint clean`
@@ -455,7 +457,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   3. Update every doc that references the old paths (this whole doc set references
      `docs/supabase` and `docs/tests`).
 - Verification:
-  - `node --test 'tests/**/*.test.mjs'` → 168 passing at the new path.
+  - `node --test 'tests/**/*.test.mjs'` → 171 passing at the new path.
   - `cd supabase/functions && deno test --allow-env --allow-net tests` → 32 passing.
   - `deno check` / `deno lint` clean at new paths.
   - `grep -rn "docs/tests\|docs/supabase" .` → only intentional historical references in
@@ -484,3 +486,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 4 (commit: 53d78c4).** Removed unnecessary `async` from `sendSms`, `sendEmail`, `hashLookupCode`, and `hashManageToken`; verified no `require-await` lint output, `deno check`, 32 Deno tests, and 168 Node tests; updated README, project-history, bugs, and plan; checked project-overview, project-structure, security, decisions, and conventions with no changes needed.
 - **2026-05-31 — STEP 5 (commit: 311bdba).** Added the `std/assert` Deno import-map alias and changed `maib.test.ts` to use the bare specifier; verified no `no-import-prefix` lint output, `deno check`, and 32 Deno tests; updated README, project-history, bugs, conventions, and plan; checked project-overview, project-structure, security, and decisions with no changes needed.
 - **2026-05-31 — STEP 6 (commit: aa1cc08).** Reconfirmed no scoped references to `ecovilavideo.mp4`, `ecovilavideo-web.mp4`, or `assets/logo_small.png`; owner declined removal, so the files were kept and B-2/B-3 were marked Accepted; verified 168 Node tests; updated project-structure, project-history, bugs, decisions, and plan; checked README, project-overview, security, and conventions with no changes needed.
+- **2026-05-31 — STEP 7 (commit: pending).** Removed checkout/CRM fabricated phone defaults, kept `+373` as placeholder-only copy, added contract coverage for empty-phone rejection, and verified `npm test` (171 Node + 32 Deno); updated README, project-history, security, conventions, and plan; checked project-overview, project-structure, bugs, and decisions with no changes needed.

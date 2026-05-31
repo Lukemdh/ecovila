@@ -68,7 +68,7 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 168 Node contract tests + 32 Deno tests.
+- Tests green: 171 Node contract tests + 32 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - Notable structural quirk: backend code (`supabase/`) and tests live under `docs/`,
@@ -119,3 +119,6 @@ sessions append to the running log at the bottom.
 - 2026-05-31 — STEP 6 cleanup. Reconfirmed that the two root `ecovilavideo*.mp4`
   files and `assets/logo_small.png` have no scoped frontend references, then recorded
   the owner decision to keep them.
+- 2026-05-31 — STEP 7 cleanup. Removed fabricated phone defaults from checkout and CRM
+  add-reservation flows, kept `+373` only as placeholder copy, and added contract tests
+  for empty-phone rejection.
