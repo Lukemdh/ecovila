@@ -14,6 +14,12 @@ High / Medium / Low.
 | B-5 | `deno lint` reported remaining `no-explicit-any` problems | Low | Fixed |
 | B-6 | Backend + tests lived under `docs/` (mislocated relative to convention) | Low | Fixed |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
+| B-8 | Legacy confirmation actions can extend/cancel by reservation UUID only | High | Open |
+| B-9 | CRM stored-XSS risk from unescaped reservation fields | High | Open |
+| B-10 | Edge Function accepts child ages `0` and `18` despite public 1-17 contract | Medium | Open |
+| B-11 | Maib cron migrations assume `pg_cron`/`cron` exists | Medium | Open |
+| B-12 | Public fallback imagery still uses placeholder SVGs | Low | Open |
+| B-13 | Dependency audit/scanning gap: `npm audit` cannot run without a lockfile | Low | Open |
 
 ---
 
@@ -122,6 +128,89 @@ High / Medium / Low.
   `tests/reservation-lookup-refunds.test.mjs`, `tests/admin-crm.test.mjs`,
   and Deno test `supabase/functions/tests/reservation-manage.test.ts`.
 
+### B-8 — Legacy confirmation actions can extend/cancel by reservation UUID only (High) — Open
+- **Description:** the non-managed confirmation flow still calls
+  `get_pending_reservation_status`, `extend_cash_reservation`, and
+  `cancel_pending_reservation` with only `reservationId` from
+  `confirmare.html?id=<uuid>`. The SQL RPCs in
+  `20260511120000_step6_guest_confirmation.sql` are `security definer` functions granted
+  to `anon` and `authenticated`.
+- **Root cause:** the newer manage-token flow was added for lookup/refunds but did not
+  replace the older confirmation-page cash actions.
+- **Why it matters:** a leaked confirmation URL becomes a bearer link that can extend or
+  cancel a pending reservation. UUID guessing is unlikely, but URL forwarding, browser
+  history, support screenshots, analytics, or email compromise are realistic leak paths.
+- **Reproduce / evidence:**
+  ```sh
+  rg -n "extend_cash_reservation|cancel_pending_reservation|get_pending_reservation_status" js/supabase.js supabase/migrations/20260511120000_step6_guest_confirmation.sql
+  ```
+- **Fix direction:** require a hashed manage token or signed action token for all
+  pending reservation status/action RPCs, update `confirmare.html` links, and revoke the
+  old UUID-only RPCs.
+
+### B-9 — CRM stored-XSS risk from unescaped reservation fields (High) — Open
+- **Description:** several authenticated CRM surfaces interpolate guest-controlled
+  reservation data into `innerHTML` templates. `guest_first_name` / `guest_last_name`
+  are only trimmed server-side, so markup submitted during public booking can be stored
+  and rendered in staff sessions.
+- **Evidence:** `admin/js/crm-dashboard.js` reservation and pending-cash cards,
+  `admin/js/crm-sidebar.js` search results, and `admin/js/crm-daily.js` reception cards
+  interpolate `EcoVilaCrmCalendar.guestName(reservation)` or phone fields directly.
+  `admin/js/crm-photos.js` and `admin/js/crm-pricing.js` already define `escapeHtml`,
+  showing the missing pattern is local to some CRM modules.
+- **Why it matters:** a malicious guest could execute script in the CRM origin when
+  Diana/Angela view the reservation.
+- **Fix direction:** add a shared CRM `escapeHtml` or DOM-node rendering helper, prefer
+  `textContent` for guest fields, add server-side name validation, and add regression
+  tests with an HTML payload in the guest name.
+
+### B-10 — Edge Function accepts child ages `0` and `18` (Medium) — Open
+- **Description:** the public booking contract allows child ages 1-17, but
+  `normalizeKidsAges` in `supabase/functions/_shared/reservations.ts` accepts whole
+  numbers from 0 to 18.
+- **Reproduce:**
+  ```sh
+  cd supabase/functions
+  deno eval "import { buildReservationRows } from './_shared/reservations.ts'; console.log(JSON.stringify(buildReservationRows([{ room_id: '00000000-0000-0000-0000-000000000001', guest_first_name: 'A', guest_last_name: 'B', guest_phone: '+37360123456', guest_email: 'a@example.md', check_in: '2026-07-01', check_out: '2026-07-02', adults: 1, kids_ages: [0, 18], total_price: 1, payment_type: 'cash' }], { now: new Date('2026-06-01T00:00:00Z') })[0].kids_ages));"
+  # -> [0,18]
+  ```
+- **Why it matters:** direct callers can create reservations that the public UI and
+  pricing contract say are invalid.
+- **Fix direction:** enforce ages 1-17 server-side and add Deno tests proving 0/18 are
+  rejected.
+
+### B-11 — Maib cron migrations assume `pg_cron`/`cron` exists (Medium) — Open
+- **Description:** `20260526193653_maib_session_expiry_cron.sql` and
+  `20260527082000_maib_unstarted_payment_cleanup.sql` call `cron.schedule`, but the
+  migration set never creates/enables `pg_cron`.
+- **Reproduce / evidence:**
+  ```sh
+  rg -n "cron\\.schedule|create extension.*cron|pg_cron" supabase/migrations
+  ```
+- **Why it matters:** `supabase db push` can fail in a fresh project if `pg_cron` is not
+  already enabled. This is a production rollout blocker, not a runtime bug in the static
+  frontend.
+- **Fix direction:** add a migration that enables the required extension(s), or replace
+  the SQL cron with a scheduled Edge Function and document the operational setup.
+
+### B-12 — Public fallback imagery still uses placeholder SVGs (Low) — Open
+- **Description:** shipped public pages reference the placeholder SVG files under
+  `assets/photos/**` when no CRM-published Supabase photos are available. The SVGs
+  explicitly identify themselves as placeholders in their `<title>` / `<desc>`.
+- **Why it matters:** production can launch with illustrated placeholder surfaces if CRM
+  photos have not been uploaded and published first.
+- **Fix direction:** publish real CRM photos before launch or replace the committed
+  fallback assets with approved production imagery.
+
+### B-13 — Dependency audit/scanning gap (Low) — Open
+- **Description:** the repo intentionally has no npm dependencies or lockfile, so
+  `npm audit --omit=dev --audit-level=moderate` exits with `ENOLOCK`. `deno outdated`
+  works and reported `@supabase/supabase-js` 2.105.3 current / 2.106.2 latest on
+  2026-06-01.
+- **Why it matters:** dependency and supply-chain drift are not automatically surfaced.
+- **Fix direction:** either accept this as a documented no-build tradeoff, or add a
+  lightweight CI/security scanning path that does not introduce a production build step.
+
 ---
 
 ## Items checked and NOT bugs
@@ -132,3 +221,6 @@ High / Medium / Low.
   asserted by `tests/maintenance-page.test.mjs`.
 - `js/pricing.js` / `js/calendar.js` imported by both browser and Node tests — the
   UMD wrapper is by design, not a duplication bug.
+- `send-sms` and `send-email` are not called from the public browser; they are
+  Diana-only direct staff endpoints and shared provider helpers are used internally by
+  notification flows.

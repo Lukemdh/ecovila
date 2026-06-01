@@ -133,4 +133,13 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ## Open questions for the owner (decisions not yet made)
 
-- None currently recorded.
+- Should the legacy `confirmare.html?id=<reservation_id>` cash actions be preserved with
+  a signed/hashed action token, or should all guest management move exclusively to the
+  newer phone-verified manage-token flow?
+- Should `index.html` remain the production homepage as a maintenance holding page for
+  launch, or should `site.html` become the public homepage before deployment?
+- Should the owner-retained unused media (`ecovilavideo.mp4`, `ecovilavideo-web.mp4`,
+  `assets/logo_small.png`) stay in production deploy artifacts even though they are not
+  referenced?
+- Should dependency pinning/security scanning stay manual because this is a no-build
+  static site, or should CI/security tooling be introduced before launch?

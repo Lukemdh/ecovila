@@ -47,6 +47,7 @@ one of these files:
 - `docs/project-overview.md`
 - `docs/project-structure.md`
 - `docs/project-history.md`   (append what changed this session)
+- `docs/production-readiness-audit.md` (update when an audit/readiness scan changes)
 - `docs/security.md`          (update if security posture changed)
 - `docs/bugs.md`              (update status of any bug touched)
 - `docs/decisions.md`         (log any decision made)
@@ -71,6 +72,8 @@ the same fact and update them too.
 - `docs/project-overview.md` — what the product is, features, domain, architecture. Update when product/architecture changes.
 - `docs/project-structure.md` — the file/dir map and data flow. Update when files move, are added, or removed.
 - `docs/project-history.md` — running historical log. Append every session.
+- `docs/production-readiness-audit.md` — latest pre-production scan. Update when a
+  broad audit or production-readiness check is performed.
 - `docs/security.md` — running security posture/findings log. Update when posture changes.
 - `docs/bugs.md` — running bug log. Update the status of any bug you touch.
 - `docs/decisions.md` — architectural decision log. Append when you make a decision.

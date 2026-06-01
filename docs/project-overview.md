@@ -133,3 +133,11 @@ homepage is currently a **maintenance holding page** (`index.html`); the full la
 lives at `site.html`. Staff-only Edge Functions now validate bearer tokens through
 Supabase Auth inside `requireStaffRole` before trusting `app_metadata.role`, in addition
 to their `verify_jwt = true` gateway configuration.
+
+The 2026-06-01 production-readiness audit found the automated checks green but marked
+the project **not ready for production** until the open High/Medium items in
+`docs/production-readiness-audit.md`, `docs/security.md`, and `docs/bugs.md` are fixed
+or explicitly accepted. The main blockers are CRM stored-XSS hardening, legacy
+confirmation actions that authorize by reservation UUID only, public security-definer
+RPC review, plaintext legacy cancellation tokens, server-side child-age validation, and
+the Maib `pg_cron` migration assumption.

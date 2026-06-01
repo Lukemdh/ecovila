@@ -1,8 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 170 files are tracked in git
-after the 2026-06-01 backend/test relocation cleanup.
+binaries, and gitignored `.superpowers/` / `.claude/`). 171 files are expected to be
+tracked after the 2026-06-01 production-readiness audit document is added.
 
 ## Annotated tree
 
@@ -85,6 +85,7 @@ ecovila/
 └── docs/                       # Documentation only
     ├── AGENTS.md               # Standing agent rules (this audit)
     ├── README.md, project-*.md, security.md, bugs.md, plan.md, decisions.md, conventions.md
+    ├── production-readiness-audit.md # 2026-06-01 pre-production scan + blockers
     ├── ECOVILA_PROJECT_BRIEF.md# Authoritative product/business spec
     ├── politica-confidentialitate.md, termeni-conditii.md  # Legal source copy (RO)
     ├── superpowers/
@@ -118,6 +119,7 @@ ecovila/
 | `supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
 | `package.json` | Scripts-only test manifest (`npm test`, `test:node`, `test:deno`); no dependencies or build step. |
 | `docs/ECOVILA_PROJECT_BRIEF.md` | Authoritative business/product spec. |
+| `docs/production-readiness-audit.md` | Latest pre-production audit summary, commands run, blockers, and optimization paths. |
 | `docs/superpowers/plans|specs/` | Historical per-step planning/design records. |
 
 ## Module loading model
@@ -151,3 +153,6 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
   found) but are owner-retained per the 2026-05-31 Step 6 decision in `docs/bugs.md`.
 - The Step 14 relocation moved backend code and Node tests from the former `docs/`
   subtrees into root-level `supabase/` and `tests/`, matching Supabase CLI defaults.
+- The 2026-06-01 production-readiness audit added no source files, only documentation.
+  Current open blockers are tracked in `docs/production-readiness-audit.md`,
+  `docs/security.md`, and `docs/bugs.md`.

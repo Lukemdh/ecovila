@@ -15,11 +15,12 @@ Storage + RLS) with **Deno/TypeScript Edge Functions**.
 
 ## Prerequisites
 
-Verified versions present on the audit machine (2026-05-31):
+Verified versions present on the audit machine (2026-06-01):
 
 | Tool | Version (verified) | Used for |
 |------|--------------------|----------|
 | Node.js | v24.14.1 | Running the frontend test suite (`node:test`, `.mjs`) |
+| npm | 11.11.0 | Running root scripts |
 | Deno | 2.6.5 | Edge Function runtime, typecheck, lint, and Deno tests |
 | Supabase CLI | 2.101.0 | DB migrations and Edge Function deploy |
 
@@ -138,16 +139,40 @@ deno lint
 # → passes, no problems
 ```
 
+**Format (Deno):**
+```sh
+cd supabase/functions
+deno fmt --check
+# -> passes
+```
+
 There is no linter or typechecker configured for the browser JS.
+
+**Dependency/security audit notes:**
+```sh
+cd supabase/functions && deno outdated
+# 2026-06-01: @supabase/supabase-js current 2.105.3, latest 2.106.2
+
+npm audit --omit=dev --audit-level=moderate
+# not available: npm returns ENOLOCK because the repo intentionally has no lockfile
+```
+
+See `docs/production-readiness-audit.md` for the full pre-production scan.
 
 ---
 
 ## Deployment
 
+> 2026-06-01 production-readiness status: do **not** launch until the open High/Medium
+> findings in `docs/production-readiness-audit.md`, `docs/security.md`, and
+> `docs/bugs.md` are resolved or explicitly accepted by the owner.
+
 - **Frontend:** copy the static files to tophost.md (shared cPanel). No build, no
   server runtime. (Brief Step 12 — not yet performed.)
 - **Database:** apply migrations with the Supabase CLI
-  (`supabase db push` against `supabase/migrations/`).
+  (`supabase db push` against `supabase/migrations/`). Before pushing to production,
+  resolve B-11: the Maib cleanup migrations call `cron.schedule`, but the migration set
+  does not currently enable `pg_cron`.
 - **Edge Functions:** deploy with the Supabase CLI from `supabase/` per
   `supabase/config.toml` (which sets per-function `verify_jwt`). Set all Edge
   Function secrets listed above before invoking payment/notification functions.

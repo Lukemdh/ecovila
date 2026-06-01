@@ -32,6 +32,7 @@ Do not skip ahead, do not batch steps, do not start a step whose dependencies ar
 | `docs/project-overview.md` | Product, features, domain, architecture | product/architecture changes |
 | `docs/project-structure.md` | File/dir map + data flow | files added/moved/removed |
 | `docs/project-history.md` | Running historical log | every session (append) |
+| `docs/production-readiness-audit.md` | Latest pre-production scan + blockers | broad audit or production-readiness scan |
 | `docs/security.md` | Security posture/findings log | security posture changes |
 | `docs/bugs.md` | Known-bug log | a bug is found or its status changes |
 | `docs/decisions.md` | Architectural decision log | a decision is made |
@@ -52,6 +53,7 @@ of these files:
 - `docs/project-overview.md`
 - `docs/project-structure.md`
 - `docs/project-history.md`   (append what changed this session)
+- `docs/production-readiness-audit.md` (update when an audit/readiness scan changes)
 - `docs/security.md`          (update if security posture changed)
 - `docs/bugs.md`              (update status of any bug touched)
 - `docs/decisions.md`         (log any decision made)
@@ -66,7 +68,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → COMPLETE**
+**CURRENT STEP → 15**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -84,6 +86,10 @@ together with the code change for that step.
 | 12 | Harden CORS allowlist across all Edge Functions | Medium | DONE |
 | 13 | Defense-in-depth for `requireStaffRole` | Medium | DONE |
 | 14 | Relocate backend/tests out of `docs/` — owner-gated | High | DONE |
+| 15 | Harden CRM rendering against stored XSS | High | TODO |
+| 16 | Replace legacy UUID-only guest confirmation actions | High | TODO |
+| 17 | Harden Supabase RPC/token/migration posture | Medium | TODO |
+| 18 | Production dependency, asset, and ops gates | Medium | TODO |
 
 Statuses: TODO | IN PROGRESS | DONE.
 
@@ -474,6 +480,151 @@ Statuses: TODO | IN PROGRESS | DONE.
 
 ---
 
+### STEP 15 — Harden CRM rendering against stored XSS
+- Status: TODO
+- Goal: Remove guest-controlled HTML injection risk from authenticated CRM surfaces
+  (B-9/S-8).
+- Depends on: STEPs 1–14 | Why now: highest-impact open production blocker from the
+  2026-06-01 readiness audit.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`,
+  `docs/production-readiness-audit.md`, `docs/security.md` (S-8), `docs/bugs.md`
+  (B-9), `admin/js/crm-calendar.js`, `admin/js/crm-dashboard.js`,
+  `admin/js/crm-sidebar.js`, `admin/js/crm-daily.js`, `admin/js/crm-photos.js`,
+  `admin/js/crm-pricing.js`, `supabase/functions/_shared/reservations.ts`,
+  `tests/admin-crm.test.mjs`, `supabase/functions/tests/reservations.test.ts`.
+- In scope: CRM HTML rendering of reservation/guest data; shared escaping/DOM helper;
+  server-side validation for guest name fields if needed; regression tests.
+- Out of scope: redesigning CRM UI or changing reservation schema beyond validation.
+- Actions:
+  1. Add tests that prove a payload like `<img src=x onerror=alert(1)>` is escaped or
+     rendered as text in calendar cards, pending-cash cards, search results, and daily
+     cards.
+  2. Add a shared CRM escaping/rendering helper or switch affected templates to DOM
+     nodes + `textContent`.
+  3. Apply the helper consistently to guest names, phones, room labels derived from DB,
+     and any other untrusted text used in CRM `innerHTML`.
+  4. Add/adjust server-side validation so public guest names cannot store raw HTML
+     control characters where business requirements do not need them.
+- Verification:
+  - `npm run test:node` -> all Node tests pass.
+  - `npm run test:deno` -> all Deno tests pass if server validation changed.
+  - `cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*')`
+    and `deno lint` pass if server code changed.
+- Docs to update: `production-readiness-audit.md`, `security.md` (S-8), `bugs.md`
+  (B-9), `conventions.md`, `project-history.md`, `plan.md`; check README,
+  project-overview, project-structure, and decisions.
+- Suggested commit message: `fix: escape crm reservation fields`
+
+---
+
+### STEP 16 — Replace legacy UUID-only guest confirmation actions
+- Status: TODO
+- Goal: Remove the reservation-UUID-only pending status, extend, and cancel actions from
+  the guest confirmation flow (B-8/S-7).
+- Depends on: STEP 15 | Why now: second High production blocker; overlaps with token
+  posture and guest management.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`,
+  `docs/production-readiness-audit.md`, `docs/security.md` (S-7/S-10), `docs/bugs.md`
+  (B-8), `js/confirmare.js`, `js/checkout.js`, `js/supabase.js`,
+  `supabase/functions/_shared/reservationManage.ts`,
+  `supabase/functions/reservation-manage-details/index.ts`,
+  `supabase/functions/reservation-cancel/index.ts`,
+  `supabase/migrations/20260511120000_step6_guest_confirmation.sql`,
+  `supabase/migrations/20260531083527_online_cancellation_policy.sql`,
+  `tests/checkout.test.mjs`, `tests/maib-checkout.test.mjs`,
+  `tests/reservation-lookup-refunds.test.mjs`.
+- In scope: confirmation links, pending status lookup, cash extension, guest pending
+  cancellation, manage-token or signed-token enforcement, tests.
+- Out of scope: staff CRM refund authority and Maib provider behavior.
+- Actions:
+  1. Decide whether checkout/confirmation should mint a manage token immediately, a
+     separate signed action token, or force phone verification before actions. Record any
+     owner/product decision in `docs/decisions.md`.
+  2. Add failing tests proving UUID-only calls are rejected.
+  3. Implement the smallest token-backed flow that preserves cash timer and card polling
+     UX.
+  4. Revoke or replace the legacy UUID-only RPCs in a new migration.
+- Verification:
+  - `npm test` passes.
+  - New tests prove a bare reservation ID cannot extend/cancel.
+  - Manual/static grep confirms `extend_cash_reservation` and
+    `cancel_pending_reservation` are no longer publicly used without token proof.
+- Docs to update: `production-readiness-audit.md`, `security.md` (S-7 and possibly
+  S-10), `bugs.md` (B-8), `project-overview.md`, `project-structure.md`,
+  `project-history.md`, `decisions.md` if a product decision is made, `plan.md`.
+- Suggested commit message: `fix: require token proof for guest confirmation actions`
+
+---
+
+### STEP 17 — Harden Supabase RPC/token/migration posture
+- Status: TODO
+- Goal: Resolve the Medium Supabase production risks: public security-definer RPC review,
+  plaintext legacy cancellation tokens, server-side child-age validation, and Maib cron
+  extension assumptions (S-9/S-10/B-10/B-11).
+- Depends on: STEP 16 | Why now: these can block or weaken production rollout even after
+  the High app-level risks are fixed.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`,
+  `docs/production-readiness-audit.md`, `docs/security.md` (S-9/S-10), `docs/bugs.md`
+  (B-10/B-11), all `supabase/migrations/*.sql`,
+  `supabase/functions/_shared/reservations.ts`, `tests/supabase-foundation.test.mjs`,
+  `tests/anulare.test.mjs`, `supabase/functions/tests/reservations.test.ts`.
+- In scope: new migrations, RPC grants/search paths/schema placement, hashed
+  cancellation-token lookup, child-age validation, pg_cron/cron setup or replacement.
+- Out of scope: payment-provider business rules unless needed for the cron cleanup path.
+- Actions:
+  1. Add tests around child-age validation and token lookup behavior.
+  2. Add a migration that either enables required cron extensions before `cron.schedule`
+     is used or removes the SQL cron assumption in favor of scheduled Edge Functions.
+  3. Move or wrap privileged helper functions so the public `security definer` surface is
+     minimal and documented.
+  4. Migrate legacy cancellation tokens to a hash-based lookup without exposing
+     plaintext after creation.
+- Verification:
+  - `npm test` passes.
+  - `cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*')`
+    passes.
+  - `cd supabase/functions && deno lint` passes.
+  - Static grep confirms no new unreviewed public `security definer` grants.
+- Docs to update: `production-readiness-audit.md`, `security.md`, `bugs.md`,
+  `conventions.md`, `project-overview.md`, `project-structure.md`,
+  `project-history.md`, `plan.md`; check README and decisions.
+- Suggested commit message: `fix: harden supabase production posture`
+
+---
+
+### STEP 18 — Production dependency, asset, and ops gates
+- Status: TODO
+- Goal: Resolve the remaining production-readiness tasks that are not core app logic:
+  dependency pinning/scanning, placeholder imagery, live provider/secret checklist, and
+  launch homepage decision (S-11/B-12/B-13).
+- Depends on: STEP 17 | Why now: final launch polish and operational confidence.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`,
+  `docs/production-readiness-audit.md`, `docs/bugs.md` (B-12/B-13),
+  `docs/security.md` (S-11), `docs/decisions.md`, `docs/README.md`,
+  `site.html`, `index.html`, `assets/photos/**`, `supabase/functions/deno.json`,
+  `supabase/functions/import_map.json`.
+- In scope: exact Supabase JS version decision, optional SRI/vendor strategy,
+  provider-secret rollout checklist, placeholder-photo replacement/publish check,
+  launch homepage decision docs/tests.
+- Out of scope: redesigning the public site.
+- Actions:
+  1. Decide and implement the Supabase JS pinning/update strategy.
+  2. Decide whether `index.html` remains a maintenance page for production launch.
+  3. Replace fallback placeholder imagery or document/publish real CRM photos as a
+     production prerequisite.
+  4. Add/record any final operational smoke commands for tophost and deployed Supabase
+     Edge Functions.
+- Verification:
+  - `npm test` passes.
+  - `cd supabase/functions && deno outdated` is reviewed and documented.
+  - Local/static page smoke still returns 200 for launch pages and required assets.
+- Docs to update: all main docs as affected, especially `production-readiness-audit.md`,
+  `README.md`, `bugs.md`, `security.md`, `decisions.md`, `project-history.md`, and
+  `plan.md`.
+- Suggested commit message: `chore: close production readiness gates`
+
+---
+
 ## (F) SESSION LOG (append; newest last)
 
 - **2026-05-31 — Phase 0 audit & plan (no step executed).** Performed full repository
@@ -500,3 +651,11 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 12 (commit: 472e479).** Centralized Edge Function CORS behind default EcoVila origins plus `ECOVILA_ALLOWED_ORIGINS`; verified RED/GREEN CORS tests, `deno check`, clean `deno lint`, 35 Deno tests, 171 Node tests, local CORS request checks, and Chrome smoke of booking/checkout/CRM pages; updated README, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked project-overview and bugs with no changes needed.
 - **2026-06-01 — STEP 13 (commit: 1d035da).** Hardened `requireStaffRole` with Supabase Auth token validation, added forged-role Deno coverage, verified `deno check`, clean `deno lint`, and `npm test` (171 Node + 36 Deno); updated README, project-overview, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked bugs with no changes needed.
 - **2026-06-01 — STEP 14 (commit: ad3188f).** Relocated the Supabase workspace and Node tests to root-level `supabase/` and `tests/`; verified 171 Node tests, 36 Deno tests, `deno check`, `deno lint`, and no stale documentation-prefixed backend/test paths; updated README, project-structure, project-history, bugs, decisions, conventions, plan, package scripts, and test paths; checked AGENTS, project-overview, and security with no extra changes needed.
+- **2026-06-01 — Production readiness audit (docs only, no code changed).** Scanned the
+  repo after Step 14, verified `npm test` (171 Node + 36 Deno), `deno lint`,
+  `deno check`, `deno fmt --check`, local HTML references, local static HEAD checks, a
+  secret-pattern scan, and `deno outdated`; `npm audit` could not run because the repo
+  has no lockfile. Added `docs/production-readiness-audit.md`, opened B-8 through B-13
+  and S-7 through S-11, set CURRENT STEP to 15, and added Steps 15-18 for the remaining
+  production hardening. Updated README, project-overview, project-structure,
+  project-history, security, bugs, decisions, conventions, AGENTS, and plan.

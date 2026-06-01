@@ -74,6 +74,10 @@ sessions append to the running log at the bottom.
 - The backend workspace (`supabase/`) and Node tests (`tests/`) now live at the repo
   root. They previously lived under `docs/` after the 2026-05-16 "docs reorg"
   (`ca4dfc5`), and Step 14 moved them back to conventional locations.
+- The 2026-06-01 production-readiness audit found green automated checks but open
+  production blockers: CRM stored-XSS risk, legacy UUID-only confirmation actions,
+  public security-definer RPC review, plaintext legacy cancellation tokens, server-side
+  child-age validation drift, and the Maib `pg_cron` migration assumption.
 
 ## Notable decisions reconstructed from history
 
@@ -150,3 +154,13 @@ sessions append to the running log at the bottom.
   tokens through Supabase Auth before reading `app_metadata.role`, updated staff
   functions to await the async guard, added Deno coverage for forged role-claim
   rejection, and added `SUPABASE_ANON_KEY` to the Edge Function secret template/docs.
+- 2026-06-01 — STEP 14 cleanup. Relocated the Supabase workspace and Node contract tests
+  to root-level `supabase/` and `tests/`, updated path-sensitive docs/tests/scripts, and
+  verified 171 Node tests, 36 Deno tests, `deno check`, `deno lint`, and no stale
+  `docs/(tests|supabase)` references.
+- 2026-06-01 — Production readiness audit. Performed a docs-only pre-production scan
+  after Step 14: verified `npm test`, `deno lint`, `deno check`, `deno fmt --check`,
+  local HTML references, local static HEAD checks, a secret-pattern scan, and
+  `deno outdated`; `npm audit` could not run without a lockfile. Added
+  `docs/production-readiness-audit.md`, opened B-8 through B-13 and S-7 through S-11,
+  and extended `docs/plan.md` with Steps 15-18 for the remaining launch blockers.

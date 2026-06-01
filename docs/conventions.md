@@ -29,8 +29,16 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - All Supabase access from the browser goes through `js/supabase.js` helpers — do not
   call the raw client from feature scripts. Pure pricing/date math lives in
   `js/pricing.js`; keep it side-effect-free (it is unit-tested directly).
-- No `console.*` noise, no `debugger`, no `TODO/FIXME` markers exist today — keep it that
-  way. Default to no comments; comment only non-obvious *why*.
+- Any guest-controlled text rendered in the CRM must be assigned with `textContent` or a
+  shared escaping helper before it reaches `innerHTML`. Treat reservation names, phones,
+  notes, photo alt text, holiday labels, and any DB text field as untrusted.
+- Public guest actions that mutate reservation state must be authorized by a scoped token
+  or equivalent proof, not by reservation UUID alone. Legacy confirmation RPCs are an
+  open exception tracked as B-8/S-7.
+- Browser code should have no `console.*` noise, no `debugger`, and no `TODO/FIXME`
+  markers. Edge Functions may use concise operational `console.info` / `console.error`
+  logging for provider callbacks and notification failures, but do not log secrets or
+  full guest payloads. Default to no comments; comment only non-obvious *why*.
 
 ## Edge Functions (Deno/TypeScript)
 - One `index.ts` entrypoint per function under `supabase/functions/<name>/`; shared
@@ -55,8 +63,13 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   Browser code may disable buttons and show policy copy, but must not be the only
   enforcement point. Staff Maib refunds remain Diana-only through `maib-refund` and do
   not reuse the public guest refund window.
+- Server-side public reservation creation must enforce the same domain constraints as
+  the public UI. Child ages are supposed to be 1-17; the current 0/18 server acceptance
+  is tracked as B-10.
 - Secrets/signatures: hash tokens before storage; compare secrets/signatures with the
   constant-time helper; verify external callbacks (Maib) by signature + replay window.
+- New bearer-style guest tokens should be stored hashed. The legacy plaintext
+  `cancellation_tokens.token` column is an open exception tracked as S-10.
 - Declare each function's `verify_jwt` in `supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
 - Staff-only functions must `await requireStaffRole(request, [...])`; the helper validates
@@ -79,6 +92,13 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   migration that has shipped — add a new one.
 - RLS is enabled on all tables; access is by role (`anon` / `diana` / `angela`). Public
   reads of guest data must go through safe RPCs, not direct table selects.
+- Migrations that use extensions must create/enable those extensions explicitly before
+  first use. The current Maib `cron.schedule` migrations assume `pg_cron` exists and are
+  tracked as B-11.
+- Avoid `security definer` functions in exposed schemas. If a public RPC truly needs
+  elevated privileges, keep its return shape minimal, set an explicit `search_path`, use
+  fully qualified table names, grant only required roles, and document the reason in
+  `docs/security.md`.
 
 ## Tests
 - Root `package.json` is allowed only for dependency-free test scripts. It must not add

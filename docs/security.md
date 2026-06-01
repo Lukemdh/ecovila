@@ -1,6 +1,6 @@
 # Security Posture & Findings — EcoVila
 
-Audit date: 2026-05-31. This is a running log; future sessions update statuses and add
+Audit date: 2026-06-01. This is a running log; future sessions update statuses and add
 findings. Severities: Critical / High / Medium / Low / Info.
 
 ## Summary table
@@ -13,9 +13,15 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
 | S-6 | `no-explicit-any` lint violations weakened type safety on server code | Low | `supabase/functions/*/index.ts` | Fixed |
+| S-7 | Legacy confirmation RPCs can be used with reservation UUID only | High | `js/confirmare.js`, `js/supabase.js`, `20260511120000_step6_guest_confirmation.sql` | Open |
+| S-8 | CRM renders guest-controlled reservation fields through `innerHTML` | High | `admin/js/crm-dashboard.js`, `admin/js/crm-sidebar.js`, `admin/js/crm-daily.js` | Open |
+| S-9 | Anonymous `security definer` RPCs remain in exposed `public` schema | Medium | `supabase/migrations/*.sql` | Open |
+| S-10 | Legacy cancellation tokens are stored plaintext | Medium | `public.cancellation_tokens`, `_shared/reservations.ts` | Open |
+| S-11 | Floating Supabase JS major tag creates supply-chain drift | Low | HTML CDN tags, Deno import map | Open |
 
-No Critical or High findings were identified. Several controls are implemented well
-(see "Positive controls" below).
+No Critical findings were identified. Two High findings are open and should block
+production launch until fixed or explicitly accepted. See
+`docs/production-readiness-audit.md` for the 2026-06-01 scan evidence.
 
 ## Findings detail
 
@@ -70,6 +76,67 @@ chance of unchecked data handling in privileged server code.
   client/result aliases plus local row, query-builder, and payload shapes. `deno lint`
   now passes with 0 problems.
 
+### S-7 — Legacy confirmation RPCs are reservation-UUID-only (High / Open)
+The current non-managed confirmation path still calls `get_pending_reservation_status`,
+`extend_cash_reservation`, and `cancel_pending_reservation` by reservation UUID from
+`confirmare.html?id=<reservation_id>`. Those SQL functions are `security definer`,
+granted to `anon`/`authenticated`, and do not require the newer manage token or phone
+verification.
+- **Why it matters:** UUID guessing is impractical, but a leaked confirmation URL gives
+  anyone with the URL the ability to extend or cancel a pending reservation. This is a
+  bearer-link design without a token scope or expiry distinct from the reservation ID.
+- **Root cause:** the newer reservation-management flow added hashed manage tokens but
+  did not replace the older confirmation-page RPCs.
+- **Required fix:** require a manage token or signed one-time action token for pending
+  status, extension, and cancellation; then revoke/deprecate the UUID-only RPCs.
+
+### S-8 — Stored XSS risk in CRM rendering (High / Open)
+Several CRM surfaces build `innerHTML` with reservation fields such as
+`guest_first_name`, `guest_last_name`, and `guest_phone`. `guestName()` returns raw DB
+strings, and public reservation creation trims but does not HTML-escape or restrict name
+characters.
+- **Why it matters:** a guest can submit markup in their name. When staff open the CRM,
+  that markup can execute in the authenticated admin origin, potentially exposing
+  session state or triggering privileged staff actions.
+- **Evidence:** unescaped template interpolation appears in
+  `admin/js/crm-dashboard.js` reservation cards/pending cards,
+  `admin/js/crm-sidebar.js` search results, and `admin/js/crm-daily.js` reception cards.
+  `admin/js/crm-photos.js` and `admin/js/crm-pricing.js` already have local
+  `escapeHtml` helpers, so a safe pattern exists.
+- **Required fix:** render guest-controlled fields with `textContent` or a shared
+  escaping helper, validate guest names server-side, and add regression tests with a
+  payload such as `<img src=x onerror=alert(1)>`.
+
+### S-9 — Exposed-schema `security definer` RPCs (Medium / Open)
+The migration set contains `security definer` functions in the `public` schema and grants
+several to `anon`/`authenticated`, including availability, token lookup, pending-status,
+extension, and cancellation RPCs.
+- **Why it matters:** Supabase guidance treats security-definer functions in exposed
+  schemas as risky. The current functions set explicit `search_path` and mostly use
+  qualified table names, which helps, but the exposed privileged surface is still larger
+  than it needs to be.
+- **Required fix:** audit each RPC, move privileged helpers to a private schema or Edge
+  Functions where possible, keep only deliberately public wrappers in `public`, and
+  preserve explicit `search_path` settings.
+
+### S-10 — Plaintext legacy cancellation tokens (Medium / Open)
+The newer reservation lookup codes and manage tokens are hashed, but
+`public.cancellation_tokens.token` stores the legacy cancellation bearer token plaintext.
+- **Why it matters:** a DB read leak would expose active cancellation links. This is a
+  lower-impact issue than service-role exposure but inconsistent with the newer hashed
+  token model.
+- **Required fix:** add a token-hash column, look up by hash, return plaintext only at
+  creation time, and migrate existing active tokens deliberately.
+
+### S-11 — Floating Supabase JS major tag (Low / Open)
+Browser pages load `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`; Deno imports
+`npm:@supabase/supabase-js@2` and the current lock resolves to 2.105.3. On 2026-06-01,
+`deno outdated` reported 2.106.2 as the latest.
+- **Why it matters:** the browser CDN and Deno lock can drift from each other, and a
+  floating major tag makes exact production behavior harder to reproduce.
+- **Required fix:** pin/review an exact Supabase JS version for browser and Deno, then
+  decide whether CDN SRI or local vendoring fits the no-build hosting model.
+
 ## Positive controls (verified)
 
 - **Manage tokens & lookup codes are hashed in the DB** (`_shared/reservationManage.ts`
@@ -83,8 +150,10 @@ chance of unchecked data handling in privileged server code.
 - **RLS** with public/`diana`/`angela` roles is defined in the foundation migration and
   asserted by `tests/supabase-foundation.test.mjs` ("adds role-aware policies…",
   "public-safe availability RPC without exposing guest reservation details").
-- **Guest-created reservation fields are sanitized** server-side
-  (`buildReservationRows` "rejects unsafe guest-created reservation fields", tested).
+- **Guest-created reservation privileged fields are sanitized** server-side
+  (`buildReservationRows` rejects unsafe guest-created reservation fields such as
+  payment status, notes, staff-created flags, and conference-room flags). Text fields
+  still need XSS hardening before CRM rendering (S-8).
 - **Guest cancellation/refund windows are enforced server-side** in both
   `reservation-cancel` and the latest `cancel_reservation_by_token` RPC; browser UI copy
   mirrors the policy but is not the control point. Staff Maib refunds still require the
@@ -96,7 +165,6 @@ chance of unchecked data handling in privileged server code.
 
 ## Notes / not assessed
 
-- Dependency CVEs: no lockfile of pinned versions for the frontend (CDN `@2` floating
-  tag); Deno resolves `npm:@supabase/supabase-js@2` at build. A floating major tag means
-  transitive versions are not pinned (Low — supply-chain drift).
+- Dependency CVEs: no npm dependency audit is available because there is no npm
+  lockfile. Deno dependency drift was checked with `deno outdated` on 2026-06-01.
 - No automated dependency or secret scanning is configured (no CI found).
