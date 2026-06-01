@@ -624,30 +624,41 @@
     return groupPublishedPhotos(client, photos);
   }
 
-  function fetchPendingReservationStatus(client, reservationId) {
-    return unwrapSupabaseResult(
-      client.rpc('get_pending_reservation_status', { res_id: reservationId }),
-    );
+  async function fetchPendingReservationStatus(client, input) {
+    const details = await fetchManagedReservationDetails(client, input);
+    const summary = details?.reservation || {};
+    const primary = Array.isArray(details?.reservations) ? details.reservations[0] || {} : {};
+
+    return [{
+      payment_type: summary.paymentType || primary.payment_type || '',
+      payment_status: summary.paymentStatus || primary.payment_status || '',
+      cash_expires_at: primary.cash_expires_at || null,
+      cash_extended: Boolean(primary.cash_extended),
+    }];
   }
 
-  async function extendCashReservation(client, reservationId) {
-    const result = await client.rpc('extend_cash_reservation', { res_id: reservationId });
+  async function extendCashReservation(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-extend-cash', {
+      body: {
+        manageToken: input?.manageToken || '',
+        reservationId: input?.reservationId || '',
+      },
+    });
 
     if (result.error) {
       throw result.error;
     }
 
-    return result.data;
+    return result.data?.cash_expires_at || null;
   }
 
-  async function cancelPendingReservation(client, reservationId) {
-    const result = await client.rpc('cancel_pending_reservation', { res_id: reservationId });
-
-    if (result.error) {
-      throw result.error;
-    }
-
-    return result.data;
+  async function cancelPendingReservation(client, input) {
+    const result = await cancelManagedReservation(client, input);
+    return result?.status === 'cancelled' || result?.ok === true;
   }
 
   async function cancelReservationByToken(client, token, phone) {

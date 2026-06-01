@@ -1,23 +1,23 @@
 # Production Readiness Audit — 2026-06-01
 
 Scope: repository-wide source, docs, migrations, Edge Functions, static pages, tests,
-security-sensitive flows, unused assets, and deployment assumptions. This pass changed
-documentation only; no application code was modified.
+security-sensitive flows, unused assets, and deployment assumptions. Step 16 later
+updated application code to close the legacy UUID-only confirmation-actions blocker.
 
 ## Readiness verdict
 
-**Not production-ready yet.** The automated suites are green, and Step 15 fixed the CRM
-stored-XSS blocker, but the audit still has open High/Medium blockers that should be
-fixed before public launch:
+**Not production-ready yet.** The automated suites are green, and Steps 15-16 fixed the
+open High blockers, but Medium production blockers still need to be fixed or explicitly
+accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 173 Node + 36 Deno tests pass |
+| Test suite | Green | `npm test` -> 175 Node + 37 Deno tests pass |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
 | Static local references | Green | 10 HTML files checked; all local `href`/`src`/`poster` targets exist |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
 | Secret scan | Mostly clean | Regex scan found only the intended public Supabase anon JWT |
-| Security hardening | Blocked | S-7, S-9, S-10 remain open |
+| Security hardening | Blocked | S-9 and S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
 | Production content/assets | Not ready | Placeholder SVG photos remain the fallback public imagery |
 | Dependency audit | Incomplete | `npm audit` cannot run without a lockfile; Deno dependency is slightly behind latest |
@@ -26,16 +26,16 @@ fixed before public launch:
 
 ```sh
 npm test
-# 173 Node tests + 36 Deno tests passed
+# 175 Node tests + 37 Deno tests passed after Step 16
 
 cd supabase/functions && deno lint
-# Checked 27 files
+# Checked 28 files after Step 16
 
 cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*')
 # exit 0
 
 cd supabase/functions && deno fmt --check
-# Checked 29 files
+# Checked 30 files after Step 16
 
 cd supabase/functions && deno outdated
 # npm:@supabase/supabase-js current 2.105.3, latest 2.106.2
@@ -57,17 +57,20 @@ Additional manual/static checks:
 
 ## Production blocker tracking
 
-### 1. Legacy confirmation RPCs are UUID-only
+### 1. Legacy confirmation RPCs were UUID-only — fixed 2026-06-01
 
-`confirmare.html?id=<reservation_id>` still uses
+Formerly, `confirmare.html?id=<reservation_id>` used
 `get_pending_reservation_status`, `extend_cash_reservation`, and
-`cancel_pending_reservation` through `js/supabase.js`. The SQL functions are granted to
-`anon`/`authenticated` and authorize only by reservation UUID. UUID guessing is unlikely,
-but any leaked confirmation URL can extend or cancel a pending reservation without the
-newer manage token.
+`cancel_pending_reservation` through `js/supabase.js`. The SQL functions were granted to
+`anon`/`authenticated` and authorized only by reservation UUID. UUID guessing was
+unlikely, but any leaked confirmation URL could extend or cancel a pending reservation
+without the newer manage token.
 
-Track as: B-8 / S-7. Next step: move these actions behind a manage token or signed
-one-time token, then deprecate the UUID-only RPCs.
+Status: fixed in Step 16. `create-reservation` now creates a hashed manage token,
+confirmation links require `id` + `manage`, status/extension/cancellation use
+token-backed Edge Functions, and
+`20260601173901_require_manage_token_confirmation_actions.sql` drops the legacy RPC
+signatures.
 
 ### 2. CRM renders guest-controlled fields through `innerHTML` — fixed 2026-06-01
 
@@ -141,15 +144,16 @@ Track as: B-10. Next step: tighten server-side validation to 1-17 and add Deno c
 - Staff-only functions verify Supabase Auth tokens before reading `app_metadata.role`.
 - Maib callback signatures use HMAC verification and replay-window checks.
 - Manage tokens and lookup codes are hashed.
+- Confirmation-page status, cash extension, and guest cancellation now require a manage
+  token; a bare reservation ID is no longer enough to act on a booking.
 - Guest cancellation/refund policy is enforced server-side in the newer Edge Function
   flow.
 
 ## Recommended next sequence
 
-1. Fix B-8/S-7 and S-10 together: align all guest management around hashed/signed
-   tokens, then remove or lock down legacy UUID-only RPCs.
-2. Fix B-11/S-9 before applying migrations to production: confirm extension posture and
+1. Fix B-11/S-9 before applying migrations to production: confirm extension posture and
    reduce exposed security-definer surface.
+2. Migrate S-10 legacy cancellation links to hashed token lookup.
 3. Fix B-10 and add server-side contract tests for public booking payload constraints.
 4. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
    maintenance `index.html` is still the desired launch homepage.

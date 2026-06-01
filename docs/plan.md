@@ -68,7 +68,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → 16**
+**CURRENT STEP → 17**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -87,7 +87,7 @@ together with the code change for that step.
 | 13 | Defense-in-depth for `requireStaffRole` | Medium | DONE |
 | 14 | Relocate backend/tests out of `docs/` — owner-gated | High | DONE |
 | 15 | Harden CRM rendering against stored XSS | High | DONE |
-| 16 | Replace legacy UUID-only guest confirmation actions | High | TODO |
+| 16 | Replace legacy UUID-only guest confirmation actions | High | DONE |
 | 17 | Harden Supabase RPC/token/migration posture | Medium | TODO |
 | 18 | Production dependency, asset, and ops gates | Medium | TODO |
 
@@ -521,7 +521,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 16 — Replace legacy UUID-only guest confirmation actions
-- Status: TODO
+- Status: DONE
 - Goal: Remove the reservation-UUID-only pending status, extend, and cancel actions from
   the guest confirmation flow (B-8/S-7).
 - Depends on: STEP 15 | Why now: second High production blocker; overlaps with token
@@ -547,6 +547,10 @@ Statuses: TODO | IN PROGRESS | DONE.
   3. Implement the smallest token-backed flow that preserves cash timer and card polling
      UX.
   4. Revoke or replace the legacy UUID-only RPCs in a new migration.
+- Completion note: chose immediate hashed manage tokens for confirmation actions. Cash
+  and Maib confirmation links now include `id` + `manage`, `confirmare.js` rejects bare
+  reservation IDs, status/extension/cancellation use token-backed Edge Functions, and a
+  new migration drops the UUID-only RPC signatures.
 - Verification:
   - `npm test` passes.
   - New tests prove a bare reservation ID cannot extend/cancel.
@@ -667,3 +671,4 @@ Statuses: TODO | IN PROGRESS | DONE.
   36 Deno tests, `deno check`, and `deno lint`; updated production-readiness-audit,
   security, bugs, decisions, conventions, project-history, README, project-overview, and
   plan; checked project-structure with no changes needed.
+- **2026-06-01 — STEP 16 (commit: pending).** Required manage-token proof for confirmation status, cash extension, and guest cancellation; verified 175 Node tests, 37 Deno tests, `deno check`, `deno lint`, `deno fmt --check`, and static greps; updated README, project-overview, project-structure, project-history, production-readiness-audit, security, bugs, decisions, conventions, and plan.

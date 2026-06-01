@@ -7,12 +7,14 @@ import {
   composeCashExpiryReminder,
   dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
+import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
 import type { NotificationMessage, NotificationReservation } from '../_shared/notifications.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
   gte(column: string, value: unknown): QueryBuilder<T>;
@@ -92,8 +94,13 @@ async function sendCashExpiryWarnings(client: SupabaseClient, now: Date) {
     client,
     (data || []).map(withRoomFields),
     'cash_expiry_warning',
-    (reservation) =>
-      composeCashExpiryReminder(reservationForNotification(reservation), { siteUrl: getSiteUrl() }),
+    async (reservation) => {
+      const manageToken = await createManageTokenForNotification(client, reservation.guest_phone);
+      return composeCashExpiryReminder(reservationForNotification(reservation), {
+        manageToken,
+        siteUrl: getSiteUrl(),
+      });
+    },
   );
 }
 
@@ -127,7 +134,9 @@ async function notifyEach(
   client: SupabaseClient,
   reservations: ReminderReservationRow[],
   eventType: string,
-  createMessage: (reservation: ReminderReservationRow) => NotificationMessage,
+  createMessage: (
+    reservation: ReminderReservationRow,
+  ) => NotificationMessage | Promise<NotificationMessage>,
 ) {
   const results: NotificationResult[] = [];
 
@@ -137,7 +146,7 @@ async function notifyEach(
         client,
         reservation.id,
         eventType,
-        createMessage(reservation),
+        await createMessage(reservation),
       );
       results.push({
         reservationId: reservation.id,
@@ -155,6 +164,18 @@ async function notifyEach(
   }
 
   return results;
+}
+
+async function createManageTokenForNotification(client: SupabaseClient, phone: string) {
+  const manageToken = await buildManageTokenRow(phone);
+  const { error } = await table(client, 'reservation_manage_tokens')
+    .insert(manageToken.row);
+
+  if (error) {
+    throw new Error(error.message || 'Could not create reservation manage token.');
+  }
+
+  return manageToken.token;
 }
 
 function reservationForNotification(reservation: ReminderReservationRow): NotificationReservation {

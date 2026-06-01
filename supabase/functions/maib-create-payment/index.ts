@@ -99,12 +99,9 @@ Deno.serve(async (request) => {
     ).toISOString();
     const firstReservation = reservations[0];
     const siteUrl = getSiteUrl();
-    const successUrl = `${siteUrl}/confirmare.html?id=${
-      encodeURIComponent(primaryReservationId)
-    }&payment=success`;
-    const failUrl = `${siteUrl}/confirmare.html?id=${
-      encodeURIComponent(primaryReservationId)
-    }&payment=failed`;
+    const manageToken = String(body?.manageToken || '').trim();
+    const successUrl = confirmationUrl(siteUrl, primaryReservationId, manageToken, 'success');
+    const failUrl = confirmationUrl(siteUrl, primaryReservationId, manageToken, 'failed');
     const checkout = await createMaibCheckout({
       amount,
       bookingGroupId,
@@ -244,6 +241,24 @@ function normalizePrimaryReservationId(value: unknown, reservations: PayableRese
   const requested = String(value || '').trim();
   const ids = reservations.map((reservation) => String(reservation.id));
   return ids.includes(requested) ? requested : ids[0];
+}
+
+function confirmationUrl(
+  siteUrl: string,
+  reservationId: string,
+  manageToken: string,
+  payment: 'success' | 'failed',
+) {
+  const params = new URLSearchParams();
+  params.set('id', reservationId);
+
+  if (manageToken) {
+    params.set('manage', manageToken);
+  }
+
+  params.set('payment', payment);
+
+  return `${siteUrl}/confirmare.html?${params.toString()}`;
 }
 
 function requiredString(value: unknown, message: string) {

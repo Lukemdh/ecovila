@@ -13,15 +13,15 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
 | S-6 | `no-explicit-any` lint violations weakened type safety on server code | Low | `supabase/functions/*/index.ts` | Fixed |
-| S-7 | Legacy confirmation RPCs can be used with reservation UUID only | High | `js/confirmare.js`, `js/supabase.js`, `20260511120000_step6_guest_confirmation.sql` | Open |
+| S-7 | Legacy confirmation RPCs could be used with reservation UUID only | High | `js/confirmare.js`, `js/supabase.js`, `reservation-extend-cash`, `20260601173901_require_manage_token_confirmation_actions.sql` | Fixed |
 | S-8 | CRM renders guest-controlled reservation fields through `innerHTML` | High | `admin/js/crm-dashboard.js`, `admin/js/crm-sidebar.js`, `admin/js/crm-daily.js` | Fixed |
 | S-9 | Anonymous `security definer` RPCs remain in exposed `public` schema | Medium | `supabase/migrations/*.sql` | Open |
 | S-10 | Legacy cancellation tokens are stored plaintext | Medium | `public.cancellation_tokens`, `_shared/reservations.ts` | Open |
 | S-11 | Floating Supabase JS major tag creates supply-chain drift | Low | HTML CDN tags, Deno import map | Open |
 
-No Critical findings were identified. One High finding is open and should block
-production launch until fixed or explicitly accepted. See
-`docs/production-readiness-audit.md` for the 2026-06-01 scan evidence.
+No Critical or High findings remain open. Medium findings still block production launch
+until fixed or explicitly accepted. See `docs/production-readiness-audit.md` for the
+2026-06-01 scan evidence.
 
 ## Findings detail
 
@@ -76,19 +76,24 @@ chance of unchecked data handling in privileged server code.
   client/result aliases plus local row, query-builder, and payload shapes. `deno lint`
   now passes with 0 problems.
 
-### S-7 — Legacy confirmation RPCs are reservation-UUID-only (High / Open)
-The current non-managed confirmation path still calls `get_pending_reservation_status`,
+### S-7 — Legacy confirmation RPCs were reservation-UUID-only (High / Fixed 2026-06-01)
+The older confirmation path called `get_pending_reservation_status`,
 `extend_cash_reservation`, and `cancel_pending_reservation` by reservation UUID from
-`confirmare.html?id=<reservation_id>`. Those SQL functions are `security definer`,
-granted to `anon`/`authenticated`, and do not require the newer manage token or phone
+`confirmare.html?id=<reservation_id>`. Those SQL functions were `security definer`,
+granted to `anon`/`authenticated`, and did not require the newer manage token or phone
 verification.
-- **Why it matters:** UUID guessing is impractical, but a leaked confirmation URL gives
-  anyone with the URL the ability to extend or cancel a pending reservation. This is a
+- **Why it mattered:** UUID guessing is impractical, but a leaked confirmation URL gave
+  anyone with the URL the ability to extend or cancel a pending reservation. This was a
   bearer-link design without a token scope or expiry distinct from the reservation ID.
-- **Root cause:** the newer reservation-management flow added hashed manage tokens but
-  did not replace the older confirmation-page RPCs.
-- **Required fix:** require a manage token or signed one-time action token for pending
-  status, extension, and cancellation; then revoke/deprecate the UUID-only RPCs.
+- **Fixed:** `create-reservation` now mints a hashed manage token immediately and returns
+  plaintext only to the caller. Checkout, Maib return URLs, booking/payment
+  notifications, and cash-expiry reminders link to
+  `confirmare.html?id=<reservation_id>&manage=<token>`. The confirmation page requires
+  both values and uses token-backed Edge Functions for status, cash extension, and
+  cancellation (`reservation-manage-details`, `reservation-extend-cash`,
+  `reservation-cancel`).
+- **Migration:** `20260601173901_require_manage_token_confirmation_actions.sql` drops
+  the three legacy UUID-only RPC signatures.
 
 ### S-8 — Stored XSS risk in CRM rendering (High) — Fixed 2026-06-01
 Formerly, several CRM surfaces built `innerHTML` with reservation fields such as
@@ -140,7 +145,8 @@ Browser pages load `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`; Deno 
 
 - **Manage tokens & lookup codes are hashed in the DB** (`_shared/reservationManage.ts`
   `hashManageToken` / `hashLookupCode`); plaintext is never stored (asserted by Deno
-  test "does not expose plaintext codes or tokens").
+  tests covering lookup codes and `buildManageTokenRow`). Confirmation-page actions now
+  require the hashed manage-token flow rather than reservation UUID alone.
 - **Maib callback signature** is HMAC-SHA256 over `rawBody.timestamp`, verified with a
   **constant-time compare** and a replay/tolerance window (`_shared/maib.ts`
   `verifyMaibCallbackSignature`, tested).

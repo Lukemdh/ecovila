@@ -420,6 +420,7 @@ describe('EcoVila Step 5 checkout', () => {
         {
           bookingGroupId: 'booking-group-a',
           reservationIds: ['server-reservation-a'],
+          manageToken: 'manage-token-a',
         },
         '+373 60 123 456',
       );
@@ -437,11 +438,34 @@ describe('EcoVila Step 5 checkout', () => {
         primaryReservationId: 'reservation-a',
         bookingGroupId: 'booking-group-a',
         reservationIds: ['server-reservation-a'],
+        manageToken: 'manage-token-a',
         totalPrice: 3100,
         selection: { totalPrice: 3100 },
         guestPhone: '+37360123456',
         paymentRail: 'mia',
       },
     });
+  });
+
+  it('includes manage-token proof in direct cash confirmation redirects', async () => {
+    const checkout = loadCheckout();
+    const previousLocation = globalThis.location;
+    const location = { href: '' };
+    globalThis.location = location;
+
+    try {
+      await checkout.redirectAfterReservation(
+        'reservation-cash',
+        'cash',
+        [{ id: 'reservation-cash' }],
+        { totalPrice: 2600 },
+        { manageToken: 'cash-manage-token' },
+        '+37360123456',
+      );
+    } finally {
+      globalThis.location = previousLocation;
+    }
+
+    assert.equal(location.href, 'confirmare.html?id=reservation-cash&manage=cash-manage-token');
   });
 });

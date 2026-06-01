@@ -42,3 +42,29 @@ Deno.test('reservation manage hashing does not expose plaintext codes or tokens'
     throw new Error('lookup codes should normalize to four digits');
   }
 });
+
+Deno.test('reservation manage token rows keep plaintext out of storage', async () => {
+  const { buildManageTokenRow } = await import('../_shared/reservationManage.ts');
+
+  const result = await buildManageTokenRow('+37360123456', {
+    token: 'manage-token-a',
+    secret: 'secret-a',
+    now: new Date('2026-06-01T08:00:00.000Z'),
+  });
+
+  if (result.token !== 'manage-token-a') {
+    throw new Error('plaintext manage token should be returned only to the caller');
+  }
+
+  if (result.row.token_hash.includes('manage-token-a')) {
+    throw new Error('stored manage token row should not include plaintext token');
+  }
+
+  if (result.row.phone !== '+37360123456') {
+    throw new Error('manage token row should store the normalized guest phone');
+  }
+
+  if (result.row.expires_at !== '2026-06-01T08:30:00.000Z') {
+    throw new Error('checkout manage tokens should use the standard 30-minute TTL');
+  }
+});

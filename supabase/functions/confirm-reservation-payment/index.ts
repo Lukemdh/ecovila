@@ -13,6 +13,7 @@ import {
   composeBookingConfirmation,
   dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
+import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { buildCancellationTokenRows, withRoomFields } from '../_shared/reservations.ts';
 import type { NotificationReservation } from '../_shared/notifications.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
@@ -179,12 +180,14 @@ async function notifyPaidReservations(
         token = data?.token || '';
       }
 
+      const manageToken = await createManageTokenForNotification(client, reservation.guest_phone);
       const result = await dispatchScheduledNotificationOnce(
         client,
         reservation.id,
         'payment_confirmation',
         composeBookingConfirmation(reservationForNotification(reservation), {
           cancellationToken: token,
+          manageToken,
           siteUrl,
         }),
       );
@@ -204,6 +207,18 @@ async function notifyPaidReservations(
   }
 
   return results;
+}
+
+async function createManageTokenForNotification(client: SupabaseClient, phone: string) {
+  const manageToken = await buildManageTokenRow(phone);
+  const { error } = await table(client, 'reservation_manage_tokens')
+    .insert(manageToken.row);
+
+  if (error) {
+    throw new Error(error.message || 'Could not create reservation manage token.');
+  }
+
+  return manageToken.token;
 }
 
 async function findCancellationToken(client: SupabaseClient, reservationId: string) {

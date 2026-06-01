@@ -142,13 +142,25 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   and data attributes as untrusted. Prefer DOM nodes plus `textContent` when practical;
   otherwise call the shared helper before template insertion.
 
+### ADR-015 — Confirmation actions use immediate manage tokens
+- **Date:** 2026-06-01.
+- **Decision:** checkout creates a hashed manage-token row at reservation creation time
+  and gives the plaintext token only to the guest-facing redirect/payment flow.
+  Confirmation URLs use `confirmare.html?id=<reservation_id>&manage=<token>`, and the
+  confirmation page rejects bare reservation IDs.
+- **Why:** this preserves the existing cash countdown and card-payment polling UX while
+  removing the old reservation-UUID-only bearer link. Requiring phone verification before
+  every confirmation action would add friction immediately after checkout; separate
+  signed action tokens would duplicate the existing hashed manage-token model.
+- **Consequence:** all private confirmation-page reads/actions go through token-backed
+  Edge Functions (`reservation-manage-details`, `reservation-extend-cash`,
+  `reservation-cancel`). Booking lookup by SMS code remains the fallback for guests who
+  need a fresh manage token later.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
 
-- Should the legacy `confirmare.html?id=<reservation_id>` cash actions be preserved with
-  a signed/hashed action token, or should all guest management move exclusively to the
-  newer phone-verified manage-token flow?
 - Should `index.html` remain the production homepage as a maintenance holding page for
   launch, or should `site.html` become the public homepage before deployment?
 - Should the owner-retained unused media (`ecovilavideo.mp4`, `ecovilavideo-web.mp4`,

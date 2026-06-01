@@ -68,17 +68,17 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 173 Node contract tests + 36 Deno tests.
+- Tests green: 175 Node contract tests + 37 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - The backend workspace (`supabase/`) and Node tests (`tests/`) now live at the repo
   root. They previously lived under `docs/` after the 2026-05-16 "docs reorg"
   (`ca4dfc5`), and Step 14 moved them back to conventional locations.
 - The 2026-06-01 production-readiness audit found green automated checks but open
-  production blockers: legacy UUID-only confirmation actions, public security-definer
-  RPC review, plaintext legacy cancellation tokens, server-side child-age validation
-  drift, and the Maib `pg_cron` migration assumption. The CRM stored-XSS blocker was
-  fixed in Step 15.
+  production blockers: public security-definer RPC review, plaintext legacy cancellation
+  tokens, server-side child-age validation drift, and the Maib `pg_cron` migration
+  assumption. The CRM stored-XSS blocker was fixed in Step 15, and the legacy UUID-only
+  confirmation-actions blocker was fixed in Step 16.
 
 ## Notable decisions reconstructed from history
 
@@ -170,3 +170,8 @@ sessions append to the running log at the bottom.
   pending-cash, sidebar search, and daily reception cards, rejected public guest names
   containing `<` or `>`, and added XSS regression coverage. Verified 173 Node tests, 36
   Deno tests, `deno check`, and `deno lint`.
+- 2026-06-01 — STEP 16 cleanup. Replaced UUID-only confirmation status/extend/cancel
+  actions with `id` + `manage` token links, added the `reservation-extend-cash` Edge
+  Function, dropped the old anonymous confirmation RPC signatures in a new migration,
+  and added regression coverage for bare-ID rejection and manage-token storage.
+  Verified 175 Node tests, 37 Deno tests, `deno check`, and `deno lint`.

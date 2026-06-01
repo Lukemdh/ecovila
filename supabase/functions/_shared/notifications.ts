@@ -62,16 +62,14 @@ const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
 export function composeBookingConfirmation(
   reservation: NotificationReservation,
-  options: { cancellationToken: string; siteUrl: string },
+  options: { cancellationToken: string; siteUrl: string; manageToken?: string },
 ): NotificationMessage {
   const language = reservationLanguage(reservation);
   const roomCopy = roomLabel(reservation, 'ro');
   const cancellationLink = `${options.siteUrl}/anulare.html?token=${
     encodeURIComponent(options.cancellationToken)
   }`;
-  const confirmationLink = `${options.siteUrl}/confirmare.html?id=${
-    encodeURIComponent(reservation.id)
-  }`;
+  const confirmationLink = confirmationUrl(options.siteUrl, reservation.id, options.manageToken);
   const fullName = `${reservation.guest_first_name} ${reservation.guest_last_name}`;
   const total = `${reservation.total_price} MDL`;
 
@@ -117,12 +115,10 @@ export function composeBookingConfirmation(
 
 export function composeCashExpiryReminder(
   reservation: NotificationReservation,
-  options: { siteUrl: string },
+  options: { siteUrl: string; manageToken?: string },
 ): NotificationMessage {
   const language = reservationLanguage(reservation);
-  const confirmationLink = `${options.siteUrl}/confirmare.html?id=${
-    encodeURIComponent(reservation.id)
-  }`;
+  const confirmationLink = confirmationUrl(options.siteUrl, reservation.id, options.manageToken);
 
   return {
     sms: {
@@ -143,6 +139,17 @@ export function composeCashExpiryReminder(
       }),
     },
   };
+}
+
+function confirmationUrl(siteUrl: string, reservationId: string, manageToken?: string) {
+  const params = new URLSearchParams();
+  params.set('id', reservationId);
+
+  if (manageToken) {
+    params.set('manage', manageToken);
+  }
+
+  return `${siteUrl}/confirmare.html?${params.toString()}`;
 }
 
 export function composeExpiredCashCancellation(

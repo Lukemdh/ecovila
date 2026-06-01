@@ -36,5 +36,8 @@ verify_jwt = true
 [functions.reservation-manage-details]
 verify_jwt = true
 
+[functions.reservation-extend-cash]
+verify_jwt = true
+
 [functions.reservation-cancel]
 verify_jwt = true

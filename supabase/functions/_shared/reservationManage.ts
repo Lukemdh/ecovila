@@ -40,6 +40,12 @@ export type ReservationGroupRow = {
   rooms?: ReservationGroupRoom | ReservationGroupRoom[] | null;
 };
 
+export type ManageTokenStorageRow = {
+  token_hash: string;
+  phone: string;
+  expires_at: string;
+};
+
 type ReservationGroupRoom = {
   number?: number | string | null;
   type?: string | null;
@@ -71,6 +77,30 @@ export function createManageToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function buildManageTokenRow(
+  phone: string,
+  options: {
+    token?: string;
+    secret?: string;
+    now?: Date;
+    ttlMinutes?: number;
+  } = {},
+) {
+  const token = options.token || createManageToken();
+  const tokenHash = await hashManageToken(token, options.secret);
+  const now = options.now || new Date();
+  const ttlMinutes = options.ttlMinutes ?? MANAGE_TOKEN_TTL_MINUTES;
+
+  return {
+    token,
+    row: {
+      token_hash: tokenHash,
+      phone,
+      expires_at: minutesFromNow(ttlMinutes, now),
+    } satisfies ManageTokenStorageRow,
+  };
 }
 
 export function hashLookupCode(

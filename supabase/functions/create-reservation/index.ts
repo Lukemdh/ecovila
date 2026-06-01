@@ -1,5 +1,6 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/http.ts';
+import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { createReservationsWithTokens } from '../_shared/reservations.ts';
 import type { ReservationInput } from '../_shared/reservations.ts';
@@ -17,12 +18,22 @@ Deno.serve(async (request) => {
 
     const client = createServiceClient();
     const result = await createReservationsWithTokens(client, reservations as ReservationInput[]);
+    const primaryPhone = result.reservations[0]?.guest_phone || '';
+    const manageToken = await buildManageTokenRow(primaryPhone);
+    const { error: manageTokenError } = await client
+      .from('reservation_manage_tokens')
+      .insert(manageToken.row);
+
+    if (manageTokenError) {
+      throw new Error(manageTokenError.message || 'Could not create reservation manage token.');
+    }
 
     return jsonResponse(
       {
         primaryReservationId: result.primaryReservationId,
         bookingGroupId: result.bookingGroupId,
         reservationIds: result.reservations.map((reservation) => reservation.id),
+        manageToken: manageToken.token,
         paymentType: result.reservations[0]?.payment_type || '',
         notificationResults: [],
       },

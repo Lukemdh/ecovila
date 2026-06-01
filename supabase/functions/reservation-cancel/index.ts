@@ -102,20 +102,21 @@ Deno.serve(async (request) => {
 
     const summary = groupReservations(reservations)[0];
     const paidCard = summary.paymentType === 'card' && summary.paymentStatus === 'paid';
+    const pendingCash = summary.paymentType === 'cash' && summary.paymentStatus === 'pending';
     const createdAt = earliestCreatedAt(reservations);
     const refundable = isRefundEligible({
       checkIn: summary.checkIn,
       createdAt,
     });
 
-    if (summary.paymentType === 'cash') {
+    if (summary.paymentType === 'cash' && !pendingCash) {
       throw new HttpError(
         409,
         'Cash reservations cannot be cancelled online. Reimbursement is available only at the office.',
       );
     }
 
-    if (!refundable) {
+    if (!pendingCash && !refundable) {
       throw new HttpError(
         409,
         'Online cancellation is available only at least 7 days before arrival or within 2 hours of booking.',

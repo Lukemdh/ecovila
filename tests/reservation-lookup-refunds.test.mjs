@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
@@ -11,6 +11,14 @@ function read(relativePath) {
 
 function exists(relativePath) {
   return existsSync(join(root, relativePath));
+}
+
+function allMigrations() {
+  return readdirSync(join(root, 'supabase/migrations'))
+    .filter((file) => file.endsWith('.sql'))
+    .sort()
+    .map((file) => read(`supabase/migrations/${file}`))
+    .join('\n');
 }
 
 describe('EcoVila reservation lookup and refunds', () => {
@@ -99,6 +107,60 @@ describe('EcoVila reservation lookup and refunds', () => {
     assert.match(translations, /confirmare\.cashOfficeRefund/, 'cash office-only reimbursement copy should be translated');
   });
 
+  it('requires manage-token proof for confirmation status, cash extension, and pending cancellation', () => {
+    const supabase = read('js/supabase.js');
+    const confirmare = read('js/confirmare.js');
+    const config = read('supabase/config.toml');
+    const migrations = allMigrations();
+
+    assert.match(
+      confirmare,
+      /if \(!reservationId \|\| !manageToken\)/,
+      'confirmation page should reject bare reservation-id URLs instead of loading UUID-only actions',
+    );
+    assert.doesNotMatch(
+      confirmare,
+      /fetchPendingReservationStatus\(client, reservationId\)/,
+      'confirmation status polling should not call a UUID-only status helper',
+    );
+    assert.match(
+      supabase,
+      /functions\.invoke\('reservation-manage-details'/,
+      'confirmation status should be read through the token-backed manage-details Edge Function',
+    );
+    assert.match(
+      supabase,
+      /functions\.invoke\('reservation-extend-cash'/,
+      'cash extension should use a token-backed Edge Function',
+    );
+    assert.doesNotMatch(
+      supabase,
+      /rpc\('extend_cash_reservation',\s*\{\s*res_id:/,
+      'browser code should not call the legacy UUID-only cash extension RPC',
+    );
+    assert.doesNotMatch(
+      supabase,
+      /rpc\('cancel_pending_reservation',\s*\{\s*res_id:/,
+      'browser code should not call the legacy UUID-only pending cancellation RPC',
+    );
+    assert.match(
+      config,
+      /\[functions\.reservation-extend-cash\][\s\S]*?verify_jwt = true/i,
+      'cash extension Edge Function should require the browser Supabase JWT',
+    );
+    for (const signature of [
+      'public.get_pending_reservation_status(uuid)',
+      'public.extend_cash_reservation(uuid)',
+      'public.cancel_pending_reservation(uuid)',
+    ]) {
+      assert.match(
+        migrations,
+        new RegExp(`drop function if exists ${signature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'),
+        `${signature} should be dropped by a follow-up migration`,
+      );
+    }
+  });
+
   it('blocks late and cash online managed cancellation while keeping CRM MAIB refunds staff-driven', () => {
     const cancelFunction = read('supabase/functions/reservation-cancel/index.ts');
     const refundFunction = read('supabase/functions/maib-refund/index.ts');
@@ -130,13 +192,18 @@ describe('EcoVila reservation lookup and refunds', () => {
     );
   });
 
-  it('keeps the managed reservation panel in the first right-column slot', () => {
+  it('keeps token-backed managed reservations aligned with the confirmation status panels', () => {
     const confirmare = read('js/confirmare.js');
 
     assert.match(
       confirmare,
-      /showContentState\(summary\.paymentType \|\| 'card'[\s\S]*?hide\('\[data-success-panel\]'\)/,
-      'managed reservation rendering should hide the success panel before showing the manage panel',
+      /showContentState\(summary\.paymentType \|\| 'card', serverStatus\)[\s\S]*?renderManagePanel\(summary, details\.payment \|\| null, reservationId, manageToken\)/,
+      'managed reservation rendering should keep the status panels current before showing the manage panel',
+    );
+    assert.match(
+      confirmare,
+      /summary\.paymentType === 'cash' && summary\.paymentStatus === 'pending'[\s\S]*?wireCashActions\(reservationId, manageToken\)/,
+      'pending cash reservations should keep the timer panel and wire token-backed cash actions',
     );
   });
 

@@ -14,7 +14,7 @@ High / Medium / Low.
 | B-5 | `deno lint` reported remaining `no-explicit-any` problems | Low | Fixed |
 | B-6 | Backend + tests lived under `docs/` (mislocated relative to convention) | Low | Fixed |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
-| B-8 | Legacy confirmation actions can extend/cancel by reservation UUID only | High | Open |
+| B-8 | Legacy confirmation actions could extend/cancel by reservation UUID only | High | Fixed |
 | B-9 | CRM stored-XSS risk from unescaped reservation fields | High | Fixed |
 | B-10 | Edge Function accepts child ages `0` and `18` despite public 1-17 contract | Medium | Open |
 | B-11 | Maib cron migrations assume `pg_cron`/`cron` exists | Medium | Open |
@@ -128,25 +128,28 @@ High / Medium / Low.
   `tests/reservation-lookup-refunds.test.mjs`, `tests/admin-crm.test.mjs`,
   and Deno test `supabase/functions/tests/reservation-manage.test.ts`.
 
-### B-8 — Legacy confirmation actions can extend/cancel by reservation UUID only (High) — Open
-- **Description:** the non-managed confirmation flow still calls
+### B-8 — Legacy confirmation actions could extend/cancel by reservation UUID only (High) — Fixed 2026-06-01
+- **Description:** the non-managed confirmation flow called
   `get_pending_reservation_status`, `extend_cash_reservation`, and
   `cancel_pending_reservation` with only `reservationId` from
   `confirmare.html?id=<uuid>`. The SQL RPCs in
-  `20260511120000_step6_guest_confirmation.sql` are `security definer` functions granted
-  to `anon` and `authenticated`.
+  `20260511120000_step6_guest_confirmation.sql` were `security definer` functions
+  granted to `anon` and `authenticated`.
 - **Root cause:** the newer manage-token flow was added for lookup/refunds but did not
   replace the older confirmation-page cash actions.
-- **Why it matters:** a leaked confirmation URL becomes a bearer link that can extend or
-  cancel a pending reservation. UUID guessing is unlikely, but URL forwarding, browser
-  history, support screenshots, analytics, or email compromise are realistic leak paths.
-- **Reproduce / evidence:**
-  ```sh
-  rg -n "extend_cash_reservation|cancel_pending_reservation|get_pending_reservation_status" js/supabase.js supabase/migrations/20260511120000_step6_guest_confirmation.sql
-  ```
-- **Fix direction:** require a hashed manage token or signed action token for all
-  pending reservation status/action RPCs, update `confirmare.html` links, and revoke the
-  old UUID-only RPCs.
+- **Why it mattered:** a leaked confirmation URL became a bearer link that could extend
+  or cancel a pending reservation. UUID guessing is unlikely, but URL forwarding,
+  browser history, support screenshots, analytics, or email compromise are realistic
+  leak paths.
+- **Fix:** `create-reservation` now creates a hashed `reservation_manage_tokens` row and
+  returns the plaintext token only to the checkout caller. Direct cash redirects, Maib
+  success/failure URLs, booking/payment confirmations, and cash-expiry reminders include
+  `confirmare.html?id=<uuid>&manage=<token>`. `confirmare.js` rejects bare reservation
+  IDs and routes status, extension, and cancellation through token-backed Edge
+  Functions. A new migration drops the old UUID-only RPC signatures.
+- **Verification:** Node tests cover bare-ID rejection, token-bearing confirmation URLs,
+  the new `reservation-extend-cash` wrapper/config, and the absence of browser UUID-only
+  RPC calls; Deno tests cover the manage-token row helper.
 
 ### B-9 — CRM stored-XSS risk from unescaped reservation fields (High) — Fixed 2026-06-01
 - **Description:** several authenticated CRM surfaces interpolated guest-controlled

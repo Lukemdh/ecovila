@@ -10,6 +10,7 @@ import {
   verifyMaibCallbackSignature,
 } from '../_shared/maib.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
+import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -407,7 +408,8 @@ async function dispatchPaymentConfirmationOnce(
     throw new Error('Notification event reservation did not return an id.');
   }
 
-  const message = composePaymentConfirmation(reservation, cancellationToken, siteUrl);
+  const manageToken = await createManageTokenForNotification(client, reservation.guest_phone);
+  const message = composePaymentConfirmation(reservation, cancellationToken, siteUrl, manageToken);
   const providerResponse: Record<string, unknown> = {};
   const errors = [];
 
@@ -451,6 +453,18 @@ async function dispatchPaymentConfirmationOnce(
   };
 }
 
+async function createManageTokenForNotification(client: SupabaseClient, phone: string) {
+  const manageToken = await buildManageTokenRow(phone);
+  const { error } = await table(client, 'reservation_manage_tokens')
+    .insert(manageToken.row);
+
+  if (error) {
+    throw new Error(error.message || 'Could not create reservation manage token.');
+  }
+
+  return manageToken.token;
+}
+
 async function findCancellationToken(client: SupabaseClient, reservationId: string) {
   const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
     .select('token')
@@ -489,10 +503,11 @@ function composePaymentConfirmation(
   reservation: PaymentReservationRow,
   cancellationToken: string,
   siteUrl: string,
+  manageToken: string,
 ) {
   const language = String(reservation.guest_language || 'ro').toLowerCase();
   const roomCopy = roomLabel(reservation, language);
-  const confirmationLink = `${siteUrl}/confirmare.html?id=${encodeURIComponent(reservation.id)}`;
+  const confirmationLink = confirmationUrl(siteUrl, reservation.id, manageToken);
   const cancelLink = `${siteUrl}/anulare.html?token=${encodeURIComponent(cancellationToken)}`;
   const name = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`.trim();
   const stay = `${reservation.check_in} - ${reservation.check_out}`;
@@ -529,6 +544,17 @@ function composePaymentConfirmation(
       '</body></html>',
     ].join(''),
   };
+}
+
+function confirmationUrl(siteUrl: string, reservationId: string, manageToken: string) {
+  const params = new URLSearchParams();
+  params.set('id', reservationId);
+
+  if (manageToken) {
+    params.set('manage', manageToken);
+  }
+
+  return `${siteUrl}/confirmare.html?${params.toString()}`;
 }
 
 function subjectLine(language: string) {

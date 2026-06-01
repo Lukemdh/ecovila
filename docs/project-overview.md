@@ -33,8 +33,9 @@ The product has two surfaces:
 - **Checkout** (`checkout.html`): reservation summary, guest form, GDPR consent,
   cash-vs-card choice, creates a pending reservation. Card path routes to Maib (MIA for
   `+373` phones, hosted card Checkout otherwise — *inferred from* `js/checkout.js:80`).
-- **Confirmation / management** (`confirmare.html`): cash countdown timer, one-time
-  extension, online cancellation eligibility, and refund state for card bookings.
+- **Confirmation / management** (`confirmare.html`): token-backed cash countdown timer,
+  one-time extension, pending-cash cancellation, online cancellation eligibility, and
+  refund state for card bookings.
 - **Cancellation** (`anulare.html`): token-based + phone-verified self-service
   cancellation only at least 7 calendar days before arrival or within 2 hours of
   creation; cash reimbursements are office-only.
@@ -67,9 +68,11 @@ The product has two surfaces:
   never retro-repriced.
 - **Cash hold**: cash reservations get `cash_expires_at`; expired holds are released by
   the `expire-cash-reservations` function. Guests may extend once (`cash_extended`).
-- **Manage / cancellation tokens**: secure tokens (hashed in DB) let guests look up their
-  own reservation without authentication. Online cancellation is blocked for cash
-  reservations and for reservations outside the 7-day / 2-hour public window.
+- **Manage / cancellation tokens**: secure tokens (hashed in DB) let guests open or look
+  up their own reservation without authentication. Confirmation links now require a
+  short-lived manage token for pending status, cash extension, and cancellation actions.
+  Paid cash reservations remain office-only for reimbursement; paid card cancellation is
+  limited by the 7-day / 2-hour public window.
 
 ## External services / dependencies
 
@@ -103,6 +106,7 @@ The product has two surfaces:
                    │  Edge Functions (Deno/TS):           │
                    │   create-reservation, confirm-…,     │
                    │   reservation-lookup/-manage/-cancel,│
+                   │   reservation-extend-cash,            │
                    │   maib-create-payment/-callback/     │
                    │   -refund, send-sms/-email/-reminders│
                    │   expire-cash-reservations           │
@@ -114,12 +118,14 @@ The product has two surfaces:
 
 Data flow (guest booking, simplified):
 `rezervari.html` (availability via public RPC) → `checkout.html` →
-`create-reservation` Edge Function inserts a pending reservation + cancellation token →
-cash path waits on `cash_expires_at`; card path → `maib-create-payment` → Maib hosted
-Checkout → `maib-callback` (HMAC-verified) confirms payment → confirmation SMS/email via
-`send-sms` / `send-email`. Self-service management goes through
-`reservation-lookup-start` / `reservation-lookup-verify` / `reservation-manage-details`
-/ `reservation-cancel` (token + phone OTP + cancellation policy, all server-side).
+`create-reservation` Edge Function inserts a pending reservation + cancellation token +
+hashed manage token → cash path redirects to `confirmare.html?id=…&manage=…`; card path
+passes the manage token to `maib-create-payment` so Maib success/failure URLs return to
+the same token-backed confirmation page → `maib-callback` (HMAC-verified) confirms
+payment → confirmation SMS/email via `send-sms` / `send-email`. Self-service management
+goes through `reservation-lookup-start` / `reservation-lookup-verify` /
+`reservation-manage-details` / `reservation-extend-cash` / `reservation-cancel` (token +
+phone OTP where needed + cancellation policy, all server-side).
 CRM cancellations of paid Maib bookings call the staff-only `maib-refund` function and
 can refund independently of the public guest window.
 
@@ -135,9 +141,9 @@ Supabase Auth inside `requireStaffRole` before trusting `app_metadata.role`, in 
 to their `verify_jwt = true` gateway configuration.
 
 The 2026-06-01 production-readiness audit found the automated checks green but marked
-the project **not ready for production** until the open High/Medium items in
+the project **not ready for production** until the open Medium items in
 `docs/production-readiness-audit.md`, `docs/security.md`, and `docs/bugs.md` are fixed
-or explicitly accepted. CRM stored-XSS hardening is fixed; the remaining main blockers
-are legacy confirmation actions that authorize by reservation UUID only, public
-security-definer RPC review, plaintext legacy cancellation tokens, server-side child-age
-validation, and the Maib `pg_cron` migration assumption.
+or explicitly accepted. CRM stored-XSS hardening and UUID-only confirmation actions are
+fixed; the remaining main blockers are public security-definer RPC review, plaintext
+legacy cancellation tokens, server-side child-age validation, and the Maib `pg_cron`
+migration assumption.

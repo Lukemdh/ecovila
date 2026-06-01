@@ -141,6 +141,7 @@ describe('EcoVila Maib Checkout integration', () => {
         {
           bookingGroupId: '00000000-0000-4000-8000-000000000001',
           reservationIds: ['server-reservation-a'],
+          manageToken: 'manage-token-a',
         },
         '+373 60 123 456',
       );
@@ -153,6 +154,7 @@ describe('EcoVila Maib Checkout integration', () => {
           primaryReservationId: 'reservation-a',
           bookingGroupId: '00000000-0000-4000-8000-000000000001',
           reservationIds: ['server-reservation-a'],
+          manageToken: 'manage-token-a',
           totalPrice: 3100,
           selection: { totalPrice: 3100 },
           guestPhone: '+37360123456',
@@ -181,7 +183,7 @@ describe('EcoVila Maib Checkout integration', () => {
     );
     assert.match(
       confirmare,
-      /startCardStatusPolling\(reservationIdCaptured, serverStatus\)/,
+      /startCardStatusPolling\(reservationId, manageToken, serverStatus\)/,
       'card reservations should start polling after the initial status render',
     );
     assert.match(

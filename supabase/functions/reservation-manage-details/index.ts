@@ -35,6 +35,8 @@ type ReservationDetailRow = ReservationGroupRow & {
   guest_language?: string | null;
   adults?: number | string | null;
   kids_ages?: unknown[] | null;
+  cash_expires_at?: string | null;
+  cash_extended?: boolean | null;
   cancelled_at?: string | null;
   cancellation_reason?: string | null;
 };
@@ -122,7 +124,7 @@ async function findReservationGroup(client: SupabaseClient, reservationId: strin
 
   const { data, error } = await table<ReservationDetailRow[]>(client, 'reservations')
     .select(
-      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, adults, kids_ages, total_price, payment_type, payment_status, created_at, cancelled_at, cancellation_reason, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, adults, kids_ages, total_price, payment_type, payment_status, cash_expires_at, cash_extended, created_at, cancelled_at, cancellation_reason, rooms(number, type)',
     )
     .eq('booking_group_id', primary.booking_group_id)
     .eq('guest_phone', phone)

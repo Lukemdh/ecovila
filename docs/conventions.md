@@ -34,9 +34,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   notes, photo alt text, holiday labels, and any DB text field as untrusted. Shared CRM
   escaping currently lives at `EcoVilaCrmCalendar.escapeHtml`; use it for reservation
   card/search templates that still need string markup.
-- Public guest actions that mutate reservation state must be authorized by a scoped token
-  or equivalent proof, not by reservation UUID alone. Legacy confirmation RPCs are an
-  open exception tracked as B-8/S-7.
+- Public guest actions that read or mutate private reservation state must be authorized
+  by a scoped token or equivalent proof, not by reservation UUID alone. Confirmation
+  links use `id` + `manage`; bare `confirmare.html?id=<uuid>` URLs must not expose
+  status, extension, or cancellation actions.
 - Browser code should have no `console.*` noise, no `debugger`, and no `TODO/FIXME`
   markers. Edge Functions may use concise operational `console.info` / `console.error`
   logging for provider callbacks and notification failures, but do not log secrets or
@@ -62,9 +63,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Privileged DB writes use the service-role client from `_shared/supabaseAdmin.ts`.
 - Guest-facing cancellation rules must be enforced server-side in both the
   `reservation-cancel` Edge Function and the latest `cancel_reservation_by_token` RPC.
-  Browser code may disable buttons and show policy copy, but must not be the only
-  enforcement point. Staff Maib refunds remain Diana-only through `maib-refund` and do
-  not reuse the public guest refund window.
+  Pending cash holds may be cancelled through the manage-token confirmation flow; paid
+  cash reimbursements remain office-only. Browser code may disable buttons and show
+  policy copy, but must not be the only enforcement point. Staff Maib refunds remain
+  Diana-only through `maib-refund` and do not reuse the public guest refund window.
 - Server-side public reservation creation must enforce the same domain constraints as
   the public UI. Guest first/last names cannot include raw `<` or `>` characters. Child
   ages are supposed to be 1-17; the current 0/18 server acceptance is tracked as B-10.
@@ -82,7 +84,7 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   local row/builder payload types where needed. Do not reintroduce `client: any` in
   `_shared/`.
 - Reservation management entrypoints (`reservation-lookup-*`,
-  `reservation-manage-details`, `reservation-cancel`) follow the same typed-client
+  `reservation-manage-details`, `reservation-extend-cash`, `reservation-cancel`) follow the same typed-client
   pattern with local row and query-builder shapes instead of `client: any`.
 - `deno lint` is expected to pass cleanly for all Edge Function source and tests. New
   server code should use real types (`SupabaseClient`, `SupabaseQueryResult`, local

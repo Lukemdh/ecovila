@@ -352,15 +352,47 @@
     _managedContext = { details, reservationId, manageToken };
 
     renderManagedSummary(summary, details.reservations || []);
-    showContentState(summary.paymentType || 'card', {
-      payment_status: summary.paymentStatus,
-      payment_type: summary.paymentType,
-    });
-    hide('[data-cash-panel]');
-    hide('[data-success-panel]');
+    const serverStatus = managedServerStatus(summary, details.reservations || []);
+    showContentState(summary.paymentType || 'card', serverStatus);
+
+    if (summary.paymentType === 'cash' && summary.paymentStatus === 'pending') {
+      hide('[data-manage-panel]');
+      wireCashActions(reservationId, manageToken);
+      setText('[data-confirmare-lead]', t('confirmare.cashTitle'));
+      return;
+    }
+
+    if (summary.paymentType === 'card' && !isTerminalCardStatus(serverStatus)) {
+      startCardStatusPolling(reservationId, manageToken, serverStatus);
+    }
 
     renderManagePanel(summary, details.payment || null, reservationId, manageToken);
     setText('[data-confirmare-lead]', t('confirmare.manageLead'));
+  }
+
+  function managedServerStatus(summary, reservations) {
+    const primary = Array.isArray(reservations) ? reservations[0] || {} : {};
+
+    return {
+      payment_status: summary.paymentStatus,
+      payment_type: summary.paymentType,
+      cash_expires_at: primary.cash_expires_at || null,
+      cash_extended: Boolean(primary.cash_extended),
+    };
+  }
+
+  function wireCashActions(reservationId, manageToken) {
+    const extendBtn = el('[data-extend-btn]');
+    extendBtn?.addEventListener('click', () => handleExtend(reservationId, manageToken));
+
+    const cancelBtn = el('[data-cancel-btn]');
+    cancelBtn?.addEventListener('click', showCancelConfirm);
+
+    const cancelYes = el('[data-cancel-yes]');
+    cancelYes?.addEventListener('click', () => handleConfirmCancel(reservationId, manageToken));
+
+    const cancelNo = el('[data-cancel-no]');
+    cancelNo?.addEventListener('click', hideCancelConfirm);
   }
 
   function renderManagePanel(summary, payment, reservationId, manageToken) {
@@ -491,7 +523,7 @@
     }
   }
 
-  function startCardStatusPolling(reservationId, serverStatus) {
+  function startCardStatusPolling(reservationId, manageToken, serverStatus) {
     clearCardStatusPolling();
     _cardPollAttempts = 0;
 
@@ -499,24 +531,24 @@
       return;
     }
 
-    scheduleCardStatusPoll(reservationId);
+    scheduleCardStatusPoll(reservationId, manageToken);
   }
 
-  function scheduleCardStatusPoll(reservationId) {
+  function scheduleCardStatusPoll(reservationId, manageToken) {
     if (_cardPollAttempts >= CARD_STATUS_POLL_LIMIT || !root.setTimeout) {
       return;
     }
 
-    _cardPollTimeout = root.setTimeout(() => pollCardReservationStatus(reservationId), CARD_STATUS_POLL_MS);
+    _cardPollTimeout = root.setTimeout(() => pollCardReservationStatus(reservationId, manageToken), CARD_STATUS_POLL_MS);
   }
 
-  async function pollCardReservationStatus(reservationId) {
+  async function pollCardReservationStatus(reservationId, manageToken) {
     _cardPollTimeout = null;
     _cardPollAttempts += 1;
 
     try {
       const client = supabaseHelpers.getSupabaseClient();
-      const rows = await supabaseHelpers.fetchPendingReservationStatus(client, reservationId);
+      const rows = await supabaseHelpers.fetchPendingReservationStatus(client, { reservationId, manageToken });
       const serverStatus = rows?.[0] || null;
       const paymentType = serverStatus?.payment_type || 'card';
 
@@ -531,7 +563,7 @@
       // Keep the pending payment state visible and try again until the polling window closes.
     }
 
-    scheduleCardStatusPoll(reservationId);
+    scheduleCardStatusPoll(reservationId, manageToken);
   }
 
   // ── Countdown timer ─────────────────────────────────────────────────────────
@@ -597,7 +629,7 @@
 
   // ── Extend handler ──────────────────────────────────────────────────────────
 
-  async function handleExtend(reservationId) {
+  async function handleExtend(reservationId, manageToken) {
     const btn = el('[data-extend-btn]');
     if (!btn || btn.disabled) return;
 
@@ -607,7 +639,7 @@
 
     try {
       const client = supabaseHelpers.getSupabaseClient();
-      const newExpiry = await supabaseHelpers.extendCashReservation(client, reservationId);
+      const newExpiry = await supabaseHelpers.extendCashReservation(client, { reservationId, manageToken });
 
       if (newExpiry) {
         _expiresAt = new Date(newExpiry).getTime();
@@ -640,7 +672,7 @@
     hide('[data-cancel-confirm]');
   }
 
-  async function handleConfirmCancel(reservationId) {
+  async function handleConfirmCancel(reservationId, manageToken) {
     const yesBtn = el('[data-cancel-yes]');
     if (!yesBtn) return;
 
@@ -650,7 +682,7 @@
 
     try {
       const client = supabaseHelpers.getSupabaseClient();
-      const cancelled = await supabaseHelpers.cancelPendingReservation(client, reservationId);
+      const cancelled = await supabaseHelpers.cancelPendingReservation(client, { reservationId, manageToken });
 
       if (cancelled) {
         showExpiredOverlay(true);
@@ -689,91 +721,30 @@
     const reservationId = getReservationId();
     const manageToken = getManageToken();
 
-    if (!reservationId) {
+    if (!reservationId || !manageToken) {
       showErrorState();
       return;
     }
 
     showLoadingState();
 
-    if (manageToken) {
-      try {
-        const details = await loadManagedReservation(reservationId, manageToken);
-        renderManagedReservation(details, reservationId, manageToken);
-      } catch {
-        showErrorState();
-        return;
-      }
-
-      root.addEventListener?.('ecovila:languagechange', () => {
-        applyI18nToPage();
-        if (_managedContext) {
-          renderManagedReservation(
-            _managedContext.details,
-            _managedContext.reservationId,
-            _managedContext.manageToken,
-          );
-        }
-      });
+    try {
+      const details = await loadManagedReservation(reservationId, manageToken);
+      renderManagedReservation(details, reservationId, manageToken);
+    } catch {
+      showErrorState();
       return;
     }
 
-    const selection = readStorage(STORAGE_SELECTION);
-    const pending = readStorage(STORAGE_PENDING);
-
-    // Derive payment type: prefer server data, fall back to localStorage
-    let paymentType = pending?.paymentType || 'card';
-    let serverStatus = null;
-
-    // Render summary from localStorage immediately so it's not blank while fetching
-    if (selection) {
-      renderSummary(selection, pending);
-    }
-
-    // Fetch live status from server
-    try {
-      const client = supabaseHelpers.getSupabaseClient();
-      const rows = await supabaseHelpers.fetchPendingReservationStatus(client, reservationId);
-      serverStatus = rows?.[0] || null;
-
-      if (serverStatus) {
-        paymentType = serverStatus.payment_type || paymentType;
-      }
-    } catch {
-      // Supabase not configured or unavailable — proceed with localStorage data
-    }
-
-    showContentState(paymentType, serverStatus);
-
-    // If no selection data was in localStorage, still attempt to show summary
-    // fields using whatever we can from the pending record
-    if (!selection && pending) {
-      setText('[data-summary-total]', pricing ? pricing.formatMDL(pending.totalPrice) : `${pending.totalPrice} MDL`);
-    }
-
-    // Wire up action buttons
-    const reservationIdCaptured = reservationId;
-
-    const extendBtn = el('[data-extend-btn]');
-    extendBtn?.addEventListener('click', () => handleExtend(reservationIdCaptured));
-
-    const cancelBtn = el('[data-cancel-btn]');
-    cancelBtn?.addEventListener('click', showCancelConfirm);
-
-    const cancelYes = el('[data-cancel-yes]');
-    cancelYes?.addEventListener('click', () => handleConfirmCancel(reservationIdCaptured));
-
-    const cancelNo = el('[data-cancel-no]');
-    cancelNo?.addEventListener('click', hideCancelConfirm);
-
-    if (paymentType === 'card') {
-      startCardStatusPolling(reservationIdCaptured, serverStatus);
-    }
-
-    // Re-render on language change
     root.addEventListener?.('ecovila:languagechange', () => {
       applyI18nToPage();
-      if (selection) renderSummary(selection, pending);
+      if (_managedContext) {
+        renderManagedReservation(
+          _managedContext.details,
+          _managedContext.reservationId,
+          _managedContext.manageToken,
+        );
+      }
     });
   }
 

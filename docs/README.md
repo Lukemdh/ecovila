@@ -102,7 +102,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 173 Node + 36 Deno tests, all passing
+# → 175 Node + 37 Deno tests, all passing
 ```
 
 The suites can also be run independently.
@@ -112,14 +112,14 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 173 tests, 17 suites, all passing
+# → 175 tests, 17 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 36 tests, all passing
+# → 37 tests, all passing
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named
@@ -163,7 +163,7 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 
 ## Deployment
 
-> 2026-06-01 production-readiness status: do **not** launch until the open High/Medium
+> 2026-06-01 production-readiness status: do **not** launch until the open Medium
 > findings in `docs/production-readiness-audit.md`, `docs/security.md`, and
 > `docs/bugs.md` are resolved or explicitly accepted by the owner.
 

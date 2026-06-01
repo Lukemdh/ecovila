@@ -360,8 +360,26 @@
       .filter(Boolean);
   }
 
+  function buildConfirmationUrl(primaryId, manageToken, params) {
+    const query = new URLSearchParams();
+    query.set('id', primaryId);
+
+    if (manageToken) {
+      query.set('manage', manageToken);
+    }
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value) {
+        query.set(key, value);
+      }
+    });
+
+    return `confirmare.html?${query.toString()}`;
+  }
+
   function redirectAfterReservation(primaryId, paymentType, payloads, selection, createResult, guestPhone) {
     const normalizedGuestPhone = normalizeInternationalPhone(guestPhone);
+    const manageToken = String(createResult?.manageToken || '').trim();
 
     if (paymentType === 'card') {
       const client = supabaseHelpers.getSupabaseClient();
@@ -369,6 +387,7 @@
         primaryReservationId: primaryId,
         bookingGroupId: createResult?.bookingGroupId || primaryId,
         reservationIds: getReservationIdsForPayment(payloads, createResult),
+        manageToken,
         totalPrice: Number(selection.totalPrice),
         selection,
         guestPhone: normalizedGuestPhone,
@@ -379,11 +398,11 @@
           return;
         }
 
-        root.location.href = `confirmare.html?id=${encodeURIComponent(primaryId)}`;
+        root.location.href = buildConfirmationUrl(primaryId, manageToken);
       });
     }
 
-    root.location.href = `confirmare.html?id=${encodeURIComponent(primaryId)}`;
+    root.location.href = buildConfirmationUrl(primaryId, manageToken);
     return Promise.resolve();
   }
 
@@ -507,6 +526,7 @@
           primaryReservationId: primaryId,
           bookingGroupId: createResult.bookingGroupId || primaryId,
           reservationIds,
+          manageToken: createResult.manageToken || '',
           paymentType: state.paymentType,
           totalPrice: Number(state.selection.totalPrice),
           createdAt: new Date().toISOString(),
@@ -591,6 +611,7 @@
     getOnlinePaymentCopy,
     getPaymentRail,
     getReservationIdsForPayment,
+    buildConfirmationUrl,
     hasSelectedRoomNumber,
     initCheckout,
     normalizeInternationalPhone,

@@ -1,8 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 171 files are expected to be
-tracked after the 2026-06-01 production-readiness audit document is added.
+binaries, and gitignored `.superpowers/` / `.claude/`). 173 files are expected to be
+tracked after the 2026-06-01 Step 16 token-proof cleanup.
 
 ## Annotated tree
 
@@ -70,7 +70,7 @@ ecovila/
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # 23 timestamped SQL migrations (20260506 → 20260531)
+│   ├── migrations/             # 24 timestamped SQL migrations (20260506 → 20260601)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
 │       ├── _shared/            # cors, env, http, maib, notifications, providers,
@@ -79,7 +79,7 @@ ecovila/
 │       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
 │       ├── maib-create-payment/, maib-callback/, maib-refund/
 │       ├── reservation-lookup-start/, reservation-lookup-verify/
-│       ├── reservation-manage-details/, reservation-cancel/
+│       ├── reservation-manage-details/, reservation-extend-cash/, reservation-cancel/
 │       └── tests/              # Deno tests (cors, http, maib, reservation-manage, reservations)
 │
 └── docs/                       # Documentation only
@@ -101,7 +101,7 @@ ecovila/
 | `site.html` | Full marketing landing page; directly reachable, not linked from `index.html`. |
 | `rezervari.html` + `js/booking.js` | Booking UI and controller; availability, party, room selection. |
 | `checkout.html` + `js/checkout.js` | Checkout UI; builds reservation, picks Maib rail by phone country code. |
-| `confirmare.html` + `js/confirmare.js` | Post-booking state: cash timer, extend, online cancellation eligibility, refund display. |
+| `confirmare.html` + `js/confirmare.js` | Token-backed post-booking state: cash timer, extend, pending-cash cancellation, online cancellation eligibility, refund display. |
 | `anulare.html` + `js/anulare.js` | Token + phone self-service cancellation with 7-day / 2-hour and cash-office rules. |
 | `js/pricing.js` | Pure pricing/billing/date engine. Shared by frontend + CRM + Node tests. |
 | `js/calendar.js` | Shared calendar/date logic (booking page + CRM calendar). |
@@ -137,7 +137,7 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
 2. Read paths call public RPCs / RLS-guarded selects via `js/supabase.js`
    (`fetchRooms`, `fetchPricingTiers`, `fetchHolidays`, `fetchAvailabilityBlocks`, …).
 3. `js/pricing.js` computes billable guests and stay price client-side for display.
-4. Mutations (create reservation, cancel, refund, lookup) call Edge Functions through
+4. Mutations (create reservation, manage details, cash extension, cancel, refund, lookup) call Edge Functions through
    `js/supabase.js`, which enforce server-side rules, talk to Maib/SMS.md/Resend, and
    write with the service-role client (`_shared/supabaseAdmin.ts`). Guest cancellation is
    also enforced by the latest `cancel_reservation_by_token` RPC for legacy token links.
@@ -153,6 +153,7 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
   found) but are owner-retained per the 2026-05-31 Step 6 decision in `docs/bugs.md`.
 - The Step 14 relocation moved backend code and Node tests from the former `docs/`
   subtrees into root-level `supabase/` and `tests/`, matching Supabase CLI defaults.
-- The 2026-06-01 production-readiness audit added no source files, only documentation.
-  Current open blockers are tracked in `docs/production-readiness-audit.md`,
-  `docs/security.md`, and `docs/bugs.md`.
+- The 2026-06-01 Step 16 cleanup added the `reservation-extend-cash` Edge Function and a
+  migration that removes the old UUID-only confirmation RPC signatures. Current open
+  blockers are tracked in `docs/production-readiness-audit.md`, `docs/security.md`, and
+  `docs/bugs.md`.
