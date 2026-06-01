@@ -1,6 +1,6 @@
 # Project History — EcoVila
 
-Reconstructed from git history (`git log`, 70 commits, 2026-05-07 → 2026-06-01), the
+Reconstructed from git history (`git log`, 2026-05-07 → 2026-06-01), the
 implementation roadmap in `docs/ECOVILA_PROJECT_BRIEF.md`, and the per-step records in
 `docs/superpowers/plans|specs/`. Dates are commit `author-date` (YYYY-MM-DD). Future
 sessions append to the running log at the bottom.
