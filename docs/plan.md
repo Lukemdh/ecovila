@@ -662,7 +662,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   and S-7 through S-11, set CURRENT STEP to 15, and added Steps 15-18 for the remaining
   production hardening. Updated README, project-overview, project-structure,
   project-history, security, bugs, decisions, conventions, AGENTS, and plan.
-- **2026-06-01 — STEP 15 (commit: pending).** Hardened CRM reservation rendering with
+- **2026-06-01 — STEP 15 (commit: 7db0449).** Hardened CRM reservation rendering with
   shared escaping and public guest-name HTML-control validation; verified 173 Node tests,
   36 Deno tests, `deno check`, and `deno lint`; updated production-readiness-audit,
   security, bugs, decisions, conventions, project-history, README, project-overview, and
