@@ -671,4 +671,4 @@ Statuses: TODO | IN PROGRESS | DONE.
   36 Deno tests, `deno check`, and `deno lint`; updated production-readiness-audit,
   security, bugs, decisions, conventions, project-history, README, project-overview, and
   plan; checked project-structure with no changes needed.
-- **2026-06-01 — STEP 16 (commit: pending).** Required manage-token proof for confirmation status, cash extension, and guest cancellation; verified 175 Node tests, 37 Deno tests, `deno check`, `deno lint`, `deno fmt --check`, and static greps; updated README, project-overview, project-structure, project-history, production-readiness-audit, security, bugs, decisions, conventions, and plan.
+- **2026-06-01 — STEP 16 (commit: b86f850).** Required manage-token proof for confirmation status, cash extension, and guest cancellation; verified 175 Node tests, 37 Deno tests, `deno check`, `deno lint`, `deno fmt --check`, and static greps; updated README, project-overview, project-structure, project-history, production-readiness-audit, security, bugs, decisions, conventions, and plan.
