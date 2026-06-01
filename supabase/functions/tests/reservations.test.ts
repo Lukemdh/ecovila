@@ -133,6 +133,23 @@ Deno.test('buildReservationRows rejects unsafe guest-created reservation fields'
     () => buildReservationRows([{ payment_type: 'cash', notes: 'VIP' }]),
     'Public reservations cannot include private notes.',
   );
+  assertThrows(
+    () =>
+      buildReservationRows([{
+        room_id: 'room-a',
+        guest_first_name: '<img src=x onerror=alert(1)>',
+        guest_last_name: 'Munteanu',
+        guest_phone: '+37360123456',
+        guest_email: 'ana@example.md',
+        check_in: '2026-06-01',
+        check_out: '2026-06-03',
+        adults: 2,
+        kids_ages: [],
+        total_price: 5200,
+        payment_type: 'cash',
+      }]),
+    'Guest names cannot include HTML control characters.',
+  );
 });
 
 Deno.test('buildCancellationTokenRows creates one secure token row per reservation', async () => {

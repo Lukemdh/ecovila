@@ -6,17 +6,18 @@ documentation only; no application code was modified.
 
 ## Readiness verdict
 
-**Not production-ready yet.** The automated suites are green, but the manual audit found
-open High/Medium blockers that should be fixed before public launch:
+**Not production-ready yet.** The automated suites are green, and Step 15 fixed the CRM
+stored-XSS blocker, but the audit still has open High/Medium blockers that should be
+fixed before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 171 Node + 36 Deno tests pass |
+| Test suite | Green | `npm test` -> 173 Node + 36 Deno tests pass |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
 | Static local references | Green | 10 HTML files checked; all local `href`/`src`/`poster` targets exist |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
 | Secret scan | Mostly clean | Regex scan found only the intended public Supabase anon JWT |
-| Security hardening | Blocked | S-7, S-8, S-9, S-10 remain open |
+| Security hardening | Blocked | S-7, S-9, S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
 | Production content/assets | Not ready | Placeholder SVG photos remain the fallback public imagery |
 | Dependency audit | Incomplete | `npm audit` cannot run without a lockfile; Deno dependency is slightly behind latest |
@@ -25,7 +26,7 @@ open High/Medium blockers that should be fixed before public launch:
 
 ```sh
 npm test
-# 171 Node tests + 36 Deno tests passed
+# 173 Node tests + 36 Deno tests passed
 
 cd supabase/functions && deno lint
 # Checked 27 files
@@ -54,7 +55,7 @@ Additional manual/static checks:
   tables require RLS, views bypass RLS unless `security_invoker`, and
   security-definer functions should not be created in exposed schemas.
 
-## Open production blockers
+## Production blocker tracking
 
 ### 1. Legacy confirmation RPCs are UUID-only
 
@@ -68,15 +69,16 @@ newer manage token.
 Track as: B-8 / S-7. Next step: move these actions behind a manage token or signed
 one-time token, then deprecate the UUID-only RPCs.
 
-### 2. CRM renders guest-controlled fields through `innerHTML`
+### 2. CRM renders guest-controlled fields through `innerHTML` — fixed 2026-06-01
 
-The CRM calendar, dashboard, sidebar search, and daily reception cards interpolate
-reservation names/phones/labels into template strings. Guest names are not normalized or
-escaped server-side, so a public booking can persist markup that executes when staff
-views the CRM.
+Formerly, the CRM calendar, dashboard, sidebar search, and daily reception cards
+interpolated reservation names/phones/labels into template strings. Guest names were not
+normalized or escaped server-side, so a public booking could persist markup that
+executed when staff viewed the CRM.
 
-Track as: B-9 / S-8. Next step: add a shared escape/DOM-rendering pattern, use
-`textContent` for guest fields, and add XSS regression tests.
+Status: fixed in Step 15. `EcoVilaCrmCalendar.escapeHtml` now guards the affected CRM
+template renderers, public guest names with `<` or `>` are rejected server-side, and
+Node/Deno regression tests cover the malicious payload.
 
 ### 3. Public security-definer RPCs remain in `public`
 
@@ -144,11 +146,10 @@ Track as: B-10. Next step: tighten server-side validation to 1-17 and add Deno c
 
 ## Recommended next sequence
 
-1. Fix B-9/S-8 first: CRM stored-XSS risk is the highest-impact staff-facing issue.
-2. Fix B-8/S-7 and S-10 together: align all guest management around hashed/signed
+1. Fix B-8/S-7 and S-10 together: align all guest management around hashed/signed
    tokens, then remove or lock down legacy UUID-only RPCs.
-3. Fix B-11/S-9 before applying migrations to production: confirm extension posture and
+2. Fix B-11/S-9 before applying migrations to production: confirm extension posture and
    reduce exposed security-definer surface.
-4. Fix B-10 and add server-side contract tests for public booking payload constraints.
-5. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
+3. Fix B-10 and add server-side contract tests for public booking payload constraints.
+4. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
    maintenance `index.html` is still the desired launch homepage.

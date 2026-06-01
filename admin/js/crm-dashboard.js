@@ -43,6 +43,20 @@
     }
   }
 
+  function escapeHtml(value) {
+    if (root.EcoVilaCrmCalendar?.escapeHtml) {
+      return root.EcoVilaCrmCalendar.escapeHtml(value);
+    }
+
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[character]);
+  }
+
   function formatMonthLabel(date) {
     const formatted = new Intl.DateTimeFormat('ro-MD', {
       month: 'long',
@@ -80,13 +94,18 @@
 
     list.innerHTML = groups.map((group) => {
       const reservation = group.primary;
+      const name = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume');
+      const roomLabel = escapeHtml(group.roomLabel);
+      const expiresAt = escapeHtml(group.cash_expires_at || '');
+      const bookingGroupId = escapeHtml(group.bookingGroupId);
+      const reservationId = escapeHtml(reservation.id || '');
       return `
-        <article class="crm-pending-card" data-pending-group="${group.bookingGroupId}">
-          <strong>${root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume'}</strong>
-          <span>${group.roomLabel}</span>
+        <article class="crm-pending-card" data-pending-group="${bookingGroupId}">
+          <strong>${name}</strong>
+          <span>${roomLabel}</span>
           <span>Cash · ${context.formatMDL(group.totalPrice)}</span>
-          <span data-countdown data-expires-at="${group.cash_expires_at}">${formatCountdown(group.cash_expires_at)}</span>
-          <button class="crm-button crm-button--primary crm-button--small" type="button" data-mark-paid="${reservation.id}" data-mark-paid-group="${group.bookingGroupId}">
+          <span data-countdown data-expires-at="${expiresAt}">${formatCountdown(group.cash_expires_at)}</span>
+          <button class="crm-button crm-button--primary crm-button--small" type="button" data-mark-paid="${reservationId}" data-mark-paid-group="${bookingGroupId}">
             Marchează ca plătit
           </button>
         </article>
@@ -121,7 +140,9 @@
 
   function reservationCard(block) {
     const reservation = block.primary;
-    const name = root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume';
+    const name = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume');
+    const phone = escapeHtml(root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone));
+    const expiresAt = escapeHtml(reservation.cash_expires_at || '');
     const card = root.document.createElement('article');
     card.className = [
       'crm-reservation-card',
@@ -140,8 +161,8 @@
     card.innerHTML = `
       <strong>${name}</strong>
       <span>${guestSummary(reservation)}</span>
-      <span class="crm-reservation-card__phone">${root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone)}</span>
-      ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${reservation.cash_expires_at}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
+      <span class="crm-reservation-card__phone">${phone}</span>
+      ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${expiresAt}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
     `;
     card.addEventListener('click', () => openReservation(reservation));
     return card;

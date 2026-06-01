@@ -19,6 +19,20 @@
     return Array.from((scope || root.document).querySelectorAll(selector));
   }
 
+  function escapeHtml(value) {
+    if (root.EcoVilaCrmCalendar?.escapeHtml) {
+      return root.EcoVilaCrmCalendar.escapeHtml(value);
+    }
+
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[character]);
+  }
+
   function readNumberList(value) {
     return String(value || '')
       .split(',')
@@ -612,14 +626,18 @@
     }
 
     container.innerHTML = reservations.map((reservation) => {
-      const room = root.EcoVilaCrmCalendar.roomLabel(reservation);
-      const name = root.EcoVilaCrmCalendar.guestName(reservation);
+      const room = escapeHtml(root.EcoVilaCrmCalendar.roomLabel(reservation));
+      const name = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation));
+      const reservationId = escapeHtml(reservation.id || '');
+      const checkIn = escapeHtml(reservation.check_in || '');
+      const checkOut = escapeHtml(reservation.check_out || '');
+      const phone = escapeHtml(reservation.guest_phone || '');
       return `
-        <button class="crm-search-card" type="button" data-result-id="${reservation.id}">
+        <button class="crm-search-card" type="button" data-result-id="${reservationId}">
           <strong>${name}</strong>
           <span>${room}</span>
-          <span>${reservation.check_in} - ${reservation.check_out}</span>
-          <span>${reservation.guest_phone}</span>
+          <span>${checkIn} - ${checkOut}</span>
+          <span>${phone}</span>
         </button>
       `;
     }).join('');

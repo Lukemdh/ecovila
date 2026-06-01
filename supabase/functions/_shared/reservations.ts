@@ -5,6 +5,7 @@ export const CASH_EXPIRY_MINUTES = 30;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HTML_CONTROL_PATTERN = /[<>]/;
 const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
 export type ReservationInput = {
@@ -241,8 +242,8 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
 
   const row: ReservationRow = {
     room_id: requiredString(input.room_id, 'Room id is required.'),
-    guest_first_name: requiredString(input.guest_first_name, 'Guest first name is required.'),
-    guest_last_name: requiredString(input.guest_last_name, 'Guest last name is required.'),
+    guest_first_name: guestNameField(input.guest_first_name, 'Guest first name is required.'),
+    guest_last_name: guestNameField(input.guest_last_name, 'Guest last name is required.'),
     guest_phone: phone,
     guest_email: email,
     guest_language: guestLanguage,
@@ -342,6 +343,16 @@ function requiredString(value: unknown, message: string) {
 
   if (!text) {
     throw new Error(message);
+  }
+
+  return text;
+}
+
+function guestNameField(value: unknown, message: string) {
+  const text = requiredString(value, message);
+
+  if (HTML_CONTROL_PATTERN.test(text)) {
+    throw new Error('Guest names cannot include HTML control characters.');
   }
 
   return text;

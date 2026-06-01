@@ -68,7 +68,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → 15**
+**CURRENT STEP → 16**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -86,7 +86,7 @@ together with the code change for that step.
 | 12 | Harden CORS allowlist across all Edge Functions | Medium | DONE |
 | 13 | Defense-in-depth for `requireStaffRole` | Medium | DONE |
 | 14 | Relocate backend/tests out of `docs/` — owner-gated | High | DONE |
-| 15 | Harden CRM rendering against stored XSS | High | TODO |
+| 15 | Harden CRM rendering against stored XSS | High | DONE |
 | 16 | Replace legacy UUID-only guest confirmation actions | High | TODO |
 | 17 | Harden Supabase RPC/token/migration posture | Medium | TODO |
 | 18 | Production dependency, asset, and ops gates | Medium | TODO |
@@ -481,7 +481,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 15 — Harden CRM rendering against stored XSS
-- Status: TODO
+- Status: DONE
 - Goal: Remove guest-controlled HTML injection risk from authenticated CRM surfaces
   (B-9/S-8).
 - Depends on: STEPs 1–14 | Why now: highest-impact open production blocker from the
@@ -505,6 +505,9 @@ Statuses: TODO | IN PROGRESS | DONE.
      and any other untrusted text used in CRM `innerHTML`.
   4. Add/adjust server-side validation so public guest names cannot store raw HTML
      control characters where business requirements do not need them.
+- Completion note: added `EcoVilaCrmCalendar.escapeHtml`, applied it to calendar
+  reservation cards, pending-cash cards, sidebar search results, and daily reception
+  cards, and rejected public guest names containing `<` or `>`.
 - Verification:
   - `npm run test:node` -> all Node tests pass.
   - `npm run test:deno` -> all Deno tests pass if server validation changed.
@@ -659,3 +662,8 @@ Statuses: TODO | IN PROGRESS | DONE.
   and S-7 through S-11, set CURRENT STEP to 15, and added Steps 15-18 for the remaining
   production hardening. Updated README, project-overview, project-structure,
   project-history, security, bugs, decisions, conventions, AGENTS, and plan.
+- **2026-06-01 — STEP 15 (commit: pending).** Hardened CRM reservation rendering with
+  shared escaping and public guest-name HTML-control validation; verified 173 Node tests,
+  36 Deno tests, `deno check`, and `deno lint`; updated production-readiness-audit,
+  security, bugs, decisions, conventions, project-history, README, project-overview, and
+  plan; checked project-structure with no changes needed.

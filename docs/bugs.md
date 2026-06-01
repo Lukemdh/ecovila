@@ -15,7 +15,7 @@ High / Medium / Low.
 | B-6 | Backend + tests lived under `docs/` (mislocated relative to convention) | Low | Fixed |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 | B-8 | Legacy confirmation actions can extend/cancel by reservation UUID only | High | Open |
-| B-9 | CRM stored-XSS risk from unescaped reservation fields | High | Open |
+| B-9 | CRM stored-XSS risk from unescaped reservation fields | High | Fixed |
 | B-10 | Edge Function accepts child ages `0` and `18` despite public 1-17 contract | Medium | Open |
 | B-11 | Maib cron migrations assume `pg_cron`/`cron` exists | Medium | Open |
 | B-12 | Public fallback imagery still uses placeholder SVGs | Low | Open |
@@ -148,21 +148,17 @@ High / Medium / Low.
   pending reservation status/action RPCs, update `confirmare.html` links, and revoke the
   old UUID-only RPCs.
 
-### B-9 — CRM stored-XSS risk from unescaped reservation fields (High) — Open
-- **Description:** several authenticated CRM surfaces interpolate guest-controlled
+### B-9 — CRM stored-XSS risk from unescaped reservation fields (High) — Fixed 2026-06-01
+- **Description:** several authenticated CRM surfaces interpolated guest-controlled
   reservation data into `innerHTML` templates. `guest_first_name` / `guest_last_name`
-  are only trimmed server-side, so markup submitted during public booking can be stored
-  and rendered in staff sessions.
-- **Evidence:** `admin/js/crm-dashboard.js` reservation and pending-cash cards,
-  `admin/js/crm-sidebar.js` search results, and `admin/js/crm-daily.js` reception cards
-  interpolate `EcoVilaCrmCalendar.guestName(reservation)` or phone fields directly.
-  `admin/js/crm-photos.js` and `admin/js/crm-pricing.js` already define `escapeHtml`,
-  showing the missing pattern is local to some CRM modules.
-- **Why it matters:** a malicious guest could execute script in the CRM origin when
-  Diana/Angela view the reservation.
-- **Fix direction:** add a shared CRM `escapeHtml` or DOM-node rendering helper, prefer
-  `textContent` for guest fields, add server-side name validation, and add regression
-  tests with an HTML payload in the guest name.
+  were only trimmed server-side, so markup submitted during public booking could be
+  stored and rendered in staff sessions.
+- **Fix:** added shared CRM escaping via `EcoVilaCrmCalendar.escapeHtml`; escaped
+  calendar reservation cards, pending-cash cards, sidebar search results, and daily
+  reception cards; and rejected public guest names containing `<` or `>`.
+- **Verification:** Node contract tests cover `<img src=x onerror=alert(1)>` and an
+  unsafe phone payload across the affected CRM cards. The Deno reservation test asserts
+  public guest names with HTML control characters are rejected.
 
 ### B-10 — Edge Function accepts child ages `0` and `18` (Medium) — Open
 - **Description:** the public booking contract allows child ages 1-17, but

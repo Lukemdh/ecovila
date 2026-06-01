@@ -47,6 +47,57 @@ function formWithFields(fields) {
   };
 }
 
+function createFakeElement(tagName = 'div') {
+  const classes = new Set();
+  const element = {
+    tagName: tagName.toUpperCase(),
+    children: [],
+    className: '',
+    dataset: {},
+    hidden: false,
+    innerHTML: '',
+    style: {},
+    textContent: '',
+    value: '',
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    },
+    addEventListener() {},
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    setAttribute(name, value) {
+      this[name] = String(value);
+    },
+    classList: {
+      add(name) {
+        classes.add(name);
+      },
+      remove(name) {
+        classes.delete(name);
+      },
+      toggle(name, force) {
+        const shouldAdd = force === undefined ? !classes.has(name) : Boolean(force);
+        if (shouldAdd) {
+          classes.add(name);
+        } else {
+          classes.delete(name);
+        }
+        return shouldAdd;
+      },
+      contains(name) {
+        return classes.has(name);
+      },
+    },
+  };
+
+  return element;
+}
+
 function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
 }
@@ -653,6 +704,85 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboardJs, /formatCalendarPhone\(reservation\.guest_phone\)/);
   });
 
+  it('escapes guest fields in calendar and pending cash reservation cards', () => {
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const calendarGrid = createFakeElement('div');
+    const pendingList = createFakeElement('div');
+    const appended = [];
+    const documentRef = {
+      createElement(tagName) {
+        const element = createFakeElement(tagName);
+        const originalAppend = element.appendChild.bind(element);
+        element.appendChild = (child) => {
+          originalAppend(child);
+          if (element === calendarGrid && child.className?.includes?.('crm-reservation-card')) {
+            appended.push(child);
+          }
+          return child;
+        };
+        return element;
+      },
+      querySelector(selector) {
+        if (selector === '[data-calendar-grid]') return calendarGrid;
+        if (selector === '[data-pending-cash-list]') return pendingList;
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
+    };
+    calendarGrid.appendChild = (child) => {
+      calendarGrid.children.push(child);
+      if (child.className?.includes?.('crm-reservation-card')) {
+        appended.push(child);
+      }
+      return child;
+    };
+    const { EcoVilaCrmDashboard: dashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: documentRef,
+      EcoVilaCrmCalendar,
+    });
+    const payload = '<img src=x onerror=alert(1)>';
+    const phonePayload = '<svg onload=alert(2)>';
+    const reservation = {
+      id: 'reservation-xss',
+      booking_group_id: 'group-xss',
+      room_id: 'room-1',
+      guest_first_name: payload,
+      guest_last_name: 'Client',
+      guest_phone: phonePayload,
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      adults: 2,
+      kids_ages: [],
+      payment_type: 'cash',
+      payment_status: 'pending',
+      total_price: 2400,
+      cash_expires_at: '2026-06-01T10:00:00.000Z',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+
+    dashboard.renderCalendar(
+      { formatDate: (date) => date, formatMDL: (amount) => `${amount} MDL` },
+      {
+        today: '2026-06-01',
+        startDate: '2026-06-01',
+        dates: ['2026-06-10', '2026-06-11'],
+        rooms: [{ id: 'room-1', number: 1, type: 'small' }],
+        reservations: [reservation],
+      },
+    );
+    dashboard.renderPendingCash({ formatMDL: (amount) => `${amount} MDL` }, [reservation]);
+
+    const calendarHtml = appended.map((item) => item.innerHTML).join('\n');
+    assert.doesNotMatch(calendarHtml, /<img src=x onerror=alert\(1\)>/);
+    assert.doesNotMatch(calendarHtml, /<svg onload=alert\(2\)>/);
+    assert.match(calendarHtml, /&lt;img src=x onerror=alert\(1\)&gt; Client/);
+    assert.match(calendarHtml, /&lt;svg onload=alert\(2\)&gt;/);
+    assert.doesNotMatch(pendingList.innerHTML, /<img src=x onerror=alert\(1\)>/);
+    assert.match(pendingList.innerHTML, /&lt;img src=x onerror=alert\(1\)&gt; Client/);
+  });
+
   it('prevents reservation card overlap and keeps date headers sticky while scrolling the table', () => {
     const dashboardJs = read('admin/js/crm-dashboard.js');
     const css = read('css/crm.css');
@@ -773,6 +903,86 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(daily.dailyReservationMatchesSearch(reservation, '689 836'), true);
     assert.equal(daily.dailyReservationMatchesSearch(differentRoomWithPhoneFragment, '12'), false);
     assert.equal(daily.dailyReservationMatchesSearch(reservation, 'popescu'), false);
+  });
+
+  it('escapes guest fields in sidebar search results and daily cards', async () => {
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const searchContainer = createFakeElement('div');
+    const checkIns = createFakeElement('div');
+    const checkOuts = createFakeElement('div');
+    const dailyCards = [];
+    const documentRef = {
+      createElement(tagName) {
+        const element = createFakeElement(tagName);
+        if (tagName === 'article') {
+          dailyCards.push(element);
+        }
+        return element;
+      },
+      querySelector(selector) {
+        if (selector === '[data-check-ins]') return checkIns;
+        if (selector === '[data-check-outs]') return checkOuts;
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
+    };
+    const payload = '<img src=x onerror=alert(1)>';
+    const phonePayload = '<svg onload=alert(2)>';
+    const reservation = {
+      id: 'reservation-xss',
+      booking_group_id: 'group-xss',
+      room_id: 'room-1',
+      guest_first_name: payload,
+      guest_last_name: 'Client',
+      guest_phone: phonePayload,
+      check_in: '2026-06-10',
+      check_out: '2026-06-11',
+      adults: 2,
+      kids_ages: [],
+      total_price: 2400,
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js', {
+      EcoVilaCrmCalendar,
+    });
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      document: documentRef,
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        fetchAdminReservations: async () => [reservation],
+        fetchDailyStatuses: async () => [],
+        fetchHolidays: async () => [],
+        fetchPricingTiers: async () => [],
+      },
+    });
+
+    sidebar.renderSearchResults(searchContainer, [reservation], () => {});
+    await daily.loadDaily(
+      {
+        client: {},
+        formatDate: (date) => date,
+        formatMDL: (amount) => `${amount} MDL`,
+        session: { user: { id: 'staff-1' } },
+        setAlert() {},
+      },
+      {
+        selectedDate: '2026-06-10',
+        dailySearchQuery: '',
+      },
+    );
+
+    const dailyHtml = dailyCards.map((item) => item.innerHTML).join('\n');
+    assert.doesNotMatch(searchContainer.innerHTML, /<img src=x onerror=alert\(1\)>/);
+    assert.doesNotMatch(searchContainer.innerHTML, /<svg onload=alert\(2\)>/);
+    assert.match(searchContainer.innerHTML, /&lt;img src=x onerror=alert\(1\)&gt; Client/);
+    assert.match(searchContainer.innerHTML, /&lt;svg onload=alert\(2\)&gt;/);
+    assert.doesNotMatch(dailyHtml, /<img src=x onerror=alert\(1\)>/);
+    assert.doesNotMatch(dailyHtml, /<svg onload=alert\(2\)>/);
+    assert.match(dailyHtml, /&lt;img src=x onerror=alert\(1\)&gt; Client/);
+    assert.match(dailyHtml, /&lt;svg onload=alert\(2\)&gt;/);
   });
 
   it('calculates exact daily guest supplements from editable child age buckets', () => {

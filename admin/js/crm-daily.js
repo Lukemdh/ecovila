@@ -36,6 +36,20 @@
     return statuses.find((status) => status.reservation_id === reservationId) || {};
   }
 
+  function escapeHtml(value) {
+    if (root.EcoVilaCrmCalendar?.escapeHtml) {
+      return root.EcoVilaCrmCalendar.escapeHtml(value);
+    }
+
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[character]);
+  }
+
   function bucketValueForAge(age) {
     const value = Number(age);
     if (value <= 3) {
@@ -293,6 +307,9 @@
     const phone = root.EcoVilaCrmCalendar.formatCalendarPhone
       ? root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone)
       : reservation.guest_phone || '';
+    const roomLabel = escapeHtml(root.EcoVilaCrmCalendar.roomLabel(reservation));
+    const guestName = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation));
+    const phoneLabel = escapeHtml(phone);
     card.className = [
       'crm-daily-card',
       `crm-daily-card--${type}`,
@@ -300,9 +317,9 @@
     ].filter(Boolean).join(' ');
     card.innerHTML = `
       <div class="crm-daily-card__details">
-        <span class="crm-daily-card__room">${root.EcoVilaCrmCalendar.roomLabel(reservation)}</span>
-        <strong>${root.EcoVilaCrmCalendar.guestName(reservation)}</strong>
-        <span>${phone}</span>
+        <span class="crm-daily-card__room">${roomLabel}</span>
+        <strong>${guestName}</strong>
+        <span>${phoneLabel}</span>
         <span>${guestSummary(reservation)}</span>
         <span>Achitat: ${context.formatMDL(groupTotal(group))}</span>
         <span class="crm-daily-card__towels">${towelCardLine(reservation, type)}</span>

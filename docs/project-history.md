@@ -68,16 +68,17 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 171 Node contract tests + 36 Deno tests.
+- Tests green: 173 Node contract tests + 36 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - The backend workspace (`supabase/`) and Node tests (`tests/`) now live at the repo
   root. They previously lived under `docs/` after the 2026-05-16 "docs reorg"
   (`ca4dfc5`), and Step 14 moved them back to conventional locations.
 - The 2026-06-01 production-readiness audit found green automated checks but open
-  production blockers: CRM stored-XSS risk, legacy UUID-only confirmation actions,
-  public security-definer RPC review, plaintext legacy cancellation tokens, server-side
-  child-age validation drift, and the Maib `pg_cron` migration assumption.
+  production blockers: legacy UUID-only confirmation actions, public security-definer
+  RPC review, plaintext legacy cancellation tokens, server-side child-age validation
+  drift, and the Maib `pg_cron` migration assumption. The CRM stored-XSS blocker was
+  fixed in Step 15.
 
 ## Notable decisions reconstructed from history
 
@@ -164,3 +165,8 @@ sessions append to the running log at the bottom.
   `deno outdated`; `npm audit` could not run without a lockfile. Added
   `docs/production-readiness-audit.md`, opened B-8 through B-13 and S-7 through S-11,
   and extended `docs/plan.md` with Steps 15-18 for the remaining launch blockers.
+- 2026-06-01 — STEP 15 cleanup. Added shared CRM HTML escaping via
+  `EcoVilaCrmCalendar.escapeHtml`, escaped reservation names/phones/labels in calendar,
+  pending-cash, sidebar search, and daily reception cards, rejected public guest names
+  containing `<` or `>`, and added XSS regression coverage. Verified 173 Node tests, 36
+  Deno tests, `deno check`, and `deno lint`.

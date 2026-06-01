@@ -129,6 +129,19 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   mechanically updated to the new locations so future grep-based audits do not revive
   the old layout.
 
+### ADR-014 — CRM reservation text is escaped at the shared calendar boundary
+- **Date:** 2026-06-01.
+- **Decision:** use `EcoVilaCrmCalendar.escapeHtml` as the shared CRM escaping helper for
+  reservation text that still renders through string templates, and reject public guest
+  names containing raw `<` or `>` before storage.
+- **Why:** the CRM has several compact card/list renderers that still use `innerHTML`
+  for markup. A single shared helper keeps calendar cards, pending-cash cards, sidebar
+  search results, and daily reception cards aligned without introducing a frontend build
+  step or a new dependency.
+- **Consequence:** new CRM renderers must treat reservation names, phones, labels, dates,
+  and data attributes as untrusted. Prefer DOM nodes plus `textContent` when practical;
+  otherwise call the shared helper before template insertion.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

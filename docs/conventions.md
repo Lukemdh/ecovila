@@ -31,7 +31,9 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `js/pricing.js`; keep it side-effect-free (it is unit-tested directly).
 - Any guest-controlled text rendered in the CRM must be assigned with `textContent` or a
   shared escaping helper before it reaches `innerHTML`. Treat reservation names, phones,
-  notes, photo alt text, holiday labels, and any DB text field as untrusted.
+  notes, photo alt text, holiday labels, and any DB text field as untrusted. Shared CRM
+  escaping currently lives at `EcoVilaCrmCalendar.escapeHtml`; use it for reservation
+  card/search templates that still need string markup.
 - Public guest actions that mutate reservation state must be authorized by a scoped token
   or equivalent proof, not by reservation UUID alone. Legacy confirmation RPCs are an
   open exception tracked as B-8/S-7.
@@ -64,8 +66,8 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   enforcement point. Staff Maib refunds remain Diana-only through `maib-refund` and do
   not reuse the public guest refund window.
 - Server-side public reservation creation must enforce the same domain constraints as
-  the public UI. Child ages are supposed to be 1-17; the current 0/18 server acceptance
-  is tracked as B-10.
+  the public UI. Guest first/last names cannot include raw `<` or `>` characters. Child
+  ages are supposed to be 1-17; the current 0/18 server acceptance is tracked as B-10.
 - Secrets/signatures: hash tokens before storage; compare secrets/signatures with the
   constant-time helper; verify external callbacks (Maib) by signature + replay window.
 - New bearer-style guest tokens should be stored hashed. The legacy plaintext

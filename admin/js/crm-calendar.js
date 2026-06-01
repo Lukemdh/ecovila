@@ -102,6 +102,16 @@
     return [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(' ').trim();
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[character]);
+  }
+
   function formatCalendarPhone(value) {
     const raw = String(value || '').trim();
     if (!raw) {
@@ -327,6 +337,7 @@
     daysInMonth,
     enumerateDates,
     enumerateMonthDates,
+    escapeHtml,
     formatCalendarPhone,
     formatRoomNumbers,
     getCardClass,

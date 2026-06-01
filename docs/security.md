@@ -14,12 +14,12 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
 | S-6 | `no-explicit-any` lint violations weakened type safety on server code | Low | `supabase/functions/*/index.ts` | Fixed |
 | S-7 | Legacy confirmation RPCs can be used with reservation UUID only | High | `js/confirmare.js`, `js/supabase.js`, `20260511120000_step6_guest_confirmation.sql` | Open |
-| S-8 | CRM renders guest-controlled reservation fields through `innerHTML` | High | `admin/js/crm-dashboard.js`, `admin/js/crm-sidebar.js`, `admin/js/crm-daily.js` | Open |
+| S-8 | CRM renders guest-controlled reservation fields through `innerHTML` | High | `admin/js/crm-dashboard.js`, `admin/js/crm-sidebar.js`, `admin/js/crm-daily.js` | Fixed |
 | S-9 | Anonymous `security definer` RPCs remain in exposed `public` schema | Medium | `supabase/migrations/*.sql` | Open |
 | S-10 | Legacy cancellation tokens are stored plaintext | Medium | `public.cancellation_tokens`, `_shared/reservations.ts` | Open |
 | S-11 | Floating Supabase JS major tag creates supply-chain drift | Low | HTML CDN tags, Deno import map | Open |
 
-No Critical findings were identified. Two High findings are open and should block
+No Critical findings were identified. One High finding is open and should block
 production launch until fixed or explicitly accepted. See
 `docs/production-readiness-audit.md` for the 2026-06-01 scan evidence.
 
@@ -90,22 +90,21 @@ verification.
 - **Required fix:** require a manage token or signed one-time action token for pending
   status, extension, and cancellation; then revoke/deprecate the UUID-only RPCs.
 
-### S-8 — Stored XSS risk in CRM rendering (High / Open)
-Several CRM surfaces build `innerHTML` with reservation fields such as
-`guest_first_name`, `guest_last_name`, and `guest_phone`. `guestName()` returns raw DB
-strings, and public reservation creation trims but does not HTML-escape or restrict name
-characters.
-- **Why it matters:** a guest can submit markup in their name. When staff open the CRM,
-  that markup can execute in the authenticated admin origin, potentially exposing
+### S-8 — Stored XSS risk in CRM rendering (High) — Fixed 2026-06-01
+Formerly, several CRM surfaces built `innerHTML` with reservation fields such as
+`guest_first_name`, `guest_last_name`, and `guest_phone`. `guestName()` returned raw DB
+strings, and public reservation creation trimmed but did not restrict name characters.
+- **Why it mattered:** a guest could submit markup in their name. When staff opened the
+  CRM, that markup could execute in the authenticated admin origin, potentially exposing
   session state or triggering privileged staff actions.
-- **Evidence:** unescaped template interpolation appears in
-  `admin/js/crm-dashboard.js` reservation cards/pending cards,
-  `admin/js/crm-sidebar.js` search results, and `admin/js/crm-daily.js` reception cards.
-  `admin/js/crm-photos.js` and `admin/js/crm-pricing.js` already have local
-  `escapeHtml` helpers, so a safe pattern exists.
-- **Required fix:** render guest-controlled fields with `textContent` or a shared
-  escaping helper, validate guest names server-side, and add regression tests with a
-  payload such as `<img src=x onerror=alert(1)>`.
+- **Fixed:** `EcoVilaCrmCalendar.escapeHtml` now provides the shared CRM escaping helper,
+  and dashboard calendar cards, pending-cash cards, sidebar search results, and daily
+  reception cards escape guest names, phones, labels, dates, and data attributes before
+  template insertion. Public reservation creation now rejects guest names containing
+  `<` or `>`.
+- **Verification:** Node regression tests cover the payload
+  `<img src=x onerror=alert(1)>` and an unsafe phone payload across the affected CRM
+  cards; the Deno reservation test asserts unsafe public guest names are rejected.
 
 ### S-9 — Exposed-schema `security definer` RPCs (Medium / Open)
 The migration set contains `security definer` functions in the `public` schema and grants
@@ -152,8 +151,9 @@ Browser pages load `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`; Deno 
   "public-safe availability RPC without exposing guest reservation details").
 - **Guest-created reservation privileged fields are sanitized** server-side
   (`buildReservationRows` rejects unsafe guest-created reservation fields such as
-  payment status, notes, staff-created flags, and conference-room flags). Text fields
-  still need XSS hardening before CRM rendering (S-8).
+  payment status, notes, staff-created flags, and conference-room flags). Public guest
+  names containing `<` or `>` are rejected before storage, and CRM renderers escape
+  untrusted reservation text before `innerHTML`.
 - **Guest cancellation/refund windows are enforced server-side** in both
   `reservation-cancel` and the latest `cancel_reservation_by_token` RPC; browser UI copy
   mirrors the policy but is not the control point. Staff Maib refunds still require the
