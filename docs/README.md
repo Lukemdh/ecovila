@@ -7,10 +7,9 @@ pricing, photos, and daily operations are managed. The frontend is **vanilla
 HTML/CSS/JS with no build step**; the backend is **Supabase** (Postgres + Auth +
 Storage + RLS) with **Deno/TypeScript Edge Functions**.
 
-> Note on layout: this is an audit snapshot. The deployable frontend (HTML/CSS/JS) lives
-> at the repository root. The Supabase backend and the test suite currently live under
-> `docs/` (`docs/supabase/`, `docs/tests/`). This co-location is a known wrinkle — see
-> `docs/bugs.md` and `docs/plan.md`.
+> Note on layout: the deployable frontend (HTML/CSS/JS), the Supabase backend
+> (`supabase/`), and the Node contract test suite (`tests/`) all live at the repository
+> root. The `docs/` directory is documentation-only.
 
 ---
 
@@ -111,14 +110,14 @@ The suites can also be run independently.
 ```sh
 # from the repository root
 npm run test:node
-# equivalent: node --test 'docs/tests/**/*.test.mjs'
+# equivalent: node --test 'tests/**/*.test.mjs'
 # → 171 tests, 17 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
 npm run test:deno
-# equivalent: cd docs/supabase/functions && deno task test
+# equivalent: cd supabase/functions && deno task test
 # → 36 tests, all passing
 ```
 
@@ -127,14 +126,14 @@ The task runs `deno test --allow-env --allow-net tests`; backend test files are 
 
 **Typecheck (Deno):**
 ```sh
-cd docs/supabase/functions
+cd supabase/functions
 deno check $(find . -name '*.ts' -not -path './tests/*')
 # → passes, no type errors
 ```
 
 **Lint (Deno):**
 ```sh
-cd docs/supabase/functions
+cd supabase/functions
 deno lint
 # → passes, no problems
 ```
@@ -148,9 +147,9 @@ There is no linter or typechecker configured for the browser JS.
 - **Frontend:** copy the static files to tophost.md (shared cPanel). No build, no
   server runtime. (Brief Step 12 — not yet performed.)
 - **Database:** apply migrations with the Supabase CLI
-  (`supabase db push` against `docs/supabase/migrations/`).
-- **Edge Functions:** deploy with the Supabase CLI from `docs/supabase/` per
-  `docs/supabase/config.toml` (which sets per-function `verify_jwt`). Set all Edge
+  (`supabase db push` against `supabase/migrations/`).
+- **Edge Functions:** deploy with the Supabase CLI from `supabase/` per
+  `supabase/config.toml` (which sets per-function `verify_jwt`). Set all Edge
   Function secrets listed above before invoking payment/notification functions.
 - **Cron:** schedule `expire-cash-reservations` and `send-reminders` (and the Maib
   session-expiry cron added by migration) passing `ECOVILA_CRON_SECRET`.

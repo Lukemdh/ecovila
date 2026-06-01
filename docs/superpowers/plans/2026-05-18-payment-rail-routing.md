@@ -17,19 +17,19 @@
 - Modify `js/translations.js` — add translated MIA/card online-payment strings and international-phone validation copy.
 - Modify `payments/maib/README.md` — document the new `paymentRail` and `guestPhone` contract.
 - Modify `js/anulare.js` — keep cancellation phone handling consistent with international checkout input.
-- Modify `docs/supabase/functions/_shared/reservations.ts` — accept normalized international guest phones server-side.
-- Create `docs/supabase/migrations/20260518130000_international_guest_phones.sql` — widen the persisted guest-phone constraint for deployed databases.
-- Modify `docs/tests/checkout.test.mjs` — cover international phone handling, rail selection, and adapter context.
-- Modify `docs/tests/anulare.test.mjs` — cover international cancellation-phone normalization.
-- Modify `docs/tests/supabase-foundation.test.mjs` — protect the final international database constraint.
-- Modify `docs/tests/edge-functions.test.mjs` — protect Maib README rail-contract documentation.
-- Modify `docs/supabase/functions/tests/reservations-test.ts` — cover server-side acceptance of international phones.
+- Modify `supabase/functions/_shared/reservations.ts` — accept normalized international guest phones server-side.
+- Create `supabase/migrations/20260518130000_international_guest_phones.sql` — widen the persisted guest-phone constraint for deployed databases.
+- Modify `tests/checkout.test.mjs` — cover international phone handling, rail selection, and adapter context.
+- Modify `tests/anulare.test.mjs` — cover international cancellation-phone normalization.
+- Modify `tests/supabase-foundation.test.mjs` — protect the final international database constraint.
+- Modify `tests/edge-functions.test.mjs` — protect Maib README rail-contract documentation.
+- Modify `supabase/functions/tests/reservations-test.ts` — cover server-side acceptance of international phones.
 
 ### Task 1: Add failing tests for international phone support and rail selection
 
 **Files:**
-- Modify: `docs/tests/checkout.test.mjs`
-- Modify: `docs/tests/edge-functions.test.mjs`
+- Modify: `tests/checkout.test.mjs`
+- Modify: `tests/edge-functions.test.mjs`
 
 - [ ] **Step 1: Extend checkout translation assertions**
 
@@ -80,7 +80,7 @@ Require the Maib README to mention `paymentRail`, `guestPhone`, `mia`, and `card
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: FAIL because the new rail helpers, adapter context, and documentation are not implemented yet.
@@ -146,7 +146,7 @@ with `checkout.errorPhone` describing a valid international format rather than o
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs
+node --test tests/checkout.test.mjs
 ```
 
 Expected: PASS.
@@ -171,7 +171,7 @@ Explain:
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: PASS.
@@ -179,12 +179,12 @@ Expected: PASS.
 ### Task 4: Keep reservation creation and cancellation lifecycle consistent
 
 **Files:**
-- Modify: `docs/supabase/functions/_shared/reservations.ts`
-- Create: `docs/supabase/migrations/20260518130000_international_guest_phones.sql`
+- Modify: `supabase/functions/_shared/reservations.ts`
+- Create: `supabase/migrations/20260518130000_international_guest_phones.sql`
 - Modify: `js/anulare.js`
-- Modify: `docs/supabase/functions/tests/reservations-test.ts`
-- Modify: `docs/tests/anulare.test.mjs`
-- Modify: `docs/tests/supabase-foundation.test.mjs`
+- Modify: `supabase/functions/tests/reservations-test.ts`
+- Modify: `tests/anulare.test.mjs`
+- Modify: `tests/supabase-foundation.test.mjs`
 
 - [ ] **Step 1: Add failing server and cancellation tests**
 
@@ -209,8 +209,8 @@ Normalize and validate the same international phone format on `anulare.html`.
 - [ ] **Step 5: Run lifecycle-focused tests**
 
 ```bash
-node --test docs/tests/anulare.test.mjs docs/tests/supabase-foundation.test.mjs
-cd docs/supabase/functions && deno test --allow-env tests/reservations-test.ts
+node --test tests/anulare.test.mjs tests/supabase-foundation.test.mjs
+cd supabase/functions && deno test --allow-env tests/reservations-test.ts
 ```
 
 ### Task 5: Verify the completed change
@@ -221,17 +221,17 @@ cd docs/supabase/functions && deno test --allow-env tests/reservations-test.ts
 - [ ] **Step 1: Run focused tests**
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 - [ ] **Step 2: Run the full suite**
 
 ```bash
-node --test docs/tests/*.test.mjs
+node --test tests/*.test.mjs
 ```
 
 - [ ] **Step 3: Inspect the targeted diff**
 
 ```bash
-git diff -- js/checkout.js checkout.html js/translations.js payments/maib/README.md docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs docs/superpowers/plans/2026-05-18-payment-rail-routing.md
+git diff -- js/checkout.js checkout.html js/translations.js payments/maib/README.md tests/checkout.test.mjs tests/edge-functions.test.mjs docs/superpowers/plans/2026-05-18-payment-rail-routing.md
 ```

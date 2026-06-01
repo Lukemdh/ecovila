@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
 
 function exists(relativePath) {
@@ -17,22 +17,22 @@ function read(relativePath) {
 
 function allMigrations() {
   return fs
-    .readdirSync(path.join(root, 'docs/supabase/migrations'))
+    .readdirSync(path.join(root, 'supabase/migrations'))
     .filter((file) => file.endsWith('.sql'))
     .sort()
-    .map((file) => read(`docs/supabase/migrations/${file}`))
+    .map((file) => read(`supabase/migrations/${file}`))
     .join('\n');
 }
 
 describe('EcoVila Maib Checkout integration', () => {
   it('adds the Maib Checkout Edge Function entrypoints and JWT policy', () => {
     for (const name of ['maib-create-payment', 'maib-callback', 'maib-refund']) {
-      const file = `docs/supabase/functions/${name}/index.ts`;
+      const file = `supabase/functions/${name}/index.ts`;
       assert.ok(exists(file), `${file} should exist`);
       assert.match(read(file), /Deno\.serve\(/, `${file} should register a Deno.serve handler`);
     }
 
-    const config = read('docs/supabase/config.toml');
+    const config = read('supabase/config.toml');
     assert.match(
       config,
       /\[functions\.maib-create-payment\][\s\S]*?verify_jwt = true/i,
@@ -49,7 +49,7 @@ describe('EcoVila Maib Checkout integration', () => {
       'refunds should require a staff Supabase JWT',
     );
     assert.match(
-      read('docs/supabase/functions/_shared/cors.ts'),
+      read('supabase/functions/_shared/cors.ts'),
       /'null'/,
       'local file previews should pass CORS preflight during manual payment testing',
     );
@@ -91,7 +91,7 @@ describe('EcoVila Maib Checkout integration', () => {
   });
 
   it('updates Maib shared helpers to use v2 Checkout endpoints and raw-body signatures', () => {
-    const maib = read('docs/supabase/functions/_shared/maib.ts');
+    const maib = read('supabase/functions/_shared/maib.ts');
 
     assert.match(maib, /MAIB_BASE_URL/, 'Maib base URL should come from env');
     assert.match(maib, /\/v2\/auth\/token/, 'Maib token endpoint should use Checkout v2 auth');
@@ -109,7 +109,7 @@ describe('EcoVila Maib Checkout integration', () => {
       'payments/maib/browser-adapter.js',
       'payments/maib/examples/callback-approved.json',
       'payments/maib/examples/callback-failed.json',
-      'docs/supabase/functions/maib-webhook/index.ts',
+      'supabase/functions/maib-webhook/index.ts',
       'docs/PAYMENTS_OWNER_CHECKLIST.md',
     ]) {
       assert.equal(exists(file), false, `${file} should be removed`);
@@ -117,8 +117,8 @@ describe('EcoVila Maib Checkout integration', () => {
   });
 
   it('starts hosted Maib checkout from checkout.js via the Edge Function helper', async () => {
-    const checkout = require('../../js/checkout.js');
-    const supabaseHelpers = require('../../js/supabase.js');
+    const checkout = require('../js/checkout.js');
+    const supabaseHelpers = require('../js/supabase.js');
     const calls = [];
     const location = { href: '' };
     const previousLocation = globalThis.location;
@@ -197,8 +197,8 @@ describe('EcoVila Maib Checkout integration', () => {
   });
 
   it('keeps non-terminal Maib callbacks pending instead of cancelling reservations', () => {
-    const maib = read('docs/supabase/functions/_shared/maib.ts');
-    const callback = read('docs/supabase/functions/maib-callback/index.ts');
+    const maib = read('supabase/functions/_shared/maib.ts');
+    const callback = read('supabase/functions/maib-callback/index.ts');
 
     assert.match(
       maib,
@@ -228,7 +228,7 @@ describe('EcoVila Maib Checkout integration', () => {
   });
 
   it('clears stale Maib sessions separately from cash expiry', () => {
-    const expiry = read('docs/supabase/functions/expire-cash-reservations/index.ts');
+    const expiry = read('supabase/functions/expire-cash-reservations/index.ts');
 
     assert.match(expiry, /payment_in_progress/, 'stale online sessions should be handled');
     assert.match(expiry, /payment_session_expires_at/, 'online session expiry should be time boxed');

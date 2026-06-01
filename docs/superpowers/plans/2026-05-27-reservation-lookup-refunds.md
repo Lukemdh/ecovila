@@ -13,8 +13,8 @@
 ### Task 1: Failing Contract Tests
 
 **Files:**
-- Create: `docs/tests/reservation-lookup-refunds.test.mjs`
-- Create: `docs/supabase/functions/tests/reservation-manage-test.ts`
+- Create: `tests/reservation-lookup-refunds.test.mjs`
+- Create: `supabase/functions/tests/reservation-manage-test.ts`
 
 - [ ] Add Node tests that assert the booking page has an `Ai deja o rezervare?` lookup trigger, Supabase helper wrappers exist for reservation lookup/verification/manage/cancel functions, and the confirmation page exposes a manage/cancel/refund panel.
 - [ ] Add Deno tests that assert refund eligibility is true when check-in is within seven days or the reservation was created less than two hours ago, false outside both windows, and token hashing is stable without storing plaintext codes.
@@ -23,7 +23,7 @@
 ### Task 2: Database Migration
 
 **Files:**
-- Create: `docs/supabase/migrations/20260527182000_reservation_lookup_refunds.sql`
+- Create: `supabase/migrations/20260527182000_reservation_lookup_refunds.sql`
 
 - [ ] Add `reservation_lookup_codes` for 4-digit SMS verification with code hash, attempts, expiry, phone, IP/user-agent metadata, and RLS enabled.
 - [ ] Add `reservation_manage_tokens` for short-lived verified access by phone.
@@ -33,7 +33,7 @@
 ### Task 3: Shared Server Logic
 
 **Files:**
-- Create: `docs/supabase/functions/_shared/reservationManage.ts`
+- Create: `supabase/functions/_shared/reservationManage.ts`
 
 - [ ] Implement phone normalization, 4-digit code generation, SHA-256/HMAC-style code and token hashing using `ECOVILA_CRON_SECRET`, refund eligibility, reservation grouping, and guest-safe summary serialization.
 - [ ] Export helpers used by all reservation management functions.
@@ -41,11 +41,11 @@
 ### Task 4: Edge Functions
 
 **Files:**
-- Create: `docs/supabase/functions/reservation-lookup-start/index.ts`
-- Create: `docs/supabase/functions/reservation-lookup-verify/index.ts`
-- Create: `docs/supabase/functions/reservation-manage-details/index.ts`
-- Create: `docs/supabase/functions/reservation-cancel/index.ts`
-- Modify: `docs/supabase/config.toml`
+- Create: `supabase/functions/reservation-lookup-start/index.ts`
+- Create: `supabase/functions/reservation-lookup-verify/index.ts`
+- Create: `supabase/functions/reservation-manage-details/index.ts`
+- Create: `supabase/functions/reservation-cancel/index.ts`
+- Modify: `supabase/config.toml`
 
 - [ ] `reservation-lookup-start`: accept phone, store a code, send SMS only when active reservations exist, and return generic success plus lookup id.
 - [ ] `reservation-lookup-verify`: validate code, issue manage token, and return active reservation group summaries.

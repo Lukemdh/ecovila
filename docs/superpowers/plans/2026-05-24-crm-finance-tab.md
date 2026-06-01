@@ -13,9 +13,9 @@
 ### Task 1: Failing Coverage For Finance Reporting
 
 **Files:**
-- Modify: `docs/tests/admin-crm.test.mjs`
-- Modify: `docs/tests/edge-functions.test.mjs`
-- Modify: `docs/tests/supabase-foundation.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
+- Modify: `tests/edge-functions.test.mjs`
+- Modify: `tests/supabase-foundation.test.mjs`
 
 - [x] **Step 1: Add tests for tab wiring, aggregation, and paid_at ownership**
 
@@ -62,7 +62,7 @@ assert.match(maibWebhook, /paid_at:\s*now/i);
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs docs/tests/edge-functions.test.mjs docs/tests/supabase-foundation.test.mjs
+node --test tests/admin-crm.test.mjs tests/edge-functions.test.mjs tests/supabase-foundation.test.mjs
 ```
 
 Expected: FAIL because `data-tab="finance"`, `crm-finance.js`, and `paid_at` migration/function updates do not exist yet.
@@ -70,10 +70,10 @@ Expected: FAIL because `data-tab="finance"`, `crm-finance.js`, and `paid_at` mig
 ### Task 2: paid_at Data Model And Payment Transitions
 
 **Files:**
-- Create: `docs/supabase/migrations/20260524140000_reservation_paid_at.sql`
+- Create: `supabase/migrations/20260524140000_reservation_paid_at.sql`
 - Modify: `admin/js/crm-sidebar.js`
-- Modify: `docs/supabase/functions/confirm-reservation-payment/index.ts`
-- Modify: `docs/supabase/functions/maib-webhook/index.ts`
+- Modify: `supabase/functions/confirm-reservation-payment/index.ts`
+- Modify: `supabase/functions/maib-webhook/index.ts`
 
 - [x] **Step 1: Add the migration**
 
@@ -129,7 +129,7 @@ In `maib-webhook`, update approved rows with:
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs docs/tests/edge-functions.test.mjs docs/tests/supabase-foundation.test.mjs
+node --test tests/admin-crm.test.mjs tests/edge-functions.test.mjs tests/supabase-foundation.test.mjs
 ```
 
 Expected: paid_at assertions pass; Finance UI assertions still fail until the next task.
@@ -182,7 +182,7 @@ Rules:
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs
+node --test tests/admin-crm.test.mjs
 ```
 
 Expected: aggregation tests pass; HTML/CSS/app wiring assertions still fail until the next task.
@@ -238,7 +238,7 @@ Reuse the existing CRM Organic surface and add dense reporting layout classes:
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs docs/tests/supabase-wiring.test.mjs
+node --test tests/admin-crm.test.mjs tests/supabase-wiring.test.mjs
 ```
 
 Expected: Finance UI and script wiring tests pass.
@@ -253,7 +253,7 @@ Expected: Finance UI and script wiring tests pass.
 Run:
 
 ```bash
-node --test docs/tests/*.test.mjs
+node --test tests/*.test.mjs
 ```
 
 Expected: all Node tests pass.
@@ -263,7 +263,7 @@ Expected: all Node tests pass.
 Run:
 
 ```bash
-cd docs/supabase/functions && deno test --allow-env --config deno.json tests/reservations-test.ts
+cd supabase/functions && deno test --allow-env --config deno.json tests/reservations-test.ts
 ```
 
 Expected: Deno tests pass, or report if Deno is unavailable.

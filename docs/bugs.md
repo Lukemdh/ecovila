@@ -12,19 +12,19 @@ High / Medium / Low.
 | B-3 | Unused `assets/logo_small.png` | Low | Accepted |
 | B-4 | No `package.json` / documented test scripts for the frontend suite | Low | Fixed |
 | B-5 | `deno lint` reported remaining `no-explicit-any` problems | Low | Fixed |
-| B-6 | Backend + tests live under `docs/` (mislocated relative to convention) | Low | Open |
+| B-6 | Backend + tests lived under `docs/` (mislocated relative to convention) | Low | Fixed |
 | B-7 | Online cancellation allowed outside the current public window and for cash reservations | Medium | Fixed |
 
 ---
 
 ### B-1 — `deno task test` silently ran zero tests (Medium) — Fixed 2026-05-31
-- **Description:** `docs/supabase/functions/deno.json` defines
+- **Description:** `supabase/functions/deno.json` defines
   `"test": "deno test --allow-env --allow-net tests"`. Before the fix, running it (or
   `deno test --allow-env --allow-net tests` from the functions dir) printed
   **"error: No test modules found"** because the 32 real tests were not discoverable.
 - **Former reproduce (before fix):**
   ```sh
-  cd docs/supabase/functions
+  cd supabase/functions
   deno test --allow-env --allow-net tests   # used to print "No test modules found"
   ```
 - **Root cause:** the test files were named `maib-test.ts`,
@@ -58,18 +58,18 @@ High / Medium / Low.
   remove this file in later cleanup unless the owner explicitly reverses this decision.
 
 ### B-4 — No `package.json` / documented frontend test scripts (Low) — Fixed 2026-05-31
-- **Description:** the Node suite was run with `node --test 'docs/tests/**/*.test.mjs'`
+- **Description:** the Node suite was run with `node --test 'tests/**/*.test.mjs'`
   but there was no manifest documenting it; discovery was tribal knowledge. (The
   `.claude` permissions file hinted at the intended commands.)
 - **Why it mattered:** onboarding friction; easy to run tests incorrectly (see the failed
-  `node --test docs/tests/` attempt, which errors because it is not the recursive glob).
+  `node --test tests/` attempt, which errors because it is not the recursive glob).
 - **Fix:** added a dependency-free root `package.json` with `test`, `test:node`, and
   `test:deno` scripts; documented `npm test` in `docs/README.md`; recorded ADR-009.
 
 ### B-5 — `deno lint`: remaining problems (Low) — Fixed 2026-05-31
 - **Description:** `deno lint` formerly reported `no-explicit-any` findings in Edge
   Function helpers and entrypoints.
-- **Former reproduce:** `cd docs/supabase/functions && deno lint`.
+- **Former reproduce:** `cd supabase/functions && deno lint`.
 - **Why it mattered:** code-quality / type-safety debt; not a runtime failure.
   Typecheck (`deno check`) continued to pass throughout the cleanup.
 - **2026-05-31 note:** the off-plan cancellation fix removed the lone
@@ -95,17 +95,17 @@ High / Medium / Low.
   `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and
   `create-reservation`. `deno lint` now passes with 0 problems.
 
-### B-6 — Backend and tests under `docs/` (Low / structural)
-- **Description:** `docs/supabase/` (migrations + Edge Functions) and `docs/tests/`
-  contain real, shipping code/tests inside the documentation folder. Convention would
-  put these at the repo root (`supabase/`, `tests/`).
+### B-6 — Backend and tests under `docs/` (Low / structural) — Fixed 2026-06-01
+- **Description:** before Step 14, the Supabase workspace and Node test suite lived in
+  documentation subdirectories instead of root-level `supabase/` and `tests/`.
+  Convention puts these at the repo root.
 - **Suspected cause:** the 2026-05-16 "docs reorg" (`ca4dfc5 Fix test harness paths
   after docs reorg`).
-- **Why it matters:** surprising for newcomers; tooling defaults (Supabase CLI expects a
-  top-level `supabase/`) may not find these without configuration.
-- **Suggested fix:** treat any move as a **higher-risk, late** plan step (it touches the
-  Supabase CLI workflow and every test path). Confirm intent with owner first — intent
-  is currently Unknown.
+- **Why it mattered:** surprising for newcomers; tooling defaults (Supabase CLI expects
+  a top-level `supabase/`) may not find these without configuration.
+- **Fix:** owner approved the structural move. Step 14 relocated both trees to the repo
+  root, updated package scripts, test paths, `.claude` command permissions, and every
+  documented reference to the old layout.
 
 ### B-7 — Online cancellation policy was too permissive (Medium) — Fixed 2026-05-31
 - **Description:** guest-facing cancellation paths allowed online cancellation when fewer
@@ -118,9 +118,9 @@ High / Medium / Low.
   reservations show office-only reimbursement copy and are blocked online. CRM
   cancellations of paid Maib bookings call the Diana-only `maib-refund` function and can
   refund independently of the public guest window.
-- **Verification:** covered by Node contract tests in `docs/tests/anulare.test.mjs`,
-  `docs/tests/reservation-lookup-refunds.test.mjs`, `docs/tests/admin-crm.test.mjs`,
-  and Deno test `docs/supabase/functions/tests/reservation-manage.test.ts`.
+- **Verification:** covered by Node contract tests in `tests/anulare.test.mjs`,
+  `tests/reservation-lookup-refunds.test.mjs`, `tests/admin-crm.test.mjs`,
+  and Deno test `supabase/functions/tests/reservation-manage.test.ts`.
 
 ---
 
@@ -129,6 +129,6 @@ High / Medium / Low.
 - `site.html` hero `<source src="/assets/videos/ecovila-hero.mp4">` — the file exists;
   not broken.
 - `index.html` not linking to `site.html` — **intentional** maintenance holding page,
-  asserted by `docs/tests/maintenance-page.test.mjs`.
+  asserted by `tests/maintenance-page.test.mjs`.
 - `js/pricing.js` / `js/calendar.js` imported by both browser and Node tests — the
   UMD wrapper is by design, not a duplication bug.

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
 
 function exists(relativePath) {
@@ -21,7 +21,7 @@ function footerMarkup(html) {
 }
 
 function loadCheckout() {
-  return require('../../js/checkout.js');
+  return require('../js/checkout.js');
 }
 
 describe('EcoVila Step 5 checkout', () => {
@@ -357,7 +357,7 @@ describe('EcoVila Step 5 checkout', () => {
   });
 
   it('creates pending reservations through the Edge Function instead of direct table inserts', async () => {
-    const supabaseHelpers = require('../../js/supabase.js');
+    const supabaseHelpers = require('../js/supabase.js');
     const calls = [];
     const client = {
       functions: {
@@ -397,7 +397,7 @@ describe('EcoVila Step 5 checkout', () => {
 
   it('passes the normalized phone and selected online rail into maib-create-payment', async () => {
     const checkout = loadCheckout();
-    const supabaseHelpers = require('../../js/supabase.js');
+    const supabaseHelpers = require('../js/supabase.js');
     const calls = [];
     const location = { href: '' };
     const previousLocation = globalThis.location;

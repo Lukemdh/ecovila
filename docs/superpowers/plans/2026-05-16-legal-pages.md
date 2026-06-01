@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- `docs/tests/legal-pages.test.mjs`: focused structural contract for both legal pages, shared shell requirements, article content, and footer/checkout link targets.
+- `tests/legal-pages.test.mjs`: focused structural contract for both legal pages, shared shell requirements, article content, and footer/checkout link targets.
 - `css/legal.css`: long-form reading layout and legal-page header treatment only.
 - `politica-confidentialitate.html`: static Romanian privacy-policy page.
 - `termeni-conditii.html`: static Romanian terms-and-conditions page.
@@ -20,11 +20,11 @@
 ## Task 1: Legal Pages Contract Test
 
 **Files:**
-- Create: `docs/tests/legal-pages.test.mjs`
+- Create: `tests/legal-pages.test.mjs`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `docs/tests/legal-pages.test.mjs`:
+Create `tests/legal-pages.test.mjs`:
 
 ```js
 import { describe, it } from 'node:test';
@@ -32,7 +32,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 
 function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
@@ -131,7 +131,7 @@ describe('EcoVila Step 8 legal pages', () => {
 Run:
 
 ```bash
-node --test docs/tests/legal-pages.test.mjs
+node --test tests/legal-pages.test.mjs
 ```
 
 Expected: FAIL because the legal HTML pages and `css/legal.css` do not exist yet.
@@ -139,7 +139,7 @@ Expected: FAIL because the legal HTML pages and `css/legal.css` do not exist yet
 - [ ] **Step 3: Commit the failing test**
 
 ```bash
-git add docs/tests/legal-pages.test.mjs
+git add tests/legal-pages.test.mjs
 git commit -m "test: add legal pages contract"
 ```
 
@@ -147,7 +147,7 @@ git commit -m "test: add legal pages contract"
 
 **Files:**
 - Create: `css/legal.css`
-- Test: `docs/tests/legal-pages.test.mjs`
+- Test: `tests/legal-pages.test.mjs`
 
 - [ ] **Step 1: Write the minimal stylesheet**
 
@@ -282,7 +282,7 @@ Create `css/legal.css`:
 Run:
 
 ```bash
-node --test docs/tests/legal-pages.test.mjs
+node --test tests/legal-pages.test.mjs
 ```
 
 Expected: FAIL only because the two HTML pages are still missing.
@@ -301,7 +301,7 @@ git commit -m "style: add legal page reading layout"
 - Create: `termeni-conditii.html`
 - Read: `docs/politica-confidentialitate.md`
 - Read: `docs/termeni-conditii.md`
-- Test: `docs/tests/legal-pages.test.mjs`
+- Test: `tests/legal-pages.test.mjs`
 
 - [ ] **Step 1: Generate explicit static HTML from the supplied markdown**
 
@@ -494,7 +494,7 @@ PY
 Run:
 
 ```bash
-node --test docs/tests/legal-pages.test.mjs
+node --test tests/legal-pages.test.mjs
 ```
 
 Expected: PASS.
@@ -516,7 +516,7 @@ git commit -m "feat: add public legal pages"
 - [ ] **Step 1: Run the focused legal-page test again**
 
 ```bash
-node --test docs/tests/legal-pages.test.mjs
+node --test tests/legal-pages.test.mjs
 ```
 
 Expected: PASS.
@@ -547,7 +547,7 @@ Confirm:
 - [ ] **Step 4: Run the broader relevant test subset**
 
 ```bash
-node --test docs/tests/legal-pages.test.mjs docs/tests/checkout.test.mjs
+node --test tests/legal-pages.test.mjs tests/checkout.test.mjs
 ```
 
 Expected: PASS.
@@ -555,7 +555,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit any final verification fixes**
 
 ```bash
-git add css/legal.css politica-confidentialitate.html termeni-conditii.html docs/tests/legal-pages.test.mjs
+git add css/legal.css politica-confidentialitate.html termeni-conditii.html tests/legal-pages.test.mjs
 git commit -m "test: verify legal pages integration"
 ```
 

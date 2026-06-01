@@ -14,7 +14,7 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 ## Browser JavaScript
 - **No framework, no build, no ES modules.** Every shared file uses the UMD-style IIFE
   wrapper: assign a `window.EcoVila*` global and, when `module.exports` exists, export
-  for CommonJS so `docs/tests/*.test.mjs` can `require()` it. Mirror this pattern for any
+  for CommonJS so `tests/*.test.mjs` can `require()` it. Mirror this pattern for any
   new shared module (see `js/pricing.js:1`, `admin/js/crm-app.js:1`).
 - `'use strict';` at the top of each module factory.
 - DOM is selected via `data-*` attributes (e.g. `[data-crm-app]`, `[data-guest-phone]`),
@@ -33,7 +33,7 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   way. Default to no comments; comment only non-obvious *why*.
 
 ## Edge Functions (Deno/TypeScript)
-- One `index.ts` entrypoint per function under `docs/supabase/functions/<name>/`; shared
+- One `index.ts` entrypoint per function under `supabase/functions/<name>/`; shared
   logic in `_shared/`. New cross-cutting logic goes in `_shared/`, not copied per
   function.
 - HTTP plumbing is centralized: use `_shared/http.ts` (`jsonResponse`, `errorResponse`,
@@ -57,7 +57,7 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   not reuse the public guest refund window.
 - Secrets/signatures: hash tokens before storage; compare secrets/signatures with the
   constant-time helper; verify external callbacks (Maib) by signature + replay window.
-- Declare each function's `verify_jwt` in `docs/supabase/config.toml`. Public/cron
+- Declare each function's `verify_jwt` in `supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
 - Staff-only functions must `await requireStaffRole(request, [...])`; the helper validates
   the bearer token through Supabase Auth and reads `app_metadata.role` only from the
@@ -74,7 +74,7 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   row/query-builder shapes, or `unknown` + narrowing) and must not add explicit `any`.
 
 ## SQL migrations
-- One file per change under `docs/supabase/migrations/`, named
+- One file per change under `supabase/migrations/`, named
   `YYYYMMDDHHMMSS_snake_case_description.sql`, applied in filename order. Never edit a
   migration that has shipped — add a new one.
 - RLS is enabled on all tables; access is by role (`anon` / `diana` / `angela`). Public
@@ -86,12 +86,12 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   a future ADR explicitly changes ADR-001 / ADR-009.
 - **Full suite:** run `npm test` from the repository root. It runs the Node contract
   suite first, then the Deno Edge Function suite.
-- **Frontend:** Node `node:test` files in `docs/tests/`, named `*.test.mjs`, run via
-  `npm run test:node` (equivalent to `node --test 'docs/tests/**/*.test.mjs'`). They
+- **Frontend:** Node `node:test` files in `tests/`, named `*.test.mjs`, run via
+  `npm run test:node` (equivalent to `node --test 'tests/**/*.test.mjs'`). They
   `require()` the UMD modules and also assert page/markup contracts.
-- **Backend:** Deno tests in `docs/supabase/functions/tests/`, named `*.test.ts`, run
+- **Backend:** Deno tests in `supabase/functions/tests/`, named `*.test.ts`, run
   via `npm run test:deno` from the repository root (equivalent to
-  `cd docs/supabase/functions && deno task test`, which runs
+  `cd supabase/functions && deno task test`, which runs
   `deno test --allow-env --allow-net tests`). Keep using `*.test.ts` so Deno's default
   directory discovery runs the tests.
 - A change that alters markup, copy, or file layout will likely require updating the

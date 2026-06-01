@@ -7,12 +7,12 @@ findings. Severities: Critical / High / Medium / Low / Info.
 
 | ID | Finding | Severity | Where | Status |
 |----|---------|----------|-------|--------|
-| S-1 | Wildcard `Access-Control-Allow-Origin: *` on all Edge Functions except `maib-create-payment` | Low–Medium | `docs/supabase/functions/_shared/cors.ts` | Fixed |
-| S-2 | `requireStaffRole` formerly read role from an unverified JWT payload | Low (Info) | `docs/supabase/functions/_shared/http.ts` | Fixed |
+| S-1 | Wildcard `Access-Control-Allow-Origin: *` on all Edge Functions except `maib-create-payment` | Low–Medium | `supabase/functions/_shared/cors.ts` | Fixed |
+| S-2 | `requireStaffRole` formerly read role from an unverified JWT payload | Low (Info) | `supabase/functions/_shared/http.ts` | Fixed |
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
-| S-6 | `no-explicit-any` lint violations weakened type safety on server code | Low | `docs/supabase/functions/*/index.ts` | Fixed |
+| S-6 | `no-explicit-any` lint violations weakened type safety on server code | Low | `supabase/functions/*/index.ts` | Fixed |
 
 No Critical or High findings were identified. Several controls are implemented well
 (see "Positive controls" below).
@@ -81,7 +81,7 @@ chance of unchecked data handling in privileged server code.
 - **Cron/function shared secret** uses a constant-time comparison (`_shared/http.ts`
   `requireSharedSecret` / `constantTimeEqual`) and accepts `x-ecovila-secret` or bearer.
 - **RLS** with public/`diana`/`angela` roles is defined in the foundation migration and
-  asserted by `docs/tests/supabase-foundation.test.mjs` ("adds role-aware policies…",
+  asserted by `tests/supabase-foundation.test.mjs` ("adds role-aware policies…",
   "public-safe availability RPC without exposing guest reservation details").
 - **Guest-created reservation fields are sanitized** server-side
   (`buildReservationRows` "rejects unsafe guest-created reservation fields", tested).

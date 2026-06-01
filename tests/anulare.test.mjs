@@ -4,16 +4,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
-const { isRefundEligible, normalizeInternationalPhone } = require('../../js/anulare.js');
+const { isRefundEligible, normalizeInternationalPhone } = require('../js/anulare.js');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
 function latestCancellationRpcSql() {
-  const migrationDir = path.join(root, 'docs/supabase/migrations');
+  const migrationDir = path.join(root, 'supabase/migrations');
   const sql = fs
     .readdirSync(migrationDir)
     .filter((file) => file.endsWith('.sql'))

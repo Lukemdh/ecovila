@@ -5,10 +5,10 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
-const pricing = require('../../js/pricing.js');
-const calendar = require('../../js/calendar.js');
+const pricing = require('../js/pricing.js');
+const calendar = require('../js/calendar.js');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -53,10 +53,10 @@ function exists(relativePath) {
 
 function allMigrations() {
   return fs
-    .readdirSync(path.join(root, 'docs/supabase/migrations'))
+    .readdirSync(path.join(root, 'supabase/migrations'))
     .filter((file) => file.endsWith('.sql'))
     .sort()
-    .map((file) => read(`docs/supabase/migrations/${file}`))
+    .map((file) => read(`supabase/migrations/${file}`))
     .join('\n');
 }
 

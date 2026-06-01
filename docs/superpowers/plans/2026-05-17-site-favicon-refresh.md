@@ -12,7 +12,7 @@
 
 ## File map
 
-- Create `docs/tests/favicon.test.mjs` — regression coverage for favicon assets and HTML declarations.
+- Create `tests/favicon.test.mjs` — regression coverage for favicon assets and HTML declarations.
 - Create `assets/favicon-16x16.png` — small PNG favicon generated from the source logo.
 - Create `assets/favicon-32x32.png` — standard PNG favicon generated from the source logo.
 - Create `assets/apple-touch-icon.png` — iOS touch icon generated from the source logo.
@@ -32,7 +32,7 @@
 ### Task 1: Add regression coverage for the favicon contract
 
 **Files:**
-- Create: `docs/tests/favicon.test.mjs`
+- Create: `tests/favicon.test.mjs`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -42,7 +42,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 const shippedPages = [
   'index.html',
   'site.html',
@@ -115,14 +115,14 @@ describe('site favicon assets', () => {
 
 - [ ] **Step 2: Run the new test to verify it fails**
 
-Run: `node --test docs/tests/favicon.test.mjs`
+Run: `node --test tests/favicon.test.mjs`
 
 Expected: FAIL because the favicon outputs and favicon `<link>` tags do not exist yet.
 
 - [ ] **Step 3: Commit the red test**
 
 ```bash
-git add docs/tests/favicon.test.mjs
+git add tests/favicon.test.mjs
 git commit -m "test: cover site favicon assets"
 ```
 
@@ -175,7 +175,7 @@ Expected: `favicon.ico` exists at the repository root and contains the 16×16 an
 
 - [ ] **Step 3: Run the focused favicon test**
 
-Run: `node --test docs/tests/favicon.test.mjs`
+Run: `node --test tests/favicon.test.mjs`
 
 Expected: FAIL because the assets now exist, but the HTML pages still do not declare them.
 
@@ -212,13 +212,13 @@ Insert this exact block after the page description metadata in every shipped HTM
 
 - [ ] **Step 2: Run the focused favicon test**
 
-Run: `node --test docs/tests/favicon.test.mjs`
+Run: `node --test tests/favicon.test.mjs`
 
 Expected: PASS.
 
 - [ ] **Step 3: Run the full Node test suite**
 
-Run: `node --test docs/tests/*.test.mjs`
+Run: `node --test tests/*.test.mjs`
 
 Expected: PASS with 0 failing tests.
 

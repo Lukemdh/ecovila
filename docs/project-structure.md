@@ -2,7 +2,7 @@
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
 binaries, and gitignored `.superpowers/` / `.claude/`). 170 files are tracked in git
-after the 2026-06-01 staff-role authorization hardening cleanup.
+after the 2026-06-01 backend/test relocation cleanup.
 
 ## Annotated tree
 
@@ -66,28 +66,30 @@ ecovila/
 │       ├── crm-photos.js       # Photo draft/publish to public galleries
 │       └── crm-pricing.js      # Pricing tiers + holidays editor
 │
-└── docs/                       # Documentation + (currently) backend code + tests
+├── tests/                      # Node node:test contract/unit suites (15 *.test.mjs)
+│
+├── supabase/
+│   ├── config.toml             # Per-function verify_jwt settings
+│   ├── migrations/             # 23 timestamped SQL migrations (20260506 → 20260531)
+│   └── functions/              # Deno/TypeScript Edge Functions
+│       ├── deno.json, import_map.json, deno.lock
+│       ├── _shared/            # cors, env, http, maib, notifications, providers,
+│       │                       #   reservationManage, reservations, supabaseAdmin
+│       ├── create-reservation/, confirm-reservation-payment/
+│       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
+│       ├── maib-create-payment/, maib-callback/, maib-refund/
+│       ├── reservation-lookup-start/, reservation-lookup-verify/
+│       ├── reservation-manage-details/, reservation-cancel/
+│       └── tests/              # Deno tests (cors, http, maib, reservation-manage, reservations)
+│
+└── docs/                       # Documentation only
     ├── AGENTS.md               # Standing agent rules (this audit)
     ├── README.md, project-*.md, security.md, bugs.md, plan.md, decisions.md, conventions.md
     ├── ECOVILA_PROJECT_BRIEF.md# Authoritative product/business spec
     ├── politica-confidentialitate.md, termeni-conditii.md  # Legal source copy (RO)
     ├── superpowers/
     │   ├── plans/              # Per-step implementation plans (10 files)
-    │   └── specs/             # Per-step design specs (9 files)
-    ├── tests/                  # Node node:test contract/unit suites (15 *.test.mjs)
-    └── supabase/
-        ├── config.toml         # Per-function verify_jwt settings
-        ├── migrations/         # 23 timestamped SQL migrations (20260506 → 20260531)
-        └── functions/          # Deno/TypeScript Edge Functions
-            ├── deno.json, import_map.json, deno.lock
-            ├── _shared/        # cors, env, http, maib, notifications, providers,
-            │                   #   reservationManage, reservations, supabaseAdmin
-            ├── create-reservation/, confirm-reservation-payment/
-            ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
-            ├── maib-create-payment/, maib-callback/, maib-refund/
-            ├── reservation-lookup-start/, reservation-lookup-verify/
-            ├── reservation-manage-details/, reservation-cancel/
-            └── tests/          # Deno tests (cors, http, maib, reservation-manage, reservations)
+    │   └── specs/              # Per-step design specs (9 files)
 ```
 
 ## Significant files / folders — responsibilities
@@ -108,12 +110,12 @@ ecovila/
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
 | `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, daily, towels, photos, pricing, auth). |
-| `docs/supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reservation logic, admin client. |
-| `docs/supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
-| `docs/supabase/migrations/` | DB schema evolution; apply in filename order. |
-| `docs/supabase/config.toml` | Declares which functions require a verified JWT. |
-| `docs/tests/*.test.mjs` | Node contract/behavior tests (require browser JS via CommonJS shim). |
-| `docs/supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
+| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reservation logic, admin client. |
+| `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
+| `supabase/migrations/` | DB schema evolution; apply in filename order. |
+| `supabase/config.toml` | Declares which functions require a verified JWT. |
+| `tests/*.test.mjs` | Node contract/behavior tests (require browser JS via CommonJS shim). |
+| `supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
 | `package.json` | Scripts-only test manifest (`npm test`, `test:node`, `test:deno`); no dependencies or build step. |
 | `docs/ECOVILA_PROJECT_BRIEF.md` | Authoritative business/product spec. |
 | `docs/superpowers/plans|specs/` | Historical per-step planning/design records. |
@@ -122,7 +124,7 @@ ecovila/
 
 Browser JS uses a UMD-style IIFE wrapper (e.g. `js/pricing.js:1`): it assigns a global
 (`window.EcoVilaPricing`, `EcoVilaSupabase`, `EcoVilaCrmApp`, …) and, when `module.exports`
-exists, also exports for CommonJS so `docs/tests/*.test.mjs` can `require()` the same
+exists, also exports for CommonJS so `tests/*.test.mjs` can `require()` the same
 file. HTML pages load scripts in dependency order via `<script>` tags (supabase-js CDN →
 `supabase-config.js` → `supabase.js` → feature scripts). No bundler, no ES modules.
 
@@ -147,5 +149,5 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
   and tests, not exhaustively traced.
 - `assets/logo_small.png` and the two root `*.mp4` files appear unused (no references
   found) but are owner-retained per the 2026-05-31 Step 6 decision in `docs/bugs.md`.
-- The placement of backend code and tests under `docs/` (rather than a top-level
-  `supabase/` and `tests/`) is unusual; intent is **Unknown — needs owner input**.
+- The Step 14 relocation moved backend code and Node tests from the former `docs/`
+  subtrees into root-level `supabase/` and `tests/`, matching Supabase CLI defaults.

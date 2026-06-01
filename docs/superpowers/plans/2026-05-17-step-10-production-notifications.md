@@ -13,23 +13,23 @@
 ## File Structure
 
 - `docs/ECOVILA_PROJECT_BRIEF.md`: split the old Step 10 into Steps 10-12 and normalize cancellation wording to the implemented 7-day policy.
-- `docs/tests/edge-functions.test.mjs`: repo-level contract tests for the Step 10 roadmap split, secure secret boundary, and hardened notification-event model.
-- `docs/supabase/functions/tests/reservations-test.ts`: Deno unit coverage for booking-confirmation wording and the notification reservation/delivery helpers.
-- `docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`: add delivery lifecycle fields, retry counts, and abandonment state to `notification_events`.
-- `docs/supabase/functions/_shared/notifications.ts`: reserve scheduled events before dispatch, retry failed or stale-reserved attempts up to 3 total tries, mark sent/failed/abandoned/skipped outcomes, and update booking confirmation copy from stale 72h wording to 7-day wording while keeping the existing public helper API stable for non-cron callers.
-- `docs/supabase/functions/send-reminders/index.ts`: use pre-send reservation results so duplicate cron invocations return `skipped_duplicate` instead of sending again.
-- `docs/supabase/functions/expire-cash-reservations/index.ts`: use the same hardened notification lifecycle for expired-cash notices.
+- `tests/edge-functions.test.mjs`: repo-level contract tests for the Step 10 roadmap split, secure secret boundary, and hardened notification-event model.
+- `supabase/functions/tests/reservations-test.ts`: Deno unit coverage for booking-confirmation wording and the notification reservation/delivery helpers.
+- `supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`: add delivery lifecycle fields, retry counts, and abandonment state to `notification_events`.
+- `supabase/functions/_shared/notifications.ts`: reserve scheduled events before dispatch, retry failed or stale-reserved attempts up to 3 total tries, mark sent/failed/abandoned/skipped outcomes, and update booking confirmation copy from stale 72h wording to 7-day wording while keeping the existing public helper API stable for non-cron callers.
+- `supabase/functions/send-reminders/index.ts`: use pre-send reservation results so duplicate cron invocations return `skipped_duplicate` instead of sending again.
+- `supabase/functions/expire-cash-reservations/index.ts`: use the same hardened notification lifecycle for expired-cash notices.
 - Supabase project configuration via MCP / platform tools: deploy functions, apply migration, configure scheduled invocations where available, and verify live executions.
 
 ## Task 1: Step 10 Contract Tests and Roadmap Split
 
 **Files:**
-- Modify: `docs/tests/edge-functions.test.mjs`
+- Modify: `tests/edge-functions.test.mjs`
 - Modify: `docs/ECOVILA_PROJECT_BRIEF.md`
 
 - [ ] **Step 1: Write the failing roadmap test**
 
-Add this test to `docs/tests/edge-functions.test.mjs`:
+Add this test to `tests/edge-functions.test.mjs`:
 
 ```js
   it('splits the production rollout into notifications, Maib, and tophost steps', () => {
@@ -58,7 +58,7 @@ Add this test to `docs/tests/edge-functions.test.mjs`:
 Run:
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
+node --test tests/edge-functions.test.mjs
 ```
 
 Expected: FAIL because the current project brief still has one combined Step 10 and stale quick-reference wording.
@@ -111,7 +111,7 @@ with:
 Run:
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
+node --test tests/edge-functions.test.mjs
 ```
 
 Expected: PASS for the new roadmap test.
@@ -119,27 +119,27 @@ Expected: PASS for the new roadmap test.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/tests/edge-functions.test.mjs docs/ECOVILA_PROJECT_BRIEF.md
+git add tests/edge-functions.test.mjs docs/ECOVILA_PROJECT_BRIEF.md
 git commit -m "docs: split production rollout steps"
 ```
 
 ## Task 2: Delivery Tracking Migration
 
 **Files:**
-- Modify: `docs/tests/edge-functions.test.mjs`
-- Create: `docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`
+- Modify: `tests/edge-functions.test.mjs`
+- Create: `supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`
 
 - [ ] **Step 1: Write the failing delivery-tracking test**
 
-Add this test to `docs/tests/edge-functions.test.mjs`:
+Add this test to `tests/edge-functions.test.mjs`:
 
 ```js
   it('tracks notification delivery lifecycle on durable event rows', () => {
     const migrations = fs
-      .readdirSync(path.join(root, 'docs/supabase/migrations'))
+      .readdirSync(path.join(root, 'supabase/migrations'))
       .filter((file) => file.endsWith('.sql'))
       .sort()
-      .map((file) => read(`docs/supabase/migrations/${file}`))
+      .map((file) => read(`supabase/migrations/${file}`))
       .join('\n');
 
     assert.match(migrations, /add column if not exists delivery_status text/i);
@@ -156,14 +156,14 @@ Add this test to `docs/tests/edge-functions.test.mjs`:
 Run:
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
+node --test tests/edge-functions.test.mjs
 ```
 
 Expected: FAIL because the event lifecycle fields do not exist yet.
 
 - [ ] **Step 3: Add the migration**
 
-Create `docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`:
+Create `supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql`:
 
 ```sql
 set search_path = public, extensions;
@@ -197,7 +197,7 @@ where delivery_status is null
 Run:
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
+node --test tests/edge-functions.test.mjs
 ```
 
 Expected: PASS for the new delivery-tracking test.
@@ -205,19 +205,19 @@ Expected: PASS for the new delivery-tracking test.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/tests/edge-functions.test.mjs docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql
+git add tests/edge-functions.test.mjs supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql
 git commit -m "feat: track notification delivery lifecycle"
 ```
 
 ## Task 3: Notification Idempotency and Copy Tests
 
 **Files:**
-- Modify: `docs/supabase/functions/tests/reservations-test.ts`
-- Modify: `docs/supabase/functions/_shared/notifications.ts`
+- Modify: `supabase/functions/tests/reservations-test.ts`
+- Modify: `supabase/functions/_shared/notifications.ts`
 
 - [ ] **Step 1: Write the failing Deno tests**
 
-Append to `docs/supabase/functions/tests/reservations-test.ts`:
+Append to `supabase/functions/tests/reservations-test.ts`:
 
 ```ts
 Deno.test('composeBookingConfirmation uses the 7-day cancellation wording', async () => {
@@ -302,14 +302,14 @@ Deno.test('markNotificationEventFailed stores provider errors for support', asyn
 Run:
 
 ```bash
-cd docs/supabase/functions && deno test --allow-env tests/reservations-test.ts
+cd supabase/functions && deno test --allow-env tests/reservations-test.ts
 ```
 
 Expected: FAIL because the new helper functions do not exist yet and booking-confirmation copy still says `72h`.
 
 - [ ] **Step 3: Implement the minimal notification helpers**
 
-Update `docs/supabase/functions/_shared/notifications.ts`:
+Update `supabase/functions/_shared/notifications.ts`:
 
 ```ts
 export type NotificationDeliveryStatus = 'reserved' | 'sent' | 'failed';
@@ -404,7 +404,7 @@ with:
 Run:
 
 ```bash
-cd docs/supabase/functions && deno test --allow-env tests/reservations-test.ts
+cd supabase/functions && deno test --allow-env tests/reservations-test.ts
 ```
 
 Expected: PASS.
@@ -412,7 +412,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/supabase/functions/tests/reservations-test.ts docs/supabase/functions/_shared/notifications.ts
+git add supabase/functions/tests/reservations-test.ts supabase/functions/_shared/notifications.ts
 git commit -m "feat: reserve notification events before dispatch"
 ```
 
@@ -421,20 +421,20 @@ git commit -m "feat: reserve notification events before dispatch"
 **Approved refinement on 2026-05-17:** scheduled notifications retry until sent with a cap of **3 total attempts**. Failed rows remain retryable while attempts remain; `reserved` rows become retryable after **3 minutes**; the third failed attempt is marked `abandoned`; only sent rows are terminal duplicate suppressors.
 
 **Files:**
-- Modify: `docs/supabase/functions/_shared/notifications.ts`
-- Modify: `docs/supabase/functions/send-reminders/index.ts`
-- Modify: `docs/supabase/functions/expire-cash-reservations/index.ts`
-- Modify: `docs/tests/edge-functions.test.mjs`
+- Modify: `supabase/functions/_shared/notifications.ts`
+- Modify: `supabase/functions/send-reminders/index.ts`
+- Modify: `supabase/functions/expire-cash-reservations/index.ts`
+- Modify: `tests/edge-functions.test.mjs`
 
 - [ ] **Step 1: Write the failing repo-level flow test**
 
-Add this test to `docs/tests/edge-functions.test.mjs`:
+Add this test to `tests/edge-functions.test.mjs`:
 
 ```js
   it('reserves scheduled notification events before provider dispatch', () => {
-    const notifications = read('docs/supabase/functions/_shared/notifications.ts');
-    const reminders = read('docs/supabase/functions/send-reminders/index.ts');
-    const expiry = read('docs/supabase/functions/expire-cash-reservations/index.ts');
+    const notifications = read('supabase/functions/_shared/notifications.ts');
+    const reminders = read('supabase/functions/send-reminders/index.ts');
+    const expiry = read('supabase/functions/expire-cash-reservations/index.ts');
 
     assert.match(notifications, /reserveNotificationEvent/);
     assert.match(notifications, /markNotificationEventSent/);
@@ -454,14 +454,14 @@ Add this test to `docs/tests/edge-functions.test.mjs`:
 Run:
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
+node --test tests/edge-functions.test.mjs
 ```
 
 Expected: FAIL because the scheduled flows still dispatch before duplicate detection.
 
 - [ ] **Step 3: Harden the existing dispatch wrapper**
 
-Replace the body of `dispatchAndRecordNotification()` in `docs/supabase/functions/_shared/notifications.ts` with:
+Replace the body of `dispatchAndRecordNotification()` in `supabase/functions/_shared/notifications.ts` with:
 
 ```ts
 export async function dispatchAndRecordNotification(
@@ -490,7 +490,7 @@ export async function dispatchAndRecordNotification(
 
 - [ ] **Step 4: Update `send-reminders` to use duplicate-aware results**
 
-In `docs/supabase/functions/send-reminders/index.ts`, keep the existing import but replace the call to `dispatchAndRecordNotification()` with:
+In `supabase/functions/send-reminders/index.ts`, keep the existing import but replace the call to `dispatchAndRecordNotification()` with:
 
 ```ts
       const result = await dispatchAndRecordNotification(
@@ -504,7 +504,7 @@ In `docs/supabase/functions/send-reminders/index.ts`, keep the existing import b
 
 - [ ] **Step 5: Update `expire-cash-reservations` the same way**
 
-In `docs/supabase/functions/expire-cash-reservations/index.ts`, keep the existing import but replace the call to `dispatchAndRecordNotification()` with:
+In `supabase/functions/expire-cash-reservations/index.ts`, keep the existing import but replace the call to `dispatchAndRecordNotification()` with:
 
 ```ts
       const result = await dispatchAndRecordNotification(
@@ -521,8 +521,8 @@ In `docs/supabase/functions/expire-cash-reservations/index.ts`, keep the existin
 Run:
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
-cd docs/supabase/functions && deno test --allow-env tests/reservations-test.ts
+node --test tests/edge-functions.test.mjs
+cd supabase/functions && deno test --allow-env tests/reservations-test.ts
 ```
 
 Expected: PASS.
@@ -530,14 +530,14 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docs/tests/edge-functions.test.mjs docs/supabase/functions/_shared/notifications.ts docs/supabase/functions/send-reminders/index.ts docs/supabase/functions/expire-cash-reservations/index.ts
+git add tests/edge-functions.test.mjs supabase/functions/_shared/notifications.ts supabase/functions/send-reminders/index.ts supabase/functions/expire-cash-reservations/index.ts
 git commit -m "feat: harden scheduled notification dispatch"
 ```
 
 ## Task 5: MCP-First Supabase Deployment and Live Configuration
 
 **Files / systems:**
-- Read: `docs/supabase/functions/*`
+- Read: `supabase/functions/*`
 - Apply remotely: migration and Edge Function deployments through Supabase MCP where possible
 - Configure remotely: Edge Function secrets and schedules through available Supabase tooling
 
@@ -558,7 +558,7 @@ Use MCP `apply_migration` with:
 
 ```text
 name: step10_notification_delivery_tracking
-query: contents of docs/supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql
+query: contents of supabase/migrations/20260517120000_step10_notification_delivery_tracking.sql
 ```
 
 Expected: migration applies successfully to the target project.
@@ -579,7 +579,7 @@ Each deploy payload must include:
 - `deno.json`
 - `import_map.json`
 - every imported shared file used by that function
-- the current `verify_jwt` setting from `docs/supabase/config.toml`
+- the current `verify_jwt` setting from `supabase/config.toml`
 
 Expected: deployed versions are created without requiring the user to manually create functions in the dashboard.
 
@@ -726,8 +726,8 @@ Expected: no unexplained 5xx errors; intentional 401s from the negative test are
 - [ ] **Step 1: Run the focused repo tests**
 
 ```bash
-node --test docs/tests/edge-functions.test.mjs
-cd docs/supabase/functions && deno test --allow-env tests/reservations-test.ts
+node --test tests/edge-functions.test.mjs
+cd supabase/functions && deno test --allow-env tests/reservations-test.ts
 ```
 
 Expected: PASS.
@@ -735,7 +735,7 @@ Expected: PASS.
 - [ ] **Step 2: Run the broader relevant test subset**
 
 ```bash
-node --test docs/tests/supabase-wiring.test.mjs docs/tests/checkout.test.mjs docs/tests/anulare.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/supabase-wiring.test.mjs tests/checkout.test.mjs tests/anulare.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: PASS.

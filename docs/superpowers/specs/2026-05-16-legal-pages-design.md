@@ -114,7 +114,7 @@ The long-form layout must remain readable on narrow screens without horizontal s
 - `politica-confidentialitate.html`
 - `termeni-conditii.html`
 - `css/legal.css`
-- `docs/tests/legal-pages.test.mjs`
+- `tests/legal-pages.test.mjs`
 
 No new runtime JavaScript file is required unless verification reveals a small legal-page-specific behavior that cannot be handled by existing public scripts.
 

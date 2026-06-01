@@ -14,8 +14,8 @@ Today, payment behavior is spread across:
 
 - `checkout.html` and `js/checkout.js` for payment selection and redirect behavior
 - `confirmare.html` and `js/confirmare.js` for post-payment reservation state
-- `docs/supabase/functions/maib-webhook/index.ts` for the provider callback
-- `docs/supabase/functions/_shared/maib.ts` for signature verification helpers
+- `supabase/functions/maib-webhook/index.ts` for the provider callback
+- `supabase/functions/_shared/maib.ts` for signature verification helpers
 - `js/translations.js` for public payment copy
 
 The existing checkout code already has a useful seam:
@@ -95,7 +95,7 @@ The adapter should be the only place a Maib technician needs to change browser-s
 The deployable Supabase entrypoint remains:
 
 ```text
-docs/supabase/functions/maib-webhook/index.ts
+supabase/functions/maib-webhook/index.ts
 ```
 
 This file stays in the Supabase function tree because deployment expects that layout. The `payments/maib/README.md` must link to it prominently and explain:

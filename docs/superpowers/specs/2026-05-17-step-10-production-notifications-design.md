@@ -54,7 +54,7 @@ Provider credentials must be stored only in Supabase secret storage or equivalen
 
 ## Existing Foundation
 
-The repository already contains the Step 7 Edge Function workspace and shared provider abstraction under `docs/supabase/functions/`, including:
+The repository already contains the Step 7 Edge Function workspace and shared provider abstraction under `supabase/functions/`, including:
 
 - `send-sms`
 - `send-email`
@@ -145,9 +145,9 @@ Step 10 is complete only when there is evidence at three layers.
 Likely touched during implementation:
 
 - `docs/ECOVILA_PROJECT_BRIEF.md`
-- `docs/tests/edge-functions.test.mjs`
+- `tests/edge-functions.test.mjs`
 - any new Step 10-focused tests if needed
-- targeted files under `docs/supabase/functions/`
+- targeted files under `supabase/functions/`
 - deployment or setup documentation if a small operator checklist is needed
 
 No browser-side secret files should be added.

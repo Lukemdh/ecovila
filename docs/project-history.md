@@ -71,8 +71,9 @@ sessions append to the running log at the bottom.
 - Tests green: 171 Node contract tests + 36 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
-- Notable structural quirk: backend code (`supabase/`) and tests live under `docs/`,
-  moved there during the 2026-05-16 "docs reorg" (`ca4dfc5`).
+- The backend workspace (`supabase/`) and Node tests (`tests/`) now live at the repo
+  root. They previously lived under `docs/` after the 2026-05-16 "docs reorg"
+  (`ca4dfc5`), and Step 14 moved them back to conventional locations.
 
 ## Notable decisions reconstructed from history
 
@@ -113,7 +114,7 @@ sessions append to the running log at the bottom.
   `require-await`; remaining lint debt is 87 `no-explicit-any` plus 1 import-prefix
   issue.
 - 2026-05-31 — STEP 5 cleanup. Added a `std/assert` Deno import-map alias in
-  `docs/supabase/functions/deno.json` and `import_map.json`, updated
+  `supabase/functions/deno.json` and `import_map.json`, updated
   `maib.test.ts` to use the bare specifier, and reduced lint debt to 87
   `no-explicit-any` findings.
 - 2026-05-31 — STEP 6 cleanup. Reconfirmed that the two root `ecovilavideo*.mp4`

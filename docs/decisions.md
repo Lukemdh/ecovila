@@ -50,7 +50,7 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Decision:** `index.html` is a minimal "în curând" maintenance page; the full landing
   is kept at `site.html`, reachable directly.
 - **Why:** Unknown — needs owner input (likely a soft-launch gate). The behavior is
-  locked by `docs/tests/maintenance-page.test.mjs`, so do not "fix" it without a new ADR.
+  locked by `tests/maintenance-page.test.mjs`, so do not "fix" it without a new ADR.
 
 ### ADR-007 — Documentation-first / contract tests (reconstructed)
 - **Date:** throughout.
@@ -110,7 +110,7 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Date:** 2026-06-01.
 - **Decision:** `requireStaffRole` validates the bearer token through Supabase Auth
   (`auth.getUser`) before reading `app_metadata.role`, even though staff functions also
-  keep `verify_jwt = true` in `docs/supabase/config.toml`.
+  keep `verify_jwt = true` in `supabase/config.toml`.
 - **Why:** relying only on the Edge Function gateway made role checks forgeable if a
   future config change accidentally disabled `verify_jwt` on a staff function. Auth
   validation uses the existing Supabase JS dependency and avoids adding a JWT library.
@@ -118,9 +118,19 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   server-side environment in addition to `SUPABASE_URL`; call sites must `await
   requireStaffRole(...)`.
 
+### ADR-013 — Supabase backend and Node tests live at repo root
+- **Date:** 2026-06-01.
+- **Decision:** move the Supabase workspace to root-level `supabase/` and the Node
+  contract suite to root-level `tests/`; keep `docs/` documentation-only.
+- **Why:** this matches Supabase CLI conventions, removes the B-6 onboarding surprise,
+  and lets root `package.json` scripts point at conventional locations.
+- **Consequence:** path-sensitive tests, package scripts, `.claude` command permissions,
+  and documentation must use the root-level paths. Historical planning records were
+  mechanically updated to the new locations so future grep-based audits do not revive
+  the old layout.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
 
-- Should `docs/supabase/` and `docs/tests/` move to the repo root (`supabase/`,
-  `tests/`) to match Supabase CLI conventions? (See B-6.) — **undecided.**
+- None currently recorded.

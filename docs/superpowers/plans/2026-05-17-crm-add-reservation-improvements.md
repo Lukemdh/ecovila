@@ -12,20 +12,20 @@
 
 ## File Structure
 
-- `docs/tests/admin-crm.test.mjs`: CRM contract tests for the add form, office reservation rows, exact-room helpers, and total calculation.
-- `docs/tests/supabase-foundation.test.mjs`: reservation payment-type constraint coverage.
+- `tests/admin-crm.test.mjs`: CRM contract tests for the add form, office reservation rows, exact-room helpers, and total calculation.
+- `tests/supabase-foundation.test.mjs`: reservation payment-type constraint coverage.
 - `admin/dashboard.html`: CRM add-form markup and script dependency order.
 - `admin/js/crm-sidebar.js`: add-form pure helpers, dynamic child-bucket rendering, date picker state, group-level mixed-room quote updates, and office reservation creation.
 - `admin/js/crm-dashboard.js`: dashboard state loading for pricing tiers/holidays and readable payment labels.
 - `css/crm.css`: child-bucket controls and CRM date-range calendar styling.
 - `js/calendar.js`: shared selected-room range availability helper.
-- `docs/supabase/migrations/20260517190000_office_reservations.sql`: migration expanding allowed payment types to include `office`.
+- `supabase/migrations/20260517190000_office_reservations.sql`: migration expanding allowed payment types to include `office`.
 
 ## Task 1: Add failing CRM and migration tests
 
 **Files:**
-- Modify: `docs/tests/admin-crm.test.mjs`
-- Modify: `docs/tests/supabase-foundation.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
+- Modify: `tests/supabase-foundation.test.mjs`
 
 - [ ] **Step 1: Add failing CRM tests**
 
@@ -42,8 +42,8 @@ it('renders the staff add form with age buckets, a range calendar, and no paymen
 
 it('maps CRM child buckets, validates exact rooms, and totals mixed room selections', () => {
   const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js', {
-    EcoVilaPricing: require('../../js/pricing.js'),
-    EcoVilaCalendar: require('../../js/calendar.js'),
+    EcoVilaPricing: require('../js/pricing.js'),
+    EcoVilaCalendar: require('../js/calendar.js'),
   });
   assert.deepEqual(sidebar.bucketValuesToAges(['0-3', '4-11', '12+']), [3, 4, 12]);
   assert.equal(sidebar.areSelectedRoomsAvailable({ rooms, reservations, roomNumbers: [3, 11], checkIn, checkOut }), false);
@@ -67,7 +67,7 @@ Use concrete fixtures inside the test file for rooms, reservations, pricing tier
 
 - [ ] **Step 2: Add the failing migration assertion**
 
-Update `docs/tests/supabase-foundation.test.mjs` so the payment type constraint expects:
+Update `tests/supabase-foundation.test.mjs` so the payment type constraint expects:
 
 ```js
 /payment_type in \('cash', 'card', 'office'\)/i
@@ -78,7 +78,7 @@ Update `docs/tests/supabase-foundation.test.mjs` so the payment type constraint 
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs docs/tests/supabase-foundation.test.mjs
+node --test tests/admin-crm.test.mjs tests/supabase-foundation.test.mjs
 ```
 
 Expected: FAIL because the add form still has the payment selector, the sidebar helpers do not exist, and the migration does not allow `office` yet.
@@ -86,7 +86,7 @@ Expected: FAIL because the add form still has the payment selector, the sidebar 
 ## Task 2: Add the `office` payment type migration
 
 **Files:**
-- Create: `docs/supabase/migrations/20260517190000_office_reservations.sql`
+- Create: `supabase/migrations/20260517190000_office_reservations.sql`
 
 - [ ] **Step 1: Write the migration**
 
@@ -106,7 +106,7 @@ alter table public.reservations
 Run:
 
 ```bash
-node --test docs/tests/supabase-foundation.test.mjs
+node --test tests/supabase-foundation.test.mjs
 ```
 
 Expected: PASS for the payment-type assertion.
@@ -115,7 +115,7 @@ Expected: PASS for the payment-type assertion.
 
 **Files:**
 - Modify: `js/calendar.js`
-- Modify: `docs/tests/admin-crm.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
 
 - [ ] **Step 1: Extend the failing test with exact-room behavior**
 
@@ -126,7 +126,7 @@ Use fixtures where one selected room conflicts during the requested stay and ano
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs --test-name-pattern="exact rooms"
+node --test tests/admin-crm.test.mjs --test-name-pattern="exact rooms"
 ```
 
 Expected: FAIL because the shared helper does not exist yet.
@@ -159,14 +159,14 @@ Expected: PASS.
 **Files:**
 - Modify: `admin/dashboard.html`
 - Modify: `css/crm.css`
-- Modify: `docs/tests/admin-crm.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
 
 - [ ] **Step 1: Confirm the markup test is failing**
 
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs --test-name-pattern="add form"
+node --test tests/admin-crm.test.mjs --test-name-pattern="add form"
 ```
 
 Expected: FAIL on missing age-bucket/calendar hooks and existing payment selector.
@@ -204,14 +204,14 @@ Expected: PASS.
 
 **Files:**
 - Modify: `admin/js/crm-sidebar.js`
-- Modify: `docs/tests/admin-crm.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
 
 - [ ] **Step 1: Run the helper tests and verify they fail**
 
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs --test-name-pattern="maps CRM child buckets|din oficiu staff rows"
+node --test tests/admin-crm.test.mjs --test-name-pattern="maps CRM child buckets|din oficiu staff rows"
 ```
 
 Expected: FAIL because helpers still do not exist and rows still use cash/card.
@@ -250,7 +250,7 @@ Expected: PASS.
 **Files:**
 - Modify: `admin/js/crm-sidebar.js`
 - Modify: `admin/js/crm-dashboard.js`
-- Modify: `docs/tests/admin-crm.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
 
 - [ ] **Step 1: Add/confirm failing contract tests**
 
@@ -266,7 +266,7 @@ Assert that:
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs --test-name-pattern="pricing tiers|child buckets|calendar|total"
+node --test tests/admin-crm.test.mjs --test-name-pattern="pricing tiers|child buckets|calendar|total"
 ```
 
 Expected: FAIL because dashboard state and browser wiring are not in place.
@@ -301,14 +301,14 @@ Expected: PASS.
 
 **Files:**
 - Modify: `admin/js/crm-dashboard.js`
-- Modify: `docs/tests/admin-crm.test.mjs`
+- Modify: `tests/admin-crm.test.mjs`
 
 - [ ] **Step 1: Run the payment-label test and verify it fails**
 
 Run:
 
 ```bash
-node --test docs/tests/admin-crm.test.mjs --test-name-pattern="payment label"
+node --test tests/admin-crm.test.mjs --test-name-pattern="payment label"
 ```
 
 Expected: FAIL because details currently print raw payment values.
@@ -341,7 +341,7 @@ Expected: PASS.
 Run:
 
 ```bash
-node --test docs/tests/*.test.mjs
+node --test tests/*.test.mjs
 ```
 
 Expected: PASS.
@@ -362,7 +362,7 @@ Run:
 
 ```bash
 git diff --stat
-git diff -- admin/dashboard.html admin/js/crm-sidebar.js admin/js/crm-dashboard.js css/crm.css js/calendar.js docs/tests/admin-crm.test.mjs docs/tests/supabase-foundation.test.mjs docs/supabase/migrations/20260517190000_office_reservations.sql
+git diff -- admin/dashboard.html admin/js/crm-sidebar.js admin/js/crm-dashboard.js css/crm.css js/calendar.js tests/admin-crm.test.mjs tests/supabase-foundation.test.mjs supabase/migrations/20260517190000_office_reservations.sql
 ```
 
 Expected: only the scoped CRM/date/pricing files plus docs are changed by this task.

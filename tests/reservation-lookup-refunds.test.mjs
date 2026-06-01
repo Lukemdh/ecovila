@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const root = join(import.meta.dirname, '..', '..');
+const root = join(import.meta.dirname, '..');
 
 function read(relativePath) {
   return readFileSync(join(root, relativePath), 'utf8');
@@ -52,8 +52,8 @@ describe('EcoVila reservation lookup and refunds', () => {
   });
 
   it('adds server-side reservation management functions and JWT config', () => {
-    const config = read('docs/supabase/config.toml');
-    const cancelFunction = read('docs/supabase/functions/reservation-cancel/index.ts');
+    const config = read('supabase/config.toml');
+    const cancelFunction = read('supabase/functions/reservation-cancel/index.ts');
 
     for (const functionName of [
       'reservation-lookup-start',
@@ -61,7 +61,7 @@ describe('EcoVila reservation lookup and refunds', () => {
       'reservation-manage-details',
       'reservation-cancel',
     ]) {
-      assert.ok(exists(`docs/supabase/functions/${functionName}/index.ts`), `${functionName} should exist`);
+      assert.ok(exists(`supabase/functions/${functionName}/index.ts`), `${functionName} should exist`);
       assert.match(
         config,
         new RegExp(`\\[functions\\.${functionName}\\][\\s\\S]*?verify_jwt = true`, 'i'),
@@ -70,7 +70,7 @@ describe('EcoVila reservation lookup and refunds', () => {
     }
 
     assert.ok(
-      exists('docs/supabase/migrations/20260527182000_reservation_lookup_refunds.sql'),
+      exists('supabase/migrations/20260527182000_reservation_lookup_refunds.sql'),
       'lookup/refund migration should exist',
     );
     assert.match(
@@ -100,8 +100,8 @@ describe('EcoVila reservation lookup and refunds', () => {
   });
 
   it('blocks late and cash online managed cancellation while keeping CRM MAIB refunds staff-driven', () => {
-    const cancelFunction = read('docs/supabase/functions/reservation-cancel/index.ts');
-    const refundFunction = read('docs/supabase/functions/maib-refund/index.ts');
+    const cancelFunction = read('supabase/functions/reservation-cancel/index.ts');
+    const refundFunction = read('supabase/functions/maib-refund/index.ts');
 
     assert.match(
       cancelFunction,
@@ -141,7 +141,7 @@ describe('EcoVila reservation lookup and refunds', () => {
   });
 
   it('sends the requested short SMS copy from managed cancellation', () => {
-    const cancelFunction = read('docs/supabase/functions/reservation-cancel/index.ts');
+    const cancelFunction = read('supabase/functions/reservation-cancel/index.ts');
 
     assert.match(
       cancelFunction,

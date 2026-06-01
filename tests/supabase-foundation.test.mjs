@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 const migrationPath = path.join(
   root,
-  'docs/supabase/migrations/20260506210000_supabase_foundation.sql',
+  'supabase/migrations/20260506210000_supabase_foundation.sql',
 );
 
 function readMigration() {

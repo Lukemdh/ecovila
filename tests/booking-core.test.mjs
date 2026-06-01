@@ -4,9 +4,9 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
-const pricing = require('../../js/pricing.js');
-const calendar = require('../../js/calendar.js');
-const supabaseHelpers = require('../../js/supabase.js');
+const pricing = require('../js/pricing.js');
+const calendar = require('../js/calendar.js');
+const supabaseHelpers = require('../js/supabase.js');
 
 const rooms = [
   ...Array.from({ length: 8 }, (_, index) => ({

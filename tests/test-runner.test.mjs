@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(import.meta.dirname, '..');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -14,10 +14,10 @@ describe('EcoVila test runner contract', () => {
     const manifest = JSON.parse(read('package.json'));
 
     assert.equal(manifest.scripts.test, 'npm run test:node && npm run test:deno');
-    assert.equal(manifest.scripts['test:node'], "node --test 'docs/tests/**/*.test.mjs'");
+    assert.equal(manifest.scripts['test:node'], "node --test 'tests/**/*.test.mjs'");
     assert.equal(
       manifest.scripts['test:deno'],
-      'cd docs/supabase/functions && deno task test',
+      'cd supabase/functions && deno task test',
     );
     assert.equal(Object.hasOwn(manifest, 'dependencies'), false);
     assert.equal(Object.hasOwn(manifest, 'devDependencies'), false);

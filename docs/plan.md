@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 14**
+**CURRENT STEP → COMPLETE**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -83,7 +83,7 @@ together with the code change for that step.
 | 11 | Type cleanup: remaining functions | Low | DONE |
 | 12 | Harden CORS allowlist across all Edge Functions | Medium | DONE |
 | 13 | Defense-in-depth for `requireStaffRole` | Medium | DONE |
-| 14 | Relocate backend/tests out of `docs/` — owner-gated | High | TODO |
+| 14 | Relocate backend/tests out of `docs/` — owner-gated | High | DONE |
 
 Statuses: TODO | IN PROGRESS | DONE.
 
@@ -102,21 +102,21 @@ Statuses: TODO | IN PROGRESS | DONE.
   (no values), so deployers know what to set.
 - Depends on: none | Why now: lowest risk, no application code, unblocks onboarding.
 - Required reading before starting: `docs/AGENTS.md`, `docs/plan.md`, `docs/README.md`
-  (env section), `docs/supabase/functions/_shared/env.ts`,
-  `docs/supabase/functions/_shared/providers.ts`,
-  `docs/supabase/functions/_shared/maib.ts`,
-  `docs/supabase/functions/_shared/supabaseAdmin.ts`.
+  (env section), `supabase/functions/_shared/env.ts`,
+  `supabase/functions/_shared/providers.ts`,
+  `supabase/functions/_shared/maib.ts`,
+  `supabase/functions/_shared/supabaseAdmin.ts`.
 - In scope: new file `.env.example` at repo root; `.gitignore` already allows it
   (`!.env.example`).
 - Out of scope: any `.js`/`.ts` change; do not put real values anywhere.
 - Actions:
-  1. Confirm the secret names by grepping: `grep -rnE "requiredEnv|optionalEnv" docs/supabase/functions --include='*.ts'`.
+  1. Confirm the secret names by grepping: `grep -rnE "requiredEnv|optionalEnv" supabase/functions --include='*.ts'`.
   2. Create `.env.example` with one `NAME=` per required secret and a comment per group
      (Supabase, cron/site, SMS.md, Resend, Maib). Names only — leave values blank.
   3. Verify `.gitignore` does not exclude it (`!.env.example` is present).
 - Verification:
   - `git check-ignore .env.example` returns nothing (file is trackable).
-  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (unchanged).
+  - `node --test 'tests/**/*.test.mjs'` → 166 passing (unchanged).
   - Manual: every name in `.env.example` matches a name read in code; no secret values.
 - Docs to update on completion: `README.md` (point env section at `.env.example`),
   `security.md` (mark S-4 addressed), `project-structure.md` (new root file),
@@ -132,8 +132,8 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Goal: Make `deno task test` actually execute the 32 backend tests (currently it finds 0).
 - Depends on: none | Why now: gives later steps a trustworthy backend verification command.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/bugs.md` (B-1),
-  `docs/supabase/functions/deno.json`, the three files in
-  `docs/supabase/functions/tests/` (`maib.test.ts`, `reservation-manage.test.ts`,
+  `supabase/functions/deno.json`, the three files in
+  `supabase/functions/tests/` (`maib.test.ts`, `reservation-manage.test.ts`,
   `reservations.test.ts`), and any file that imports them (none expected).
 - In scope: rename the three test files to `*.test.ts`, OR change the `deno.json` `test`
   task to list them / use a matching glob. Prefer renaming to `*.test.ts` (matches Deno's
@@ -141,13 +141,13 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Out of scope: changing test contents/assertions; touching non-test code.
 - Actions:
   1. `git mv` each `tests/<name>-test.ts` → `tests/<name>.test.ts` (if renaming).
-  2. Confirm no import path references the old names (`grep -rn "\-test.ts" docs/supabase`).
+  2. Confirm no import path references the old names (`grep -rn "\-test.ts" supabase`).
   3. Leave `deno.json` task as `deno test --allow-env --allow-net tests` (now discoverable),
      or update it explicitly if you chose not to rename.
 - Verification:
-  - `cd docs/supabase/functions && deno test --allow-env --allow-net tests` → **32 passed**
+  - `cd supabase/functions && deno test --allow-env --allow-net tests` → **32 passed**
     (no "No test modules found").
-  - `node --test 'docs/tests/**/*.test.mjs'` → 166 passing (unchanged).
+  - `node --test 'tests/**/*.test.mjs'` → 166 passing (unchanged).
 - Docs to update: `README.md` (test section — `deno task test` now works; remove the
   explicit-path workaround note), `bugs.md` (B-1 → Fixed), `conventions.md` (test naming),
   `project-structure.md` (renamed test files), `project-history.md`, `plan.md`, and the
@@ -186,10 +186,10 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Goal: Resolve the 4 `require-await` lint errors without changing behavior.
 - Depends on: STEP 2 | Why now: trivial, isolated, improves lint baseline early.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/conventions.md` (Edge
-  Functions), `docs/supabase/functions/_shared/providers.ts` (`sendSms`, `sendEmail`),
-  `docs/supabase/functions/_shared/reservationManage.ts` (`hashManageToken`,
+  Functions), `supabase/functions/_shared/providers.ts` (`sendSms`, `sendEmail`),
+  `supabase/functions/_shared/reservationManage.ts` (`hashManageToken`,
   `hashLookupCode`), and their call sites
-  (`grep -rn "sendSms\|sendEmail\|hashManageToken\|hashLookupCode" docs/supabase/functions`).
+  (`grep -rn "sendSms\|sendEmail\|hashManageToken\|hashLookupCode" supabase/functions`).
 - In scope: those two `_shared` files and only what's needed to keep call sites correct.
 - Out of scope: behavioral changes; the `any` cleanup (separate steps).
 - Actions:
@@ -199,11 +199,11 @@ Statuses: TODO | IN PROGRESS | DONE.
      making the body actually async, or returning the value directly, both work — pick the
      minimal change that satisfies lint and keeps tests green).
 - Verification:
-  - `cd docs/supabase/functions && deno lint` → the 4 `require-await` errors are gone
+  - `cd supabase/functions && deno lint` → the 4 `require-await` errors are gone
     (88 unrelated lint findings remain for later steps).
-  - `cd docs/supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
+  - `cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
   - `deno test --allow-env --allow-net tests` → 32 passing.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 171 passing.
+  - `node --test 'tests/**/*.test.mjs'` → 171 passing.
 - Docs to update: `bugs.md` (B-5 partial), `conventions.md` if guidance changes,
   `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `fix: resolve deno require-await lint warnings`
@@ -215,9 +215,9 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Goal: Remove the inline `npm:`/`jsr:`/`https:` import-prefix lint error.
 - Depends on: STEP 2 | Why now: trivial config fix, no runtime impact expected.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`,
-  `docs/supabase/functions/deno.json`, `docs/supabase/functions/import_map.json`,
+  `supabase/functions/deno.json`, `supabase/functions/import_map.json`,
   the function files that import `@supabase/supabase-js`
-  (`grep -rn "@supabase/supabase-js" docs/supabase/functions`).
+  (`grep -rn "@supabase/supabase-js" supabase/functions`).
 - In scope: `deno.json` / `import_map.json` import wiring.
 - Out of scope: changing the supabase-js major version; function logic.
 - Actions:
@@ -226,10 +226,10 @@ Statuses: TODO | IN PROGRESS | DONE.
      rule passes, keeping the resolved version identical.
 - Completion note: the actual `no-import-prefix` finding was the inline
   `https://deno.land/std@0.224.0/assert/mod.ts` import in
-  `docs/supabase/functions/tests/maib.test.ts` (inferred from `deno lint` output), not
+  `supabase/functions/tests/maib.test.ts` (inferred from `deno lint` output), not
   the already mapped `@supabase/supabase-js` import.
 - Verification:
-  - `cd docs/supabase/functions && deno lint` → `no-import-prefix` error gone.
+  - `cd supabase/functions && deno lint` → `no-import-prefix` error gone.
   - `deno check` (as in STEP 4) → passes; `deno test … tests` → 32 passing.
 - Docs to update: `bugs.md` (B-5 partial), `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `fix: resolve deno no-import-prefix lint warning`
@@ -255,7 +255,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   were marked Accepted instead of Fixed.
 - Verification:
   - Both greps return no references.
-  - `node --test 'docs/tests/**/*.test.mjs'` → 171 passing.
+  - `node --test 'tests/**/*.test.mjs'` → 171 passing.
   - Manual: `site.html` still loads `assets/videos/ecovila-hero.mp4`.
 - Docs to update: `project-structure.md` (drop the removed entries if removed, or mark
   owner-retained if kept), `bugs.md` (B-2/B-3 → Fixed or Accepted),
@@ -270,7 +270,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Depends on: none | Why now: small, security-adjacent (S-5), independent.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/security.md` (S-5),
   `admin/js/crm-sidebar.js` (around line 205), `js/checkout.js` (around line 432), and
-  the server-side validation in `docs/supabase/functions/_shared/reservations.ts`
+  the server-side validation in `supabase/functions/_shared/reservations.ts`
   (`buildReservationRows`).
 - In scope: the two placeholder defaults; minimal validation messaging.
 - Out of scope: redesigning the phone-entry UX; international-phone parsing logic.
@@ -282,7 +282,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Completion note: also converted the CRM search phone prefix to placeholder-only for
   consistency, although it was not a stored reservation value.
 - Verification:
-  - `node --test 'docs/tests/**/*.test.mjs'` → 171 passing (update a contract test only
+  - `node --test 'tests/**/*.test.mjs'` → 171 passing (update a contract test only
     if it explicitly asserts the old default; record any such change).
   - Manual: submitting checkout/CRM-add with an empty phone is rejected, not silently
     filled.
@@ -298,11 +298,11 @@ Statuses: TODO | IN PROGRESS | DONE.
   notifications/reservations/maib/reservationManage).
 - Depends on: STEP 2 | Why now: shared types first so per-function steps reuse them.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/conventions.md`,
-  `docs/supabase/functions/_shared/notifications.ts`,
-  `docs/supabase/functions/_shared/reservations.ts`,
-  `docs/supabase/functions/_shared/maib.ts`,
-  `docs/supabase/functions/_shared/reservationManage.ts`,
-  `docs/supabase/functions/_shared/supabaseAdmin.ts` (for the client type).
+  `supabase/functions/_shared/notifications.ts`,
+  `supabase/functions/_shared/reservations.ts`,
+  `supabase/functions/_shared/maib.ts`,
+  `supabase/functions/_shared/reservationManage.ts`,
+  `supabase/functions/_shared/supabaseAdmin.ts` (for the client type).
 - In scope: only those `_shared` files. Introduce a shared `SupabaseClient` type alias
   (e.g. from `supabaseAdmin.ts`) to replace `client: any`.
 - Out of scope: per-function entrypoints (STEPs 9–11); behavior changes.
@@ -310,7 +310,7 @@ Statuses: TODO | IN PROGRESS | DONE.
   1. Replace each `any` with a precise type (`SupabaseClient`, generated row types, or
      `unknown` + narrowing). Prefer a single exported client type reused everywhere.
 - Verification:
-  - `cd docs/supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
+  - `cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*' | tr '\n' ' ')` → passes.
   - `deno lint` → no `no-explicit-any` remaining **in `_shared/`** (count drops by the
     `_shared` total).
   - `deno test --allow-env --allow-net tests` → 32 passing.
@@ -370,9 +370,9 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Actions: replace each `any` with precise types.
 - Verification:
   - `deno check` (full) → passes.
-  - `cd docs/supabase/functions && deno lint` → **0 problems** (assuming STEPs 4,5,8–10
+  - `cd supabase/functions && deno lint` → **0 problems** (assuming STEPs 4,5,8–10
     done).
-  - `deno test … tests` → 32 passing; `node --test 'docs/tests/**/*.test.mjs'` → 171.
+  - `deno test … tests` → 32 passing; `node --test 'tests/**/*.test.mjs'` → 171.
 - Docs to update: `bugs.md` (B-5 → Fixed/closed once lint is clean), `conventions.md`
   (drop the "lint debt" note), `project-history.md`, `plan.md`. Check the rest.
 - Suggested commit message: `refactor: type remaining edge functions; deno lint clean`
@@ -386,8 +386,8 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Depends on: STEPs 8–11 (codebase well-typed/understood) | Why now: behavior-affecting;
   do it once functions are well understood and tests are reliable.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/security.md` (S-1),
-  `docs/supabase/functions/_shared/cors.ts`,
-  `docs/supabase/functions/maib-create-payment/index.ts` (reference allowlist), and every
+  `supabase/functions/_shared/cors.ts`,
+  `supabase/functions/maib-create-payment/index.ts` (reference allowlist), and every
   function `index.ts` (to thread the allowlist through `handleCors`/`withCors`).
 - In scope: `_shared/cors.ts` and each function's CORS call sites.
 - Out of scope: auth/signature logic; CORS for `maib-callback` if cross-origin browser
@@ -417,8 +417,8 @@ Statuses: TODO | IN PROGRESS | DONE.
 - Goal: Make role gating robust even if a function's `verify_jwt` were ever disabled (S-2).
 - Depends on: STEPs 8–11 | Why now: security hardening, best done with typed, understood code.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/security.md` (S-2),
-  `docs/supabase/functions/_shared/http.ts` (`requireStaffRole`, `verifyStaffJwt`),
-  `docs/supabase/config.toml` (which functions set `verify_jwt`), and the staff functions
+  `supabase/functions/_shared/http.ts` (`requireStaffRole`, `verifyStaffJwt`),
+  `supabase/config.toml` (which functions set `verify_jwt`), and the staff functions
   that call `requireStaffRole`.
 - In scope: `_shared/http.ts` and a guard/assertion or JWKS verification.
 - Out of scope: changing role semantics; CRM auth UI.
@@ -442,31 +442,31 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 14 — Relocate backend/tests out of `docs/` — owner-gated, HIGH RISK
-- Status: TODO
-- Goal: Move `docs/supabase/` → `supabase/` and `docs/tests/` → `tests/` to match Supabase
-  CLI conventions (B-6), if the owner agrees.
+- Status: DONE
+- Goal: Move the Supabase workspace and Node test suite from their former documentation
+  subdirectories to root-level `supabase/` and `tests/` to match Supabase CLI
+  conventions (B-6), after owner approval.
 - Depends on: STEPs 1–13 | Why now: highest blast radius (touches every test path, the
   CLI workflow, and many contract tests); do it last when everything else is stable.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/bugs.md` (B-6),
-  `docs/decisions.md` (open question), every `docs/tests/*.test.mjs` (for `require('../../js/…')`
-  relative paths), `docs/supabase/config.toml`, and CI/deploy notes in `docs/README.md`.
+  `docs/decisions.md` (open question), every Node `tests/*.test.mjs` file (for
+  `require('../js/…')` relative paths), `supabase/config.toml`, and CI/deploy notes in
+  `docs/README.md`.
 - In scope: moving the two trees and fixing ALL path references (test `require` paths,
   Supabase CLI config, the documented test commands, any plan/spec references).
 - Out of scope: changing test logic or function behavior.
 - Actions:
   1. **Get explicit owner confirmation** that this move is wanted (it is a structural
-     decision, currently Unknown). Record the decision in `docs/decisions.md`.
-  2. If approved: `git mv` the trees; fix every relative path
-     (`grep -rn "docs/tests\|docs/supabase\|\.\./\.\./js" .`); update README test/deploy
-     commands and `.claude/settings.local.json` permission globs if present.
-  3. Update every doc that references the old paths (this whole doc set references
-     `docs/supabase` and `docs/tests`).
+     decision, formerly Unknown). Record the decision in `docs/decisions.md`.
+  2. If approved: `git mv` the trees; fix every stale documentation-prefixed path and
+     any `../..` test module require; update README test/deploy commands and
+     `.claude/settings.local.json` permission globs if present.
+  3. Update every doc that references the old paths.
 - Verification:
   - `node --test 'tests/**/*.test.mjs'` → 171 passing at the new path.
-  - `cd supabase/functions && deno test --allow-env --allow-net tests` → 32 passing.
+  - `cd supabase/functions && deno test --allow-env --allow-net tests` → 36 passing.
   - `deno check` / `deno lint` clean at new paths.
-  - `grep -rn "docs/tests\|docs/supabase" .` → only intentional historical references in
-    `project-history.md`, if any.
+  - `rg -n "docs/(tests|supabase)" .` → no stale path references.
 - Docs to update: **all of them** (every path reference), especially `README.md`,
   `project-structure.md`, `conventions.md`, `bugs.md` (B-6 → Fixed),
   `decisions.md`, `project-history.md`, `plan.md`. 
@@ -478,7 +478,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 
 - **2026-05-31 — Phase 0 audit & plan (no step executed).** Performed full repository
   audit without changing application code. Verified: 164 Node tests pass
-  (`node --test 'docs/tests/**/*.test.mjs'`), 32 Deno tests pass (by explicit path),
+  (`node --test 'tests/**/*.test.mjs'`), 32 Deno tests pass (by explicit path),
   `deno check` passes, `deno lint` = 93 problems. Discovered B-1 (broken `deno task test`
   discovery), orphaned media (B-2/B-3), missing `.env.example` (S-4/B-4), wildcard CORS
   (S-1), unverified role-claim decode (S-2), placeholder phones (S-5), and the
@@ -499,3 +499,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 10 status reconciliation (source commit: 3bec80b).** Re-read required Step 10 files, re-verified committed Step 10/11 type-cleanup state, corrected stale Step 10/11 status lines so CURRENT STEP remains Step 12; reviewed README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan with only project-history/plan changes needed.
 - **2026-05-31 — STEP 12 (commit: 472e479).** Centralized Edge Function CORS behind default EcoVila origins plus `ECOVILA_ALLOWED_ORIGINS`; verified RED/GREEN CORS tests, `deno check`, clean `deno lint`, 35 Deno tests, 171 Node tests, local CORS request checks, and Chrome smoke of booking/checkout/CRM pages; updated README, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked project-overview and bugs with no changes needed.
 - **2026-06-01 — STEP 13 (commit: 1d035da).** Hardened `requireStaffRole` with Supabase Auth token validation, added forged-role Deno coverage, verified `deno check`, clean `deno lint`, and `npm test` (171 Node + 36 Deno); updated README, project-overview, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked bugs with no changes needed.
+- **2026-06-01 — STEP 14 (commit: TBD).** Relocated the Supabase workspace and Node tests to root-level `supabase/` and `tests/`; verified 171 Node tests, 36 Deno tests, `deno check`, `deno lint`, and no stale documentation-prefixed backend/test paths; updated README, project-structure, project-history, bugs, decisions, conventions, plan, package scripts, and test paths; checked AGENTS, project-overview, and security with no extra changes needed.

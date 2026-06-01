@@ -83,7 +83,7 @@ Existing cash/card behavior remains unchanged.
 - `css/crm.css`: extend the existing Organic CRM visual system for age bucket controls and the sidebar range calendar.
 - `js/calendar.js`: expose a small exact-room availability helper if the CRM needs shared range validation beyond the current public type-based helpers.
 - `js/supabase.js`: no new query family is required, but dashboard loading must fetch pricing tiers and holidays already available through shared helpers.
-- `docs/supabase/migrations/*`: add the `office` value to the reservation payment-type constraint.
+- `supabase/migrations/*`: add the `office` value to the reservation payment-type constraint.
 
 ## Error Handling
 

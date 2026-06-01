@@ -137,7 +137,7 @@ The Finance module can compute the first-version aggregates client-side from the
 - `admin/js/crm-finance.js`: own Finance state, range navigation, range calendar behavior, data loading, aggregation, formatting, and rendering.
 - `js/supabase.js`: add a helper to fetch finance reservations by selected range and mode.
 - `css/crm.css`: add Finance panel layout and reuse existing CRM visual patterns for date controls, segmented controls, and metric cards.
-- `docs/supabase/migrations/*`: add `paid_at`, backfill existing paid rows, and update payment transition code paths.
+- `supabase/migrations/*`: add `paid_at`, backfill existing paid rows, and update payment transition code paths.
 - Supabase Edge Functions: update Maib and cash confirmation flows so payment transitions write `paid_at`.
 
 ## Error Handling

@@ -18,14 +18,14 @@
 - Create `payments/maib/examples/callback-approved.json` — representative approved callback example.
 - Create `payments/maib/examples/callback-failed.json` — representative failed callback example.
 - Modify `checkout.html` — load the live Maib adapter before `js/checkout.js`.
-- Modify `docs/tests/checkout.test.mjs` — assert checkout loads the live adapter.
-- Modify `docs/tests/edge-functions.test.mjs` — assert the payment module docs/examples/boundary exist and stay secret-safe.
+- Modify `tests/checkout.test.mjs` — assert checkout loads the live adapter.
+- Modify `tests/edge-functions.test.mjs` — assert the payment module docs/examples/boundary exist and stay secret-safe.
 
 ### Task 1: Describe the live payment boundary with failing tests
 
 **Files:**
-- Modify: `docs/tests/checkout.test.mjs`
-- Modify: `docs/tests/edge-functions.test.mjs`
+- Modify: `tests/checkout.test.mjs`
+- Modify: `tests/edge-functions.test.mjs`
 
 - [ ] **Step 1: Write the failing checkout test**
 
@@ -51,7 +51,7 @@ Also assert that:
 
 - the adapter exposes `startCardPayment`
 - the Maib README mentions `browser-adapter.js`
-- the Maib README mentions `docs/supabase/functions/maib-webhook/index.ts`
+- the Maib README mentions `supabase/functions/maib-webhook/index.ts`
 - both example payloads include `result.orderId`, `result.status`, `result.statusCode`, and `signature`
 
 - [ ] **Step 3: Run the focused tests to verify they fail**
@@ -59,7 +59,7 @@ Also assert that:
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: FAIL because the new `payments/` files do not exist yet and `checkout.html` does not yet load the adapter.
@@ -141,7 +141,7 @@ and:
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: checkout test still fails until the HTML loads the adapter; payment-module existence assertions pass.
@@ -170,7 +170,7 @@ after shared project dependencies and before:
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: PASS.
@@ -185,7 +185,7 @@ Expected: PASS.
 Run:
 
 ```bash
-node --test docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs
+node --test tests/checkout.test.mjs tests/edge-functions.test.mjs
 ```
 
 Expected: PASS.
@@ -195,7 +195,7 @@ Expected: PASS.
 Run:
 
 ```bash
-node --test docs/tests/*.test.mjs
+node --test tests/*.test.mjs
 ```
 
 Expected: PASS, or record any unrelated pre-existing failures before completion.
@@ -205,7 +205,7 @@ Expected: PASS, or record any unrelated pre-existing failures before completion.
 Run:
 
 ```bash
-git diff -- payments checkout.html docs/tests/checkout.test.mjs docs/tests/edge-functions.test.mjs docs/superpowers/plans/2026-05-18-payments-module.md
+git diff -- payments checkout.html tests/checkout.test.mjs tests/edge-functions.test.mjs docs/superpowers/plans/2026-05-18-payments-module.md
 ```
 
 Expected: only the intended payment-module files and tests are included in the task diff.
