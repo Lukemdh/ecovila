@@ -123,11 +123,13 @@ Checkout → `maib-callback` (HMAC-verified) confirms payment → confirmation S
 CRM cancellations of paid Maib bookings call the staff-only `maib-refund` function and
 can refund independently of the public guest window.
 
-## Status (as of 2026-05-31)
+## Status (as of 2026-06-01)
 
 Brief Steps 1–11 are implemented in code (landing, Supabase foundation, booking core,
 booking page, checkout, confirmation/cancellation, Edge Functions, legal pages, CRM,
 production notifications, Maib checkout). Step 12 (tophost deployment) and the live
 provider/secret wiring are operational tasks not verifiable from the repo. The public
 homepage is currently a **maintenance holding page** (`index.html`); the full landing
-lives at `site.html`.
+lives at `site.html`. Staff-only Edge Functions now validate bearer tokens through
+Supabase Auth inside `requireStaffRole` before trusting `app_metadata.role`, in addition
+to their `verify_jwt = true` gateway configuration.

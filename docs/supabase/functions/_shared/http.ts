@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { withCors } from './cors.ts';
 import { requiredEnv } from './env.ts';
 
@@ -54,12 +55,45 @@ export function requireSharedSecret(request: Request, envName = 'ECOVILA_CRON_SE
   }
 }
 
-export function requireStaffRole(request: Request, allowedRoles: string[]) {
+type StaffClaims = {
+  app_metadata?: {
+    role?: unknown;
+  } | null;
+};
+
+type StaffTokenVerifier = (token: string) => Promise<StaffClaims>;
+
+type StaffRoleOptions = {
+  verifyJwt?: StaffTokenVerifier;
+};
+
+type StaffAuthClient = {
+  auth: {
+    getUser(token: string): Promise<{
+      data?: {
+        user?: {
+          app_metadata?: Record<string, unknown> | null;
+        } | null;
+      } | null;
+      error?: {
+        message?: string;
+      } | null;
+    }>;
+  };
+};
+
+let staffAuthClient: StaffAuthClient | null = null;
+
+export async function requireStaffRole(
+  request: Request,
+  allowedRoles: string[],
+  options: StaffRoleOptions = {},
+) {
   const authorization = request.headers.get('authorization') || '';
   const token = authorization.toLowerCase().startsWith('bearer ')
     ? authorization.slice('bearer '.length)
     : '';
-  const claims = parseJwtPayload(token);
+  const claims = await (options.verifyJwt || verifyStaffJwt)(token);
   const role = String(claims?.app_metadata?.role || '');
 
   if (!role || !allowedRoles.includes(role)) {
@@ -67,6 +101,36 @@ export function requireStaffRole(request: Request, allowedRoles: string[]) {
   }
 
   return role;
+}
+
+async function verifyStaffJwt(token: string): Promise<StaffClaims> {
+  if (!token) {
+    throw new HttpError(401, 'Missing authorization token.');
+  }
+
+  const { data, error } = await getStaffAuthClient().auth.getUser(token);
+
+  if (error || !data?.user) {
+    throw new HttpError(401, 'Invalid authorization token.');
+  }
+
+  return {
+    app_metadata: data.user.app_metadata || {},
+  };
+}
+
+function getStaffAuthClient() {
+  if (!staffAuthClient) {
+    staffAuthClient = createClient(requiredEnv('SUPABASE_URL'), requiredEnv('SUPABASE_ANON_KEY'), {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    });
+  }
+
+  return staffAuthClient;
 }
 
 function constantTimeEqual(left: string, right: string) {
@@ -80,23 +144,4 @@ function constantTimeEqual(left: string, right: string) {
   }
 
   return result === 0;
-}
-
-function parseJwtPayload(token: string) {
-  if (!token) {
-    throw new HttpError(401, 'Missing authorization token.');
-  }
-
-  const payload = token.split('.')[1];
-  if (!payload) {
-    throw new HttpError(401, 'Invalid authorization token.');
-  }
-
-  try {
-    const base64 = payload.replaceAll('-', '+').replaceAll('_', '/');
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
-    return JSON.parse(atob(padded));
-  } catch (_error) {
-    throw new HttpError(401, 'Invalid authorization token.');
-  }
 }

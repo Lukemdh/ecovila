@@ -66,7 +66,7 @@ together with the code change for that step.
 
 ## (D) PROGRESS TRACKER
 
-**CURRENT STEP → STEP 13**
+**CURRENT STEP → STEP 14**
 
 | Step | Title | Risk | Status |
 |------|-------|------|--------|
@@ -82,7 +82,7 @@ together with the code change for that step.
 | 10 | Type cleanup: Maib functions (`maib-*`) | Low | DONE |
 | 11 | Type cleanup: remaining functions | Low | DONE |
 | 12 | Harden CORS allowlist across all Edge Functions | Medium | DONE |
-| 13 | Defense-in-depth for `requireStaffRole` | Medium | TODO |
+| 13 | Defense-in-depth for `requireStaffRole` | Medium | DONE |
 | 14 | Relocate backend/tests out of `docs/` — owner-gated | High | TODO |
 
 Statuses: TODO | IN PROGRESS | DONE.
@@ -413,11 +413,11 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 13 — Defense-in-depth for `requireStaffRole`
-- Status: TODO
+- Status: DONE
 - Goal: Make role gating robust even if a function's `verify_jwt` were ever disabled (S-2).
 - Depends on: STEPs 8–11 | Why now: security hardening, best done with typed, understood code.
 - Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/security.md` (S-2),
-  `docs/supabase/functions/_shared/http.ts` (`requireStaffRole`, `parseJwtPayload`),
+  `docs/supabase/functions/_shared/http.ts` (`requireStaffRole`, `verifyStaffJwt`),
   `docs/supabase/config.toml` (which functions set `verify_jwt`), and the staff functions
   that call `requireStaffRole`.
 - In scope: `_shared/http.ts` and a guard/assertion or JWKS verification.
@@ -427,11 +427,16 @@ Statuses: TODO | IN PROGRESS | DONE.
      OR add an explicit invariant (and documented assertion/test) that every caller runs
      with `verify_jwt = true` per `config.toml`. Prefer real verification if feasible
      without heavy deps.
+- Completion note: implemented real verification through Supabase Auth (`auth.getUser`)
+  using the existing Supabase JS dependency instead of adding a JWT library; the former
+  local payload parser was removed.
 - Verification:
-  - `deno check` / `deno lint` clean; `deno test … tests` → 32 passing; add/adjust a Deno
+  - `deno check` / `deno lint` clean; `deno test … tests` → 36 passing; add/adjust a Deno
     test asserting unauthorized/forged-role requests are rejected.
 - Docs to update: `security.md` (S-2 → Fixed), `decisions.md` (ADR), `conventions.md`
-  (auth rule), `project-history.md`, `plan.md`. Check the rest.
+  (auth rule), `README.md` / `.env.example` (`SUPABASE_ANON_KEY` for Auth validation),
+  `project-structure.md`, `project-overview.md`, `project-history.md`, `plan.md`. Check
+  `bugs.md` with no change needed.
 - Suggested commit message: `fix: harden staff-role authorization in edge functions`
 
 ---
@@ -493,3 +498,4 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-05-31 — STEP 11 (commit: f4442ab).** Removed the final explicit `any` usage from `confirm-reservation-payment`, `expire-cash-reservations`, `send-reminders`, and `create-reservation`; verified `deno check`, clean `deno lint`, 32 Deno tests, and 171 Node tests; updated README, project-history, security, bugs, conventions, and plan; checked project-overview, project-structure, and decisions with no changes needed.
 - **2026-05-31 — STEP 10 status reconciliation (source commit: 3bec80b).** Re-read required Step 10 files, re-verified committed Step 10/11 type-cleanup state, corrected stale Step 10/11 status lines so CURRENT STEP remains Step 12; reviewed README, project-overview, project-structure, project-history, security, bugs, decisions, conventions, and plan with only project-history/plan changes needed.
 - **2026-05-31 — STEP 12 (commit: 472e479).** Centralized Edge Function CORS behind default EcoVila origins plus `ECOVILA_ALLOWED_ORIGINS`; verified RED/GREEN CORS tests, `deno check`, clean `deno lint`, 35 Deno tests, 171 Node tests, local CORS request checks, and Chrome smoke of booking/checkout/CRM pages; updated README, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked project-overview and bugs with no changes needed.
+- **2026-06-01 — STEP 13 (commit: a274144).** Hardened `requireStaffRole` with Supabase Auth token validation, added forged-role Deno coverage, verified `deno check`, clean `deno lint`, and `npm test` (171 Node + 36 Deno); updated README, project-overview, project-structure, project-history, security, decisions, conventions, `.env.example`, and plan; checked bugs with no changes needed.

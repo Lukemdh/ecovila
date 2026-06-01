@@ -8,7 +8,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | ID | Finding | Severity | Where | Status |
 |----|---------|----------|-------|--------|
 | S-1 | Wildcard `Access-Control-Allow-Origin: *` on all Edge Functions except `maib-create-payment` | Low–Medium | `docs/supabase/functions/_shared/cors.ts` | Fixed |
-| S-2 | `requireStaffRole` reads role from JWT payload without verifying the signature (relies on gateway `verify_jwt`) | Low (Info) | `docs/supabase/functions/_shared/http.ts:62` | Open |
+| S-2 | `requireStaffRole` formerly read role from an unverified JWT payload | Low (Info) | `docs/supabase/functions/_shared/http.ts` | Fixed |
 | S-3 | Supabase **anon** key committed in `js/supabase-config.js` | Info (by design) | `js/supabase-config.js:5` | Accepted |
 | S-4 | No `.env.example`; required secret names undocumented outside code/brief | Low | repo root | Fixed |
 | S-5 | Hardcoded placeholder phone defaults in staff/checkout code (`+37300000000`, `+373`) | Low | former `admin/js/crm-sidebar.js:205`, `js/checkout.js:432` | Fixed |
@@ -32,15 +32,15 @@ passed a local allowlist.
   function returns a permissive wildcard by default.
 
 ### S-2 — Role claim trusted without local signature verification (Low / Info)
-`requireStaffRole` (`_shared/http.ts`) base64-decodes the JWT payload and reads
-`app_metadata.role` **without verifying the token signature**. This is safe *only*
-because `config.toml` sets `verify_jwt = true` for the staff-facing functions, so the
-Supabase gateway verifies the token before the function runs, and `app_metadata` is
-server-controlled.
-- **Why it matters:** if any of those functions were ever switched to `verify_jwt =
-  false`, role gating would be trivially forgeable.
-- **Recommended fix:** add a defense-in-depth comment/assertion tying `requireStaffRole`
-  to `verify_jwt = true`, or verify the JWT against the project JWKS inside the function.
+Formerly, `requireStaffRole` (`_shared/http.ts`) base64-decoded the JWT payload and read
+`app_metadata.role` without verifying the token signature, relying on each staff-facing
+function's `verify_jwt = true` gateway setting.
+- **Why it mattered:** if any of those functions were ever switched to `verify_jwt =
+  false`, role gating would have been trivially forgeable.
+- **Fixed 2026-06-01:** `requireStaffRole` now validates the bearer token through
+  Supabase Auth (`auth.getUser`) using `SUPABASE_URL` + `SUPABASE_ANON_KEY`, then reads
+  `app_metadata.role` only from the verified user object. Staff functions still keep
+  `verify_jwt = true` in `config.toml`; the local Auth check is defense in depth.
 
 ### S-3 — Anon key in source (Info / Accepted)
 The Supabase anon JWT is intentionally public; access is controlled by RLS. No action
@@ -91,7 +91,8 @@ chance of unchecked data handling in privileged server code.
   JWT-verified, Diana-only `maib-refund` function.
 - **Per-function `verify_jwt`** is declared in `config.toml`; public callbacks
   (`maib-callback`) and cron jobs run with `verify_jwt = false` but enforce their own
-  signature/shared-secret checks.
+  signature/shared-secret checks. Staff role checks additionally validate bearer tokens
+  through Supabase Auth before trusting `app_metadata.role`.
 
 ## Notes / not assessed
 

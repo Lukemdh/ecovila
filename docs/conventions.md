@@ -59,6 +59,9 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   constant-time helper; verify external callbacks (Maib) by signature + replay window.
 - Declare each function's `verify_jwt` in `docs/supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
+- Staff-only functions must `await requireStaffRole(request, [...])`; the helper validates
+  the bearer token through Supabase Auth and reads `app_metadata.role` only from the
+  verified user object. Do not parse JWT payloads by hand for authorization decisions.
 - Shared helpers that accept a service-role Supabase client import the shared
   `SupabaseClient` / `SupabaseQueryResult` types from `_shared/supabaseAdmin.ts` and add
   local row/builder payload types where needed. Do not reintroduce `client: any` in

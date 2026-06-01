@@ -20,7 +20,7 @@ Deno.serve(async (request) => {
 
   try {
     assertMethod(request, ['POST']);
-    requireStaffRole(request, ['diana']);
+    await requireStaffRole(request, ['diana']);
 
     const body = await readJson(request);
     const payId = optionalString(body?.payId);

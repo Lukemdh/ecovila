@@ -106,6 +106,18 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   so allowed origins are echoed precisely. Unknown origins receive no permissive CORS
   origin header.
 
+### ADR-012 — Staff role checks verify tokens locally
+- **Date:** 2026-06-01.
+- **Decision:** `requireStaffRole` validates the bearer token through Supabase Auth
+  (`auth.getUser`) before reading `app_metadata.role`, even though staff functions also
+  keep `verify_jwt = true` in `docs/supabase/config.toml`.
+- **Why:** relying only on the Edge Function gateway made role checks forgeable if a
+  future config change accidentally disabled `verify_jwt` on a staff function. Auth
+  validation uses the existing Supabase JS dependency and avoids adding a JWT library.
+- **Consequence:** staff-only Edge Functions require `SUPABASE_ANON_KEY` in their
+  server-side environment in addition to `SUPABASE_URL`; call sites must `await
+  requireStaffRole(...)`.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

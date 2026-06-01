@@ -1,6 +1,6 @@
 # Project History — EcoVila
 
-Reconstructed from git history (`git log`, 41 commits, 2026-05-07 → 2026-05-31), the
+Reconstructed from git history (`git log`, 70 commits, 2026-05-07 → 2026-06-01), the
 implementation roadmap in `docs/ECOVILA_PROJECT_BRIEF.md`, and the per-step records in
 `docs/superpowers/plans|specs/`. Dates are commit `author-date` (YYYY-MM-DD). Future
 sessions append to the running log at the bottom.
@@ -62,13 +62,13 @@ sessions append to the running log at the bottom.
   the `maib-create-payment/-callback/-refund` and `reservation-lookup-*/-manage/-cancel`
   Edge Functions and their tests.
 
-## Current state (2026-05-31)
+## Current state (2026-06-01)
 
 - Brief Steps 1–11 are implemented in code. Step 12 (tophost deployment) and live
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 171 Node contract tests + 35 Deno tests.
+- Tests green: 171 Node contract tests + 36 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - Notable structural quirk: backend code (`supabase/`) and tests live under `docs/`,
@@ -145,3 +145,7 @@ sessions append to the running log at the bottom.
   added the optional `ECOVILA_ALLOWED_ORIGINS` override, threaded request-aware CORS
   headers through JSON/error responses, and added Deno coverage for allowed, unknown, and
   env-configured origins.
+- 2026-06-01 — STEP 13 cleanup. Changed staff-role authorization to validate bearer
+  tokens through Supabase Auth before reading `app_metadata.role`, updated staff
+  functions to await the async guard, added Deno coverage for forged role-claim
+  rejection, and added `SUPABASE_ANON_KEY` to the Edge Function secret template/docs.
