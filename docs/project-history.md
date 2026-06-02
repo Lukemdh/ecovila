@@ -179,3 +179,8 @@ sessions append to the running log at the bottom.
   Investigated `Situația zilnică`, reproduced that `loadDaily` renders paid, pending,
   and cancelled selected-date rows, documented B-14 plus future owner-gated Step 19, and
   updated production-readiness/project-overview status. No application code was changed.
+- 2026-06-02 — OFF-PLAN B-14 daily confirmed-only fix (commit: fc5c3d6). Added a
+  RED/GREEN daily reception regression for paid, pending, and cancelled selected-date
+  rows; filtered `crm-daily.js` arrivals/departures to paid, non-cancelled reservations;
+  marked B-14 and Step 19 fixed; verified 176 Node tests, 37 Deno tests, Deno lint, and
+  Deno type-check.
