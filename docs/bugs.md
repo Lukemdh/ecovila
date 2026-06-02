@@ -20,6 +20,7 @@ High / Medium / Low.
 | B-11 | Maib cron migrations assume `pg_cron`/`cron` exists | Medium | Open |
 | B-12 | Public fallback imagery still uses placeholder SVGs | Low | Open |
 | B-13 | Dependency audit/scanning gap: `npm audit` cannot run without a lockfile | Low | Open |
+| B-14 | CRM daily reception shows pending and cancelled reservations | Medium | Open |
 
 ---
 
@@ -209,6 +210,42 @@ High / Medium / Low.
 - **Why it matters:** dependency and supply-chain drift are not automatically surfaced.
 - **Fix direction:** either accept this as a documented no-build tradeoff, or add a
   lightweight CI/security scanning path that does not introduce a production build step.
+
+### B-14 — CRM daily reception shows pending and cancelled reservations (Medium) — Open
+- **Description:** `Situația zilnică` should show only confirmed reservations, but the
+  daily check-in/check-out lists currently render any reservation row returned for the
+  selected date. The repo has no literal `confirmed` reservation status; confirmed maps
+  to `payment_status = 'paid'` with `cancelled_at is null` **(inferred)** from the DB
+  status constraint (`pending` / `paid` / `cancelled`) and the cash/Maib confirmation
+  paths that promote paid bookings to `payment_status = 'paid'`.
+- **Instances found:**
+  - `admin/js/crm-daily.js` `loadDaily` fetches `previousDay..nextDay`, stores the raw
+    result in `state.reservations`, and derives `state.checkIns` / `state.checkOuts`
+    by `check_in === selectedDate` / `check_out === selectedDate` only. There is no
+    `payment_status === 'paid'` or `cancelled_at is null` filter before rendering.
+  - `admin/js/crm-daily.js` `filterDailyReservations` / `renderSection` only apply the
+    free-text search filter to the already-selected rows, so pending and cancelled rows
+    remain visible when they match the date/search.
+  - `js/supabase.js` `fetchAdminReservations` intentionally returns all statuses for
+    staff calendar/dashboard callers; this shared helper is not itself safe to tighten
+    globally because the dashboard needs pending cash rows and optional cancelled-row
+    display. The daily caller needs a local confirmed-only filter or an explicit helper
+    option.
+  - `tests/admin-crm.test.mjs` covers daily rendering/escaping with a paid row only; it
+    has no regression asserting that pending or cancelled rows are excluded from daily
+    check-in/check-out lists.
+- **Runtime evidence:** a one-off Node probe loaded `admin/js/crm-daily.js` with a fake
+  `fetchAdminReservations` returning three selected-date rows (`paid`, `pending`,
+  `cancelled`). `loadDaily` produced `checkInIds: ["paid-in","pending-in","cancelled-in"]`
+  and rendered 3 cards.
+- **Why it matters:** staff can see and act on holds that are not real confirmed stays,
+  plus rows already cancelled/released, making reception/towel/checkout operations
+  inaccurate.
+- **Fix direction:** after owner confirmation, add a Node regression test with paid,
+  pending, and cancelled selected-date rows, then filter the daily check-in/check-out
+  display to `payment_status === 'paid' && !cancelled_at`. Keep dashboard/calendar and
+  extension-availability behavior separate so pending holds still protect availability
+  where the product expects them.
 
 ---
 

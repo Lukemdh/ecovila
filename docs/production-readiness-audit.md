@@ -19,6 +19,7 @@ accepted before public launch:
 | Secret scan | Mostly clean | Regex scan found only the intended public Supabase anon JWT |
 | Security hardening | Blocked | S-9 and S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
+| CRM daily operations | Blocked | B-14: `Situația zilnică` includes pending and cancelled reservations |
 | Production content/assets | Not ready | Placeholder SVG photos remain the fallback public imagery |
 | Dependency audit | Incomplete | `npm audit` cannot run without a lockfile; Deno dependency is slightly behind latest |
 
@@ -120,6 +121,19 @@ do not match the public booking contract.
 
 Track as: B-10. Next step: tighten server-side validation to 1-17 and add Deno coverage.
 
+### 7. Daily reception includes non-confirmed reservations
+
+`admin/js/crm-daily.js` currently builds the `Situația zilnică` check-in/check-out
+lists from all reservation rows returned by `fetchAdminReservations` for the selected
+date window. Because the daily view applies only date and search filters, pending holds
+and cancelled rows can appear in the reception workflow. Confirmed means
+`payment_status = 'paid'` with `cancelled_at is null` **(inferred)**; the database has
+no literal `confirmed` status.
+
+Track as: B-14. Next step: after owner confirmation, add a daily-view regression test
+and filter the daily display to paid, non-cancelled rows without globally tightening the
+shared staff reservation fetcher.
+
 ## Lower-priority production risks
 
 - Floating Supabase JS version: browser pages load
@@ -155,5 +169,6 @@ Track as: B-10. Next step: tighten server-side validation to 1-17 and add Deno c
    reduce exposed security-definer surface.
 2. Migrate S-10 legacy cancellation links to hashed token lookup.
 3. Fix B-10 and add server-side contract tests for public booking payload constraints.
-4. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
+4. Fix B-14 so daily reception shows only confirmed reservations.
+5. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
    maintenance `index.html` is still the desired launch homepage.

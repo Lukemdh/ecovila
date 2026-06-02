@@ -90,6 +90,7 @@ together with the code change for that step.
 | 16 | Replace legacy UUID-only guest confirmation actions | High | DONE |
 | 17 | Harden Supabase RPC/token/migration posture | Medium | TODO |
 | 18 | Production dependency, asset, and ops gates | Medium | TODO |
+| 19 | Fix CRM daily confirmed-only filtering | Low-Med | TODO |
 
 Statuses: TODO | IN PROGRESS | DONE.
 
@@ -629,6 +630,46 @@ Statuses: TODO | IN PROGRESS | DONE.
   `README.md`, `bugs.md`, `security.md`, `decisions.md`, `project-history.md`, and
   `plan.md`.
 - Suggested commit message: `chore: close production readiness gates`
+
+---
+
+### STEP 19 — Fix CRM daily confirmed-only filtering
+- Status: TODO
+- Goal: Ensure `Situația zilnică` shows only confirmed reservations (inferred:
+  `payment_status = 'paid'` and `cancelled_at is null`) and never displays pending
+  holds or cancelled/released rows.
+- Depends on: owner confirmation for B-14 | Why now: the bug is operationally visible in
+  reception, but the owner requested documentation first and a separate confirmation
+  before any fix.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/bugs.md` (B-14),
+  `docs/production-readiness-audit.md`, `admin/js/crm-daily.js`,
+  `js/supabase.js` (`fetchAdminReservations`, `fetchFinanceReservations`),
+  `admin/js/crm-dashboard.js` (calendar/dashboard shared fetch usage), and
+  `tests/admin-crm.test.mjs`.
+- In scope: daily check-in/check-out display filtering, daily regression coverage, and
+  docs updates for B-14.
+- Out of scope: dashboard/calendar pending-cash behavior, the calendar's optional
+  cancelled-row toggle, finance reports, reservation creation/cancellation logic, and
+  global changes to `fetchAdminReservations` unless a caller-scoped option is added
+  without changing existing callers.
+- Actions:
+  1. Add a failing Node regression test proving daily `loadDaily` excludes selected-date
+     rows with `payment_status = 'pending'`, `payment_status = 'cancelled'`, or
+     non-null `cancelled_at`, while keeping paid non-cancelled rows.
+  2. Implement the smallest daily-scoped filter. Prefer a local helper in
+     `admin/js/crm-daily.js` or a caller-scoped `fetchAdminReservations` option over
+     globally tightening the shared admin fetcher.
+  3. Confirm the daily search still searches only the confirmed rows that survived the
+     status filter.
+- Verification:
+  - `npm test` passes.
+  - Manual or focused Node probe shows selected-date paid rows render while pending and
+    cancelled rows do not.
+- Docs to update: `bugs.md` (B-14), `production-readiness-audit.md`,
+  `project-history.md`, and `plan.md`; check README, project-overview,
+  project-structure, security, decisions, and conventions with no changes unless the
+  implementation changes their facts.
+- Suggested commit message: `fix: filter daily reception to confirmed reservations`
 
 ---
 
