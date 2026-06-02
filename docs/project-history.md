@@ -175,3 +175,7 @@ sessions append to the running log at the bottom.
   Function, dropped the old anonymous confirmation RPC signatures in a new migration,
   and added regression coverage for bare-ID rejection and manage-token storage.
   Verified 175 Node tests, 37 Deno tests, `deno check`, and `deno lint`.
+- 2026-06-02 — OFF-PLAN daily confirmed-only bug documentation (commit: 1a24c8a).
+  Investigated `Situația zilnică`, reproduced that `loadDaily` renders paid, pending,
+  and cancelled selected-date rows, documented B-14 plus future owner-gated Step 19, and
+  updated production-readiness/project-overview status. No application code was changed.
