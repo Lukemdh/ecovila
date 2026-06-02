@@ -985,6 +985,154 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dailyHtml, /&lt;svg onload=alert\(2\)&gt;/);
   });
 
+  it('shows only confirmed reservations in daily check-in and check-out lists', async () => {
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const checkIns = createFakeElement('div');
+    const checkOuts = createFakeElement('div');
+    const dailyCards = [];
+    const statusLookups = [];
+    const documentRef = {
+      createElement(tagName) {
+        const element = createFakeElement(tagName);
+        if (tagName === 'article') {
+          dailyCards.push(element);
+        }
+        return element;
+      },
+      querySelector(selector) {
+        if (selector === '[data-check-ins]') return checkIns;
+        if (selector === '[data-check-outs]') return checkOuts;
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
+    };
+    const rows = [
+      {
+        id: 'paid-in',
+        guest_first_name: 'Paid',
+        guest_last_name: 'Arrival',
+        guest_phone: '+37360111111',
+        check_in: '2026-06-10',
+        check_out: '2026-06-12',
+        adults: 2,
+        kids_ages: [],
+        total_price: 2400,
+        payment_status: 'paid',
+        cancelled_at: null,
+        rooms: { id: 'room-1', number: 1, type: 'small' },
+      },
+      {
+        id: 'pending-in',
+        guest_first_name: 'Pending',
+        guest_last_name: 'Arrival',
+        guest_phone: '+37360222222',
+        check_in: '2026-06-10',
+        check_out: '2026-06-12',
+        adults: 2,
+        kids_ages: [],
+        total_price: 2400,
+        payment_status: 'pending',
+        cancelled_at: null,
+        rooms: { id: 'room-2', number: 2, type: 'small' },
+      },
+      {
+        id: 'cancelled-status-in',
+        guest_first_name: 'Cancelled',
+        guest_last_name: 'Status',
+        guest_phone: '+37360333333',
+        check_in: '2026-06-10',
+        check_out: '2026-06-12',
+        adults: 2,
+        kids_ages: [],
+        total_price: 2400,
+        payment_status: 'cancelled',
+        cancelled_at: '2026-06-09T09:00:00.000Z',
+        rooms: { id: 'room-3', number: 3, type: 'small' },
+      },
+      {
+        id: 'cancelled-at-in',
+        guest_first_name: 'Cancelled',
+        guest_last_name: 'Timestamp',
+        guest_phone: '+37360444444',
+        check_in: '2026-06-10',
+        check_out: '2026-06-12',
+        adults: 2,
+        kids_ages: [],
+        total_price: 2400,
+        payment_status: 'paid',
+        cancelled_at: '2026-06-09T10:00:00.000Z',
+        rooms: { id: 'room-4', number: 4, type: 'small' },
+      },
+      {
+        id: 'paid-out',
+        guest_first_name: 'Paid',
+        guest_last_name: 'Departure',
+        guest_phone: '+37360555555',
+        check_in: '2026-06-08',
+        check_out: '2026-06-10',
+        adults: 2,
+        kids_ages: [],
+        total_price: 2400,
+        payment_status: 'paid',
+        cancelled_at: null,
+        rooms: { id: 'room-5', number: 5, type: 'small' },
+      },
+      {
+        id: 'pending-out',
+        guest_first_name: 'Pending',
+        guest_last_name: 'Departure',
+        guest_phone: '+37360666666',
+        check_in: '2026-06-08',
+        check_out: '2026-06-10',
+        adults: 2,
+        kids_ages: [],
+        total_price: 2400,
+        payment_status: 'pending',
+        cancelled_at: null,
+        rooms: { id: 'room-6', number: 6, type: 'small' },
+      },
+    ];
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      document: documentRef,
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        fetchAdminReservations: async () => rows,
+        fetchDailyStatuses: async (_client, _serviceDate, ids) => {
+          statusLookups.push(ids);
+          return [];
+        },
+        fetchHolidays: async () => [],
+        fetchPricingTiers: async () => [],
+      },
+    });
+    const state = {
+      selectedDate: '2026-06-10',
+      dailySearchQuery: '',
+    };
+
+    await daily.loadDaily(
+      {
+        client: {},
+        formatDate: (date) => date,
+        formatMDL: (amount) => `${amount} MDL`,
+        session: { user: { id: 'staff-1' } },
+        setAlert() {},
+      },
+      state,
+    );
+
+    assert.deepEqual(state.checkIns.map((reservation) => reservation.id), ['paid-in']);
+    assert.deepEqual(state.checkOuts.map((reservation) => reservation.id), ['paid-out']);
+    assert.deepEqual(Array.from(statusLookups[0]), ['paid-in', 'paid-out']);
+    const dailyHtml = dailyCards.map((card) => card.innerHTML).join('\n');
+    assert.match(dailyHtml, /Paid Arrival/);
+    assert.match(dailyHtml, /Paid Departure/);
+    assert.doesNotMatch(dailyHtml, /Pending/);
+    assert.doesNotMatch(dailyHtml, /Cancelled/);
+  });
+
   it('calculates exact daily guest supplements from editable child age buckets', () => {
     const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
       EcoVilaPricing: pricing,

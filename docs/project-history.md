@@ -68,7 +68,7 @@ sessions append to the running log at the bottom.
   provider/secret wiring are operational, not verifiable from the repo.
 - Branches present: `main` (default working branch here), `codex/crm-step-9`
   (the repo's configured base for PRs), `codex/crm-towels-daily-cards`. No tags.
-- Tests green: 175 Node contract tests + 37 Deno tests.
+- Tests green: 176 Node contract tests + 37 Deno tests.
 - The public homepage is a maintenance holding page (`index.html`); full landing at
   `site.html`.
 - The backend workspace (`supabase/`) and Node tests (`tests/`) now live at the repo

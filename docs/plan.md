@@ -90,7 +90,7 @@ together with the code change for that step.
 | 16 | Replace legacy UUID-only guest confirmation actions | High | DONE |
 | 17 | Harden Supabase RPC/token/migration posture | Medium | TODO |
 | 18 | Production dependency, asset, and ops gates | Medium | TODO |
-| 19 | Fix CRM daily confirmed-only filtering | Low-Med | TODO |
+| 19 | Fix CRM daily confirmed-only filtering | Low-Med | DONE |
 
 Statuses: TODO | IN PROGRESS | DONE.
 
@@ -634,7 +634,7 @@ Statuses: TODO | IN PROGRESS | DONE.
 ---
 
 ### STEP 19 — Fix CRM daily confirmed-only filtering
-- Status: TODO
+- Status: DONE
 - Goal: Ensure `Situația zilnică` shows only confirmed reservations (inferred:
   `payment_status = 'paid'` and `cancelled_at is null`) and never displays pending
   holds or cancelled/released rows.
@@ -661,10 +661,16 @@ Statuses: TODO | IN PROGRESS | DONE.
      globally tightening the shared admin fetcher.
   3. Confirm the daily search still searches only the confirmed rows that survived the
      status filter.
+- Completion note: owner confirmed the fix after the B-14 documentation session.
+  `crm-daily.js` now filters daily arrivals/departures to paid, non-cancelled rows
+  before fetching status rows or rendering cards; the shared admin reservation fetcher
+  remains broad for dashboard/calendar callers.
 - Verification:
+  - `node --test tests/admin-crm.test.mjs` passes after the RED failure.
   - `npm test` passes.
-  - Manual or focused Node probe shows selected-date paid rows render while pending and
-    cancelled rows do not.
+  - `cd supabase/functions && deno lint` passes.
+  - `cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*')`
+    passes.
 - Docs to update: `bugs.md` (B-14), `production-readiness-audit.md`,
   `project-history.md`, and `plan.md`; check README, project-overview,
   project-structure, security, decisions, and conventions with no changes unless the

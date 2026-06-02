@@ -152,6 +152,10 @@
     return (reservations || []).filter((reservation) => dailyReservationMatchesSearch(reservation, query));
   }
 
+  function isConfirmedDailyReservation(reservation) {
+    return Boolean(reservation && reservation.payment_status === 'paid' && !reservation.cancelled_at);
+  }
+
   function groupReservations(reservations, reservation) {
     const groupId = reservation.booking_group_id;
     if (!groupId) {
@@ -665,8 +669,9 @@
     state.reservations = reservations;
     state.pricingTiers = pricingTiers;
     state.holidays = holidays;
-    const checkIns = reservations.filter((reservation) => reservation.check_in === state.selectedDate);
-    const checkOuts = reservations.filter((reservation) => reservation.check_out === state.selectedDate);
+    const confirmedReservations = reservations.filter(isConfirmedDailyReservation);
+    const checkIns = confirmedReservations.filter((reservation) => reservation.check_in === state.selectedDate);
+    const checkOuts = confirmedReservations.filter((reservation) => reservation.check_out === state.selectedDate);
     const ids = [...checkIns, ...checkOuts].map((reservation) => reservation.id);
     const statuses = await root.EcoVilaSupabase.fetchDailyStatuses(context.client, state.selectedDate, ids);
 

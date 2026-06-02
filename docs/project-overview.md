@@ -146,5 +146,4 @@ the project **not ready for production** until the open Medium items in
 or explicitly accepted. CRM stored-XSS hardening and UUID-only confirmation actions are
 fixed; the remaining main blockers are public security-definer RPC review, plaintext
 legacy cancellation tokens, server-side child-age validation, the Maib `pg_cron`
-migration assumption, and the CRM daily reception view showing pending/cancelled
-reservations.
+migration assumption, dependency/version posture, and production content/asset readiness.

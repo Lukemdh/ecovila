@@ -12,14 +12,14 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 175 Node + 37 Deno tests pass |
+| Test suite | Green | `npm test` -> 176 Node + 37 Deno tests pass |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
 | Static local references | Green | 10 HTML files checked; all local `href`/`src`/`poster` targets exist |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
 | Secret scan | Mostly clean | Regex scan found only the intended public Supabase anon JWT |
 | Security hardening | Blocked | S-9 and S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
-| CRM daily operations | Blocked | B-14: `Situația zilnică` includes pending and cancelled reservations |
+| CRM daily operations | Green | B-14 fixed: daily lists show only paid, non-cancelled reservations |
 | Production content/assets | Not ready | Placeholder SVG photos remain the fallback public imagery |
 | Dependency audit | Incomplete | `npm audit` cannot run without a lockfile; Deno dependency is slightly behind latest |
 
@@ -27,7 +27,7 @@ accepted before public launch:
 
 ```sh
 npm test
-# 175 Node tests + 37 Deno tests passed after Step 16
+# 176 Node tests + 37 Deno tests passed after the B-14 fix
 
 cd supabase/functions && deno lint
 # Checked 28 files after Step 16
@@ -121,18 +121,18 @@ do not match the public booking contract.
 
 Track as: B-10. Next step: tighten server-side validation to 1-17 and add Deno coverage.
 
-### 7. Daily reception includes non-confirmed reservations
+### 7. Daily reception includes non-confirmed reservations — fixed 2026-06-02
 
-`admin/js/crm-daily.js` currently builds the `Situația zilnică` check-in/check-out
-lists from all reservation rows returned by `fetchAdminReservations` for the selected
-date window. Because the daily view applies only date and search filters, pending holds
-and cancelled rows can appear in the reception workflow. Confirmed means
+`admin/js/crm-daily.js` formerly built the `Situația zilnică` check-in/check-out lists
+from all reservation rows returned by `fetchAdminReservations` for the selected date
+window. Because the daily view applied only date and search filters, pending holds and
+cancelled rows could appear in the reception workflow. Confirmed means
 `payment_status = 'paid'` with `cancelled_at is null` **(inferred)**; the database has
 no literal `confirmed` status.
 
-Track as: B-14. Next step: after owner confirmation, add a daily-view regression test
-and filter the daily display to paid, non-cancelled rows without globally tightening the
-shared staff reservation fetcher.
+Status: fixed in the B-14 off-plan fix. Daily check-in/check-out derivation now filters
+to paid, non-cancelled rows before fetching daily status records or rendering cards,
+without globally tightening the shared staff reservation fetcher.
 
 ## Lower-priority production risks
 
@@ -169,6 +169,5 @@ shared staff reservation fetcher.
    reduce exposed security-definer surface.
 2. Migrate S-10 legacy cancellation links to hashed token lookup.
 3. Fix B-10 and add server-side contract tests for public booking payload constraints.
-4. Fix B-14 so daily reception shows only confirmed reservations.
-5. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
+4. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
    maintenance `index.html` is still the desired launch homepage.

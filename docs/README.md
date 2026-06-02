@@ -102,7 +102,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 175 Node + 37 Deno tests, all passing
+# → 176 Node + 37 Deno tests, all passing
 ```
 
 The suites can also be run independently.
@@ -112,7 +112,7 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 175 tests, 17 suites, all passing
+# → 176 tests, 17 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
