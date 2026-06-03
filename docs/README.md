@@ -64,6 +64,10 @@ without exposing credentials. Canonical environment variable **names**:
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_API_URL` (URL optional; defaults to `https://api.resend.com/emails`)
 - `MAIB_CLIENT_ID`, `MAIB_CLIENT_SECRET`, `MAIB_SIGNATURE_KEY`, `MAIB_BASE_URL`
 - `MAIB_CALLBACK_URL` (optional; otherwise derived from `SUPABASE_URL` + `/functions/v1/maib-callback`)
+- `META_PIXEL_ID`, `META_CAPI_ACCESS_TOKEN`, `META_GRAPH_API_VERSION` (optional; server-side Meta CAPI)
+- `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_ACCESS_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`,
+  `GOOGLE_ADS_PURCHASE_CONVERSION_ACTION_ID`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`,
+  `GOOGLE_ADS_API_VERSION` (optional; server-side Google Ads conversion upload)
 
 ---
 
@@ -75,16 +79,23 @@ static file server and open the pages, e.g.:
 ```sh
 # from the repository root — any static server works
 python3 -m http.server 8080
-# then open http://localhost:8080/site.html  (full landing page)
-#            http://localhost:8080/index.html (current maintenance holding page)
+# then open http://localhost:8080/          (Romanian landing page)
+#            http://localhost:8080/ru/      (Russian landing page)
+#            http://localhost:8080/en/      (English landing page)
 #            http://localhost:8080/rezervari.html (booking)
 #            http://localhost:8080/admin/      (CRM login)
 ```
 
-Key pages: `index.html` (maintenance holding page — current live homepage),
-`site.html` (full landing page), `rezervari.html` (booking), `checkout.html`,
-`confirmare.html`, `anulare.html`, `politica-confidentialitate.html`,
-`termeni-conditii.html`, `admin/index.html` (CRM login), `admin/dashboard.html` (CRM).
+Key pages: `index.html` (Romanian canonical homepage at `/`), `ru/index.html`,
+`en/index.html`, `site.html` (legacy transition source redirected by `.htaccess`),
+`rezervari.html` (booking), `checkout.html`, `confirmare.html`, `anulare.html`,
+`politica-confidentialitate.html`, `termeni-conditii.html`, `admin/index.html`
+(CRM login), `admin/dashboard.html` (CRM).
+
+Local recovery material from the former PHP site is intentionally not committed:
+`Archive.zip` and `docs/old php/` are ignored because the raw hosting backup contains
+retired credentials and server artifacts. Committed old-content context lives in
+`docs/old-content-inventory.md`.
 
 ---
 
@@ -102,7 +113,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 176 Node + 37 Deno tests, all passing
+# → 188 Node + 38 Deno tests, all passing
 ```
 
 The suites can also be run independently.
@@ -112,14 +123,14 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 176 tests, 17 suites, all passing
+# → 188 tests, 20 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 37 tests, all passing
+# → 38 tests, all passing
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named
@@ -167,15 +178,29 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 > findings in `docs/production-readiness-audit.md`, `docs/security.md`, and
 > `docs/bugs.md` are resolved or explicitly accepted by the owner.
 
-- **Frontend:** copy the static files to tophost.md (shared cPanel). No build, no
-  server runtime. (Brief Step 12 — not yet performed.)
+- **Frontend:** prepare the static upload folder with `npm run prepare:tophost`,
+  then upload the contents of `dist/tophost/` to the tophost.md document root
+  (usually `public_html`). This is a packaging step only: there is still no build
+  and no server runtime. The script excludes project internals such as `docs/`,
+  `tests/`, `supabase/`, and `.env`, removes stale files from `dist/tophost/`, and
+  normalizes cPanel-safe permissions (`755` for directories, `644` for files).
+  If files were already uploaded with restrictive permissions, fix them on the
+  host with:
+  ```sh
+  find public_html -type d -exec chmod 755 {} \;
+  find public_html -type f -exec chmod 644 {} \;
+  ```
+  (Brief Step 12 — not yet performed.)
+  The upload includes `/`, `/ru/`, `/en/`, `robots.txt`, `sitemap.xml`, `llms.txt`,
+  and `.htaccess`; `site.html` is not shipped as a duplicate production page and is
+  redirected to `/` by the legacy map.
 - **Database:** apply migrations with the Supabase CLI
   (`supabase db push` against `supabase/migrations/`). Before pushing to production,
   resolve B-11: the Maib cleanup migrations call `cron.schedule`, but the migration set
   does not currently enable `pg_cron`.
 - **Edge Functions:** deploy with the Supabase CLI from `supabase/` per
   `supabase/config.toml` (which sets per-function `verify_jwt`). Set all Edge
-  Function secrets listed above before invoking payment/notification functions.
+  Function secrets listed above before invoking payment/notification/tracking functions.
 - **Cron:** schedule `expire-cash-reservations` and `send-reminders` (and the Maib
   session-expiry cron added by migration) passing `ECOVILA_CRON_SECRET`.
 

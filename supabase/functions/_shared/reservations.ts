@@ -30,6 +30,11 @@ export type ReservationInput = {
   cash_expires_at?: string | null;
   cash_extended?: boolean;
   created_by?: string;
+  tracking_event_id?: string | null;
+  tracking_fbp?: string | null;
+  tracking_fbc?: string | null;
+  tracking_user_agent?: string | null;
+  tracking_source_url?: string | null;
 };
 
 export type ReservationRow = {
@@ -54,6 +59,11 @@ export type ReservationRow = {
   cash_expires_at: string | null;
   cash_extended: false;
   created_by: 'guest';
+  tracking_event_id?: string | null;
+  tracking_fbp?: string | null;
+  tracking_fbc?: string | null;
+  tracking_user_agent?: string | null;
+  tracking_source_url?: string | null;
 };
 
 export type ReservationRecord = ReservationRow & {
@@ -262,6 +272,21 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
     created_by: 'guest',
   };
 
+  for (
+    const key of [
+      'tracking_event_id',
+      'tracking_fbp',
+      'tracking_fbc',
+      'tracking_user_agent',
+      'tracking_source_url',
+    ] as const
+  ) {
+    const value = optionalTrackingValue(input[key]);
+    if (value) {
+      row[key] = value;
+    }
+  }
+
   if (input.id) {
     row.id = trim(input.id);
   }
@@ -294,6 +319,11 @@ function orderReservationRow(row: ReservationRow) {
     cash_expires_at: row.cash_expires_at,
     cash_extended: false,
     created_by: 'guest',
+    ...(row.tracking_event_id ? { tracking_event_id: row.tracking_event_id } : {}),
+    ...(row.tracking_fbp ? { tracking_fbp: row.tracking_fbp } : {}),
+    ...(row.tracking_fbc ? { tracking_fbc: row.tracking_fbc } : {}),
+    ...(row.tracking_user_agent ? { tracking_user_agent: row.tracking_user_agent } : {}),
+    ...(row.tracking_source_url ? { tracking_source_url: row.tracking_source_url } : {}),
   };
 
   return ordered;
@@ -321,6 +351,16 @@ function normalizeKidsAges(value: unknown) {
 
     return normalized;
   });
+}
+
+function optionalTrackingValue(value: unknown) {
+  const normalized = trim(value);
+
+  if (!normalized || HTML_CONTROL_PATTERN.test(normalized)) {
+    return '';
+  }
+
+  return normalized.slice(0, 500);
 }
 
 function isoDate(value: unknown, message: string) {

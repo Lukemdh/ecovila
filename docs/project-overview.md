@@ -26,8 +26,11 @@ The product has two surfaces:
 
 ## Core features and flows
 
-- **Landing** (`site.html`): hero video, accommodation showcase, conference-room CTA
-  (conference room is **not** bookable online — contact only), trilingual UI (RO/RU/EN).
+- **Landing** (`/`, `/ru/`, `/en/`): static localized homepages with self canonicals,
+  reciprocal hreflang, hero video, accommodation showcase, and conference-room CTA
+  (conference room is **not** bookable online — contact only). Former PHP/DB content
+  was inventoried for ranking protection, but dated hardcoded pricing/access blocks are
+  intentionally not shown on the public homepage.
 - **Booking** (`rezervari.html`): adults/kids selector with child ages 1–17, date-range
   calendar, availability per accommodation type, room-number selection, sold-out states.
 - **Checkout** (`checkout.html`): reservation summary, guest form, GDPR consent,
@@ -83,6 +86,8 @@ The product has two surfaces:
 | **Maib** | Online payments (MIA for `+373`, hosted card Checkout otherwise) | `maib-*` Edge Functions, `js/checkout.js` |
 | **SMS.md** | SMS notifications | `_shared/providers.ts`, `send-sms` |
 | **Resend** | Email notifications | `_shared/providers.ts`, `send-email` |
+| **Meta Pixel / CAPI** | Consent-gated browser + server conversion tracking | `js/tracking.js`, `track-event`, `_shared/tracking.ts` |
+| **Google tag / Ads API** | Consent-gated analytics/conversion tracking | `js/tracking.js`, `_shared/tracking.ts` |
 | **tophost.md** | Static hosting (cPanel, no Node) for the frontend | deployment target |
 | **Google Fonts** | Cormorant Garamond + Montserrat | page `<head>`s |
 
@@ -107,8 +112,9 @@ The product has two surfaces:
                    │   create-reservation, confirm-…,     │
                    │   reservation-lookup/-manage/-cancel,│
                    │   reservation-extend-cash,            │
-                   │   maib-create-payment/-callback/     │
-                   │   -refund, send-sms/-email/-reminders│
+                  │   maib-create-payment/-callback/     │
+                  │   -refund, send-sms/-email/-reminders│
+                  │   track-event                        │
                    │   expire-cash-reservations           │
                    └───────┬───────────┬───────────┬──────┘
                            ▼           ▼           ▼
@@ -127,16 +133,20 @@ goes through `reservation-lookup-start` / `reservation-lookup-verify` /
 `reservation-manage-details` / `reservation-extend-cash` / `reservation-cancel` (token +
 phone OTP where needed + cancellation policy, all server-side).
 CRM cancellations of paid Maib bookings call the staff-only `maib-refund` function and
-can refund independently of the public guest window.
+can refund independently of the public guest window. Consent-gated browser tracking
+shares a generated `tracking_event_id` with reservation rows; payment confirmation
+functions emit server-side `Purchase` with `value` and `currency: MDL`, deduped by that
+event ID.
 
-## Status (as of 2026-06-01)
+## Status (as of 2026-06-03)
 
 Brief Steps 1–11 are implemented in code (landing, Supabase foundation, booking core,
 booking page, checkout, confirmation/cancellation, Edge Functions, legal pages, CRM,
 production notifications, Maib checkout). Step 12 (tophost deployment) and the live
 provider/secret wiring are operational tasks not verifiable from the repo. The public
-homepage is currently a **maintenance holding page** (`index.html`); the full landing
-lives at `site.html`. Staff-only Edge Functions now validate bearer tokens through
+homepage is now the full Romanian landing page at `/`; Russian and English are static
+localized pages at `/ru/` and `/en/`; `site.html` is a local transition source covered
+by a 301 rule. Staff-only Edge Functions now validate bearer tokens through
 Supabase Auth inside `requireStaffRole` before trusting `app_metadata.role`, in addition
 to their `verify_jwt = true` gateway configuration.
 

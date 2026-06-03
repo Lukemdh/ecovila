@@ -4,6 +4,7 @@
   "private": true,
   "description": "EcoVila static frontend and Supabase Edge Function test scripts.",
   "scripts": {
+    "prepare:tophost": "node scripts/prepare-tophost-upload.mjs",
     "test": "npm run test:node && npm run test:deno",
     "test:node": "node --test 'tests/**/*.test.mjs'",
     "test:deno": "cd supabase/functions && deno task test"

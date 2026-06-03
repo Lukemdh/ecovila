@@ -1,6 +1,6 @@
 # Security Posture & Findings — EcoVila
 
-Audit date: 2026-06-01. This is a running log; future sessions update statuses and add
+Audit date: 2026-06-01; last updated 2026-06-03. This is a running log; future sessions update statuses and add
 findings. Severities: Critical / High / Medium / Low / Info.
 
 ## Summary table
@@ -18,6 +18,7 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-9 | Anonymous `security definer` RPCs remain in exposed `public` schema | Medium | `supabase/migrations/*.sql` | Open |
 | S-10 | Legacy cancellation tokens are stored plaintext | Medium | `public.cancellation_tokens`, `_shared/reservations.ts` | Open |
 | S-11 | Floating Supabase JS major tag creates supply-chain drift | Low | HTML CDN tags, Deno import map | Open |
+| S-12 | SMS provider call passes phone/message/token in the URL query string | High | `supabase/functions/_shared/providers.ts` | Open / out of SEO-tracking scope |
 
 No Critical or High findings remain open. Medium findings still block production launch
 until fixed or explicitly accepted. See `docs/production-readiness-audit.md` for the
@@ -56,8 +57,9 @@ needed beyond confirming RLS coverage. **Confirm no service-role key is ever com
 ### S-4 — Missing `.env.example` (Low)
 Required Edge Function secret *names* were only discoverable by reading code or the
 brief.
-- **Fixed 2026-05-31:** added a committed root `.env.example` with the canonical
-  Supabase, cron/site, SMS.md, Resend, and Maib names only; all values are blank.
+- **Fixed 2026-05-31; updated 2026-06-03:** added a committed root `.env.example` with
+  the canonical Supabase, cron/site, SMS.md, Resend, Maib, Meta CAPI, and Google Ads
+  conversion names only; all values are blank.
 
 ### S-5 — Hardcoded placeholder phones (Low)
 Formerly, `admin/js/crm-sidebar.js:205` defaulted a missing phone to `+37300000000`, and
@@ -141,6 +143,16 @@ Browser pages load `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`; Deno 
 - **Required fix:** pin/review an exact Supabase JS version for browser and Deno, then
   decide whether CDN SRI or local vendoring fits the no-build hosting model.
 
+### S-12 — SMS provider URL-query PII (High / Open)
+The SMS.md provider call currently places phone/message/token values in a request URL
+query string. This violates the no-PII-in-URLs constraint and Legea 195/2024. It is
+explicitly out of scope for the 2026-06-03 SEO/tracking implementation, but is tracked
+as standalone Step 20 in `docs/plan.md`.
+- **Required fix:** use a POST body if SMS.md supports it; if the provider only accepts
+  GET, ensure the full request URL is never written to logs or telemetry.
+- **Current control:** new conversion-tracking code does not repeat this pattern and
+  does not put phone/email/message data into browser URLs.
+
 ## Positive controls (verified)
 
 - **Manage tokens & lookup codes are hashed in the DB** (`_shared/reservationManage.ts`
@@ -168,6 +180,15 @@ Browser pages load `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`; Deno 
   (`maib-callback`) and cron jobs run with `verify_jwt = false` but enforce their own
   signature/shared-secret checks. Staff role checks additionally validate bearer tokens
   through Supabase Auth before trusting `app_metadata.role`.
+- **Conversion tracking is consent-gated and server-secret-only.** Browser code only
+  reads public tracking IDs from `js/tracking-config.js`; Meta CAPI and Google Ads API
+  tokens are read server-side via `_shared/env.ts`. Server-side user match data is
+  SHA-256 hashed before provider payload construction, and Purchase events dedupe with
+  the browser event via a shared `tracking_event_id`.
+- **Raw old hosting backups are ignored, not committed.** `Archive.zip` and
+  `docs/old php/` stay local-only because the backup contains retired credentials and
+  cPanel/mail/SSL artifacts; committed old-content context is limited to the sanitized
+  `docs/old-content-inventory.md`.
 
 ## Notes / not assessed
 

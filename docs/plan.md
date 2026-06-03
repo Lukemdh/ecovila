@@ -91,6 +91,7 @@ together with the code change for that step.
 | 17 | Harden Supabase RPC/token/migration posture | Medium | TODO |
 | 18 | Production dependency, asset, and ops gates | Medium | TODO |
 | 19 | Fix CRM daily confirmed-only filtering | Low-Med | DONE |
+| 20 | Fix SMS provider URL-query PII | High | TODO |
 
 Statuses: TODO | IN PROGRESS | DONE.
 
@@ -679,6 +680,40 @@ Statuses: TODO | IN PROGRESS | DONE.
 
 ---
 
+### STEP 20 — Fix SMS provider URL-query PII
+- Status: TODO
+- Goal: SMS provider call passes phone/message/token in the URL query string — violates
+  the no-PII-in-URLs constraint and Legea 195/2024. Fix: use a POST body if SMS.md
+  supports it; if the provider only accepts GET, ensure the full request URL is never
+  written to logs.
+- Depends on: separate owner scheduling | Why now: this is out of scope for the
+  SEO/tracking work but must remain visible as a standalone security/privacy task.
+- Required reading: `docs/AGENTS.md`, `docs/plan.md`, `docs/security.md`,
+  `docs/production-readiness-audit.md`, `supabase/functions/_shared/providers.ts`,
+  and current SMS.md API documentation.
+- In scope: SMS provider request method/body handling, logging controls, tests, and
+  security docs.
+- Out of scope: SEO/AEO work, conversion tracking, Maib payment logic, and any new
+  tracking code.
+- Actions:
+  1. Confirm whether SMS.md accepts POST bodies for send requests.
+  2. If POST is supported, move phone/message/token out of the query string and into a
+     POST body.
+  3. If only GET is supported, keep compatibility but ensure the full request URL is
+     never written to logs and no new telemetry records it.
+  4. Add regression coverage proving provider calls and logs do not expose raw phone,
+     message, or token in URLs.
+- Verification:
+  - Provider request tests pass.
+  - Static grep confirms no new SMS phone/message/token URL construction leaks raw PII.
+  - `npm test` passes.
+- Docs to update: `security.md`, `production-readiness-audit.md`, `project-history.md`,
+  `plan.md`; check README, project-overview, project-structure, bugs, decisions, and
+  conventions.
+- Suggested commit message: `fix: keep sms pii out of request urls`
+
+---
+
 ## (F) SESSION LOG (append; newest last)
 
 - **2026-05-31 — Phase 0 audit & plan (no step executed).** Performed full repository
@@ -721,3 +756,5 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-06-01 — STEP 16 (commit: b86f850).** Required manage-token proof for confirmation status, cash extension, and guest cancellation; verified 175 Node tests, 37 Deno tests, `deno check`, `deno lint`, `deno fmt --check`, and static greps; updated README, project-overview, project-structure, project-history, production-readiness-audit, security, bugs, decisions, conventions, and plan.
 - **2026-06-02 — OFF-PLAN daily confirmed-only bug documentation (commit: 1a24c8a).** Documented B-14 with source/runtime evidence, added future owner-gated Step 19, updated project-overview and production-readiness-audit, and checked README, project-structure, security, decisions, and conventions with no changes needed.
 - **2026-06-02 — OFF-PLAN B-14 daily confirmed-only fix (commit: fc5c3d6).** Filtered `Situația zilnică` arrivals/departures to paid, non-cancelled reservations, added RED/GREEN Node regression coverage, marked B-14 and Step 19 fixed, updated README, project-overview, project-history, production-readiness-audit, bugs, and plan, and checked project-structure, security, decisions, and conventions with no changes needed.
+- **2026-06-03 — OFF-PLAN SEO/AEO + conversion tracking implementation.** Replaced the root maintenance page with the full Romanian landing page, added static `/ru/` and `/en/` homepages with hreflang/self-canonicals, inventoried old PHP/DB ranking source, added crawler/AEO files and the approved legacy redirect map draft, upgraded consent to shared necessary/analytics/marketing categories, added consent-gated browser tracking plus server-side Meta CAPI / Google Ads Purchase dispatch from payment confirmation flows, and documented the SMS URL-query PII issue as standalone Step 20 / B-15 / S-12. Verified 187 Node tests, 38 Deno tests, `deno lint`, and Deno type-check. Final URL/301 map still requires owner confirmation before production deployment.
+- **2026-06-03 — OFF-PLAN SEO follow-up and publish prep.** Restored the compact native language selector on `/`, `/ru/`, and `/en/`; removed public legacy pricing/access sections with dated hardcoded prices; kept approved 301 targets valid by moving `#despre` to the current intro section and adding a footer `#contact` anchor; added redirect-target regression coverage. Added `docs/old-content-inventory.md`, ignored `Archive.zip` and raw `docs/old php/` because the backup contains retired credentials/server artifacts, and updated README, project-overview, project-structure, project-history, security, decisions, conventions, and plan. Verified 188 Node tests, 38 Deno tests, and Tophost upload packaging.

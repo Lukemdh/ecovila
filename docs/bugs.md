@@ -21,6 +21,7 @@ High / Medium / Low.
 | B-12 | Public fallback imagery still uses placeholder SVGs | Low | Open |
 | B-13 | Dependency audit/scanning gap: `npm audit` cannot run without a lockfile | Low | Open |
 | B-14 | CRM daily reception shows pending and cancelled reservations | Medium | Fixed |
+| B-15 | SMS provider URL contains phone/message/token query parameters | High | Open |
 
 ---
 
@@ -250,14 +251,23 @@ High / Medium / Low.
   `payment_status = 'cancelled'`, and non-null `cancelled_at` rows on the selected
   daily date, and asserts that only paid non-cancelled arrivals/departures are rendered.
 
+### B-15 — SMS provider URL contains phone/message/token query parameters (High) — Open
+- **Description:** the SMS provider call passes phone/message/token in the URL query
+  string, which violates the no-PII-in-URLs constraint and Legea 195/2024.
+- **Scope note:** owner explicitly kept this out of the SEO/tracking effort. It is
+  tracked as standalone Step 20 in `docs/plan.md`; do not let new tracking code repeat
+  this URL-query PII pattern.
+- **Fix direction:** use a POST body if SMS.md supports it. If the provider only
+  accepts GET, ensure the full request URL is never written to logs or telemetry.
+
 ---
 
 ## Items checked and NOT bugs
 
 - `site.html` hero `<source src="/assets/videos/ecovila-hero.mp4">` — the file exists;
   not broken.
-- `index.html` not linking to `site.html` — **intentional** maintenance holding page,
-  asserted by `tests/maintenance-page.test.mjs`.
+- `site.html` redirecting to `/` — intentional transition URL after root replacement;
+  `index.html` is now the full Romanian canonical homepage.
 - `js/pricing.js` / `js/calendar.js` imported by both browser and Node tests — the
   UMD wrapper is by design, not a duplication bug.
 - `send-sms` and `send-email` are not called from the public browser; they are

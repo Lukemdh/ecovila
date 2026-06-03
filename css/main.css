@@ -46,8 +46,17 @@ img {
 #restaurant,
 #accommodation,
 #conference,
+#despre,
+#contact,
 #footer {
   scroll-margin-top: 72px;
+}
+
+.anchor-target {
+  display: block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 a {
@@ -648,6 +657,28 @@ h3 {
 .cookie-banner p {
   margin: 0 0 16px;
   overflow-wrap: break-word;
+}
+
+.cookie-banner__options {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.cookie-banner__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cookie-banner__option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--moss);
 }
 
 .cookie-banner__actions {

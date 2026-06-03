@@ -12,6 +12,7 @@ import {
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { dispatchPurchaseTrackingOnce } from '../_shared/tracking.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
@@ -63,6 +64,11 @@ type RawPaymentReservationRow = {
   rooms?: ReservationRoomJoin | ReservationRoomJoin[] | null;
   room_number?: number | string | null;
   room_type?: string | null;
+  tracking_event_id?: string | null;
+  tracking_fbp?: string | null;
+  tracking_fbc?: string | null;
+  tracking_user_agent?: string | null;
+  tracking_source_url?: string | null;
 };
 
 type PaymentReservationRow = Omit<RawPaymentReservationRow, 'rooms'> & {
@@ -179,7 +185,10 @@ Deno.serve(async (request) => {
         throw new Error(error.message);
       }
 
-      const notificationResults = await notifyPaidReservations(client, reservations);
+      const [notificationResults, trackingResult] = await Promise.all([
+        notifyPaidReservations(client, reservations),
+        dispatchPurchaseTrackingOnce(client, reservations, { source: 'maib-callback' }),
+      ]);
       console.info('Maib callback processed', { ...callbackContext, decision: 'paid' });
       return jsonResponse(
         {
@@ -187,6 +196,7 @@ Deno.serve(async (request) => {
           status: 'paid',
           matched: reservations.length,
           notificationResults,
+          trackingResult,
         },
         {},
         request,
@@ -275,7 +285,7 @@ async function maybeSinglePayment(query: QueryBuilder<MaibPaymentRow>) {
 async function findReservationsForBookingGroup(client: SupabaseClient, bookingGroupId: string) {
   const { data, error } = await table<RawPaymentReservationRow[]>(client, 'reservations')
     .select(
-      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, tracking_event_id, tracking_fbp, tracking_fbc, tracking_user_agent, tracking_source_url, rooms(number, type)',
     )
     .eq('booking_group_id', bookingGroupId)
     .eq('payment_type', 'card')

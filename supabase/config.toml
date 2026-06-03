@@ -27,6 +27,9 @@ verify_jwt = false
 [functions.maib-refund]
 verify_jwt = true
 
+[functions.track-event]
+verify_jwt = true
+
 [functions.reservation-lookup-start]
 verify_jwt = true
 

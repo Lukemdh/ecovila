@@ -23,6 +23,7 @@
   const STORAGE_SELECTION = 'ecovila_booking_selection';
   const STORAGE_PENDING = 'ecovila_pending_reservation';
   const STORAGE_LANGUAGE = 'ecovila_language';
+  const STORAGE_TRACKING_EVENT = 'ecovila_booking_tracking_event_id';
   const CASH_EXPIRY_MINUTES = 30;
   const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
   const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -64,6 +65,50 @@
     }
 
     return `reservation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function getOrCreateTrackingEventId(storage) {
+    const source = storage || root.localStorage;
+    const fromTrackingApi = root.EcoVilaTracking?.getOrCreateEventId?.('booking');
+
+    if (fromTrackingApi) {
+      return fromTrackingApi;
+    }
+
+    try {
+      const stored = source?.getItem(STORAGE_TRACKING_EVENT);
+      if (stored) {
+        return stored;
+      }
+
+      const next = createReservationId();
+      source?.setItem(STORAGE_TRACKING_EVENT, next);
+      return next;
+    } catch (_error) {
+      return createReservationId();
+    }
+  }
+
+  function getCheckoutTrackingContext(selection) {
+    const browserIds = root.EcoVilaTracking?.captureBrowserIds?.() || {};
+
+    return {
+      tracking_event_id: getOrCreateTrackingEventId(),
+      tracking_fbp: browserIds.fbp || '',
+      tracking_fbc: browserIds.fbc || '',
+      tracking_user_agent: browserIds.userAgent || root.navigator?.userAgent || '',
+      tracking_source_url: browserIds.sourceUrl || safeSourceUrl(),
+      value: Number(selection?.totalPrice || 0),
+      currency: 'MDL',
+    };
+  }
+
+  function safeSourceUrl() {
+    try {
+      return `${root.location.origin}${root.location.pathname}`;
+    } catch (_error) {
+      return 'https://ecovila.md/checkout.html';
+    }
   }
 
   function normalizeInternationalPhone(value) {
@@ -213,28 +258,38 @@
     const guest = guestValidation.guest;
     const guestLanguage = normalizeLanguage(selection.language || getLanguage());
 
-    return roomIds.map((roomId, index) => ({
-      id: createId(),
-      room_id: roomId,
-      guest_first_name: guest.firstName,
-      guest_last_name: guest.lastName,
-      guest_phone: guest.phone,
-      guest_email: guest.email,
-      guest_language: guestLanguage,
-      check_in: selection.checkIn,
-      check_out: selection.checkOut,
-      adults: Number(selection.adults),
-      kids_ages: Array.isArray(selection.kidsAges) ? selection.kidsAges.map((age) => Number(age)) : [],
-      total_price: priceParts[index],
-      payment_type: paymentType,
-      payment_status: 'pending',
-      room_explicitly_selected: Boolean(selection.roomExplicitlySelected),
-      conference_room: false,
-      notes: null,
-      cash_expires_at: cashExpiresAt,
-      cash_extended: false,
-      created_by: 'guest',
-    }));
+    return roomIds.map((roomId, index) => {
+      const payload = {
+        id: createId(),
+        room_id: roomId,
+        guest_first_name: guest.firstName,
+        guest_last_name: guest.lastName,
+        guest_phone: guest.phone,
+        guest_email: guest.email,
+        guest_language: guestLanguage,
+        check_in: selection.checkIn,
+        check_out: selection.checkOut,
+        adults: Number(selection.adults),
+        kids_ages: Array.isArray(selection.kidsAges) ? selection.kidsAges.map((age) => Number(age)) : [],
+        total_price: priceParts[index],
+        payment_type: paymentType,
+        payment_status: 'pending',
+        room_explicitly_selected: Boolean(selection.roomExplicitlySelected),
+        conference_room: false,
+        notes: null,
+        cash_expires_at: cashExpiresAt,
+        cash_extended: false,
+        created_by: 'guest',
+      };
+
+      for (const [key, value] of Object.entries(options?.tracking || {})) {
+        if (key.startsWith('tracking_') && value) {
+          payload[key] = value;
+        }
+      }
+
+      return payload;
+    });
   }
 
   function formatDate(date) {
@@ -392,6 +447,7 @@
         selection,
         guestPhone: normalizedGuestPhone,
         paymentRail: getPaymentRail(normalizedGuestPhone),
+        trackingEventId: payloads[0]?.tracking_event_id || '',
       }).then((result) => {
         if (result?.payUrl) {
           root.location.href = result.payUrl;
@@ -498,12 +554,14 @@
 
     let payloads;
 
+    const tracking = getCheckoutTrackingContext(state.selection);
+
     try {
       payloads = buildReservationPayloads(
         state.selection,
         guestValidation.guest,
         state.paymentType,
-        { now: new Date() },
+        { now: new Date(), tracking },
       );
     } catch (error) {
       showMessage('[data-checkout-error]', t(error.message || 'checkout.errorSelection'));
@@ -529,9 +587,16 @@
           manageToken: createResult.manageToken || '',
           paymentType: state.paymentType,
           totalPrice: Number(state.selection.totalPrice),
+          trackingEventId: tracking.tracking_event_id,
           createdAt: new Date().toISOString(),
         }),
       );
+
+      root.EcoVilaTracking?.trackInitiateCheckout?.({
+        eventId: tracking.tracking_event_id,
+        value: Number(state.selection.totalPrice),
+        currency: 'MDL',
+      });
 
       reservationCreated = true;
       showMessage(
@@ -610,6 +675,7 @@
     getCashExpiry,
     getOnlinePaymentCopy,
     getPaymentRail,
+    getOrCreateTrackingEventId,
     getReservationIdsForPayment,
     buildConfirmationUrl,
     hasSelectedRoomNumber,

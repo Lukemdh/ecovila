@@ -136,7 +136,7 @@ describe('EcoVila Maib Checkout integration', () => {
       await checkout.redirectAfterReservation(
         'reservation-a',
         'card',
-        [{ id: 'reservation-a' }],
+        [{ id: 'reservation-a', tracking_event_id: 'evt_maib_test' }],
         { totalPrice: 3100 },
         {
           bookingGroupId: '00000000-0000-4000-8000-000000000001',
@@ -159,6 +159,7 @@ describe('EcoVila Maib Checkout integration', () => {
           selection: { totalPrice: 3100 },
           guestPhone: '+37360123456',
           paymentRail: 'mia',
+          trackingEventId: 'evt_maib_test',
         },
       });
     } finally {

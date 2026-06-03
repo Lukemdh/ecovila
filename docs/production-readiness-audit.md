@@ -3,6 +3,9 @@
 Scope: repository-wide source, docs, migrations, Edge Functions, static pages, tests,
 security-sensitive flows, unused assets, and deployment assumptions. Step 16 later
 updated application code to close the legacy UUID-only confirmation-actions blocker.
+The 2026-06-03 SEO/AEO + tracking pass replaced the root maintenance page with the full
+Romanian homepage, added `/ru/` and `/en/`, and added consent-gated server-side
+conversion tracking.
 
 ## Readiness verdict
 
@@ -12,25 +15,26 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 176 Node + 37 Deno tests pass |
+| Test suite | Green | `npm test` -> 188 Node + 38 Deno tests pass on 2026-06-03 |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
-| Static local references | Green | 10 HTML files checked; all local `href`/`src`/`poster` targets exist |
+| Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
 | Secret scan | Mostly clean | Regex scan found only the intended public Supabase anon JWT |
 | Security hardening | Blocked | S-9 and S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
 | CRM daily operations | Green | B-14 fixed: daily lists show only paid, non-cancelled reservations |
-| Production content/assets | Not ready | Placeholder SVG photos remain the fallback public imagery |
+| Production content/assets | Partly ready | Root homepage is now live content; placeholder SVG photos remain fallback public imagery |
+| Privacy/compliance | Blocked | S-12: SMS provider URL-query PII remains open and out of scope for SEO/tracking work |
 | Dependency audit | Incomplete | `npm audit` cannot run without a lockfile; Deno dependency is slightly behind latest |
 
 ## Commands run
 
 ```sh
 npm test
-# 176 Node tests + 37 Deno tests passed after the B-14 fix
+# 188 Node tests + 38 Deno tests passed after the 2026-06-03 SEO/tracking pass
 
 cd supabase/functions && deno lint
-# Checked 28 files after Step 16
+# Checked 31 files after the 2026-06-03 SEO/tracking pass
 
 cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*')
 # exit 0
@@ -55,6 +59,9 @@ Additional manual/static checks:
 - Supabase docs/changelog spot-check: current docs still warn that exposed-schema RLS
   tables require RLS, views bypass RLS unless `security_invoker`, and
   security-definer functions should not be created in exposed schemas.
+- 2026-06-03 focused tracking scan: browser assets contain no Meta CAPI / Google Ads /
+  service-role secrets; new tracking code does not place raw phone/email/message values
+  into URLs.
 
 ## Production blocker tracking
 
@@ -134,6 +141,15 @@ Status: fixed in the B-14 off-plan fix. Daily check-in/check-out derivation now 
 to paid, non-cancelled rows before fetching daily status records or rendering cards,
 without globally tightening the shared staff reservation fetcher.
 
+### 8. SMS provider URL-query PII remains open
+
+The SMS.md provider call passes phone/message/token in a request URL query string. This
+violates the no-PII-in-URLs constraint and Legea 195/2024. The owner explicitly kept it
+out of scope for the SEO/tracking work, so it is tracked as S-12 and standalone Step 20.
+
+Next step: confirm whether SMS.md supports POST request bodies. If yes, move the
+payload out of the URL; if no, ensure the full provider URL is never written to logs.
+
 ## Lower-priority production risks
 
 - Floating Supabase JS version: browser pages load
@@ -162,6 +178,10 @@ without globally tightening the shared staff reservation fetcher.
   token; a bare reservation ID is no longer enough to act on a booking.
 - Guest cancellation/refund policy is enforced server-side in the newer Edge Function
   flow.
+- Root homepage decision is resolved: Romanian is canonical at `/`, with `/ru/` and
+  `/en/`; no `/ro/` duplicate exists.
+- Consent-gated conversion tracking stores server-side secrets only in Edge Function
+  environment variables and hashes user match data before provider payloads.
 
 ## Recommended next sequence
 
@@ -169,5 +189,5 @@ without globally tightening the shared staff reservation fetcher.
    reduce exposed security-definer surface.
 2. Migrate S-10 legacy cancellation links to hashed token lookup.
 3. Fix B-10 and add server-side contract tests for public booking payload constraints.
-4. Pin/review Supabase JS, replace placeholder public imagery, and decide whether the
-   maintenance `index.html` is still the desired launch homepage.
+4. Fix S-12 SMS URL-query PII as a separate privacy/compliance task.
+5. Pin/review Supabase JS and replace placeholder public imagery.

@@ -1,15 +1,18 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). 173 files are expected to be
-tracked after the 2026-06-01 Step 16 token-proof cleanup.
+binaries, and gitignored `.superpowers/` / `.claude/`). Updated after the 2026-06-03
+SEO/AEO and tracking implementation pass.
 
 ## Annotated tree
 
 ```
 ecovila/
-├── index.html                  # CURRENT live homepage: maintenance "în curând" holding page
-├── site.html                   # Full landing page (reachable directly; not linked from index.html)
+├── index.html                  # Romanian canonical homepage served at /
+├── ru/index.html               # Russian localized homepage served at /ru/
+├── en/index.html               # English localized homepage served at /en/
+├── site.html                   # Legacy transition source; .htaccess redirects /site.html -> /
+├── robots.txt, sitemap.xml, llms.txt, .htaccess
 ├── rezervari.html              # Booking page (party + dates + accommodation + room selection)
 ├── checkout.html               # Checkout: summary, guest form, GDPR, cash/card
 ├── confirmare.html             # Confirmation + manage: cash countdown, extend, online cancel, refund
@@ -42,6 +45,8 @@ ecovila/
 ├── js/                         # Browser JS (UMD-style wrapper: window global + CommonJS for tests)
 │   ├── supabase-config.js      # Frozen config: Supabase URL + PUBLIC anon key
 │   ├── supabase.js             # Data layer: ~40 helpers wrapping supabase-js + Edge Functions
+│   ├── tracking-config.js      # Public tracking IDs only; blank by default
+│   ├── tracking.js             # Consent-gated Meta/Google/browser-to-Edge tracking
 │   ├── pricing.js              # Pricing, billing floors, date/night/holiday logic (pure)
 │   ├── calendar.js             # Calendar/date-range rendering (shared: booking + CRM)
 │   ├── translations.js         # RO/RU/EN i18n strings
@@ -66,26 +71,30 @@ ecovila/
 │       ├── crm-photos.js       # Photo draft/publish to public galleries
 │       └── crm-pricing.js      # Pricing tiers + holidays editor
 │
-├── tests/                      # Node node:test contract/unit suites (15 *.test.mjs)
+├── scripts/
+│   └── prepare-tophost-upload.mjs # cPanel-safe static upload folder builder
+│
+├── tests/                      # Node node:test contract/unit suites (*.test.mjs)
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # 24 timestamped SQL migrations (20260506 → 20260601)
+│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260603)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
 │       ├── _shared/            # cors, env, http, maib, notifications, providers,
-│       │                       #   reservationManage, reservations, supabaseAdmin
+│       │                       #   reservationManage, reservations, supabaseAdmin, tracking
 │       ├── create-reservation/, confirm-reservation-payment/
 │       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
-│       ├── maib-create-payment/, maib-callback/, maib-refund/
+│       ├── maib-create-payment/, maib-callback/, maib-refund/, track-event/
 │       ├── reservation-lookup-start/, reservation-lookup-verify/
 │       ├── reservation-manage-details/, reservation-extend-cash/, reservation-cancel/
-│       └── tests/              # Deno tests (cors, http, maib, reservation-manage, reservations)
+│       └── tests/              # Deno tests (cors, http, maib, reservation-manage, reservations, tracking)
 │
 └── docs/                       # Documentation only
     ├── AGENTS.md               # Standing agent rules (this audit)
     ├── README.md, project-*.md, security.md, bugs.md, plan.md, decisions.md, conventions.md
     ├── production-readiness-audit.md # 2026-06-01 pre-production scan + blockers
+    ├── old-content-inventory.md# Sanitized former PHP/DB URL/content inventory
     ├── ECOVILA_PROJECT_BRIEF.md# Authoritative product/business spec
     ├── politica-confidentialitate.md, termeni-conditii.md  # Legal source copy (RO)
     ├── superpowers/
@@ -97,8 +106,11 @@ ecovila/
 
 | Path | Responsibility |
 |------|----------------|
-| `index.html` | Live homepage — maintenance holding page only (intentional; covered by a test). |
-| `site.html` | Full marketing landing page; directly reachable, not linked from `index.html`. |
+| `index.html` | Romanian canonical homepage at `/`; contains evergreen landing copy, SEO metadata, and current anchors for legacy redirects. |
+| `ru/index.html`, `en/index.html` | Static localized homepages with self canonicals and reciprocal hreflang. |
+| `.htaccess` | Approved legacy 301 map for old PHP/query-string URLs; root is not redirected to `/ro/`. |
+| `robots.txt`, `sitemap.xml`, `llms.txt` | Crawler, sitemap/hreflang, and AI summary files. |
+| `site.html` | Local transition source; redirected to `/` in production. |
 | `rezervari.html` + `js/booking.js` | Booking UI and controller; availability, party, room selection. |
 | `checkout.html` + `js/checkout.js` | Checkout UI; builds reservation, picks Maib rail by phone country code. |
 | `confirmare.html` + `js/confirmare.js` | Token-backed post-booking state: cash timer, extend, pending-cash cancellation, online cancellation eligibility, refund display. |
@@ -107,6 +119,7 @@ ecovila/
 | `js/calendar.js` | Shared calendar/date logic (booking page + CRM calendar). |
 | `js/supabase.js` | All DB reads/writes and Edge Function calls from the browser, including staff Maib refund calls. |
 | `js/supabase-config.js` | Supabase URL + public anon key (frozen object). |
+| `js/tracking-config.js`, `js/tracking.js` | Public tracking config and consent-gated Meta/Google/event-id tracking. |
 | `js/translations.js` | RO/RU/EN string tables consumed via `data-i18n`. |
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
@@ -119,6 +132,7 @@ ecovila/
 | `supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
 | `package.json` | Scripts-only test manifest (`npm test`, `test:node`, `test:deno`); no dependencies or build step. |
 | `docs/ECOVILA_PROJECT_BRIEF.md` | Authoritative business/product spec. |
+| `docs/old-content-inventory.md` | Sanitized former PHP/DB content inventory and redirect-target notes. |
 | `docs/production-readiness-audit.md` | Latest pre-production audit summary, commands run, blockers, and optimization paths. |
 | `docs/superpowers/plans|specs/` | Historical per-step planning/design records. |
 
@@ -128,7 +142,8 @@ Browser JS uses a UMD-style IIFE wrapper (e.g. `js/pricing.js:1`): it assigns a 
 (`window.EcoVilaPricing`, `EcoVilaSupabase`, `EcoVilaCrmApp`, …) and, when `module.exports`
 exists, also exports for CommonJS so `tests/*.test.mjs` can `require()` the same
 file. HTML pages load scripts in dependency order via `<script>` tags (supabase-js CDN →
-`supabase-config.js` → `supabase.js` → feature scripts). No bundler, no ES modules.
+`supabase-config.js` → `supabase.js` → optional `tracking-config.js` /
+`tracking.js` → translations and feature scripts). No bundler, no ES modules.
 
 ## Main data flow (request → render)
 
@@ -141,7 +156,10 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
    `js/supabase.js`, which enforce server-side rules, talk to Maib/SMS.md/Resend, and
    write with the service-role client (`_shared/supabaseAdmin.ts`). Guest cancellation is
    also enforced by the latest `cancel_reservation_by_token` RPC for legacy token links.
-5. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
+5. Consent-gated conversion tracking stores a shared event ID and browser match
+   metadata on reservation rows; `maib-callback` and `confirm-reservation-payment` emit
+   server-side `Purchase` through `_shared/tracking.ts`.
+6. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
    role (`diana` full CRUD, `angela` read-only).
 
 ## Inferred / uncertain items
@@ -157,3 +175,8 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
   migration that removes the old UUID-only confirmation RPC signatures. Current open
   blockers are tracked in `docs/production-readiness-audit.md`, `docs/security.md`, and
   `docs/bugs.md`.
+- The 2026-06-03 SEO/AEO pass keeps Romanian at `/`, adds `/ru/` and `/en/`, and
+  keeps `/ro/` absent to avoid a canonicalized duplicate.
+- The raw former hosting backup is local-only and ignored (`docs/old php/`,
+  `Archive.zip`) because it contains retired credentials and cPanel/mail/SSL artifacts.
+  Use `docs/old-content-inventory.md` for committed old-content context.

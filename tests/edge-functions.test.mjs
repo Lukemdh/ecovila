@@ -58,6 +58,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'maib-create-payment',
       'maib-callback',
       'maib-refund',
+      'track-event',
     ]) {
       const file = `supabase/functions/${name}/index.ts`;
       assert.ok(exists(file), `${file} should exist`);
@@ -122,6 +123,11 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       config,
       /\[functions\.maib-refund\][\s\S]*?verify_jwt = true/i,
       'maib-refund should require a staff Supabase JWT',
+    );
+    assert.match(
+      config,
+      /\[functions\.track-event\][\s\S]*?verify_jwt = true/i,
+      'track-event should require a Supabase JWT from the browser anon key',
     );
 
     for (const cronFunction of ['expire-cash-reservations', 'send-reminders']) {

@@ -236,6 +236,32 @@
       </section>
     </main>
 
+    <template data-age-placeholder>
+      <label class="child-age-row">
+        <span>Vârsta copilului</span>
+        <select>
+          <option value="">Alege vârsta</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+          <option value="13">13</option>
+          <option value="14">14</option>
+          <option value="15">15</option>
+          <option value="16">16</option>
+          <option value="17">17</option>
+        </select>
+      </label>
+    </template>
+
     <div class="booking-modal" data-reservation-lookup-modal hidden role="dialog" aria-modal="true" aria-labelledby="reservation-lookup-title">
       <div class="booking-modal__backdrop" data-lookup-close></div>
       <div class="booking-modal__panel booking-lookup">
@@ -299,75 +325,33 @@
       <p data-i18n="cookie.text">
         Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
       </p>
+      <div class="cookie-banner__options" aria-label="Cookie categories">
+        <label class="cookie-banner__option">
+          <input type="checkbox" checked disabled data-cookie-category="necessary">
+          <span>Necesare</span>
+        </label>
+        <label class="cookie-banner__option">
+          <input type="checkbox" data-cookie-category="analytics">
+          <span data-i18n="cookie.analytics">Analitice</span>
+        </label>
+        <label class="cookie-banner__option">
+          <input type="checkbox" data-cookie-category="marketing">
+          <span data-i18n="cookie.marketing">Marketing</span>
+        </label>
+      </div>
       <div class="cookie-banner__actions">
         <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
           Accept doar esențiale
         </button>
+        <button class="editorial-button" type="button" data-cookie-choice="custom" data-i18n="cookie.save">
+          Salvează opțiunile
+        </button>
         <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
-          Accept
+          Accept toate
         </button>
       </div>
     </div>
-
-    <template data-age-placeholder>
-      <label class="child-age-row">
-        <span data-i18n="booking.childAge">Vârsta copilului</span>
-        <select data-child-age-select required>
-          <option value="" data-i18n="booking.childAgePlaceholder">Alege vârsta</option>
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-          <option value="7">7</option>
-          <option value="8">8</option>
-          <option value="9">9</option>
-          <option value="10">10</option>
-          <option value="11">11</option>
-          <option value="12">12</option>
-          <option value="13">13</option>
-          <option value="14">14</option>
-          <option value="15">15</option>
-          <option value="16">16</option>
-          <option value="17">17</option>
-        </select>
-      </label>
-    </template>
-
-    <div class="booking-modal" data-booking-modal hidden>
-      <div class="booking-modal__scrim" data-modal-close></div>
-      <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
-        <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
-        <div class="booking-details-gallery" data-booking-modal-gallery>
-          <div class="booking-details-gallery__main">
-            <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-booking-modal-prev aria-label="Imaginea precedentă">‹</button>
-            <img src="/assets/photos/small-villa/interior.svg" alt="" loading="lazy" decoding="async" data-booking-modal-image>
-            <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-booking-modal-next aria-label="Imaginea următoare">›</button>
-            <div class="booking-details-gallery__dots" data-booking-modal-dots aria-hidden="true"></div>
-          </div>
-          <div class="booking-details-gallery__thumbs" data-booking-modal-thumbnails></div>
-        </div>
-        <div class="booking-modal__content booking-modal__content--details">
-          <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
-          <p data-booking-modal-body></p>
-          <section class="booking-detail-section" aria-labelledby="booking-bathroom-title">
-            <h3 id="booking-bathroom-title" data-i18n="booking.inBathroom">In the bathroom:</h3>
-            <ul class="booking-check-list" data-booking-modal-bathroom></ul>
-          </section>
-          <section class="booking-detail-section" aria-labelledby="booking-facilities-title">
-            <h3 id="booking-facilities-title" data-i18n="booking.facilities">Facilities:</h3>
-            <ul class="booking-check-list booking-check-list--wide" data-booking-modal-facilities></ul>
-          </section>
-          <p class="booking-error" data-booking-modal-error hidden></p>
-          <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve data-i18n="booking.select">
-            Selectează
-          </button>
-        </div>
-      </article>
-    </div>
-
-    <div class="booking-modal" data-room-panel hidden>
+<div class="booking-modal" data-room-panel hidden>
       <div class="booking-modal__scrim" data-room-panel-close></div>
       <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="room-panel-title">
         <button class="booking-modal__close" type="button" data-room-panel-close data-i18n="booking.close">Închide</button>
@@ -392,12 +376,46 @@
       </article>
     </div>
 
+    <div class="booking-modal" data-booking-modal hidden>
+      <div class="booking-modal__scrim" data-modal-close></div>
+      <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
+        <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
+        <div class="booking-details-gallery" data-booking-modal-gallery>
+          <div class="booking-details-gallery__main">
+            <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-booking-modal-prev aria-label="Imaginea precedentă">‹</button>
+            <img src="/assets/photos/small-villa/exterior.svg" alt="" loading="lazy" decoding="async" data-booking-modal-image>
+            <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-booking-modal-next aria-label="Imaginea următoare">›</button>
+            <div class="booking-details-gallery__dots" data-booking-modal-dots aria-hidden="true"></div>
+          </div>
+          <div class="booking-details-gallery__thumbs" data-booking-modal-thumbnails></div>
+        </div>
+        <div class="booking-modal__content booking-modal__content--details">
+          <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
+          <p data-booking-modal-body></p>
+          <section class="booking-detail-section" aria-labelledby="booking-bathroom-title">
+            <h3 id="booking-bathroom-title" data-i18n="booking.inBathroom">În baie:</h3>
+            <ul class="booking-check-list" data-booking-modal-bathroom></ul>
+          </section>
+          <section class="booking-detail-section" aria-labelledby="booking-facilities-title">
+            <h3 id="booking-facilities-title" data-i18n="booking.facilities">Facilități:</h3>
+            <ul class="booking-check-list booking-check-list--wide" data-booking-modal-facilities></ul>
+          </section>
+          <p class="booking-error" data-booking-modal-error hidden></p>
+          <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve data-i18n="booking.select">
+            Selectează
+          </button>
+        </div>
+      </article>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-config.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/tracking-config.js"></script>
+    <script src="js/tracking.js"></script>
     <script src="js/translations.js"></script>
     <script src="js/pricing.js"></script>
     <script src="js/calendar.js"></script>
-    <script src="js/supabase.js"></script>
     <script src="js/main.js"></script>
     <script src="js/booking.js"></script>
   </body>

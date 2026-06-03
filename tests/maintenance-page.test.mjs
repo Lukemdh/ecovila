@@ -9,20 +9,23 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-describe('temporary homepage holding page', () => {
-  it('shows the maintenance message on the public homepage', () => {
+describe('approved launch homepage', () => {
+  it('serves the full Romanian landing page at the root', () => {
     const html = read('index.html');
 
-    assert.match(html, /Lucrăm la îmbunătățirea site-ului/);
-    assert.match(html, /href="tel:\+37360120220"/);
-    assert.match(html, /Pentru rezervări: 060120220/);
-    assert.doesNotMatch(html, /href="rezervari\.html"/);
+    assert.doesNotMatch(html, /Lucrăm la îmbunătățirea site-ului|În curând/);
+    assert.match(html, /id="hero"/);
+    assert.match(html, /href="\/rezervari\.html"/);
+    assert.match(html, /Un refugiu all-inclusive în inima pădurii/i);
+    assert.doesNotMatch(html, /Ofertă 2026|1550 lei|1800 lei/i);
   });
 
-  it('keeps the full landing page available at a direct URL', () => {
+  it('keeps the transition source page redirectable instead of shipping it as production root', () => {
     const html = read('site.html');
+    const htaccess = read('.htaccess');
 
     assert.match(html, /id="hero"/);
     assert.match(html, /href="rezervari\.html"/);
+    assert.match(htaccess, /^RewriteRule \^site\\\.html\$ \/ \[R=301,L\]$/m);
   });
 });

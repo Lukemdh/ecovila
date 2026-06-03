@@ -192,16 +192,34 @@
       <p data-i18n="cookie.text">
         Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
       </p>
+      <div class="cookie-banner__options" aria-label="Cookie categories">
+        <label class="cookie-banner__option">
+          <input type="checkbox" checked disabled data-cookie-category="necessary">
+          <span>Necesare</span>
+        </label>
+        <label class="cookie-banner__option">
+          <input type="checkbox" data-cookie-category="analytics">
+          <span data-i18n="cookie.analytics">Analitice</span>
+        </label>
+        <label class="cookie-banner__option">
+          <input type="checkbox" data-cookie-category="marketing">
+          <span data-i18n="cookie.marketing">Marketing</span>
+        </label>
+      </div>
       <div class="cookie-banner__actions">
         <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
           Accept doar esențiale
         </button>
+        <button class="editorial-button" type="button" data-cookie-choice="custom" data-i18n="cookie.save">
+          Salvează opțiunile
+        </button>
         <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
-          Accept
+          Accept toate
         </button>
       </div>
     </div>
-
+    <script src="js/tracking-config.js"></script>
+    <script src="js/tracking.js"></script>
     <script src="js/translations.js"></script>
     <script src="js/main.js"></script>
   </body>

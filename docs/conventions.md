@@ -7,6 +7,9 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 ## Language & locale
 - UI copy is **Romanian-first**, with RU and EN provided via `js/translations.js` and
   `data-i18n` attributes. Legal pages are **Romanian-only** by design (test-enforced).
+- Public homepages are served as static localized URLs: Romanian at `/`, Russian at
+  `/ru/`, English at `/en/`. Do not add a served `/ro/` duplicate; Romanian switcher
+  links go directly to `/`.
 - Currency is **MDL**; format via `EcoVilaPricing.formatMDL`. Dates display with
   `Intl.DateTimeFormat('ro-MD', …)`.
 - Internal identifiers, code comments, commit messages, and these docs are in English.
@@ -25,7 +28,8 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Naming: `camelCase` functions/vars, `UPPER_SNAKE` module constants, `EcoVila*`
   PascalCase globals. Files are `kebab-case.js`; CRM modules are `crm-*.js`.
 - Script load order matters (no bundler): CDN supabase-js → `supabase-config.js` →
-  `supabase.js` → feature scripts. Preserve dependency order when editing `<script>` tags.
+  `supabase.js` → optional `tracking-config.js` / `tracking.js` → translations and
+  feature scripts. Preserve dependency order when editing `<script>` tags.
 - All Supabase access from the browser goes through `js/supabase.js` helpers — do not
   call the raw client from feature scripts. Pure pricing/date math lives in
   `js/pricing.js`; keep it side-effect-free (it is unit-tested directly).
@@ -42,6 +46,12 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   markers. Edge Functions may use concise operational `console.info` / `console.error`
   logging for provider callbacks and notification failures, but do not log secrets or
   full guest payloads. Default to no comments; comment only non-obvious *why*.
+- Browser tracking code may load only public IDs/config. Meta CAPI, Google Ads API
+  tokens, and any provider credentials stay in Supabase Edge Function env vars. Do not
+  put raw phone/email/message values into URLs or logs for new tracking work.
+- Do not commit raw hosting backups or old server dumps. Keep `Archive.zip` and
+  `docs/old php/` local-only unless a separate sanitization pass removes credentials,
+  cPanel/mail/SSL artifacts, and private data.
 
 ## Edge Functions (Deno/TypeScript)
 - One `index.ts` entrypoint per function under `supabase/functions/<name>/`; shared

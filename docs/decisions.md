@@ -45,12 +45,15 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Why:** avoid duplicate or lost SMS/email across cron retries and concurrent
   invocations (see the 2026-05-17 commit sequence and Deno tests).
 
-### ADR-006 — Maintenance holding page as the live homepage (reconstructed)
-- **Date:** 2026-05-17 (favicon refresh era) / current.
-- **Decision:** `index.html` is a minimal "în curând" maintenance page; the full landing
-  is kept at `site.html`, reachable directly.
-- **Why:** Unknown — needs owner input (likely a soft-launch gate). The behavior is
-  locked by `tests/maintenance-page.test.mjs`, so do not "fix" it without a new ADR.
+### ADR-006 — Root homepage is the full Romanian landing page
+- **Date:** reconstructed 2026-05-17; superseded by owner approval on 2026-06-03.
+- **Decision:** `index.html` now serves the full Romanian landing page at `/`. The old
+  "în curând" maintenance page must not be live at root. `site.html` remains only as a
+  local transition/source artifact and is redirected to `/`.
+- **Why:** the old one-page site ranked organically; launch must protect rankings by
+  keeping real content at the root canonical URL.
+- **Consequence:** tests now assert the full Romanian homepage at `index.html`;
+  `scripts/prepare-tophost-upload.mjs` excludes `site.html` from production upload.
 
 ### ADR-007 — Documentation-first / contract tests (reconstructed)
 - **Date:** throughout.
@@ -157,12 +160,46 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `reservation-cancel`). Booking lookup by SMS code remains the fallback for guests who
   need a fresh manage token later.
 
+### ADR-016 — Multilingual homepage URLs are static per-language URLs
+- **Date:** 2026-06-03.
+- **Decision:** Romanian stays canonical at `/`; Russian is `/ru/`; English is `/en/`.
+  Do not create a served Romanian `/ro/` duplicate. If `/ro/` ever exists, it should be
+  a 301 to `/`, not a canonicalized duplicate.
+- **Why:** ranking protection comes first, and the previous single-URL JS i18n model was
+  not a clear crawlable language architecture.
+- **Consequence:** each localized homepage has a self canonical plus reciprocal
+  hreflang cluster (`ro`, `ru`, `en`, `x-default`). Language switcher links Romanian
+  directly to `/`.
+
+### ADR-017 — Consent-gated server-side conversion tracking
+- **Date:** 2026-06-03.
+- **Decision:** consent state is one shared category object
+  (`necessary` / `analytics` / `marketing`). Meta Pixel, Meta CAPI, Google tag, and
+  Google Ads conversion upload are gated by marketing consent. Purchase is emitted
+  server-side from both card (`maib-callback`) and cash
+  (`confirm-reservation-payment`) confirmation paths with `currency: MDL`, deduped by
+  the same `tracking_event_id` used by the browser event.
+- **Why:** secrets cannot live in browser code, and browser/server events need dedupe to
+  avoid double-counted conversions.
+- **Consequence:** public code only contains public IDs in `js/tracking-config.js`;
+  provider tokens stay in Supabase Edge Function env vars. Reservation rows store the
+  event ID and browser match parameters needed for server-side dispatch.
+
+### ADR-018 — Raw old hosting backup stays local-only
+- **Date:** 2026-06-03.
+- **Decision:** ignore `Archive.zip` and `docs/old php/`; commit only the sanitized
+  `docs/old-content-inventory.md` summary of former PHP/DB content and URL targets.
+- **Why:** the raw backup includes retired database credentials, WordPress salts,
+  cPanel/mail/SSL artifacts, and large media folders. Ranking protection needs the
+  content inventory and redirect map, not unsanitized server material in Git history.
+- **Consequence:** future agents should use the inventory doc for committed context. If
+  raw old-source files need to be committed later, they require a separate sanitization
+  pass and owner approval.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
 
-- Should `index.html` remain the production homepage as a maintenance holding page for
-  launch, or should `site.html` become the public homepage before deployment?
 - Should the owner-retained unused media (`ecovilavideo.mp4`, `ecovilavideo-web.mp4`,
   `assets/logo_small.png`) stay in production deploy artifacts even though they are not
   referenced?

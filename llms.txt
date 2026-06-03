@@ -1,0 +1,34 @@
+# EcoVila
+
+EcoVila is an all-inclusive villa complex near Orheiul Vechi, Moldova. It offers 25 guest rooms: 8 small villas, 7 large villas, and 10 hotel rooms, plus a staff-bookable conference room.
+
+Languages: Romanian, Russian, English.
+
+Canonical pages:
+- Romanian: https://ecovila.md/
+- Russian: https://ecovila.md/ru/
+- English: https://ecovila.md/en/
+
+Key services:
+- All-inclusive stays with accommodation, three meals per day, and SPA access.
+- SPA facilities include warm indoor pool, cold pool, salt room, sauna, jacuzzi, hamam, sensory shower, and resting area.
+- Accommodation options include small villas, large villas, and hotel rooms.
+- Card payments are processed through Maib ePay; cash payment is available through the EcoVila office flow.
+- Pets, outside food, outside drinks, and speakers are not allowed on the property.
+
+Contact:
+- Phone: +373 60 120 220
+- Email: rezervari@ecovila.md
+- Region: Orheiul Vechi, Moldova
+
+Important implementation notes:
+- The Romanian homepage at https://ecovila.md/ is the canonical default page.
+- There is no separate crawlable Romanian /ro/ duplicate.
+- Legacy PHP URLs should be redirected to their closest static equivalents before production deployment.
+
+Pending recon TODO:
+- Primary keyword targets per language and page.
+- Validated FAQ expansion from real search/query data.
+- Outreach/listicle targets.
+- Competitor gap analysis.
+- Off-season and diaspora demand angles.

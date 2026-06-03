@@ -24,6 +24,7 @@
   let _cardPollAttempts = 0;
   let _expiresAt = 0;
   let _managedContext = null;
+  let _purchaseTracked = false;
 
   // ── Translation helper ──────────────────────────────────────────────────────
 
@@ -354,6 +355,7 @@
     renderManagedSummary(summary, details.reservations || []);
     const serverStatus = managedServerStatus(summary, details.reservations || []);
     showContentState(summary.paymentType || 'card', serverStatus);
+    trackBrowserPurchaseIfPaid(summary, details.reservations || []);
 
     if (summary.paymentType === 'cash' && summary.paymentStatus === 'pending') {
       hide('[data-manage-panel]');
@@ -379,6 +381,32 @@
       cash_expires_at: primary.cash_expires_at || null,
       cash_extended: Boolean(primary.cash_extended),
     };
+  }
+
+  function trackBrowserPurchaseIfPaid(summary, reservations) {
+    if (_purchaseTracked || summary?.paymentStatus !== 'paid') {
+      return;
+    }
+
+    const pending = readStorage(STORAGE_PENDING) || {};
+    const rows = Array.isArray(reservations) ? reservations : [];
+    const eventId = pending.trackingEventId ||
+      rows.find((row) => row.tracking_event_id)?.tracking_event_id ||
+      summary.bookingGroupId ||
+      summary.id;
+    const value = Number(summary.totalPrice || pending.totalPrice || 0);
+
+    if (!eventId || !value) {
+      return;
+    }
+
+    _purchaseTracked = true;
+    root.EcoVilaTracking?.trackPurchase?.({
+      eventId,
+      value,
+      currency: 'MDL',
+    });
+    root.EcoVilaTracking?.clearEventId?.('booking');
   }
 
   function wireCashActions(reservationId, manageToken) {
@@ -554,6 +582,16 @@
 
       if (serverStatus) {
         showContentState(paymentType, serverStatus);
+        if (serverStatus.payment_status === 'paid' && !_purchaseTracked) {
+          const pending = readStorage(STORAGE_PENDING) || {};
+          root.EcoVilaTracking?.trackPurchase?.({
+            eventId: pending.trackingEventId || pending.bookingGroupId || reservationId,
+            value: Number(pending.totalPrice || 0),
+            currency: 'MDL',
+          });
+          root.EcoVilaTracking?.clearEventId?.('booking');
+          _purchaseTracked = true;
+        }
       }
 
       if (paymentType === 'cash' || isTerminalCardStatus(serverStatus)) {

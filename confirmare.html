@@ -395,37 +395,39 @@
       <p data-i18n="cookie.text">
         Folosim cookie-uri esențiale pentru funcționarea site-ului. Nu pornim cookie-uri de analiză fără acord.
       </p>
+      <div class="cookie-banner__options" aria-label="Cookie categories">
+        <label class="cookie-banner__option">
+          <input type="checkbox" checked disabled data-cookie-category="necessary">
+          <span>Necesare</span>
+        </label>
+        <label class="cookie-banner__option">
+          <input type="checkbox" data-cookie-category="analytics">
+          <span data-i18n="cookie.analytics">Analitice</span>
+        </label>
+        <label class="cookie-banner__option">
+          <input type="checkbox" data-cookie-category="marketing">
+          <span data-i18n="cookie.marketing">Marketing</span>
+        </label>
+      </div>
       <div class="cookie-banner__actions">
         <button class="editorial-button" type="button" data-cookie-choice="essential" data-i18n="cookie.refuse">
           Accept doar esențiale
         </button>
+        <button class="editorial-button" type="button" data-cookie-choice="custom" data-i18n="cookie.save">
+          Salvează opțiunile
+        </button>
         <button class="editorial-button editorial-button--filled" type="button" data-cookie-choice="accepted" data-i18n="cookie.accept">
-          Accept
+          Accept toate
         </button>
       </div>
     </div>
-
-    <!-- Expired reservation overlay -->
-    <div class="ev-overlay" data-expired-overlay hidden role="dialog" aria-modal="true" aria-labelledby="expired-title">
-      <div class="ev-modal">
-        <div class="ev-modal__icon" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </div>
-        <h2 id="expired-title" data-expired-title data-i18n="confirmare.expiredTitle">Rezervare expirată</h2>
-        <p data-expired-text data-i18n="confirmare.expiredText">
-          Rezervarea dvs. a fost anulată deoarece a expirat termenul de achitare. Vă rugăm să rezervați din nou.
-        </p>
-        <a class="co-submit" href="rezervari.html" style="text-decoration: none;" data-i18n="confirmare.backToBooking">
-          Rezervați din nou
-        </a>
-      </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-config.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/tracking-config.js"></script>
+    <script src="js/tracking.js"></script>
     <script src="js/translations.js"></script>
     <script src="js/pricing.js"></script>
-    <script src="js/supabase.js"></script>
     <script src="js/main.js"></script>
     <script src="js/confirmare.js"></script>
   </body>

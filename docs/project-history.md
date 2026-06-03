@@ -184,3 +184,24 @@ sessions append to the running log at the bottom.
   rows; filtered `crm-daily.js` arrivals/departures to paid, non-cancelled reservations;
   marked B-14 and Step 19 fixed; verified 176 Node tests, 37 Deno tests, Deno lint, and
   Deno type-check.
+- 2026-06-03 — OFF-PLAN SEO/AEO + conversion tracking implementation. Replaced the root
+  maintenance homepage with the full Romanian landing page, added static `/ru/` and
+  `/en/` homepages with self canonicals and reciprocal hreflang, inventoried the old
+  PHP/DB ranking source, added `robots.txt`, `sitemap.xml`, `llms.txt`, `.htaccess`,
+  and a Tophost upload-prep script, and drafted the full legacy PHP/query-string
+  redirect map for owner confirmation before deployment.
+  Upgraded cookie consent to category state, added public tracking config/browser
+  tracking, added the JWT-protected `track-event` Edge Function and shared server-side
+  tracking helper, stored shared event IDs/match parameters on reservations, and emitted
+  server-side Purchase from Maib and staff cash confirmation flows. Also documented the
+  out-of-scope SMS URL-query PII issue as B-15/S-12/Step 20. Verified 187 Node tests,
+  38 Deno tests, `deno lint`, and Deno type-check.
+- 2026-06-03 — OFF-PLAN SEO follow-up and publish prep. Restored the compact native
+  language selector on `/`, `/ru/`, and `/en/`; removed public legacy pricing/access
+  sections with dated hardcoded prices; kept approved 301 targets valid by moving
+  `#despre` to the current intro section and adding a footer `#contact` anchor; added
+  regression coverage that every approved redirect target resolves to a shipped page or
+  root anchor. Added `docs/old-content-inventory.md`, ignored `Archive.zip` and the raw
+  `docs/old php/` hosting backup because the backup contains retired credentials/server
+  artifacts, and updated docs to match the owner-approved public content decision.
+  Verified 188 Node tests, 38 Deno tests, and Tophost upload packaging.

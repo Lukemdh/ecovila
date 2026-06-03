@@ -15,6 +15,7 @@ import {
 } from '../_shared/notifications.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { buildCancellationTokenRows, withRoomFields } from '../_shared/reservations.ts';
+import { dispatchPurchaseTrackingOnce } from '../_shared/tracking.ts';
 import type { NotificationReservation } from '../_shared/notifications.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -39,6 +40,11 @@ type ConfirmableReservationRow = NotificationReservation & {
   room_id?: string | null;
   payment_status: 'pending' | 'paid' | string;
   rooms?: RoomJoin | RoomJoin[] | null;
+  tracking_event_id?: string | null;
+  tracking_fbp?: string | null;
+  tracking_fbc?: string | null;
+  tracking_user_agent?: string | null;
+  tracking_source_url?: string | null;
 };
 
 type CancellationTokenRow = {
@@ -112,7 +118,10 @@ Deno.serve(async (request) => {
       }
     }
 
-    const notificationResults = await notifyPaidReservations(client, reservations);
+    const [notificationResults, trackingResult] = await Promise.all([
+      notifyPaidReservations(client, reservations),
+      dispatchPurchaseTrackingOnce(client, reservations, { source: 'confirm-reservation-payment' }),
+    ]);
 
     return jsonResponse(
       {
@@ -122,6 +131,7 @@ Deno.serve(async (request) => {
         updated: pendingIds.length,
         reservationIds: ids,
         notificationResults,
+        trackingResult,
       },
       {},
       request,
@@ -137,7 +147,7 @@ async function findConfirmableReservations(
 ) {
   let query = table<ConfirmableReservationRow[]>(client, 'reservations')
     .select(
-      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, tracking_event_id, tracking_fbp, tracking_fbc, tracking_user_agent, tracking_source_url, rooms(number, type)',
     )
     .eq('payment_type', 'cash')
     .in('payment_status', ['pending', 'paid'])

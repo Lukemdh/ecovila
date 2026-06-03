@@ -1,0 +1,38 @@
+RewriteEngine On
+
+# Legacy DB-driven content pages with query strings.
+RewriteCond %{QUERY_STRING} (^|&)id=3(&|$)
+RewriteRule ^continut\.php$ /rezervari.html [R=301,L,QSD]
+
+RewriteCond %{QUERY_STRING} (^|&)id=18(&|$)
+RewriteRule ^continut\.php$ /#restaurant [R=301,L,NE,QSD]
+
+RewriteCond %{QUERY_STRING} (^|&)id=5(&|$)
+RewriteRule ^continut\.php$ /#despre [R=301,L,NE,QSD]
+
+RewriteCond %{QUERY_STRING} (^|&)id=6(&|$)
+RewriteRule ^continut\.php$ /#contact [R=301,L,NE,QSD]
+
+RewriteCond %{QUERY_STRING} (^|&)id=(20|21)(&|$)
+RewriteRule ^continut\.php$ /#accommodation [R=301,L,NE,QSD]
+
+RewriteCond %{QUERY_STRING} (^|&)id=1(&|$)
+RewriteRule ^continut\.php$ / [R=301,L,QSD]
+
+# Legacy PHP entry points.
+RewriteRule ^index\.php$ / [R=301,L]
+RewriteRule ^home\.php$ / [R=301,L]
+RewriteRule ^old_home\.php$ / [R=301,L]
+RewriteRule ^despre\.php$ / [R=301,L]
+RewriteRule ^contacte\.php$ /#contact [R=301,L,NE]
+RewriteRule ^galerii\.php$ /#accommodation [R=301,L,NE]
+RewriteRule ^competitii\.php$ / [R=301,L]
+RewriteRule ^stire\.php$ / [R=301,L]
+RewriteRule ^admin/.*\.php$ /admin/ [R=301,L]
+RewriteRule ^captcha/(creaza_string|imagebuilder|settings)\.php$ / [R=301,L]
+RewriteRule ^(banner_dreapta|banner_stinga|banner_sus|con_org|con_reg|con_rez|constructor_submenu1|cont_calendar|cont_meteo|flip|footer|header|ia_luna|ia_stiri|menu_principal|social_net|submenu|test|tinyMCE)\.php$ / [R=301,L]
+
+# New-build transition URL.
+RewriteRule ^site\.html$ / [R=301,L]
+
+# Romanian default is canonical at /; do not redirect / to /ro/.

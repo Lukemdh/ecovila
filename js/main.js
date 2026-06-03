@@ -1,7 +1,8 @@
 (function () {
   const storageKeys = {
     language: 'ecovila_language',
-    cookie: 'ecovila_cookie_consent',
+    cookie: 'ecovila_cookie_consent_v2',
+    legacyCookie: 'ecovila_cookie_consent',
   };
 
   const accommodationImages = {
@@ -38,11 +39,18 @@
   };
 
   const state = {
-    language: 'ro',
+    language: document.documentElement.lang || 'ro',
     lastFocusedElement: null,
     activeModalType: null,
     modalImageIndex: 0,
   };
+
+  function normalizeLanguage(language) {
+    const translations = getTranslations();
+    const normalized = String(language || '').toLowerCase();
+
+    return translations[normalized] ? normalized : 'ro';
+  }
 
   function getTranslations() {
     return window.EcoVilaTranslations || {};
@@ -55,7 +63,7 @@
 
   function applyLanguage(language) {
     const translations = getTranslations();
-    state.language = translations[language] ? language : 'ro';
+    state.language = normalizeLanguage(language);
     document.documentElement.lang = state.language;
     localStorage.setItem(storageKeys.language, state.language);
 
@@ -85,8 +93,43 @@
   }
 
   function initializeLanguageSwitcher() {
-    const storedLanguage = localStorage.getItem(storageKeys.language);
-    applyLanguage(storedLanguage || 'ro');
+    const hasSelectSwitcher = document.querySelector('[data-lang-select]');
+    const staticSelectSwitcher = document.querySelector('[data-static-lang-select]');
+    const currentLanguage = normalizeLanguage(document.documentElement.lang || state.language);
+    state.language = currentLanguage;
+
+    if (staticSelectSwitcher) {
+      staticSelectSwitcher.value = currentLanguage === 'ru' ? '/ru/' : currentLanguage === 'en' ? '/en/' : '/';
+      staticSelectSwitcher.addEventListener('change', () => {
+        const target = staticSelectSwitcher.value || '/';
+        const nextLanguage = target === '/ru/' ? 'ru' : target === '/en/' ? 'en' : 'ro';
+        localStorage.setItem(storageKeys.language, nextLanguage);
+        window.location.href = target;
+      });
+      window.dispatchEvent(
+        new CustomEvent('ecovila:languagechange', {
+          detail: { language: currentLanguage },
+        }),
+      );
+    } else if (hasSelectSwitcher) {
+      const storedLanguage = localStorage.getItem(storageKeys.language);
+      applyLanguage(storedLanguage || currentLanguage);
+    } else {
+      document.querySelectorAll('[data-lang-link]').forEach((link) => {
+        const isActive = link.dataset.langLink === currentLanguage;
+        link.classList.toggle('is-active', isActive);
+        if (isActive) {
+          link.setAttribute('aria-current', 'true');
+        } else {
+          link.removeAttribute('aria-current');
+        }
+      });
+      window.dispatchEvent(
+        new CustomEvent('ecovila:languagechange', {
+          detail: { language: currentLanguage },
+        }),
+      );
+    }
 
     document.querySelectorAll('[data-lang]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -262,16 +305,113 @@
     });
   }
 
+  function defaultConsent() {
+    return {
+      necessary: true,
+      analytics: false,
+      marketing: false,
+      updatedAt: '',
+    };
+  }
+
+  function normalizeConsent(value) {
+    return {
+      necessary: true,
+      analytics: Boolean(value?.analytics),
+      marketing: Boolean(value?.marketing),
+      updatedAt: value?.updatedAt || new Date().toISOString(),
+    };
+  }
+
+  function readConsent() {
+    try {
+      const raw = localStorage.getItem(storageKeys.cookie);
+      if (raw) {
+        return normalizeConsent(JSON.parse(raw));
+      }
+    } catch (_error) {
+      localStorage.removeItem(storageKeys.cookie);
+    }
+
+    const legacy = localStorage.getItem(storageKeys.legacyCookie);
+    if (legacy === 'accepted') {
+      return normalizeConsent({ analytics: true, marketing: true });
+    }
+    if (legacy === 'essential') {
+      return normalizeConsent({ analytics: false, marketing: false });
+    }
+
+    return null;
+  }
+
+  function saveConsent(consent) {
+    const normalized = normalizeConsent({
+      ...consent,
+      updatedAt: new Date().toISOString(),
+    });
+
+    localStorage.setItem(storageKeys.cookie, JSON.stringify(normalized));
+    localStorage.removeItem(storageKeys.legacyCookie);
+    window.dispatchEvent(
+      new CustomEvent('ecovila:consentchange', {
+        detail: { consent: normalized },
+      }),
+    );
+
+    return normalized;
+  }
+
+  function currentConsent() {
+    return readConsent() || defaultConsent();
+  }
+
+  function consentFromChoice(choice, banner) {
+    if (choice === 'accepted' || choice === 'all') {
+      return { necessary: true, analytics: true, marketing: true };
+    }
+
+    if (choice === 'custom') {
+      return {
+        necessary: true,
+        analytics: Boolean(banner.querySelector('[data-cookie-category="analytics"]')?.checked),
+        marketing: Boolean(banner.querySelector('[data-cookie-category="marketing"]')?.checked),
+      };
+    }
+
+    return { necessary: true, analytics: false, marketing: false };
+  }
+
+  function applyConsentToBanner(banner, consent) {
+    banner.querySelectorAll('[data-cookie-category]').forEach((input) => {
+      input.checked = Boolean(consent[input.dataset.cookieCategory]);
+    });
+  }
+
   function initializeCookieBanner() {
     const banner = document.getElementById('cookie-banner');
-    if (!banner || localStorage.getItem(storageKeys.cookie)) {
+    const storedConsent = readConsent();
+
+    window.EcoVilaConsent = {
+      get: currentConsent,
+      has: (category) => Boolean(currentConsent()[category]),
+      set: saveConsent,
+    };
+
+    window.dispatchEvent(
+      new CustomEvent('ecovila:consentchange', {
+        detail: { consent: currentConsent() },
+      }),
+    );
+
+    if (!banner || storedConsent) {
       return;
     }
 
+    applyConsentToBanner(banner, defaultConsent());
     banner.hidden = false;
     banner.querySelectorAll('[data-cookie-choice]').forEach((button) => {
       button.addEventListener('click', () => {
-        localStorage.setItem(storageKeys.cookie, button.dataset.cookieChoice);
+        saveConsent(consentFromChoice(button.dataset.cookieChoice, banner));
         banner.hidden = true;
       });
     });

@@ -415,7 +415,7 @@ describe('EcoVila Step 5 checkout', () => {
       await checkout.redirectAfterReservation(
         'reservation-a',
         'card',
-        [{ id: 'reservation-a' }],
+        [{ id: 'reservation-a', tracking_event_id: 'evt_checkout_test' }],
         { totalPrice: 3100 },
         {
           bookingGroupId: 'booking-group-a',
@@ -443,6 +443,7 @@ describe('EcoVila Step 5 checkout', () => {
         selection: { totalPrice: 3100 },
         guestPhone: '+37360123456',
         paymentRail: 'mia',
+        trackingEventId: 'evt_checkout_test',
       },
     });
   });
