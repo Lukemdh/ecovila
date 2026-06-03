@@ -220,3 +220,13 @@ sessions append to the running log at the bottom.
   logged ADR-019 (reminder gate) and ADR-020 (redirect recovery). Verified 188 Node +
   41 Deno tests, `deno lint`, `deno check`, `deno fmt --check`, and a live two-column
   preview of the confirmation page.
+- 2026-06-03 — OFF-PLAN cookie banner redesign (no plan step advanced). Redesigned the
+  consent banner across all 10 public pages (ro/ru/en) as a card with a cookie icon,
+  title/subtitle, a full-width "Accept toate" action, and a "Setări cookie-uri | Doar
+  esențiale" row; the necessary/analytics/marketing checkboxes + "Salvează opțiunile"
+  now sit behind the settings toggle. Consent logic in `main.js` is unchanged — added
+  only a `[data-cookie-settings]` reveal handler; rewrote `.cookie-banner*` styles in
+  `css/main.css`; added `cookie.title`/`cookie.settings`/`cookie.necessary` keys and
+  shortened `cookie.text` in `js/translations.js`. Logged ADR-021. Verified 188 Node +
+  41 Deno tests and a live browser preview (collapsed + expanded, ro/ru, desktop +
+  mobile) confirming Accept-all/Essential-only/custom save all still work.

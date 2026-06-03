@@ -415,6 +415,17 @@
         banner.hidden = true;
       });
     });
+
+    const settingsToggle = banner.querySelector('[data-cookie-settings]');
+    const settingsPanel = banner.querySelector('.cookie-banner__settings');
+    if (settingsToggle && settingsPanel) {
+      settingsToggle.addEventListener('click', () => {
+        const expanded = settingsPanel.hidden;
+        settingsPanel.hidden = !expanded;
+        settingsToggle.setAttribute('aria-expanded', String(expanded));
+        banner.classList.toggle('is-expanded', expanded);
+      });
+    }
   }
 
   function cssImageUrl(url) {

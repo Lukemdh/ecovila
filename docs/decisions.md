@@ -230,6 +230,24 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   browser that still holds a different pending reservation is guarded by the `orderId`
   match.
 
+### ADR-021 — Cookie banner redesign keeps the consent contract; categories sit behind a settings toggle
+- **Date:** 2026-06-03.
+- **Decision:** redesigned the cookie banner as a card (icon + title/subtitle, a
+  full-width "Accept toate" primary action, and a "Setări cookie-uri | Doar esențiale"
+  row). The necessary/analytics/marketing checkboxes + "Salvează opțiunile" are hidden in
+  a `.cookie-banner__settings` panel revealed by the `data-cookie-settings` toggle. The
+  consent logic in `main.js` is unchanged — the same `[data-cookie-choice]`
+  (`accepted`/`essential`/`custom`) buttons and `[data-cookie-category]` checkboxes drive
+  `consentFromChoice`/`saveConsent`; only an additive toggle handler was added.
+- **Why:** the owner wanted a cleaner, less cluttered banner. Hiding the category
+  checkboxes behind a settings affordance keeps the default surface simple while staying
+  GDPR-appropriate — accept-all and reject-to-essential are both one click, and granular
+  control is one click away (no pre-ticked non-essential categories).
+- **Consequence:** the banner markup is duplicated across the 10 public HTML pages and
+  must stay in sync; new `cookie.title`/`cookie.settings`/`cookie.necessary` translation
+  keys exist and `cookie.text` is now a short subtitle. The settings toggle button must
+  never carry `data-cookie-choice` (that attribute saves + closes the banner).
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
