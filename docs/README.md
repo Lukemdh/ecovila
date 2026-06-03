@@ -202,7 +202,10 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
   `supabase/config.toml` (which sets per-function `verify_jwt`). Set all Edge
   Function secrets listed above before invoking payment/notification/tracking functions.
 - **Cron:** schedule `expire-cash-reservations` and `send-reminders` (and the Maib
-  session-expiry cron added by migration) passing `ECOVILA_CRON_SECRET`.
+  session-expiry cron added by migration) passing `ECOVILA_CRON_SECRET`. Both expect a
+  frequent (~1-minute) cadence: the cash-expiry warning window is ~2 minutes wide, and
+  `send-reminders` self-gates the daily arrival reminder to 10:00 Europe/Chisinau
+  (`_shared/reminders.ts`) so guests are not messaged overnight.
 
 See `docs/superpowers/plans/` and `docs/ECOVILA_PROJECT_BRIEF.md` for the
 production rollout checklists (Steps 10–12).

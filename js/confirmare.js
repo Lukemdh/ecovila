@@ -100,6 +100,38 @@
     }
   }
 
+  function getOrderId() {
+    try {
+      return new URLSearchParams(root.location?.search).get('orderId') || '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Maib redirects the browser back to successUrl/failUrl but does not preserve
+   * our `id`/`manage` query parameters (it appends its own checkoutId/orderId
+   * instead). Recover the reservation id and manage token from the pending
+   * reservation persisted by checkout before the payment redirect, matching on
+   * maib's `orderId` (our booking group id) when present.
+   */
+  function recoverFromPendingStorage() {
+    const pending = readStorage(STORAGE_PENDING);
+    if (!pending?.primaryReservationId || !pending?.manageToken) {
+      return null;
+    }
+
+    const orderId = getOrderId();
+    if (orderId && pending.bookingGroupId && orderId !== pending.bookingGroupId) {
+      return null;
+    }
+
+    return {
+      reservationId: pending.primaryReservationId,
+      manageToken: pending.manageToken,
+    };
+  }
+
   // ── localStorage ────────────────────────────────────────────────────────────
 
   function readStorage(key) {
@@ -305,20 +337,28 @@
     show('[data-confirmare-content]');
 
     const isCash = paymentType === 'cash';
+    const status = serverStatus?.payment_status;
     const cashPanel = el('[data-cash-panel]');
     const successPanel = el('[data-success-panel]');
 
-    if (cashPanel) cashPanel.hidden = !isCash;
-    if (successPanel) successPanel.hidden = isCash;
+    // The cash hold panel (countdown timer + extend/cancel) is only meaningful
+    // while a cash reservation is still awaiting payment. Paid/cancelled cash
+    // reservations never show the timer.
+    const showCashHold = isCash && status === 'pending';
+    // The confirmation ("card") box is only shown for card reservations.
+    const showSuccess = !isCash;
+
+    if (cashPanel) cashPanel.hidden = !showCashHold;
+    if (successPanel) successPanel.hidden = !showSuccess;
 
     if (isCash) {
       setText('[data-confirmare-lead]', t('confirmare.cashTitle'));
 
-      if (serverStatus?.cash_expires_at) {
+      if (showCashHold && serverStatus?.cash_expires_at) {
         startCountdown(serverStatus.cash_expires_at, serverStatus.cash_extended);
       }
 
-      if (serverStatus?.payment_status === 'cancelled') {
+      if (status === 'cancelled') {
         showExpiredOverlay(true);
         return;
       }
@@ -428,6 +468,15 @@
     if (!panel) return;
 
     panel.hidden = false;
+
+    // Cash-paid reservations can only be cancelled at the office, so the MAIB
+    // online-refund policy and the online cancel action are irrelevant — show
+    // only the office-refund note.
+    const isCashReservation = summary.paymentType === 'cash';
+    const policyEl = panel.querySelector('.cf-manage__policy');
+    if (policyEl) policyEl.hidden = isCashReservation;
+    const actionsEl = el('[data-managed-actions]');
+    if (actionsEl) actionsEl.hidden = isCashReservation;
 
     const statusEl = el('[data-managed-status]');
     if (statusEl) {
@@ -756,8 +805,16 @@
   // ── Init ────────────────────────────────────────────────────────────────────
 
   async function init() {
-    const reservationId = getReservationId();
-    const manageToken = getManageToken();
+    let reservationId = getReservationId();
+    let manageToken = getManageToken();
+
+    if (!reservationId || !manageToken) {
+      const recovered = recoverFromPendingStorage();
+      if (recovered) {
+        reservationId = recovered.reservationId;
+        manageToken = recovered.manageToken;
+      }
+    }
 
     if (!reservationId || !manageToken) {
       showErrorState();

@@ -81,7 +81,7 @@ ecovila/
 │   ├── migrations/             # timestamped SQL migrations (20260506 → 20260603)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
-│       ├── _shared/            # cors, env, http, maib, notifications, providers,
+│       ├── _shared/            # cors, env, http, maib, notifications, providers, reminders,
 │       │                       #   reservationManage, reservations, supabaseAdmin, tracking
 │       ├── create-reservation/, confirm-reservation-payment/
 │       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
@@ -124,7 +124,7 @@ ecovila/
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
 | `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, daily, towels, photos, pricing, auth). |
-| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reservation logic, admin client. |
+| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reminder scheduling (`reminders.ts`), reservation logic, admin client. |
 | `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
 | `supabase/migrations/` | DB schema evolution; apply in filename order. |
 | `supabase/config.toml` | Declares which functions require a verified JWT. |

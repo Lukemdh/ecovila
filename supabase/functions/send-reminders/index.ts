@@ -8,6 +8,7 @@ import {
   dispatchScheduledNotificationOnce,
 } from '../_shared/notifications.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
+import { arrivalReminderTargetDate, shouldSendArrivalReminders } from '../_shared/reminders.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
 import type { NotificationMessage, NotificationReservation } from '../_shared/notifications.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
@@ -105,11 +106,14 @@ async function sendCashExpiryWarnings(client: SupabaseClient, now: Date) {
 }
 
 async function sendArrivalReminders(client: SupabaseClient, now: Date) {
-  const tomorrow = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + 1,
-  )).toISOString().slice(0, 10);
+  // Hold arrival reminders until 10:00 Europe/Chisinau so guests are not
+  // messaged overnight (the cron runs ~every minute, so the batch fires once
+  // the local hour reaches the threshold and dedup prevents re-sends).
+  if (!shouldSendArrivalReminders(now)) {
+    return [];
+  }
+
+  const tomorrow = arrivalReminderTargetDate(now);
   const { data, error } = await table<ReminderReservationRow[]>(client, 'reservations')
     .select(
       'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',

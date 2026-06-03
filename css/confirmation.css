@@ -406,8 +406,16 @@
    MANAGE RESERVATION PANEL
    ═══════════════════════════════════════════ */
 
+/* Right column: stack the status/management panels independently of the
+   summary column height (prevents a tall summary from pushing the manage panel
+   into a second grid row and leaving a large gap). */
+.cf-panels {
+  display: grid;
+  gap: 28px;
+  align-content: start;
+}
+
 .cf-manage {
-  grid-column: 2;
   display: grid;
   gap: 18px;
 }
@@ -674,10 +682,6 @@
    ═══════════════════════════════════════════ */
 
 @media (max-width: 900px) {
-  .cf-manage {
-    grid-column: auto;
-  }
-
   .cf-botanical {
     flex: 0 0 40px;
     width: 40px;

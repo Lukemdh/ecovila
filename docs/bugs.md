@@ -22,6 +22,10 @@ High / Medium / Low.
 | B-13 | Dependency audit/scanning gap: `npm audit` cannot run without a lockfile | Low | Open |
 | B-14 | CRM daily reception shows pending and cancelled reservations | Medium | Fixed |
 | B-15 | SMS provider URL contains phone/message/token query parameters | High | Open |
+| B-16 | Arrival reminders sent overnight (~03:00 EEST) instead of daytime | Low | Fixed |
+| B-17 | Maib success redirect lands on "Rezervarea nu a fost găsită" | High | Fixed |
+| B-18 | Confirmation page shows wrong payment panel + unused cash timer | Medium | Fixed |
+| B-19 | Confirmation page has a large gap between confirmed and manage panels | Low | Fixed |
 
 ---
 
@@ -259,6 +263,72 @@ High / Medium / Low.
   this URL-query PII pattern.
 - **Fix direction:** use a POST body if SMS.md supports it. If the provider only
   accepts GET, ensure the full request URL is never written to logs or telemetry.
+
+### B-16 — Arrival reminders sent overnight instead of daytime (Low) — Fixed 2026-06-03
+- **Description:** guests received the "Vă așteptăm mâine la EcoVila" arrival reminder
+  around 03:00 EEST. `send-reminders` runs ~every minute (the cash-expiry warning window
+  is only 2 minutes wide), and `sendArrivalReminders` selected `check_in = tomorrow`
+  computed from the **UTC** date. The UTC date rolls over at 00:00 UTC, which is 03:00
+  EEST (summer), so the batch fired then.
+- **Fix:** added `supabase/functions/_shared/reminders.ts` with
+  `shouldSendArrivalReminders(now)` (gate at `ARRIVAL_REMINDER_LOCAL_HOUR = 10`,
+  Europe/Chisinau, DST-aware) and `arrivalReminderTargetDate(now)` (tomorrow in local
+  time). `sendArrivalReminders` returns early before 10:00 local; dedup
+  (`notification_events` unique `(reservation_id, event_type)`) keeps the batch single
+  even though the cron keeps ticking. Cash-expiry warnings are unaffected.
+- **Verification:** `supabase/functions/tests/reminders.test.ts` covers the overnight
+  hold, the 10:00 release, daytime release, and the local "tomorrow" date (incl.
+  month rollover). See [[ADR-019]] in `docs/decisions.md`.
+
+### B-17 — Maib success redirect lands on "Rezervarea nu a fost găsită" (High) — Fixed 2026-06-03
+- **Description:** after a successful card payment the guest was redirected to the
+  confirmation page's error state. `maib-create-payment` builds
+  `successUrl = confirmare.html?id=<id>&manage=<token>&payment=success`, but the maib
+  Checkout gateway does not preserve those query parameters on the browser redirect — it
+  appends its own `checkoutId`/`checkoutStatus`/`orderId` (per maib docs; preservation of
+  pre-existing params is undocumented). With `id`/`manage` missing, `confirmare.js`
+  `init()` hit the `if (!reservationId || !manageToken)` guard and showed the error.
+  Cash bookings were unaffected because they redirect directly without the maib round-trip.
+- **Fix:** `confirmare.js` now recovers `id`/`manage` from the pending reservation that
+  `checkout.js` already persists in `localStorage` (`ecovila_pending_reservation`,
+  including `primaryReservationId`, `bookingGroupId`, `manageToken`) before redirecting
+  to maib. Recovery only triggers when the URL lacks the params, and is matched against
+  maib's returned `orderId` (= our `bookingGroupId`) when present. The manage-token
+  requirement is unchanged — a valid token is still required, just sourced from the same
+  browser's storage. See [[ADR-020]].
+- **Verification:** `npm test` (frontend contract suite still asserts the
+  `if (!reservationId || !manageToken)` guard remains). Manual reasoning + the localStorage
+  shape written by `checkout.js`.
+
+### B-18 — Confirmation page shows wrong payment panel + unused cash timer (Medium) — Fixed 2026-06-03
+- **Description:** when a guest searched for / returned to a reservation, the managed
+  view rendered a status panel that did not match the payment type/status. Paid **cash**
+  reservations still showed the "Plată cash" hold panel with a live countdown timer (the
+  hold had already been paid, so the timer was unused), and the manage panel showed the
+  MAIB online-refund policy + a disabled online-cancel button instead of just the
+  office-only note.
+- **Fix:** in `js/confirmare.js`, `showContentState` now shows the cash hold panel (and
+  starts the countdown) only while `payment_status === 'pending'`; the confirmation
+  ("card") box is shown only for card reservations. `renderManagePanel` hides the MAIB
+  refund policy and the online-cancel action for cash reservations, leaving only the
+  `confirmare.cashOfficeRefund` note. Pending-cash holds and card flows are unchanged.
+- **Verification:** `npm test` (the lookup/refund contract suite still asserts the
+  `showContentState(...) → renderManagePanel(...)` order and the pending-cash timer
+  branch).
+
+### B-19 — Confirmation page large gap between confirmed and manage panels (Low) — Fixed 2026-06-03
+- **Description:** on desktop the two-column `.checkout-grid` placed the summary in
+  column 1 and the right-hand panels (`success`/`cash` + `manage`) as separate grid
+  items in column 2. Because `.cf-manage` was forced to `grid-column: 2`, the manage
+  panel landed in grid row 2, whose height was driven by the tall summary — leaving a
+  large blank gap below the short confirmed panel.
+- **Fix:** wrapped the three right-column panels in a `.cf-panels` container
+  (`confirmare.html`) that stacks them with a 28px gap independent of the summary
+  height; removed the now-obsolete `.cf-manage { grid-column: 2 }` rule and its
+  responsive override (`css/confirmation.css`).
+- **Verification:** live preview at 1280px width — the success→manage vertical gap is a
+  clean 28px (was ~600px), panels share the same column. `npm test` still passes
+  (`data-manage-panel`/`data-managed-cancel-btn` markup preserved).
 
 ---
 

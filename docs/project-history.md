@@ -205,3 +205,18 @@ sessions append to the running log at the bottom.
   `docs/old php/` hosting backup because the backup contains retired credentials/server
   artifacts, and updated docs to match the owner-approved public content decision.
   Verified 188 Node tests, 38 Deno tests, and Tophost upload packaging.
+- 2026-06-03 — OFF-PLAN four owner-reported fixes (no plan step advanced). (1) B-16:
+  gated arrival reminders to 10:00 Europe/Chisinau via new `_shared/reminders.ts`
+  (`shouldSendArrivalReminders`/`arrivalReminderTargetDate`) so the "see you tomorrow"
+  SMS no longer fires at the UTC-midnight rollover (03:00 EEST); cron cadence unchanged.
+  (2) B-17: `confirmare.js` now recovers `id`/`manage` from the
+  `ecovila_pending_reservation` localStorage record after the Maib redirect, fixing the
+  post-card-payment "Rezervarea nu a fost găsită" page without weakening the
+  manage-token requirement. (3) B-18: the managed confirmation view shows the cash hold
+  panel/timer only while pending, the card/success box only for card, and the cash
+  office-only refund note (no MAIB policy or online-cancel) for cash. (4) B-19: wrapped
+  the right-column panels in `.cf-panels` to remove the large desktop gap between the
+  confirmed and manage panels. Added `_shared/reminders.ts` + `tests/reminders.test.ts`;
+  logged ADR-019 (reminder gate) and ADR-020 (redirect recovery). Verified 188 Node +
+  41 Deno tests, `deno lint`, `deno check`, `deno fmt --check`, and a live two-column
+  preview of the confirmation page.

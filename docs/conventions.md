@@ -86,6 +86,11 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `cancellation_tokens.token` column is an open exception tracked as S-10.
 - Declare each function's `verify_jwt` in `supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
+- Cron-triggered functions run on a frequent (~1-minute) external schedule and must be
+  idempotent: rely on `notification_events` dedup and gate time-of-day behaviour in code,
+  not on the cron cadence. Business-hour logic uses the `Europe/Chisinau` zone
+  (`_shared/reminders.ts`), so it stays DST-correct without changing the schedule. Arrival
+  reminders are held until `ARRIVAL_REMINDER_LOCAL_HOUR` (10:00) local — see ADR-019.
 - Staff-only functions must `await requireStaffRole(request, [...])`; the helper validates
   the bearer token through Supabase Auth and reads `app_metadata.role` only from the
   verified user object. Do not parse JWT payloads by hand for authorization decisions.

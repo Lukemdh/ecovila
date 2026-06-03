@@ -196,6 +196,40 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   raw old-source files need to be committed later, they require a separate sanitization
   pass and owner approval.
 
+### ADR-019 — Arrival reminders are gated to 10:00 Europe/Chisinau in-function
+- **Date:** 2026-06-03.
+- **Decision:** hold the daily "see you tomorrow" arrival reminder until the local
+  business hour (Europe/Chisinau) reaches 10:00, enforced inside `send-reminders`
+  (`_shared/reminders.ts`), rather than changing the external cron cadence or adding a
+  `pg_cron` schedule. The cron keeps running ~every minute; the function returns early
+  before 10:00 and `notification_events` dedup keeps the released batch single.
+- **Why:** the reminder previously fired at the UTC-date rollover (03:00 EEST). The
+  external scheduler is not in the repo, and the cash-expiry warning logic depends on the
+  ~1-minute cadence, so the cadence must not change. Gating in-function is the smallest,
+  testable, DST-aware fix and keeps the repo the source of truth. Avoids B-11's
+  unresolved `pg_cron` assumption.
+- **Consequence:** reminders go out at 10:00 local; late-created next-day bookings are
+  reminded on the next tick after creation (still daytime). The threshold is a single
+  constant (`ARRIVAL_REMINDER_LOCAL_HOUR`).
+
+### ADR-020 — Confirmation page recovers id/manage from localStorage after the Maib redirect
+- **Date:** 2026-06-03.
+- **Decision:** when the confirmation page URL lacks `id`/`manage` (the maib Checkout
+  gateway does not preserve successUrl query params and appends its own
+  `checkoutId`/`checkoutStatus`/`orderId`), `confirmare.js` recovers them from the
+  `ecovila_pending_reservation` localStorage record that `checkout.js` writes before the
+  payment redirect, matching maib's returned `orderId` against the stored
+  `bookingGroupId` when present.
+- **Why:** the manage-token requirement (ADR-015 / Step 16) must stay intact, so we keep
+  requiring a valid token instead of relaxing the guard. The token already exists in the
+  same browser's storage from checkout, so recovering it there is safe and needs no
+  backend change or weaker auth. Robust to either maib behaviour (preserve or drop our
+  params).
+- **Consequence:** the URL guard `if (!reservationId || !manageToken)` remains, now with
+  a storage fallback ahead of it. A stale confirmation link opened without params in a
+  browser that still holds a different pending reservation is guarded by the `orderId`
+  match.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

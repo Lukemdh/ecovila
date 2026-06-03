@@ -36,9 +36,12 @@ The product has two surfaces:
 - **Checkout** (`checkout.html`): reservation summary, guest form, GDPR consent,
   cash-vs-card choice, creates a pending reservation. Card path routes to Maib (MIA for
   `+373` phones, hosted card Checkout otherwise — *inferred from* `js/checkout.js:80`).
-- **Confirmation / management** (`confirmare.html`): token-backed cash countdown timer,
-  one-time extension, pending-cash cancellation, online cancellation eligibility, and
-  refund state for card bookings.
+- **Confirmation / management** (`confirmare.html`): token-backed cash countdown timer
+  (shown only while a cash hold is pending), one-time extension, pending-cash
+  cancellation, online cancellation eligibility, and refund state for card bookings. The
+  managed view renders only the panel matching the actual payment type/status; after a
+  Maib card redirect it recovers `id`/`manage` from the pending-reservation localStorage
+  record when the gateway drops those query params.
 - **Cancellation** (`anulare.html`): token-based + phone-verified self-service
   cancellation only at least 7 calendar days before arrival or within 2 hours of
   creation; cash reimbursements are office-only.
