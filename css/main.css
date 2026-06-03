@@ -603,6 +603,33 @@ h3 {
   margin: 0;
 }
 
+/* Accepted payment logos — shown on white chips so each brand keeps its
+   native colours and stays legible on the dark footer. */
+.site-footer__payments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.site-footer__payment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 9px;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(51, 38, 31, 0.18);
+}
+
+.site-footer__payment img {
+  display: block;
+  width: auto;
+  height: 20px;
+}
+
 .site-footer__legal,
 .site-footer__social,
 .site-footer__links {

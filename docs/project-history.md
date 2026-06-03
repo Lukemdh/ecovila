@@ -230,3 +230,11 @@ sessions append to the running log at the bottom.
   shortened `cookie.text` in `js/translations.js`. Logged ADR-021. Verified 188 Node +
   41 Deno tests and a live browser preview (collapsed + expanded, ro/ru, desktop +
   mobile) confirming Accept-all/Essential-only/custom save all still work.
+- 2026-06-03 — OFF-PLAN footer payment logos (no plan step advanced). Added the
+  accepted-payment logos (`assets/maib.png`, `mastercard.png`, `visa.png`) on white
+  chips under the footer brand tagline across all 10 public footers, and shortened the
+  `footer.tagline` copy from "...Orheiul Vechi, Moldova." to "...Orheiul Vechi." (ro/ru/en
+  static defaults + translations). White chips keep each brand logo in its native colours
+  and legible on the dark espresso footer; the EcoVila footer logo is unchanged. Added
+  `.site-footer__payments`/`.site-footer__payment` CSS. Verified 188 Node + 41 Deno tests
+  and a live footer preview (desktop + mobile).

@@ -30,6 +30,7 @@ ecovila/
 ├── assets/                     # Static media
 │   ├── logo.png, logoNT.png    # logo.png = header, logoNT.png = footer
 │   ├── logo_small.png          # Unreferenced owner-retained logo asset (see bugs.md)
+│   ├── maib.png, mastercard.png, visa.png  # Footer accepted-payment logos
 │   ├── apple-touch-icon.png, favicon-16x16.png, favicon-32x32.png
 │   ├── videos/ecovila-hero.mp4 # Hero video used by site.html (~3.8MB)
 │   └── photos/                 # Placeholder SVGs + hero poster, grouped by area
