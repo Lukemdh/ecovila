@@ -26,6 +26,7 @@ High / Medium / Low.
 | B-17 | Maib success redirect lands on "Rezervarea nu a fost găsită" | High | Fixed |
 | B-18 | Confirmation page shows wrong payment panel + unused cash timer | Medium | Fixed |
 | B-19 | Confirmation page has a large gap between confirmed and manage panels | Low | Fixed |
+| B-20 | Booking card showed "De la" prefix on the exact-dates stay total | Low | Fixed |
 
 ---
 
@@ -329,6 +330,23 @@ High / Medium / Low.
 - **Verification:** live preview at 1280px width — the success→manage vertical gap is a
   clean 28px (was ~600px), panels share the same column. `npm test` still passes
   (`data-manage-panel`/`data-managed-cancel-btn` markup preserved).
+
+### B-20 — Booking card showed "De la" on the exact-dates stay total (Low) — Fixed 2026-06-04
+- **Description:** with exact check-in/check-out dates selected, each accommodation card
+  still rendered the price as `De la 5.000 MDL` ("from 5.000 MDL"), implying an estimate
+  even though the quote was the exact stay total.
+- **Root cause:** the display logic in `js/booking.js` already switched to the
+  `booking.priceForStay` key for the exact-dates branch and `booking.priceFrom` only for
+  the no-dates estimate, but the Romanian `booking.priceForStay` string in
+  `js/translations.js` still read `De la {price}`. (RU/EN had a `{price} за проживание` /
+  `{price} for stay` suffix form, which read awkwardly.)
+- **Fix:** changed `booking.priceForStay` to a `Total:`-prefixed form in all three
+  languages — RO `Total: {price}`, RU `Итого: {price}`, EN `Total: {price}`.
+  `booking.priceFrom` ("De la / От / From") is unchanged and still used only for the
+  earliest-availability estimate when no dates are selected.
+- **Verification:** static preview — `EcoVilaTranslations` resolves `booking.priceForStay`
+  without a "from" prefix in all three languages and `booking.priceFrom` keeps it; no
+  console errors.
 
 ---
 
