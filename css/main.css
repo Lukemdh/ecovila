@@ -321,6 +321,26 @@ h3 {
   border-color: var(--espresso);
 }
 
+.quiet-serif-link {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0;
+  color: rgba(51, 47, 44, 0.55);
+  background: transparent;
+  border: 0;
+  font-family: var(--heading-font);
+  font-size: clamp(1.15rem, 1.4vw, 1.42rem);
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.quiet-serif-link:hover,
+.quiet-serif-link:focus-visible {
+  color: var(--ink);
+}
+
 .section-inner {
   width: min(var(--max-width), calc(100vw - 80px));
   margin: 0 auto;
@@ -569,9 +589,16 @@ h3 {
 
 .booking-repeat__inner {
   display: grid;
-  gap: 34px;
+  gap: 30px;
   justify-items: center;
   text-align: center;
+}
+
+.booking-repeat__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 22px;
 }
 
 .site-footer {

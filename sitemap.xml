@@ -22,4 +22,10 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://ecovila.md/en/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://ecovila.md/"/>
   </url>
+  <url>
+    <loc>https://ecovila.md/rezervari.html</loc>
+  </url>
+  <url>
+    <loc>https://ecovila.md/intrebari-frecvente.html</loc>
+  </url>
 </urlset>

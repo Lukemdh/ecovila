@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>EcoVila | Orheiul Vechi all-inclusive</title>
+  <title>EcoVila | All-Inclusive Resort near Orheiul Vechi, Moldova</title>
   <meta name="description" content="EcoVila is an all-inclusive villa complex near Orheiul Vechi with accommodation, SPA, included meals and forest-side stays for families and groups.">
   <link rel="canonical" href="https://ecovila.md/en/">
   <link rel="alternate" hreflang="ro" href="https://ecovila.md/">
@@ -30,6 +30,57 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/booking.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["LodgingBusiness", "Resort"],
+        "@id": "https://ecovila.md/#lodging",
+        "name": "EcoVila",
+        "url": "https://ecovila.md/en/",
+        "description": "EcoVila is an all-inclusive villa complex near Orheiul Vechi with accommodation, SPA, included meals and forest-side stays for families and groups.",
+        "image": "https://ecovila.md/assets/photos/other/forest-hero-poster.jpg",
+        "telephone": "+373 60 120 220",
+        "email": "rezervari@ecovila.md",
+        "priceRange": "$$",
+        "currenciesAccepted": "MDL",
+        "paymentAccepted": "Card, Cash",
+        "petsAllowed": false,
+        "numberOfRooms": 25,
+        "inLanguage": "en",
+        "availableLanguage": ["ro", "ru", "en"],
+        "address": {
+          "@type": "PostalAddress",
+          "addressRegion": "Orheiul Vechi",
+          "addressCountry": "MD"
+        },
+        "amenityFeature": [
+          { "@type": "LocationFeatureSpecification", "name": "All-inclusive (accommodation, three meals per day, SPA)", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "SPA (warm indoor pool, cold pool, sauna, jacuzzi, hammam, salt room, sensory shower)", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Restaurant", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Small villas, large villas and hotel rooms", "value": true }
+        ]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://ecovila.md/#organization",
+        "name": "EcoVila",
+        "url": "https://ecovila.md/",
+        "logo": "https://ecovila.md/assets/apple-touch-icon.png",
+        "email": "rezervari@ecovila.md",
+        "telephone": "+373 60 120 220",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "telephone": "+373 60 120 220",
+          "email": "rezervari@ecovila.md",
+          "contactType": "reservations",
+          "availableLanguage": ["ro", "ru", "en"]
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 
 <body>
@@ -188,7 +239,10 @@
     <section class="booking-repeat" aria-labelledby="booking-repeat-title">
       <div class="section-inner booking-repeat__inner">
         <h2 id="booking-repeat-title" data-i18n="repeat.title">Book a quiet day at EcoVila</h2>
-        <a class="editorial-link editorial-link--dark" href="/rezervari.html" data-i18n="repeat.cta">Go to booking →</a>
+        <div class="booking-repeat__actions">
+          <a class="editorial-link editorial-link--dark" href="/rezervari.html" data-i18n="repeat.cta">Go to booking →</a>
+          <a class="quiet-serif-link" href="/intrebari-frecvente.html" data-i18n="repeat.faq">Frequently asked questions</a>
+        </div>
       </div>
     </section>
   </main>

@@ -30,6 +30,57 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/booking.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["LodgingBusiness", "Resort"],
+        "@id": "https://ecovila.md/#lodging",
+        "name": "EcoVila",
+        "url": "https://ecovila.md/",
+        "description": "EcoVila este un complex all-inclusive in Orheiul Vechi, cu cazare, SPA, mese incluse si odihna in padure pentru familii si grupuri.",
+        "image": "https://ecovila.md/assets/photos/other/forest-hero-poster.jpg",
+        "telephone": "+373 60 120 220",
+        "email": "rezervari@ecovila.md",
+        "priceRange": "$$",
+        "currenciesAccepted": "MDL",
+        "paymentAccepted": "Card, Cash",
+        "petsAllowed": false,
+        "numberOfRooms": 25,
+        "inLanguage": "ro",
+        "availableLanguage": ["ro", "ru", "en"],
+        "address": {
+          "@type": "PostalAddress",
+          "addressRegion": "Orheiul Vechi",
+          "addressCountry": "MD"
+        },
+        "amenityFeature": [
+          { "@type": "LocationFeatureSpecification", "name": "All-inclusive (cazare, 3 mese pe zi, SPA)", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "SPA (piscina calda interioara, piscina rece, sauna, jacuzzi, hamam, camera de sare, dus senzorial)", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Restaurant", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Vile mici, vile mari si camere de hotel", "value": true }
+        ]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://ecovila.md/#organization",
+        "name": "EcoVila",
+        "url": "https://ecovila.md/",
+        "logo": "https://ecovila.md/assets/apple-touch-icon.png",
+        "email": "rezervari@ecovila.md",
+        "telephone": "+373 60 120 220",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "telephone": "+373 60 120 220",
+          "email": "rezervari@ecovila.md",
+          "contactType": "reservations",
+          "availableLanguage": ["ro", "ru", "en"]
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 
 <body>
@@ -188,7 +239,10 @@
     <section class="booking-repeat" aria-labelledby="booking-repeat-title">
       <div class="section-inner booking-repeat__inner">
         <h2 id="booking-repeat-title" data-i18n="repeat.title">Rezervă o zi de liniște la EcoVila</h2>
-        <a class="editorial-link editorial-link--dark" href="/rezervari.html" data-i18n="repeat.cta">Către rezervări →</a>
+        <div class="booking-repeat__actions">
+          <a class="editorial-link editorial-link--dark" href="/rezervari.html" data-i18n="repeat.cta">Către rezervări →</a>
+          <a class="quiet-serif-link" href="/intrebari-frecvente.html" data-i18n="repeat.faq">Întrebări frecvente</a>
+        </div>
       </div>
     </section>
   </main>

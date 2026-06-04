@@ -30,6 +30,57 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/booking.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["LodgingBusiness", "Resort"],
+        "@id": "https://ecovila.md/#lodging",
+        "name": "EcoVila",
+        "url": "https://ecovila.md/ru/",
+        "description": "EcoVila - комплекс all-inclusive рядом с Орхеюл Векь: проживание, SPA, питание и отдых в лесу для семей, пар и групп.",
+        "image": "https://ecovila.md/assets/photos/other/forest-hero-poster.jpg",
+        "telephone": "+373 60 120 220",
+        "email": "rezervari@ecovila.md",
+        "priceRange": "$$",
+        "currenciesAccepted": "MDL",
+        "paymentAccepted": "Card, Cash",
+        "petsAllowed": false,
+        "numberOfRooms": 25,
+        "inLanguage": "ru",
+        "availableLanguage": ["ro", "ru", "en"],
+        "address": {
+          "@type": "PostalAddress",
+          "addressRegion": "Orheiul Vechi",
+          "addressCountry": "MD"
+        },
+        "amenityFeature": [
+          { "@type": "LocationFeatureSpecification", "name": "All-inclusive (проживание, трёхразовое питание, SPA)", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "SPA (тёплый крытый бассейн, холодный бассейн, сауна, джакузи, хамам, соляная комната, сенсорный душ)", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Ресторан", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Малые виллы, большие виллы и номера отеля", "value": true }
+        ]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://ecovila.md/#organization",
+        "name": "EcoVila",
+        "url": "https://ecovila.md/",
+        "logo": "https://ecovila.md/assets/apple-touch-icon.png",
+        "email": "rezervari@ecovila.md",
+        "telephone": "+373 60 120 220",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "telephone": "+373 60 120 220",
+          "email": "rezervari@ecovila.md",
+          "contactType": "reservations",
+          "availableLanguage": ["ro", "ru", "en"]
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 
 <body>
@@ -188,7 +239,10 @@
     <section class="booking-repeat" aria-labelledby="booking-repeat-title">
       <div class="section-inner booking-repeat__inner">
         <h2 id="booking-repeat-title" data-i18n="repeat.title">Забронируйте день спокойствия в EcoVila</h2>
-        <a class="editorial-link editorial-link--dark" href="/rezervari.html" data-i18n="repeat.cta">К бронированию →</a>
+        <div class="booking-repeat__actions">
+          <a class="editorial-link editorial-link--dark" href="/rezervari.html" data-i18n="repeat.cta">К бронированию →</a>
+          <a class="quiet-serif-link" href="/intrebari-frecvente.html" data-i18n="repeat.faq">Частые вопросы</a>
+        </div>
       </div>
     </section>
   </main>
