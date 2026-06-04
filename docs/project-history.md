@@ -238,3 +238,17 @@ sessions append to the running log at the bottom.
   and legible on the dark espresso footer; the EcoVila footer logo is unchanged. Added
   `.site-footer__payments`/`.site-footer__payment` CSS. Verified 188 Node + 41 Deno tests
   and a live footer preview (desktop + mobile).
+- 2026-06-04 — OFF-PLAN stay-date pricing fix (no plan step advanced). Scheduled prices
+  now apply by the night being booked instead of by the booking date. Previously
+  `findPricingRow` in `js/pricing.js` selected the tier with `effective_from <= createdOn`
+  (today), so a price scheduled for e.g. 2026-10-01 stayed dormant until the calendar
+  reached that date — a guest booking in June for an October stay got the old rate.
+  Reworked `findPricingRow` to choose the latest tier with `effective_from <= stayDate`
+  (the night's own date), falling back to the earliest published tier for nights before
+  any schedule (so early stays never error). `calculateStayPrice` now passes each night's
+  date as `stayDate`; `admin/js/crm-sidebar.js` `calculateStaffTotal` does the same, so
+  staff bookings and stay-extension supplements price per night too. A straddling stay is
+  priced night-by-night (September nights old rate, October nights new rate). No DB/schema
+  change — existing scheduled price rows apply as soon as the JS is deployed. Updated the
+  scheduled-price test and added cases for the June-books-October scenario and the
+  pre-schedule fallback in `tests/booking-core.test.mjs`. Verified 194 Node tests pass.

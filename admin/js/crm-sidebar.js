@@ -145,7 +145,7 @@
       const row = pricing.findPricingRow(input.pricingTiers || [], {
         nightsTier,
         dayType,
-        createdOn: input.createdOn,
+        stayDate: date,
       });
       const adultPrice = Number(row.adult_price);
       const kidPrice = Number(row.kid_price);

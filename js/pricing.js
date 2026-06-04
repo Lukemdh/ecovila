@@ -301,15 +301,25 @@
   }
 
   function findPricingRow(pricingTiers, lookup) {
-    const createdOn = toISODate(lookup.createdOn || todayISO());
-    const matches = (pricingTiers || [])
-      .filter((row) => {
-        return (
-          Number(row.nights_tier) === Number(lookup.nightsTier) &&
-          row.day_type === lookup.dayType &&
-          toISODate(row.effective_from) <= createdOn
-        );
-      })
+    // The price for a night is decided by that night's own date, not by when the
+    // booking is made. A price scheduled to start on a future date applies to any
+    // stay on or after that date, even when the booking is created earlier.
+    const stayDate = toISODate(lookup.stayDate || lookup.createdOn || todayISO());
+    const candidates = (pricingTiers || []).filter((row) => {
+      return (
+        Number(row.nights_tier) === Number(lookup.nightsTier) &&
+        row.day_type === lookup.dayType
+      );
+    });
+
+    if (!candidates.length) {
+      throw new Error(
+        `No pricing row found for tier ${lookup.nightsTier}, ${lookup.dayType}.`,
+      );
+    }
+
+    const effective = candidates
+      .filter((row) => toISODate(row.effective_from) <= stayDate)
       .sort((left, right) => {
         const effectiveCompare = compareDates(right.effective_from, left.effective_from);
         if (effectiveCompare !== 0) {
@@ -319,13 +329,20 @@
         return String(right.created_at || '').localeCompare(String(left.created_at || ''));
       });
 
-    if (!matches.length) {
-      throw new Error(
-        `No pricing row found for tier ${lookup.nightsTier}, ${lookup.dayType}, effective on ${createdOn}.`,
-      );
+    if (effective.length) {
+      return effective[0];
     }
 
-    return matches[0];
+    // The night falls before every scheduled price; fall back to the earliest one.
+    return candidates
+      .sort((left, right) => {
+        const effectiveCompare = compareDates(left.effective_from, right.effective_from);
+        if (effectiveCompare !== 0) {
+          return effectiveCompare;
+        }
+
+        return String(left.created_at || '').localeCompare(String(right.created_at || ''));
+      })[0];
   }
 
   function calculateStayPrice(input) {
@@ -340,14 +357,13 @@
     const units = input.units || getUnitsNeeded(input.roomType, party);
     const billable = calculateBillableGuests(input.roomType, party, { units });
     const holidaySet = toHolidaySet(input.holidays || []);
-    const createdOn = input.createdOn || todayISO();
 
     const nightlyBreakdown = nightsList.map((date) => {
       const dayType = getDayType(date, holidaySet, {
         premiumNextDays: input.premiumNextDays,
         weekendDays: input.weekendDays,
       });
-      const row = findPricingRow(input.pricingTiers, { nightsTier, dayType, createdOn });
+      const row = findPricingRow(input.pricingTiers, { nightsTier, dayType, stayDate: date });
       const adultPrice = Number(row.adult_price);
       const kidPrice = Number(row.kid_price);
       const subtotal = billable.billableAdults * adultPrice + billable.billableKids * kidPrice;

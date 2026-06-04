@@ -299,7 +299,7 @@ describe('EcoVila Step 3 pricing core', () => {
     ]);
   });
 
-  it('selects the pricing row active on the reservation creation date', () => {
+  it('selects the pricing row by the night being booked, not the booking date', () => {
     const scheduledPrices = pricingTiers.concat({
       nights_tier: 1,
       day_type: 'weekday',
@@ -312,7 +312,7 @@ describe('EcoVila Step 3 pricing core', () => {
       pricing.findPricingRow(scheduledPrices, {
         nightsTier: 1,
         dayType: 'weekday',
-        createdOn: '2026-05-31',
+        stayDate: '2026-05-31',
       }).adult_price,
       1100,
     );
@@ -320,9 +320,53 @@ describe('EcoVila Step 3 pricing core', () => {
       pricing.findPricingRow(scheduledPrices, {
         nightsTier: 1,
         dayType: 'weekday',
-        createdOn: '2026-06-01',
+        stayDate: '2026-06-01',
       }).adult_price,
       1500,
+    );
+  });
+
+  it('applies a future scheduled price to a stay booked before it takes effect', () => {
+    const scheduledPrices = pricingTiers.concat([
+      { nights_tier: 1, day_type: 'weekday', adult_price: 1500, kid_price: 1200, effective_from: '2026-10-01' },
+      { nights_tier: 1, day_type: 'holiday', adult_price: 1700, kid_price: 1300, effective_from: '2026-10-01' },
+    ]);
+
+    // Booking made now (June) for a night before Oct 1 keeps the old price.
+    const beforeSwitch = pricing.calculateStayPrice({
+      roomType: 'small',
+      adults: 2,
+      kidsAges: [],
+      checkIn: '2026-09-28',
+      checkOut: '2026-09-29',
+      pricingTiers: scheduledPrices,
+      holidays: [],
+      createdOn: '2026-06-04',
+    });
+    assert.equal(beforeSwitch.total, 2200);
+
+    // Booking made now (June) for a night on/after Oct 1 gets the new price.
+    const afterSwitch = pricing.calculateStayPrice({
+      roomType: 'small',
+      adults: 2,
+      kidsAges: [],
+      checkIn: '2026-10-05',
+      checkOut: '2026-10-06',
+      pricingTiers: scheduledPrices,
+      holidays: [],
+      createdOn: '2026-06-04',
+    });
+    assert.equal(afterSwitch.total, 3000);
+  });
+
+  it('falls back to the earliest published price for nights before any schedule', () => {
+    assert.equal(
+      pricing.findPricingRow(pricingTiers, {
+        nightsTier: 1,
+        dayType: 'weekday',
+        stayDate: '2026-04-30',
+      }).adult_price,
+      1100,
     );
   });
 
