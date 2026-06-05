@@ -568,8 +568,7 @@ describe('EcoVila Step 9 CRM', () => {
     const rows = sidebar.buildStaffReservationRows(
       formWithFields({
         '[data-add-room-numbers]': field('3, 4, 5'),
-        '[data-add-first-name]': field('Alina'),
-        '[data-add-last-name]': field('Auzeac'),
+        '[data-add-full-name]': field('Alina Auzeac'),
         '[data-add-phone]': field('+37369857607'),
         '[data-add-email]': field('alina@example.md'),
         '[data-add-check-in]': field('2026-05-11'),
@@ -604,8 +603,7 @@ describe('EcoVila Step 9 CRM', () => {
     const rows = sidebar.buildStaffReservationRows(
       formWithFields({
         '[data-add-room-numbers]': field('1'),
-        '[data-add-first-name]': field('Ana'),
-        '[data-add-last-name]': field('Munteanu'),
+        '[data-add-full-name]': field('Ana Munteanu'),
         '[data-add-phone]': field(''),
         '[data-add-email]': field('ana@example.md'),
         '[data-add-check-in]': field('2026-06-01'),
@@ -901,8 +899,11 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(daily.dailyReservationMatchesSearch(reservation, 'Ion'), true);
     assert.equal(daily.dailyReservationMatchesSearch(reservation, 'turcanu'), true);
     assert.equal(daily.dailyReservationMatchesSearch(reservation, '689 836'), true);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, 'Turcanu Ion'), true);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, '068983660'), true);
     assert.equal(daily.dailyReservationMatchesSearch(differentRoomWithPhoneFragment, '12'), false);
     assert.equal(daily.dailyReservationMatchesSearch(reservation, 'popescu'), false);
+    assert.equal(daily.dailyReservationMatchesSearch(reservation, 'ion popescu'), false);
   });
 
   it('escapes guest fields in sidebar search results and daily cards', async () => {

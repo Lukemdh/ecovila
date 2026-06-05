@@ -417,25 +417,50 @@
     );
   }
 
-  function searchReservations(client, filters) {
+  function normalizePhoneSearch(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits.startsWith('0') ? digits.slice(1) : digits;
+  }
+
+  async function searchReservations(client, filters) {
+    const name = filters?.name?.trim();
+    const phone = normalizePhoneSearch(filters?.phone);
+    const roomIds = Array.isArray(filters?.roomIds) ? filters.roomIds.filter(Boolean) : [];
+    const hasGuestFilter = Boolean(name || phone || roomIds.length);
+
+    let nameMatchIds = null;
+    if (name) {
+      const matches = await unwrapSupabaseResult(
+        client.rpc('search_reservation_ids', { search_name: name }),
+      );
+      nameMatchIds = matches.map((row) => row.id);
+      if (!nameMatchIds.length) {
+        return [];
+      }
+    }
+
     let query = client
       .from('reservations')
       .select('id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, payment_status, rooms(number, type)')
-      .gte('check_out', filters?.fromDate || new Date().toISOString().slice(0, 10))
-      .order('check_in', { ascending: true })
-      .limit(25);
+      .order('check_in', { ascending: false })
+      .limit(50);
 
     if (filters?.date) {
       query = query.lte('check_in', filters.date).gte('check_out', filters.date);
+    } else if (!hasGuestFilter) {
+      query = query.gte('check_out', filters?.fromDate || new Date().toISOString().slice(0, 10));
     }
 
-    if (filters?.phone) {
-      query = query.ilike('guest_phone', `%${filters.phone}%`);
+    if (nameMatchIds) {
+      query = query.in('id', nameMatchIds);
     }
 
-    if (filters?.name) {
-      const name = `%${filters.name}%`;
-      query = query.or(`guest_first_name.ilike.${name},guest_last_name.ilike.${name}`);
+    if (roomIds.length) {
+      query = query.in('room_id', roomIds);
+    }
+
+    if (phone) {
+      query = query.ilike('guest_phone', `%${phone}%`);
     }
 
     return unwrapSupabaseResult(query);

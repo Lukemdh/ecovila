@@ -250,4 +250,39 @@ describe('EcoVila Supabase foundation migration', () => {
       'availability RPC should not leak guest phone numbers',
     );
   });
+
+  it('exposes a staff-only accent-insensitive reservation name search RPC', () => {
+    const sql = readAllMigrations();
+
+    assert.match(
+      sql,
+      /create extension if not exists unaccent with schema extensions/i,
+      'accent search should enable the unaccent extension',
+    );
+    assert.match(
+      sql,
+      /create or replace function public\.search_reservation_ids\(search_name text\)/i,
+      'accent search RPC should be defined',
+    );
+    assert.match(
+      sql,
+      /create or replace function public\.search_reservation_ids[\s\S]*?security invoker/i,
+      'accent search RPC should run as SECURITY INVOKER so reservations RLS applies',
+    );
+    assert.match(
+      sql,
+      /create or replace function public\.search_reservation_ids[\s\S]*?extensions\.unaccent/i,
+      'accent search RPC should fold accents via unaccent',
+    );
+    assert.match(
+      sql,
+      /revoke execute on function public\.search_reservation_ids\(text\) from public/i,
+      'accent search RPC should not be executable by public',
+    );
+    assert.match(
+      sql,
+      /grant execute on function public\.search_reservation_ids\(text\) to authenticated/i,
+      'authenticated staff should be able to call the accent search RPC',
+    );
+  });
 });

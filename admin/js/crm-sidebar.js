@@ -44,6 +44,17 @@
     return Array.from(new Set((roomNumbers || []).map((number) => Number(number)).filter(Number.isInteger)));
   }
 
+  function splitFullName(value) {
+    const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) {
+      return { firstName: '', lastName: '' };
+    }
+    return {
+      firstName: parts[0],
+      lastName: parts.slice(1).join(' '),
+    };
+  }
+
   function bucketValuesToAges(values) {
     return (values || [])
       .map((value) => CHILD_BUCKET_AGES[value])
@@ -211,12 +222,13 @@
     const bookingGroupId = createBookingGroupId(options);
     const childBucketValues = readChildBucketValues(form);
     const totalParts = splitTotalPrice(qs('[data-add-total]', form)?.dataset.total || 0, selectedRooms.length);
+    const fullName = splitFullName(qs('[data-add-full-name]', form)?.value);
 
     return selectedRooms.map((room, index) => ({
       booking_group_id: bookingGroupId,
       room_id: room.id,
-      guest_first_name: qs('[data-add-first-name]', form)?.value?.trim() || 'Client',
-      guest_last_name: qs('[data-add-last-name]', form)?.value?.trim() || 'CRM',
+      guest_first_name: fullName.firstName || 'Client',
+      guest_last_name: fullName.lastName,
       guest_phone: qs('[data-add-phone]', form)?.value?.trim() || '',
       guest_email: qs('[data-add-email]', form)?.value?.trim() || 'rezervari@ecovila.md',
       check_in: qs('[data-add-check-in]', form)?.value,
@@ -684,10 +696,13 @@
     searchForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       try {
+        const roomNumbers = readNumberList(qs('[data-search-room]', searchForm)?.value);
+        const roomIds = selectedRoomsFromNumbers(state.rooms || [], roomNumbers).map((room) => room.id);
         const results = await helpers.searchReservations(context.client, {
           date: qs('[data-search-date]', searchForm)?.value,
           name: qs('[data-search-name]', searchForm)?.value?.trim(),
           phone: qs('[data-search-phone]', searchForm)?.value?.trim(),
+          roomIds,
         });
         renderSearchResults(qs('[data-search-results]'), results, state.openReservation);
       } catch (error) {

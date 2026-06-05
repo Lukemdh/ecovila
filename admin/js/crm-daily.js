@@ -130,22 +130,37 @@
     ].filter(Boolean).join(' ');
   }
 
+  function stripTrunkZero(digits) {
+    return digits.startsWith('0') ? digits.slice(1) : digits;
+  }
+
+  function dailyTokenMatches(token, normalizedText, textDigits) {
+    if (normalizedText.includes(token)) {
+      return true;
+    }
+    const tokenDigits = digitsOnly(token);
+    if (!tokenDigits) {
+      return false;
+    }
+    return textDigits.includes(tokenDigits) || textDigits.includes(stripTrunkZero(tokenDigits));
+  }
+
   function dailyReservationMatchesSearch(reservation, query) {
     const normalizedQuery = normalizeSearchText(query);
-    const queryDigits = digitsOnly(query);
     if (!normalizedQuery) {
       return true;
     }
 
-    const searchText = dailyReservationSearchText(reservation);
     if (isShortNumericQuery(query)) {
-      return String(dailyReservationRoomNumber(reservation)).startsWith(queryDigits);
+      return String(dailyReservationRoomNumber(reservation)).startsWith(digitsOnly(query));
     }
 
-    return (
-      normalizeSearchText(searchText).includes(normalizedQuery) ||
-      Boolean(queryDigits && digitsOnly(searchText).includes(queryDigits))
-    );
+    const searchText = dailyReservationSearchText(reservation);
+    const normalizedText = normalizeSearchText(searchText);
+    const textDigits = digitsOnly(searchText);
+    const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+
+    return tokens.every((token) => dailyTokenMatches(token, normalizedText, textDigits));
   }
 
   function filterDailyReservations(reservations, query) {

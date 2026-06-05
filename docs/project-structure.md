@@ -79,7 +79,7 @@ ecovila/
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260603)
+│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260604)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
 │       ├── _shared/            # cors, env, http, maib, notifications, providers, reminders,
@@ -181,3 +181,10 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
 - The raw former hosting backup is local-only and ignored (`docs/old php/`,
   `Archive.zip`) because it contains retired credentials and cPanel/mail/SSL artifacts.
   Use `docs/old-content-inventory.md` for committed old-content context.
+- The 2026-06-04 CRM search pass merged the staff add-reservation name into one
+  `Nume/Prenume` field (split into first/last on insert) and reworked reservation
+  search: tokenized + order-independent name matching, leading-zero phone
+  normalization, and room-number search in the sidebar; the daily tab uses the same
+  matching logic client-side. Accent-insensitive sidebar name search is backed by the
+  `20260604120000` migration's `search_reservation_ids` RPC (SECURITY INVOKER, staff
+  RLS applies, returns ids only).
