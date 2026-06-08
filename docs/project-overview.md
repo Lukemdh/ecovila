@@ -48,10 +48,12 @@ The product has two surfaces:
 - **Legal** (`politica-confidentialitate.html`, `termeni-conditii.html`): Moldova
   privacy/consumer content, Romanian-only body copy.
 - **CRM** (`admin/dashboard.html`): tabbed dashboard — `dashboard` (reservation
-  calendar + pending cash + add/search sidebar), `finance` (revenue reporting, with a
-  one-day `Încasări` view that also lists villas booked/created that day), `daily`
-  (reception), `towels`, `photos` (draft/publish to the public galleries), `pricing`
-  (tiers + holidays with effective dates).
+  calendar + pending cash + add/search sidebar, double-confirm reservation deletion,
+  MAIB refund-first cancellation for paid card groups, and scroll-preserving rolling
+  month navigation), `finance` (revenue reporting, with a one-day `Încasări` view that
+  also lists villas booked/created that day), `daily` (reception), `towels`, `photos`
+  (draft/publish to the public galleries), `pricing` (tiers + holidays with effective
+  dates).
 
 ## Domain concepts / glossary
 

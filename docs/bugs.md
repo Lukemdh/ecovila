@@ -27,6 +27,8 @@ High / Medium / Low.
 | B-18 | Confirmation page shows wrong payment panel + unused cash timer | Medium | Fixed |
 | B-19 | Confirmation page has a large gap between confirmed and manage panels | Low | Fixed |
 | B-20 | Booking card showed "De la" prefix on the exact-dates stay total | Low | Fixed |
+| B-21 | Finance one-day calendar Apply did nothing | Medium | Fixed |
+| B-22 | CRM delete used typed `sterge` and reset calendar position | Medium | Fixed |
 
 ---
 
@@ -363,6 +365,26 @@ High / Medium / Low.
 - **Verification:** RED/GREEN CRM regression simulates `Încasări` mode, selecting
   2026-06-06, pressing `Aplică`, and confirms both Finance metrics and booked-villa rows
   load for `2026-06-06` → `2026-06-07`.
+
+### B-22 — CRM delete used typed `sterge` and reset calendar position (Medium) — Fixed 2026-06-08
+- **Description:** dashboard reservation deletion still required staff to type
+  `sterge`, and the dashboard reload after deletion scrolled the calendar back to the
+  month start/current focus instead of keeping the staff member's horizontal position.
+  The visible month/year label also reflected the configured month rather than the month
+  currently reached by horizontal scrolling.
+- **Fix:** the reservation dialog now uses two Romanian native confirmations
+  (`Sigur vrei să ștergi această rezervare?` then
+  `Ești absolut sigur că vrei să ștergi această rezervare?`). Paid card/MAIB bookings
+  still call the Diana-only `maib-refund` helper before cancelling the booking group.
+  The dashboard calendar now renders a rolling previous/current/next month window,
+  extends that window when staff scroll near either edge, derives the month/year label
+  from the visible scroll position, and restores the scroll offset after reloads such
+  as deletion.
+- **Verification:** RED/GREEN CRM regressions cover the two confirmation prompts, second
+  confirmation cancellation, MAIB refund-before-group-cancel ordering, buffered calendar
+  dates, visible-month label calculation, and scroll restoration. Full `npm test`
+  passed 200 Node + 41 Deno tests; `deno check`, `deno lint`, static stale-hook grep,
+  and a localhost browser auth-gate smoke also passed.
 
 ---
 

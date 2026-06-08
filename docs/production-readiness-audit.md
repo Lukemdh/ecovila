@@ -23,6 +23,7 @@ accepted before public launch:
 | Security hardening | Blocked | S-9 and S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
 | CRM daily operations | Green | B-14 fixed: daily lists show only paid, non-cancelled reservations |
+| CRM deletion/calendar operations | Green | B-22 fixed: double confirmation, MAIB refund-before-cancel coverage, and scroll-preserving rolling calendar |
 | Production content/assets | Partly ready | Root homepage is now live content; placeholder SVG photos remain fallback public imagery |
 | Privacy/compliance | Blocked | S-12: SMS provider URL-query PII remains open and out of scope for SEO/tracking work |
 | Dependency audit | Incomplete | `npm audit` cannot run without a lockfile; Deno dependency is slightly behind latest |
@@ -48,6 +49,29 @@ cd supabase/functions && deno outdated
 npm audit --omit=dev --audit-level=moderate
 # failed with ENOLOCK because the repo intentionally has no npm lockfile
 ```
+
+2026-06-08 off-plan admin delete/calendar scan:
+
+```sh
+node --test tests/admin-crm.test.mjs
+# 52 CRM tests passed
+
+npm test
+# 200 Node tests + 41 Deno tests passed
+
+cd supabase/functions && deno check $(find . -name '*.ts' -not -path './tests/*')
+# exit 0
+
+cd supabase/functions && deno lint
+# Checked 33 files
+
+rg -n "data-delete-confirm|Tastează sterge|tastează sterge|confirm\s*!=\s*'sterge'|sterge pentru" admin tests js css
+# no stale app hooks; only the negative regression assertion references data-delete-confirm
+```
+
+Browser smoke: served the static repo on `localhost:8080`; opening
+`/admin/dashboard.html` redirected to `/admin/index.html` and showed the CRM login,
+confirming the protected admin route still gates unauthenticated local access.
 
 Additional manual/static checks:
 

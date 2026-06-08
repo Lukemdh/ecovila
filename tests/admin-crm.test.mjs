@@ -653,11 +653,15 @@ describe('EcoVila Step 9 CRM', () => {
       'Trimite SMS confirmare',
       'Șterge rezervarea',
       'schimba',
-      'sterge',
     ]) {
       assert.match(`${dashboard}\n${dashboardJs}\n${sidebarJs}`, new RegExp(label, 'i'));
     }
 
+    assert.doesNotMatch(dashboard, /data-delete-confirm/);
+    assert.doesNotMatch(dashboard, /tastează\s+sterge/i);
+    assert.doesNotMatch(dashboardJs, /confirm\s*!==\s*'sterge'/);
+    assert.match(dashboardJs, /Sigur vrei să ștergi această rezervare\?/);
+    assert.match(dashboardJs, /Ești absolut sigur că vrei să ștergi această rezervare\?/);
     assert.match(dashboardJs, /room_explicitly_selected/i);
     assert.match(dashboardJs, /confirmReservationPayment/i);
     assert.match(
@@ -688,6 +692,170 @@ describe('EcoVila Step 9 CRM', () => {
       /payment_status:\s*'cancelled'[\s\S]*updateReservationGroup/s,
       'CRM cancellation should cancel the full booking group after any required refund',
     );
+  });
+
+  it('asks for two Romanian confirmations and refunds paid MAIB bookings before CRM deletion', async () => {
+    const elements = new Map();
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.close = () => {};
+    const fields = {
+      '[data-edit-check-in]': createFakeElement('input'),
+      '[data-edit-check-out]': createFakeElement('input'),
+      '[data-edit-adults]': createFakeElement('input'),
+      '[data-edit-kids-ages]': createFakeElement('input'),
+      '[data-edit-name]': createFakeElement('input'),
+      '[data-edit-phone]': createFakeElement('input'),
+      '[data-edit-notes]': createFakeElement('textarea'),
+      '[data-edit-payment]': createFakeElement('p'),
+      '[data-edit-total]': createFakeElement('strong'),
+      '[data-send-payment-confirmation]': createFakeElement('button'),
+      '[data-delete-reservation]': createFakeElement('button'),
+    };
+    dialog.querySelector = (selector) => fields[selector] || null;
+    elements.set('[data-reservation-dialog]', dialog);
+    let confirmCalls = [];
+    const operations = [];
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      confirm(message) {
+        confirmCalls.push(message);
+        return true;
+      },
+      document: {
+        createElement: createFakeElement,
+        querySelector(selector) {
+          return elements.get(selector) || null;
+        },
+        querySelectorAll() {
+          return [];
+        },
+        addEventListener() {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: { formatMDL: (amount) => `${amount} MDL` },
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        async refundMaibPaymentRequest(_client, payload) {
+          operations.push(['refund', payload]);
+          return { refunded: true };
+        },
+        async updateReservationGroup(_client, groupId, payload) {
+          operations.push(['cancel-group', groupId, payload.payment_status]);
+          return {};
+        },
+        async updateReservation() {
+          operations.push(['cancel-single']);
+          return {};
+        },
+      },
+    });
+    const context = { client: {}, setAlert() {} };
+    EcoVilaCrmDashboard.initStateForTests({
+      context,
+      reload: async () => {
+        operations.push(['reload']);
+      },
+    });
+
+    EcoVilaCrmDashboard.openReservation({
+      id: 'reservation-paid-card',
+      booking_group_id: 'group-paid-card',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      adults: 2,
+      kids_ages: [],
+      guest_first_name: 'Ana',
+      guest_last_name: 'Lungu',
+      guest_phone: '+37368983660',
+      notes: '',
+      payment_type: 'card',
+      payment_status: 'paid',
+      total_price: 4200,
+    });
+
+    await fields['[data-delete-reservation]'].onclick();
+
+    assert.deepEqual(confirmCalls, [
+      'Sigur vrei să ștergi această rezervare?',
+      'Ești absolut sigur că vrei să ștergi această rezervare?',
+    ]);
+    assert.equal(operations[0][0], 'refund');
+    assert.equal(operations[0][1].bookingGroupId, 'group-paid-card');
+    assert.equal(operations[0][1].reason, 'crm_cancellation');
+    assert.deepEqual(operations.slice(1).map((item) => item[0]), ['cancel-group', 'reload']);
+  });
+
+  it('stops CRM deletion when the second confirmation is declined', async () => {
+    const deleteButton = createFakeElement('button');
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.querySelector = (selector) => ({
+      '[data-edit-check-in]': createFakeElement('input'),
+      '[data-edit-check-out]': createFakeElement('input'),
+      '[data-edit-adults]': createFakeElement('input'),
+      '[data-edit-kids-ages]': createFakeElement('input'),
+      '[data-edit-name]': createFakeElement('input'),
+      '[data-edit-phone]': createFakeElement('input'),
+      '[data-edit-notes]': createFakeElement('textarea'),
+      '[data-edit-payment]': createFakeElement('p'),
+      '[data-edit-total]': createFakeElement('strong'),
+      '[data-send-payment-confirmation]': createFakeElement('button'),
+      '[data-delete-reservation]': deleteButton,
+    })[selector] || null;
+    const calls = [];
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      confirm(message) {
+        calls.push(message);
+        return calls.length === 1;
+      },
+      document: {
+        createElement: createFakeElement,
+        querySelector(selector) {
+          return selector === '[data-reservation-dialog]' ? dialog : null;
+        },
+        querySelectorAll() {
+          return [];
+        },
+        addEventListener() {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: { formatMDL: (amount) => `${amount} MDL` },
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        async refundMaibPaymentRequest() {
+          throw new Error('refund should not run');
+        },
+        async updateReservationGroup() {
+          throw new Error('cancel should not run');
+        },
+        async updateReservation() {
+          throw new Error('cancel should not run');
+        },
+      },
+    });
+    EcoVilaCrmDashboard.initStateForTests({ context: { client: {}, setAlert() {} }, reload: async () => {} });
+
+    EcoVilaCrmDashboard.openReservation({
+      id: 'reservation-declined',
+      booking_group_id: 'group-declined',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      adults: 2,
+      kids_ages: [],
+      guest_first_name: 'Ana',
+      guest_last_name: 'Lungu',
+      guest_phone: '+37368983660',
+      notes: '',
+      payment_type: 'card',
+      payment_status: 'paid',
+      total_price: 4200,
+    });
+
+    await deleteButton.onclick();
+
+    assert.equal(calls.length, 2);
   });
 
   it('renders the staff add form with age buckets, a range calendar, and no payment selector', () => {
@@ -959,6 +1127,61 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboardJs, /scrollCalendarToDate/i);
     assert.match(css, /crm-dashboard-stats/i);
     assert.match(css, /is-sidebar-collapsed/i);
+  });
+
+  it('renders a buffered calendar window so the dashboard can keep scrolling into adjacent months', () => {
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: { querySelector() { return null; } },
+      EcoVilaCrmCalendar: loadAdminModule('admin/js/crm-calendar.js').EcoVilaCrmCalendar,
+    });
+
+    const dates = EcoVilaCrmDashboard.buildCalendarWindowDates('2026-06-15');
+
+    assert.equal(dates[0], '2026-05-01');
+    assert.equal(dates.at(-1), '2026-07-31');
+    assert.ok(dates.includes('2026-06-01'));
+    assert.ok(dates.includes('2026-07-01'));
+  });
+
+  it('derives the calendar month label from horizontal scroll position', () => {
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: { querySelector() { return null; } },
+      EcoVilaCrmCalendar,
+    });
+    const dates = EcoVilaCrmDashboard.buildCalendarWindowDates('2026-06-15');
+    const columnWidth = 136;
+    const firstJulyIndex = dates.indexOf('2026-07-01');
+
+    const label = EcoVilaCrmDashboard.calendarMonthLabelForScroll({
+      dates,
+      scrollLeft: firstJulyIndex * columnWidth,
+      columnWidth,
+    });
+
+    assert.equal(label, 'Iulie 2026');
+  });
+
+  it('preserves the dashboard calendar scroll offset when data reloads after deletion', () => {
+    const calendarElement = { scrollLeft: 1840, clientWidth: 900, scrollWidth: 5000 };
+    const documentRef = {
+      querySelector(selector) {
+        return selector === '[data-reservation-calendar]' ? calendarElement : null;
+      },
+    };
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: documentRef,
+      requestAnimationFrame(callback) {
+        callback();
+      },
+    });
+    const state = {};
+
+    EcoVilaCrmDashboard.captureCalendarScroll(state);
+    calendarElement.scrollLeft = 0;
+    EcoVilaCrmDashboard.restoreCalendarScroll(state);
+
+    assert.equal(calendarElement.scrollLeft, 1840);
   });
 
   it('keeps calendar room rows numeric-only and omits room labels inside reservation blocks', () => {

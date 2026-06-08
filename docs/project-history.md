@@ -276,3 +276,17 @@ sessions append to the running log at the bottom.
   that selected date. Added a click-path CRM regression test for the paid one-day flow.
   Also ran a repo-wide button/data-selector scan: static buttons all had handlers or
   native form/dialog behavior; scanner misses were dynamic controls wired at render time.
+- 2026-06-08 — OFF-PLAN CRM delete confirmation and rolling calendar fix (no plan step
+  advanced). Replaced the dashboard reservation delete typed-word gate (`sterge`) with
+  two Romanian native confirmations. Kept paid card/MAIB CRM cancellation on the
+  staff-only refund-first path before cancelling the booking group. Reworked the
+  dashboard calendar to render a previous/current/next-month rolling window, extend that
+  window near either horizontal scroll edge, update the month/year label from the visible
+  scroll position, and restore horizontal scroll after reloads such as deletion. Added
+  RED/GREEN CRM regression coverage for double confirmation, MAIB refund-before-cancel,
+  second-confirmation abort, buffered calendar dates, visible-month labeling, and scroll
+  restoration. Updated project-overview, project-structure, production-readiness, bugs,
+  history, and plan; reviewed README, security, decisions, and conventions with no
+  changes needed. Verified focused CRM tests, full `npm test` (200 Node + 41 Deno),
+  `deno check`, `deno lint`, stale-hook grep, and localhost admin auth-gate browser
+  smoke.

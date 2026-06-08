@@ -763,3 +763,17 @@ Statuses: TODO | IN PROGRESS | DONE.
 - **2026-06-03 — OFF-PLAN footer payment logos.** Added maib/Mastercard/Visa logos on white chips under the footer tagline across all 10 public footers and shortened `footer.tagline` to drop ", Moldova." (ro/ru/en). New `.site-footer__payments` CSS; committed `assets/{maib,mastercard,visa}.png`. EcoVila footer logo unchanged. No plan step status changed. Verified 188 Node + 41 Deno tests and a live footer preview.
 - **2026-06-08 — OFF-PLAN Finance one-day booked-villas detail.** Added a narrow Finance detail that appears only when exactly one day is selected and mode is `Încasări`: revenue cards continue to use `paid_at`, while the new section lists non-cancelled villas whose reservation rows were created (`created_at`) on the selected day, with room number/type, adults/kids, nights, stay dates, total, booked timestamp, and payment state. Added `fetchFinanceBookedReservations`, Finance normalization/rendering, CRM markup/CSS, and RED/GREEN Node coverage. No plan step status changed. Reviewed README, production-readiness, security, bugs, decisions, and conventions with no changes needed; updated project-overview, project-structure, project-history, this plan, and the historical Finance spec/plan notes. Verified focused CRM tests, full `npm test` (194 Node + 41 Deno), `git diff --check`, and a localhost browser preview.
 - **2026-06-08 — OFF-PLAN Finance calendar Apply button fix.** Fixed B-21 after scanning CRM/public button hooks: the Finance range calendar now treats a single clicked day as a one-day range when `Aplică` is pressed, so one-day `Încasări` loads both metrics and booked-villa rows for that date. Added RED/GREEN click-path coverage for selecting 2026-06-06 in paid mode. Static button scan found no other HTML buttons missing JS hooks; reported selector misses were dynamic controls wired after rendering. No plan step status changed.
+- **2026-06-08 — OFF-PLAN CRM delete confirmation and rolling calendar fix.** Replaced
+  the dashboard reservation delete typed-word gate (`sterge`) with two Romanian native
+  confirmations, kept paid card/MAIB deletion on the staff-only refund-before-cancel
+  path, preserved horizontal calendar scroll after reloads, and made the dashboard
+  calendar render a rolling previous/current/next-month window that extends near either
+  scroll edge while the month/year label follows the visible month. Added RED/GREEN CRM
+  coverage for confirmations, second-confirmation abort, refund-before-group-cancel
+  ordering, buffered dates, visible-month labeling, and scroll restoration. No plan step
+  status changed; CURRENT STEP remains Step 17. Updated project-overview,
+  project-structure, project-history, production-readiness-audit, bugs, and this plan;
+  checked README, security, decisions, and conventions with no changes needed. Verified
+  `node --test tests/admin-crm.test.mjs`, `npm test` (200 Node + 41 Deno),
+  `deno check`, `deno lint`, stale-hook grep, and a localhost admin auth-gate browser
+  smoke.

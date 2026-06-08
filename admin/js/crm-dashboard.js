@@ -5,6 +5,12 @@
   'use strict';
 
   const ADD_RESERVATION_LOOKAHEAD_DAYS = 365;
+  const CALENDAR_BUFFER_MONTHS = 1;
+  const CALENDAR_EDGE_DAYS = 7;
+  const DELETE_CONFIRMATIONS = [
+    'Sigur vrei să ștergi această rezervare?',
+    'Ești absolut sigur că vrei să ștergi această rezervare?',
+  ];
   const PAYMENT_LABELS = {
     office: 'din oficiu',
     cash: 'cash',
@@ -63,6 +69,86 @@
       year: 'numeric',
     }).format(new Date(`${root.EcoVilaCrmCalendar.startOfMonth(date)}T00:00:00Z`));
     return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  }
+
+  function calendarColumnWidth() {
+    const rootStyles = root.getComputedStyle?.(root.document.documentElement);
+    return Number.parseFloat(rootStyles?.getPropertyValue('--crm-day-column-width')) || 136;
+  }
+
+  function buildCalendarWindowDates(focusDate) {
+    const focusMonth = root.EcoVilaCrmCalendar.startOfMonth(focusDate);
+    const startMonth = root.EcoVilaCrmCalendar.addMonths(focusMonth, -CALENDAR_BUFFER_MONTHS);
+    const endMonth = root.EcoVilaCrmCalendar.addMonths(focusMonth, CALENDAR_BUFFER_MONTHS + 1);
+    const dates = [];
+    let cursor = startMonth;
+    while (cursor < endMonth) {
+      dates.push(cursor);
+      cursor = root.EcoVilaCrmCalendar.addDays(cursor, 1);
+    }
+    return dates;
+  }
+
+  function calendarMonthLabelForScroll(options) {
+    const dates = options?.dates || [];
+    if (!dates.length) {
+      return '';
+    }
+
+    const columnWidth = Number(options?.columnWidth) || calendarColumnWidth();
+    const scrollLeft = Math.max(0, Number(options?.scrollLeft) || 0);
+    const index = Math.max(0, Math.min(dates.length - 1, Math.floor(scrollLeft / columnWidth)));
+    return formatMonthLabel(dates[index]);
+  }
+
+  function visibleCalendarDate(state) {
+    const dates = state?.dates || [];
+    if (!dates.length) {
+      return state?.focusDate || root.EcoVilaCrmCalendar.todayISO();
+    }
+
+    const calendar = qs('[data-reservation-calendar]');
+    const index = Math.max(0, Math.min(dates.length - 1, Math.floor((calendar?.scrollLeft || 0) / calendarColumnWidth())));
+    return dates[index] || state.focusDate || dates[0];
+  }
+
+  function updateCalendarMonthFromScroll(state) {
+    const calendar = qs('[data-reservation-calendar]');
+    const label = calendarMonthLabelForScroll({
+      dates: state?.dates || [],
+      scrollLeft: calendar?.scrollLeft || 0,
+      columnWidth: calendarColumnWidth(),
+    });
+    if (label) {
+      setText('[data-calendar-range]', label);
+      state.currentVisibleDate = visibleCalendarDate(state);
+    }
+  }
+
+  function captureCalendarScroll(state) {
+    const calendar = qs('[data-reservation-calendar]');
+    if (calendar && state) {
+      state.calendarScrollLeft = calendar.scrollLeft || 0;
+    }
+  }
+
+  function restoreCalendarScroll(state) {
+    const calendar = qs('[data-reservation-calendar]');
+    if (!calendar || !state || !Number.isFinite(state.calendarScrollLeft)) {
+      updateCalendarMonthFromScroll(state);
+      return;
+    }
+
+    const restore = () => {
+      calendar.scrollLeft = Math.max(0, state.calendarScrollLeft);
+      updateCalendarMonthFromScroll(state);
+    };
+
+    if (typeof root.requestAnimationFrame === 'function') {
+      root.requestAnimationFrame(restore);
+    } else {
+      restore();
+    }
   }
 
   function formatCountdown(expiresAt) {
@@ -230,7 +316,7 @@
         grid.appendChild(reservationCard(block));
       });
 
-    setText('[data-calendar-range]', formatMonthLabel(state.startDate));
+    updateCalendarMonthFromScroll(state);
     const jump = qs('[data-calendar-jump-date]');
     if (jump) {
       jump.value = state.focusDate || today;
@@ -307,9 +393,9 @@
   }
 
   async function deleteReservation(reservation) {
-    const confirm = qs('[data-delete-confirm]')?.value?.trim();
-    if (confirm !== 'sterge') {
-      activeState?.context?.setAlert('Tastează sterge pentru ștergere.');
+    const confirmed = DELETE_CONFIRMATIONS.every((message) => root.confirm?.(message));
+    if (!confirmed) {
+      activeState?.context?.setAlert('');
       return;
     }
 
@@ -422,42 +508,74 @@
       return;
     }
 
-    const rootStyles = root.getComputedStyle?.(root.document.documentElement);
-    const columnWidth = Number.parseFloat(rootStyles?.getPropertyValue('--crm-day-column-width')) || 240;
-    calendar.scrollLeft = Math.max(0, index * columnWidth);
+    calendar.scrollLeft = Math.max(0, index * calendarColumnWidth());
+    updateCalendarMonthFromScroll(state);
+  }
+
+  function maybeExtendCalendarWindow(context, state) {
+    const calendar = qs('[data-reservation-calendar]');
+    if (!calendar || state.isLoading) {
+      return;
+    }
+
+    const threshold = calendarColumnWidth() * CALENDAR_EDGE_DAYS;
+    const nearLeft = calendar.scrollLeft <= threshold;
+    const nearRight = calendar.scrollLeft + calendar.clientWidth >= calendar.scrollWidth - threshold;
+    if (!nearLeft && !nearRight) {
+      return;
+    }
+
+    const anchorDate = visibleCalendarDate(state);
+    state.focusDate = root.EcoVilaCrmCalendar.addMonths(anchorDate, nearLeft ? -1 : 1);
+    state.scrollToDateAfterReload = anchorDate;
+    state.reload().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
   }
 
   async function loadDashboard(context, state) {
     const helpers = root.EcoVilaSupabase;
-    state.today = root.EcoVilaCrmCalendar.todayISO();
-    state.startDate = root.EcoVilaCrmCalendar.startOfMonth(state.startDate);
-    state.dates = root.EcoVilaCrmCalendar.enumerateMonthDates(state.startDate);
-    const endDate = root.EcoVilaCrmCalendar.addDays(state.dates[state.dates.length - 1], 1);
-    const todayWindowStart = root.EcoVilaCrmCalendar.addDays(state.today, -1);
-    const todayWindowEnd = root.EcoVilaCrmCalendar.addDays(state.today, 1);
-    const addAvailabilityStart = state.today;
-    const addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(addAvailabilityStart, ADD_RESERVATION_LOOKAHEAD_DAYS);
-    const [rooms, reservations, pending, todayReservations, pricingTiers, holidays, addReservations] = await Promise.all([
-      helpers.fetchRooms(context.client),
-      helpers.fetchAdminReservations(context.client, { startDate: state.startDate, endDate }),
-      helpers.fetchPendingCashReservations(context.client),
-      helpers.fetchAdminReservations(context.client, { startDate: todayWindowStart, endDate: todayWindowEnd }),
-      helpers.fetchPricingTiers(context.client),
-      helpers.fetchHolidays(context.client),
-      helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
-    ]);
-    state.rooms = rooms;
-    state.reservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
-    state.todayReservations = root.EcoVilaCrmCalendar.sortReservations(todayReservations);
-    state.pricingTiers = pricingTiers;
-    state.holidays = holidays;
-    state.addReservations = root.EcoVilaCrmCalendar.sortReservations(addReservations);
-    state.addAvailabilityEnd = addAvailabilityEnd;
-    renderCalendar(context, state);
-    renderPendingCash(context, pending);
-    renderTodayStats(state);
-    state.refreshAddReservationForm?.();
-    scrollCalendarToDate(state, state.focusDate || state.today);
+    captureCalendarScroll(state);
+    state.isLoading = true;
+    try {
+      state.today = root.EcoVilaCrmCalendar.todayISO();
+      state.focusDate = state.focusDate || state.today;
+      state.startDate = root.EcoVilaCrmCalendar.startOfMonth(state.focusDate);
+      state.dates = buildCalendarWindowDates(state.focusDate);
+      const endDate = root.EcoVilaCrmCalendar.addDays(state.dates[state.dates.length - 1], 1);
+      const todayWindowStart = root.EcoVilaCrmCalendar.addDays(state.today, -1);
+      const todayWindowEnd = root.EcoVilaCrmCalendar.addDays(state.today, 1);
+      const addAvailabilityStart = state.today;
+      const addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(addAvailabilityStart, ADD_RESERVATION_LOOKAHEAD_DAYS);
+      const [rooms, reservations, pending, todayReservations, pricingTiers, holidays, addReservations] = await Promise.all([
+        helpers.fetchRooms(context.client),
+        helpers.fetchAdminReservations(context.client, { startDate: state.dates[0], endDate }),
+        helpers.fetchPendingCashReservations(context.client),
+        helpers.fetchAdminReservations(context.client, { startDate: todayWindowStart, endDate: todayWindowEnd }),
+        helpers.fetchPricingTiers(context.client),
+        helpers.fetchHolidays(context.client),
+        helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
+      ]);
+      state.rooms = rooms;
+      state.reservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
+      state.todayReservations = root.EcoVilaCrmCalendar.sortReservations(todayReservations);
+      state.pricingTiers = pricingTiers;
+      state.holidays = holidays;
+      state.addReservations = root.EcoVilaCrmCalendar.sortReservations(addReservations);
+      state.addAvailabilityEnd = addAvailabilityEnd;
+      renderCalendar(context, state);
+      renderPendingCash(context, pending);
+      renderTodayStats(state);
+      state.refreshAddReservationForm?.();
+      const scrollTarget = state.scrollToDateAfterReload || (state.shouldScrollToFocus ? state.focusDate : '');
+      if (scrollTarget) {
+        scrollCalendarToDate(state, scrollTarget);
+      } else {
+        restoreCalendarScroll(state);
+      }
+    } finally {
+      state.scrollToDateAfterReload = '';
+      state.shouldScrollToFocus = false;
+      state.isLoading = false;
+    }
   }
 
   function init(context) {
@@ -467,7 +585,12 @@
       today,
       startDate: root.EcoVilaCrmCalendar.startOfMonth(today),
       focusDate: today,
-      dates: root.EcoVilaCrmCalendar.enumerateMonthDates(today),
+      dates: buildCalendarWindowDates(today),
+      shouldScrollToFocus: true,
+      scrollToDateAfterReload: '',
+      calendarScrollLeft: 0,
+      currentVisibleDate: today,
+      isLoading: false,
       rooms: [],
       reservations: [],
       todayReservations: [],
@@ -482,19 +605,20 @@
 
     qs('[data-refresh-pending]')?.addEventListener('click', state.reload);
     qs('[data-calendar-prev]')?.addEventListener('click', () => {
-      state.startDate = root.EcoVilaCrmCalendar.addMonths(state.startDate, -1);
-      state.focusDate = state.startDate;
+      state.focusDate = root.EcoVilaCrmCalendar.addMonths(visibleCalendarDate(state), -1);
+      state.shouldScrollToFocus = true;
       state.reload();
     });
     qs('[data-calendar-next]')?.addEventListener('click', () => {
-      state.startDate = root.EcoVilaCrmCalendar.addMonths(state.startDate, 1);
-      state.focusDate = state.startDate;
+      state.focusDate = root.EcoVilaCrmCalendar.addMonths(visibleCalendarDate(state), 1);
+      state.shouldScrollToFocus = true;
       state.reload();
     });
     qs('[data-calendar-today]')?.addEventListener('click', () => {
       state.today = root.EcoVilaCrmCalendar.todayISO();
       state.startDate = root.EcoVilaCrmCalendar.startOfMonth(state.today);
       state.focusDate = state.today;
+      state.shouldScrollToFocus = true;
       state.reload();
     });
     qs('[data-calendar-jump-date]')?.addEventListener('change', (event) => {
@@ -504,9 +628,14 @@
       }
       state.startDate = root.EcoVilaCrmCalendar.startOfMonth(targetDate);
       state.focusDate = targetDate;
+      state.shouldScrollToFocus = true;
       state.reload();
     });
     qs('[data-show-cancelled]')?.addEventListener('change', () => renderCalendar(context, state));
+    qs('[data-reservation-calendar]')?.addEventListener('scroll', () => {
+      updateCalendarMonthFromScroll(state);
+      maybeExtendCalendarWindow(context, state);
+    }, { passive: true });
     qsa('[data-collapse-sidebar]').forEach((button) => {
       button.addEventListener('click', () => {
         const panel = qs('[data-panel="dashboard"]');
@@ -537,12 +666,19 @@
   }
 
   return {
+    buildCalendarWindowDates,
+    calendarMonthLabelForScroll,
+    captureCalendarScroll,
     init,
+    initStateForTests(state) {
+      activeState = state;
+    },
     markPaid,
     openReservation,
     renderCalendar,
     renderTodayStats,
     renderPendingCash,
+    restoreCalendarScroll,
     scrollCalendarToDate,
   };
 });
