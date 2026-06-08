@@ -4,6 +4,11 @@
 
 **Goal:** Build the owner-level CRM Finance tab with date-range reporting, night/revenue mode switching, `paid_at` payment recognition, and source/type performance metrics.
 
+> Follow-up 2026-06-08: the shipped Finance tab now has one extra narrow detail view.
+> When exactly one day is selected and mode is `Încasări`, it also lists villas whose
+> reservation rows were created (`created_at`) on that day, without changing the
+> `paid_at` collections totals.
+
 **Architecture:** Add a focused `admin/js/crm-finance.js` module that computes first-version aggregates client-side from reservation rows fetched through `js/supabase.js`. Add a small `paid_at` migration and update the existing payment transition paths so reports can use actual payment recognition time. Keep UI inside the existing CRM shell and reuse the CRM range-calendar visual language without availability rules.
 
 **Tech Stack:** Vanilla HTML/CSS/JS, Node test runner, Supabase JS/PostgREST helpers, Supabase Edge Functions, SQL migrations.

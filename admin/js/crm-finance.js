@@ -70,6 +70,10 @@
     return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
   }
 
+  function isOneDayRange(rangeStart, rangeEnd) {
+    return daysBetween(rangeStart, rangeEnd) === 1;
+  }
+
   function todayISO() {
     return root.EcoVilaCrmCalendar?.todayISO?.() || new Date().toISOString().slice(0, 10);
   }
@@ -221,6 +225,31 @@
     return summary;
   }
 
+  function normalizeBookedDayRows(rows) {
+    return (rows || [])
+      .filter((reservation) => {
+        return reservation?.id && !isCancelled(reservation);
+      })
+      .map((reservation) => {
+        const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
+        return {
+          id: reservation.id,
+          roomNumber: Number(reservation.rooms?.number || reservation.room_number || 0),
+          roomType: reservation.rooms?.type || reservation.room_type || '',
+          checkIn: reservation.check_in || '',
+          checkOut: reservation.check_out || '',
+          nights: bookedNights(reservation),
+          adults: Number(reservation.adults || 0),
+          kids,
+          totalPrice: Number(reservation.total_price || 0),
+          paymentType: reservation.payment_type || '',
+          paymentStatus: reservation.payment_status || '',
+          createdAt: reservation.created_at || '',
+        };
+      })
+      .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
+  }
+
   function formatCalendarMonth(date) {
     const parsed = parseISODate(firstOfMonth(date));
     const formatted = new Intl.DateTimeFormat('ro-MD', {
@@ -254,6 +283,61 @@
     return context.formatMDL ? context.formatMDL(amount) : `${Number(amount || 0).toLocaleString('ro-MD')} MDL`;
   }
 
+  function formatCreatedAt(value) {
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) {
+      return '';
+    }
+
+    return new Intl.DateTimeFormat('ro-MD', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(parsed);
+  }
+
+  function formatStayDate(context, date) {
+    return date ? context.formatDate(date) : '--';
+  }
+
+  function roomTypeLabel(type) {
+    return ROOM_TYPE_LABELS[type] || 'Cazare';
+  }
+
+  function partyLabel(row) {
+    const adults = row.adults === 1 ? '1 adult' : `${row.adults} adulți`;
+    if (!row.kids) {
+      return adults;
+    }
+
+    return `${adults}, ${row.kids === 1 ? '1 copil' : `${row.kids} copii`}`;
+  }
+
+  function nightsLabel(row) {
+    if (row.nights === 1) {
+      return '1 noapte';
+    }
+
+    return `${row.nights} nopți`;
+  }
+
+  function paymentLabel(row) {
+    if (row.paymentStatus === 'paid') {
+      if (row.paymentType === 'office') {
+        return 'din oficiu';
+      }
+      return row.paymentType === 'cash' ? 'cash plătit' : 'online plătit';
+    }
+
+    if (row.paymentStatus === 'pending') {
+      return row.paymentType === 'cash' ? 'cash în așteptare' : 'în așteptare';
+    }
+
+    return row.paymentStatus || 'rezervare';
+  }
+
   function syncControls(context, state) {
     setText('[data-finance-range-label]', formatRangeLabel(context, state));
 
@@ -282,20 +366,88 @@
     });
   }
 
+  function renderBookedDayRows(context, state) {
+    const section = qs('[data-finance-booked-day]');
+    const list = qs('[data-finance-booked-list]');
+    const empty = qs('[data-finance-booked-empty]');
+    const count = qs('[data-finance-booked-count]');
+    if (!section || !list || !empty) {
+      return;
+    }
+
+    const visible = state.mode === MODE_PAID && isOneDayRange(state.rangeStart, state.rangeEnd);
+    section.hidden = !visible;
+    if (!visible) {
+      list.innerHTML = '';
+      if (count) {
+        count.textContent = '0';
+      }
+      return;
+    }
+
+    const rows = normalizeBookedDayRows(state.bookedDayRows);
+    if (count) {
+      count.textContent = String(rows.length);
+    }
+    empty.hidden = rows.length > 0;
+    list.innerHTML = '';
+
+    rows.forEach((row) => {
+      const card = root.document.createElement('article');
+      card.className = 'crm-finance-booked-card';
+
+      const title = root.document.createElement('strong');
+      title.textContent = row.roomNumber
+        ? `Vila #${row.roomNumber}`
+        : roomTypeLabel(row.roomType);
+
+      const meta = root.document.createElement('span');
+      meta.textContent = `${roomTypeLabel(row.roomType)} · ${partyLabel(row)} · ${nightsLabel(row)}`;
+
+      const stay = root.document.createElement('span');
+      stay.textContent = `${formatStayDate(context, row.checkIn)} - ${formatStayDate(context, row.checkOut)}`;
+
+      const total = root.document.createElement('span');
+      total.textContent = formatMDL(context, row.totalPrice);
+
+      const bookedAt = root.document.createElement('span');
+      bookedAt.textContent = `Rezervat: ${formatCreatedAt(row.createdAt)}`;
+
+      const status = root.document.createElement('span');
+      status.className = 'crm-finance-booked-status';
+      status.textContent = paymentLabel(row);
+
+      card.append(title, meta, stay, total, bookedAt, status);
+      list.appendChild(card);
+    });
+  }
+
   async function loadFinance(context, state) {
     syncControls(context, state);
-    const rows = await root.EcoVilaSupabase.fetchFinanceReservations(context.client, {
+    const financeOptions = {
       mode: state.mode,
       rangeStart: state.rangeStart,
       rangeEnd: state.rangeEnd,
-    });
+    };
+    const shouldLoadBookedDay = state.mode === MODE_PAID && isOneDayRange(state.rangeStart, state.rangeEnd);
+    const [rows, bookedDayRows] = await Promise.all([
+      root.EcoVilaSupabase.fetchFinanceReservations(context.client, financeOptions),
+      shouldLoadBookedDay
+        ? root.EcoVilaSupabase.fetchFinanceBookedReservations(context.client, {
+            rangeStart: state.rangeStart,
+            rangeEnd: state.rangeEnd,
+          })
+        : Promise.resolve([]),
+    ]);
     state.rows = rows || [];
+    state.bookedDayRows = bookedDayRows || [];
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
       mode: state.mode,
       rangeStart: state.rangeStart,
       rangeEnd: state.rangeEnd,
     }));
+    renderBookedDayRows(context, state);
   }
 
   function setRange(context, state, rangeStart, rangeEnd) {
@@ -398,6 +550,7 @@
       currentMonth: monthStart,
       calendarOpen: false,
       rows: [],
+      bookedDayRows: [],
     };
     activeFinance = { context, state };
 
@@ -471,6 +624,7 @@
     init,
     isClickInsideFinanceRangePicker,
     loadFinance,
+    normalizeBookedDayRows,
     showCurrentMonth,
     summarizeFinanceRows,
   };

@@ -7,6 +7,9 @@
   const LOGIN_PATH = 'index.html';
   const DASHBOARD_PATH = 'dashboard.html';
   const STAFF_USERNAME_DOMAIN = 'crm.ecovila.local';
+  const AUTH_COOKIE_PREFIX = 'ecovila_crm_auth_';
+  const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 90;
+  const AUTH_COOKIE_PATH = '/admin';
 
   function getHelpers() {
     return root.EcoVilaSupabase;
@@ -21,8 +24,71 @@
     element.hidden = !message;
   }
 
+  function cookieName(key) {
+    return `${AUTH_COOKIE_PREFIX}${encodeURIComponent(String(key || 'session'))}`;
+  }
+
+  function readCookie(documentRef, name) {
+    const prefix = `${name}=`;
+    const cookie = String(documentRef?.cookie || '')
+      .split(';')
+      .map((value) => value.trim())
+      .find((value) => value.startsWith(prefix));
+
+    if (!cookie) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(cookie.slice(prefix.length));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeCookie(documentRef, name, value) {
+    if (!documentRef) {
+      return;
+    }
+
+    documentRef.cookie = `${name}=${encodeURIComponent(value)}; Path=${AUTH_COOKIE_PATH}; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax`;
+  }
+
+  function removeCookie(documentRef, name) {
+    if (!documentRef) {
+      return;
+    }
+
+    documentRef.cookie = `${name}=; Path=${AUTH_COOKIE_PATH}; Max-Age=0; SameSite=Lax`;
+  }
+
+  function clearCrmAuthCookies(documentRef) {
+    String(documentRef?.cookie || '')
+      .split(';')
+      .map((value) => value.trim().split('=')[0])
+      .filter((name) => name.startsWith(AUTH_COOKIE_PREFIX))
+      .forEach((name) => removeCookie(documentRef, name));
+  }
+
+  function createCookieAuthStorage(documentRef) {
+    return {
+      getItem(key) {
+        return readCookie(documentRef, cookieName(key));
+      },
+      setItem(key, value) {
+        writeCookie(documentRef, cookieName(key), String(value || ''));
+      },
+      removeItem(key) {
+        removeCookie(documentRef, cookieName(key));
+      },
+    };
+  }
+
   async function getClient() {
-    return getHelpers().getSupabaseClient({ root });
+    return getHelpers().getSupabaseClient({
+      root,
+      authStorage: createCookieAuthStorage(root.document),
+    });
   }
 
   async function getSession(client) {
@@ -54,6 +120,7 @@
     const session = await getSession(client);
 
     if (!session) {
+      clearCrmAuthCookies(root.document);
       root.location.href = LOGIN_PATH;
       return null;
     }
@@ -61,6 +128,7 @@
     const role = getRole(session);
     if (!['diana', 'angela'].includes(role)) {
       await client.auth.signOut();
+      clearCrmAuthCookies(root.document);
       root.location.href = LOGIN_PATH;
       return null;
     }
@@ -119,6 +187,7 @@
 
   async function signOut(client) {
     await client.auth.signOut();
+    clearCrmAuthCookies(root.document);
     root.location.href = LOGIN_PATH;
   }
 
@@ -131,6 +200,7 @@
     getSession,
     initLogin,
     normalizeCrmLoginIdentifier,
+    createCookieAuthStorage,
     requireSession,
     signOut,
   };

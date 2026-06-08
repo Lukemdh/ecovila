@@ -1192,7 +1192,8 @@ h2 {
 
 .crm-finance-stat,
 .crm-finance-room-types,
-.crm-finance-room-card {
+.crm-finance-room-card,
+.crm-finance-booked-day {
   border: 1px solid var(--crm-line);
   border-radius: 8px;
   background: rgba(255, 253, 249, 0.88);
@@ -1259,6 +1260,81 @@ h2 {
   font-family: "Cormorant Garamond", Georgia, serif;
   font-size: 2rem;
   line-height: 1;
+}
+
+.crm-finance-booked-day {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+  padding: 24px;
+}
+
+.crm-finance-booked-day[hidden] {
+  display: none;
+}
+
+.crm-finance-booked-day__header {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.crm-finance-booked-day__header h2 {
+  font-size: 2rem;
+}
+
+.crm-finance-booked-day__header p {
+  color: var(--crm-muted);
+  margin-top: 6px;
+  max-width: 660px;
+}
+
+.crm-finance-booked-day__header > strong {
+  align-items: center;
+  background: rgba(96, 108, 56, 0.12);
+  border: 1px solid rgba(96, 108, 56, 0.24);
+  border-radius: 999px;
+  color: var(--crm-moss);
+  display: inline-flex;
+  font-size: 0.9rem;
+  justify-content: center;
+  min-width: 40px;
+  padding: 8px 12px;
+}
+
+.crm-finance-booked-list {
+  display: grid;
+  gap: 10px;
+}
+
+.crm-finance-booked-card {
+  align-items: center;
+  background: rgba(247, 244, 239, 0.72);
+  border: 1px solid rgba(68, 50, 38, 0.1);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(88px, 0.7fr) minmax(0, 1fr) minmax(104px, 0.8fr);
+  padding: 14px 16px;
+}
+
+.crm-finance-booked-card strong {
+  color: var(--crm-ink);
+  font-weight: 800;
+}
+
+.crm-finance-booked-card span {
+  color: var(--crm-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.crm-finance-booked-status {
+  justify-self: end;
+  text-align: right;
+  text-transform: uppercase;
 }
 
 .crm-panel[data-panel="daily"] .crm-daily-grid {

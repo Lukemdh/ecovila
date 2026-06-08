@@ -58,7 +58,13 @@ A reservation counts in full when its `paid_at` timestamp falls inside the selec
 
 ## Metrics
 
-The first Finance version shows summary metrics only. It does not include a booking-level table.
+The first Finance version showed summary metrics only.
+
+Follow-up note (2026-06-08): when the selected range is exactly one day and the active
+mode is `Încasări`, the Finance tab also shows a compact detail list of villas whose
+reservation rows were created (`created_at`) during that selected day. This list is
+separate from the `paid_at` collections totals, so the revenue cards still mean money
+recognized on the payment date.
 
 Primary metrics:
 
@@ -174,7 +180,7 @@ Add or extend tests for:
 - No salaries, utilities, supplier costs, or profit/loss accounting
 - No cash-expired or Maib-failed tracking
 - No MIA versus card split in the first version
-- No booking-level table in the first version
+- No general booking-level table for multi-day or `Nopți în perioadă` reports
 - No public website changes except where shared data helpers require tests
 
 ## Expected Outcome

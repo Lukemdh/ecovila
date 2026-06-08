@@ -57,14 +57,29 @@
     return { url, anonKey };
   }
 
-  function createSupabaseClient(config, library) {
+  function createClientOptions(options) {
+    const authOptions = {
+      ...CLIENT_OPTIONS.auth,
+    };
+
+    if (options?.authStorage) {
+      authOptions.storage = options.authStorage;
+    }
+
+    return {
+      ...CLIENT_OPTIONS,
+      auth: authOptions,
+    };
+  }
+
+  function createSupabaseClient(config, library, options) {
     const supabaseLibrary = library || defaultRoot.supabase;
 
     if (!supabaseLibrary?.createClient) {
       throw new Error('Supabase JS client is not loaded. Include @supabase/supabase-js before js/supabase.js.');
     }
 
-    return supabaseLibrary.createClient(config.url, config.anonKey, CLIENT_OPTIONS);
+    return supabaseLibrary.createClient(config.url, config.anonKey, createClientOptions(options));
   }
 
   function getSupabaseClient(options) {
@@ -75,7 +90,9 @@
     }
 
     const config = getSupabaseConfig({ root, document: options?.document });
-    root.__EcoVilaSupabaseClient = createSupabaseClient(config, options?.library || root.supabase);
+    root.__EcoVilaSupabaseClient = createSupabaseClient(config, options?.library || root.supabase, {
+      authStorage: options?.authStorage,
+    });
 
     return root.__EcoVilaSupabaseClient;
   }
@@ -367,6 +384,44 @@
     }
 
     return unwrapSupabaseResult(query);
+  }
+
+  function fetchFinanceBookedReservations(client, options) {
+    const rangeStart = options?.rangeStart;
+    const rangeEnd = options?.rangeEnd;
+    let query = client
+      .from('reservations')
+      .select(
+        [
+          'id',
+          'booking_group_id',
+          'room_id',
+          'guest_first_name',
+          'guest_last_name',
+          'check_in',
+          'check_out',
+          'adults',
+          'kids_ages',
+          'total_price',
+          'payment_type',
+          'payment_status',
+          'created_at',
+          'cancelled_at',
+          'rooms(id, number, type)',
+        ].join(', '),
+      )
+      .neq('payment_status', 'cancelled')
+      .is('cancelled_at', null);
+
+    if (rangeStart) {
+      query = query.gte('created_at', `${rangeStart}T00:00:00.000Z`);
+    }
+
+    if (rangeEnd) {
+      query = query.lt('created_at', `${rangeEnd}T00:00:00.000Z`);
+    }
+
+    return unwrapSupabaseResult(query.order('created_at', { ascending: true }));
   }
 
   function updateReservation(client, reservationId, values) {
@@ -755,6 +810,7 @@
     fetchAdminReservations,
     fetchCrmPhotos,
     fetchDailyStatuses,
+    fetchFinanceBookedReservations,
     fetchFinanceReservations,
     fetchHolidays,
     fetchPendingCashReservations,

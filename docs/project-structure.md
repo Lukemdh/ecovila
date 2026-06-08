@@ -124,7 +124,7 @@ ecovila/
 | `js/translations.js` | RO/RU/EN string tables consumed via `data-i18n`. |
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
-| `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, daily, towels, photos, pricing, auth). |
+| `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, daily, towels, photos, pricing, auth). The finance module owns revenue summaries plus the one-day `Încasări` booked-villas detail list. |
 | `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reminder scheduling (`reminders.ts`), reservation logic, admin client. |
 | `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
 | `supabase/migrations/` | DB schema evolution; apply in filename order. |

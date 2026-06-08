@@ -177,6 +177,10 @@ describe('EcoVila Step 9 CRM', () => {
       'data-finance-room-type="small"',
       'data-finance-room-type="large"',
       'data-finance-room-type="hotel"',
+      'data-finance-booked-day',
+      'data-finance-booked-count',
+      'data-finance-booked-list',
+      'data-finance-booked-empty',
       'js/crm-finance.js',
     ]) {
       assert.match(dashboard, new RegExp(hook), `${hook} should exist`);
@@ -185,6 +189,8 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(app, /EcoVilaCrmFinance\?\.init\?\.\(context\)/);
     assert.match(app, /EcoVilaCrmFinance\?\.showCurrentMonth\?\.\(\)/);
     assert.match(helpers, /function fetchFinanceReservations/);
+    assert.match(helpers, /function fetchFinanceBookedReservations/);
+    assert.match(helpers, /created_at/);
   });
 
   it('summarizes finance rows by overlapping nights and keeps din oficiu separate', () => {
@@ -318,6 +324,76 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.roomTypeTotals.hotel, 5000);
   });
 
+  it('normalizes one-day finance booked rows without cancelled reservations', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const rows = finance.normalizeBookedDayRows([
+      {
+        id: 'cancelled-created-day',
+        room_id: 'room-2',
+        check_in: '2026-06-28',
+        check_out: '2026-06-29',
+        adults: 2,
+        kids_ages: [],
+        total_price: 3200,
+        payment_type: 'cash',
+        payment_status: 'cancelled',
+        cancelled_at: '2026-06-06T12:00:00.000Z',
+        created_at: '2026-06-06T09:00:00.000Z',
+        rooms: { number: 2, type: 'small' },
+      },
+      {
+        id: 'villa-1-created-day',
+        room_id: 'room-1',
+        check_in: '2026-06-28',
+        check_out: '2026-06-29',
+        adults: 2,
+        kids_ages: [],
+        total_price: 3500,
+        payment_type: 'cash',
+        payment_status: 'pending',
+        cancelled_at: null,
+        created_at: '2026-06-06T10:45:00.000Z',
+        rooms: { number: 1, type: 'small' },
+      },
+      {
+        id: 'villa-9-created-day',
+        room_id: 'room-9',
+        check_in: '2026-06-29',
+        check_out: '2026-07-01',
+        adults: 3,
+        kids_ages: [5],
+        total_price: 7400,
+        payment_type: 'card',
+        payment_status: 'paid',
+        cancelled_at: null,
+        created_at: '2026-06-06T08:30:00.000Z',
+        rooms: { number: 9, type: 'large' },
+      },
+    ]);
+
+    assert.deepEqual(rows.map((row) => row.id), ['villa-9-created-day', 'villa-1-created-day']);
+    assert.deepEqual(JSON.parse(JSON.stringify(rows[0])), {
+      id: 'villa-9-created-day',
+      roomNumber: 9,
+      roomType: 'large',
+      checkIn: '2026-06-29',
+      checkOut: '2026-07-01',
+      nights: 2,
+      adults: 3,
+      kids: 1,
+      totalPrice: 7400,
+      paymentType: 'card',
+      paymentStatus: 'paid',
+      createdAt: '2026-06-06T08:30:00.000Z',
+    });
+    assert.equal(rows[1].roomNumber, 1);
+    assert.equal(rows[1].nights, 1);
+    assert.equal(rows[1].adults, 2);
+    assert.equal(rows[1].kids, 0);
+    assert.equal(rows[1].totalPrice, 3500);
+    assert.equal(rows[1].paymentStatus, 'pending');
+  });
+
   it('accepts staff usernames as CRM login aliases', () => {
     const login = read('admin/index.html');
     const auth = read('admin/js/crm-auth.js');
@@ -327,6 +403,74 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(auth, /function normalizeCrmLoginIdentifier/);
     assert.match(auth, /STAFF_USERNAME_DOMAIN\s*=\s*'crm\.ecovila\.local'/);
     assert.match(auth, /signInWithPassword\(\{\s*email:\s*normalizeCrmLoginIdentifier\(loginIdentifier\)/s);
+  });
+
+  it('uses cookie-backed Supabase auth storage for admin sessions', async () => {
+    const calls = [];
+    const cookieWrites = [];
+    let cookieJar = '';
+    const session = {
+      user: {
+        app_metadata: { role: 'diana' },
+      },
+    };
+    const documentRef = {
+      querySelector() {
+        return null;
+      },
+      get cookie() {
+        return cookieJar;
+      },
+      set cookie(value) {
+        cookieWrites.push(value);
+        const [pair] = String(value).split(';');
+        const [name, nextValue] = pair.split('=');
+        if (String(value).includes('Max-Age=0')) {
+          cookieJar = cookieJar
+            .split('; ')
+            .filter((cookie) => !cookie.startsWith(`${name}=`))
+            .join('; ');
+          return;
+        }
+        cookieJar = cookieJar
+          .split('; ')
+          .filter(Boolean)
+          .filter((cookie) => !cookie.startsWith(`${name}=`))
+          .concat(`${name}=${nextValue}`)
+          .join('; ');
+      },
+    };
+    const client = {
+      auth: {
+        getSession: async () => ({ data: { session }, error: null }),
+        signOut: async () => {},
+      },
+    };
+    const { EcoVilaCrmAuth: auth } = loadAdminModule('admin/js/crm-auth.js', {
+      document: documentRef,
+      location: { href: '' },
+      EcoVilaSupabase: {
+        getSupabaseClient(options) {
+          calls.push(options);
+          return client;
+        },
+      },
+    });
+
+    const result = await auth.requireSession();
+    const storage = calls[0].authStorage;
+    storage.setItem('sb-admin-auth-token', '{"access_token":"access","refresh_token":"refresh"}');
+
+    assert.equal(result.role, 'diana');
+    assert.equal(calls.length, 1);
+    assert.equal(typeof storage.getItem, 'function');
+    assert.equal(storage.getItem('sb-admin-auth-token'), '{"access_token":"access","refresh_token":"refresh"}');
+    assert.match(cookieWrites.at(-1), /Path=\/admin/);
+    assert.match(cookieWrites.at(-1), /SameSite=Lax/);
+
+    storage.removeItem('sb-admin-auth-token');
+    assert.equal(storage.getItem('sb-admin-auth-token'), null);
+    assert.match(cookieWrites.at(-1), /Max-Age=0/);
   });
 
   it('keeps tabs usable in the local no-config dashboard and narrow app browser', () => {

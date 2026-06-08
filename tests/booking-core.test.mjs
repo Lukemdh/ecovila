@@ -615,6 +615,37 @@ describe('EcoVila Step 3 Supabase helper', () => {
     });
   });
 
+  it('passes a custom auth storage adapter into the Supabase browser client', () => {
+    const calls = [];
+    const authStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {},
+      removeItem() {},
+    };
+    const fakeSupabase = {
+      createClient(url, anonKey, options) {
+        calls.push({ url, anonKey, options });
+        return { url, anonKey };
+      },
+    };
+    const root = {
+      EcoVilaSupabaseConfig: {
+        url: 'https://example.supabase.co',
+        anonKey: 'public-anon-key',
+      },
+      supabase: fakeSupabase,
+    };
+
+    supabaseHelpers.getSupabaseClient({ root, authStorage });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].options.auth.storage, authStorage);
+    assert.equal(calls[0].options.auth.persistSession, true);
+    assert.equal(calls[0].options.auth.autoRefreshToken, true);
+  });
+
   it('fetches public availability blocks through RPC instead of selecting guest reservations directly', async () => {
     const calls = [];
     const client = {

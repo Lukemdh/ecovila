@@ -252,3 +252,21 @@ sessions append to the running log at the bottom.
   change — existing scheduled price rows apply as soon as the JS is deployed. Updated the
   scheduled-price test and added cases for the June-books-October scenario and the
   pre-schedule fallback in `tests/booking-core.test.mjs`. Verified 194 Node tests pass.
+- 2026-06-08 — OFF-PLAN Finance one-day booked-villas detail (no plan step advanced).
+  Added a Finance-only created-bookings detail for the case where exactly one day is
+  selected and mode is `Încasări`: the revenue metrics still use `paid_at`, while a new
+  list shows non-cancelled villas whose reservation rows were created on that selected
+  day, including villa number, accommodation type, adult/child party, nights, stay
+  dates, total, booked timestamp, and payment state. Added the
+  `fetchFinanceBookedReservations` browser helper, kept rendering via DOM
+  `textContent`, and added RED/GREEN Node coverage for the hooks and normalization
+  behavior. Reviewed README, production-readiness, security, bugs, decisions, and
+  conventions with no changes needed; updated overview, structure, the historical
+  Finance spec/plan, history, and plan. Verified focused CRM tests, full `npm test`
+  (194 Node + 41 Deno), `git diff --check`, and a localhost browser preview of the
+  one-day `Încasări` layout.
+- 2026-06-08 — OFF-PLAN CRM auth persistence included in publish scope. The same
+  working tree also contained CRM auth-storage changes that pass a cookie-backed storage
+  adapter into the Supabase browser client for `/admin` sessions, clear CRM auth cookies
+  on invalid sessions/sign-out, and add Node coverage for the custom auth storage
+  adapter. Included per owner instruction to commit unrelated modified files together.
