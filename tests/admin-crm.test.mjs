@@ -49,21 +49,44 @@ function formWithFields(fields) {
 
 function createFakeElement(tagName = 'div') {
   const classes = new Set();
+  const listeners = new Map();
+  let html = '';
   const element = {
     tagName: tagName.toUpperCase(),
     children: [],
     className: '',
     dataset: {},
     hidden: false,
-    innerHTML: '',
     style: {},
     textContent: '',
     value: '',
+    get innerHTML() {
+      return html;
+    },
+    set innerHTML(value) {
+      html = String(value);
+      this.children = [];
+    },
+    append(...items) {
+      items.forEach((item) => {
+        this.appendChild(item);
+      });
+    },
     appendChild(child) {
       this.children.push(child);
       return child;
     },
-    addEventListener() {},
+    addEventListener(eventName, handler) {
+      listeners.set(eventName, [...(listeners.get(eventName) || []), handler]);
+    },
+    click() {
+      (listeners.get('click') || []).forEach((handler) => {
+        handler({
+          target: this,
+          composedPath: () => [this],
+        });
+      });
+    },
     querySelector() {
       return null;
     },
@@ -96,6 +119,53 @@ function createFakeElement(tagName = 'div') {
   };
 
   return element;
+}
+
+function createFinanceDocument() {
+  const elements = new Map();
+
+  function register(selector, tagName = 'button') {
+    const element = createFakeElement(tagName);
+    elements.set(selector, element);
+    return element;
+  }
+
+  const modeNights = register('[data-finance-mode="nights"]');
+  modeNights.dataset.financeMode = 'nights';
+  const modePaid = register('[data-finance-mode="paid"]');
+  modePaid.dataset.financeMode = 'paid';
+
+  register('[data-finance-prev]');
+  register('[data-finance-next]');
+  register('[data-finance-range-label]');
+  register('[data-finance-range-calendar]', 'div');
+  register('[data-finance-calendar-title]', 'span');
+  register('[data-finance-calendar-grid]', 'div');
+  register('[data-finance-calendar-prev]');
+  register('[data-finance-calendar-next]');
+  register('[data-finance-calendar-clear]');
+  register('[data-finance-calendar-apply]');
+  register('[data-finance-booked-day]', 'section');
+  register('[data-finance-booked-count]', 'span');
+  register('[data-finance-booked-list]', 'div');
+  register('[data-finance-booked-empty]', 'p');
+
+  return {
+    document: {
+      querySelector(selector) {
+        return elements.get(selector) || null;
+      },
+      querySelectorAll(selector) {
+        if (selector === '[data-finance-mode]') {
+          return [modeNights, modePaid];
+        }
+        return elements.has(selector) ? [elements.get(selector)] : [];
+      },
+      createElement: createFakeElement,
+      addEventListener() {},
+    },
+    elements,
+  };
 }
 
 function exists(relativePath) {
@@ -392,6 +462,73 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(rows[1].kids, 0);
     assert.equal(rows[1].totalPrice, 3500);
     assert.equal(rows[1].paymentStatus, 'pending');
+  });
+
+  it('applies a single clicked day from the finance range calendar', async () => {
+    const calls = [];
+    const { document, elements } = createFinanceDocument();
+    const client = {
+      channel() {
+        return {
+          on() {
+            return this;
+          },
+          subscribe() {
+            return this;
+          },
+        };
+      },
+    };
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      document,
+      EcoVilaCrmCalendar: {
+        todayISO: () => '2026-06-08',
+      },
+      EcoVilaSupabase: {
+        async fetchFinanceReservations(_client, options) {
+          calls.push({ type: 'finance', ...options });
+          return [];
+        },
+        async fetchFinanceBookedReservations(_client, options) {
+          calls.push({ type: 'booked', ...options });
+          return [];
+        },
+      },
+    });
+
+    finance.init({
+      client,
+      formatDate: (value) => value,
+      formatMDL: (value) => `${value} MDL`,
+      setAlert() {},
+    });
+    await Promise.resolve();
+
+    elements.get('[data-finance-mode="paid"]').click();
+    await Promise.resolve();
+    elements.get('[data-finance-range-label]').click();
+    const dateButton = elements
+      .get('[data-finance-calendar-grid]')
+      .children.find((button) => button.dataset.date === '2026-06-06');
+    assert.ok(dateButton, 'June 6 should be rendered in the finance calendar');
+
+    dateButton.click();
+    elements.get('[data-finance-calendar-apply]').click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.ok(
+      calls.some((call) => {
+        return call.type === 'finance' && call.rangeStart === '2026-06-06' && call.rangeEnd === '2026-06-07';
+      }),
+      'single-day Apply should reload finance data for the selected day',
+    );
+    assert.ok(
+      calls.some((call) => {
+        return call.type === 'booked' && call.rangeStart === '2026-06-06' && call.rangeEnd === '2026-06-07';
+      }),
+      'single-day Apply in incasari mode should load reservations booked during that day',
+    );
   });
 
   it('accepts staff usernames as CRM login aliases', () => {

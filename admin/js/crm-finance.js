@@ -589,8 +589,9 @@
       renderFinanceCalendar(context, state);
     });
     qs('[data-finance-calendar-apply]')?.addEventListener('click', () => {
-      if (state.draftStart && state.draftEnd && state.draftEnd >= state.draftStart) {
-        setRange(context, state, state.draftStart, addDays(state.draftEnd, 1));
+      const draftEnd = state.draftEnd || state.draftStart;
+      if (state.draftStart && draftEnd && draftEnd >= state.draftStart) {
+        setRange(context, state, state.draftStart, addDays(draftEnd, 1));
         state.calendarOpen = false;
         renderFinanceCalendar(context, state);
         loadFinance(context, state).catch((error) => context.setAlert(error?.message || 'Finanțele nu s-au putut încărca.'));

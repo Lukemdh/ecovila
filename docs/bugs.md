@@ -348,6 +348,22 @@ High / Medium / Low.
   without a "from" prefix in all three languages and `booking.priceFrom` keeps it; no
   console errors.
 
+### B-21 — Finance one-day calendar Apply did nothing (Medium) — Fixed 2026-06-08
+- **Description:** in the Finance tab, clicking a single day in the range calendar and
+  then pressing `Aplică` did not apply the range. This made the new one-day `Încasări`
+  booked-villas detail unreachable from the calendar flow.
+- **Root cause:** a single calendar click stored only `state.draftStart`; the Apply
+  handler required both `state.draftStart` and `state.draftEnd`, so it returned without
+  calling `setRange` or reloading Finance data.
+- **Fix:** the Apply handler now treats a missing draft end as the same selected day and
+  converts it to the app's exclusive end date (`selected day + 1`) before loading data.
+  Multi-day range selection is unchanged. A repo-wide button hook scan found no other
+  static buttons with missing JS handlers; reported selector misses were dynamic markup
+  wired immediately after rendering.
+- **Verification:** RED/GREEN CRM regression simulates `Încasări` mode, selecting
+  2026-06-06, pressing `Aplică`, and confirms both Finance metrics and booked-villa rows
+  load for `2026-06-06` → `2026-06-07`.
+
 ---
 
 ## Items checked and NOT bugs

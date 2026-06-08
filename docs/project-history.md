@@ -270,3 +270,9 @@ sessions append to the running log at the bottom.
   adapter into the Supabase browser client for `/admin` sessions, clear CRM auth cookies
   on invalid sessions/sign-out, and add Node coverage for the custom auth storage
   adapter. Included per owner instruction to commit unrelated modified files together.
+- 2026-06-08 — OFF-PLAN Finance calendar Apply button fix. Fixed B-21: the Finance range
+  calendar now applies a single clicked day by treating the missing draft end as the same
+  selected day, so one-day `Încasări` reloads metrics and the booked-villas detail for
+  that selected date. Added a click-path CRM regression test for the paid one-day flow.
+  Also ran a repo-wide button/data-selector scan: static buttons all had handlers or
+  native form/dialog behavior; scanner misses were dynamic controls wired at render time.
