@@ -1,34 +1,45 @@
 # EcoVila
 
-EcoVila is an all-inclusive villa complex near Orheiul Vechi, Moldova. It offers 25 guest rooms: 8 small villas, 7 large villas, and 10 hotel rooms, plus a staff-bookable conference room.
+EcoVila is an all-inclusive villa complex near Orheiul Vechi, Moldova — a destination for rest and getaways ("odihnă în Moldova"). It is located in the village of Mășcăuți, Criuleni district, in the Orheiul Vechi area, about 50 km from Chișinău (under an hour by car). It offers 25 guest units: 8 small villas, 7 large villas, and 10 hotel rooms, plus a bookable conference room for business events.
 
-Languages: Romanian, Russian, English.
+Languages: Romanian, Russian, English. Romanian is the default.
 
 Canonical pages:
-- Romanian: https://ecovila.md/
-- Russian: https://ecovila.md/ru/
-- English: https://ecovila.md/en/
+- Romanian homepage: https://ecovila.md/
+- Russian homepage: https://ecovila.md/ru/
+- English homepage: https://ecovila.md/en/
+- Booking: https://ecovila.md/rezervari.html
+- FAQ (Romanian, with Russian/English toggle): https://ecovila.md/intrebari-frecvente.html
 
-Key services:
-- All-inclusive stays with accommodation, three meals per day, and SPA access.
-- SPA facilities include warm indoor pool, cold pool, salt room, sauna, jacuzzi, hamam, sensory shower, and resting area.
-- Accommodation options include small villas, large villas, and hotel rooms.
-- Card payments are processed through Maib ePay; cash payment is available through the EcoVila office flow.
-- Pets, outside food, outside drinks, and speakers are not allowed on the property.
+What is included (all-inclusive):
+- Accommodation (small villa: up to 2 adults + 2 children; large villa: up to 4 adults + 2 children; hotel room: up to 2 adults + 2 children).
+- Three meals per day (breakfast, lunch, dinner), desserts, coffee, tea, and soft drinks.
+- SPA access until 22:00: warm indoor pool, cold pool, outdoor pool, salt room, saunas, jacuzzi, hammam, sensory shower, and resting area.
+- Wi-Fi.
+
+Location and nearby attractions:
+- Orheiul Vechi museum complex and cave monastery.
+- Butuceni ethnographic village.
+- Răut river gorge.
+- Distance from Chișinău: about 50 km, under an hour by car.
+
+Booking and payment:
+- Online booking at https://ecovila.md/rezervari.html or by phone at +373 60 120 220.
+- Card payments are processed through Maib ePay; cash payment is available through the EcoVila office.
+- Currency: MDL (Moldovan leu).
+
+House rules:
+- Pets are not allowed.
+- Outside food, outside drinks, and speakers are not allowed on the property.
+- Children are counted as 12 and under; guests 13+ count as adults.
 
 Contact:
 - Phone: +373 60 120 220
-- Email: rezervari@ecovila.md
-- Region: Orheiul Vechi, Moldova
+- Email: rezervari@ecovila.md (reservations), conferinte@ecovila.md (conference room)
+- Address: Mășcăuți village, Criuleni district, Orheiul Vechi area, Republic of Moldova
+- Social: https://www.facebook.com/p/Eco-Vila-100069882319416 · https://www.instagram.com/ecovila_1/ · https://www.tiktok.com/@ecovila8
 
-Important implementation notes:
-- The Romanian homepage at https://ecovila.md/ is the canonical default page.
-- There is no separate crawlable Romanian /ro/ duplicate.
-- Legacy PHP URLs should be redirected to their closest static equivalents before production deployment.
-
-Pending recon TODO:
-- Primary keyword targets per language and page.
-- Validated FAQ expansion from real search/query data.
-- Outreach/listicle targets.
-- Competitor gap analysis.
-- Off-season and diaspora demand angles.
+Typical queries this site answers:
+- Where to rest in Moldova / unde te poți odihni în Moldova / где отдохнуть в Молдове.
+- All-inclusive resort near Chișinău and Orheiul Vechi.
+- Villa and hotel accommodation with SPA in Moldova.

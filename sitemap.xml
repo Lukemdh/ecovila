@@ -3,6 +3,7 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://ecovila.md/</loc>
+    <lastmod>2026-06-12</lastmod>
     <xhtml:link rel="alternate" hreflang="ro" href="https://ecovila.md/"/>
     <xhtml:link rel="alternate" hreflang="ru" href="https://ecovila.md/ru/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://ecovila.md/en/"/>
@@ -10,6 +11,7 @@
   </url>
   <url>
     <loc>https://ecovila.md/ru/</loc>
+    <lastmod>2026-06-12</lastmod>
     <xhtml:link rel="alternate" hreflang="ro" href="https://ecovila.md/"/>
     <xhtml:link rel="alternate" hreflang="ru" href="https://ecovila.md/ru/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://ecovila.md/en/"/>
@@ -17,6 +19,7 @@
   </url>
   <url>
     <loc>https://ecovila.md/en/</loc>
+    <lastmod>2026-06-12</lastmod>
     <xhtml:link rel="alternate" hreflang="ro" href="https://ecovila.md/"/>
     <xhtml:link rel="alternate" hreflang="ru" href="https://ecovila.md/ru/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://ecovila.md/en/"/>
@@ -24,8 +27,18 @@
   </url>
   <url>
     <loc>https://ecovila.md/rezervari.html</loc>
+    <lastmod>2026-06-12</lastmod>
   </url>
   <url>
     <loc>https://ecovila.md/intrebari-frecvente.html</loc>
+    <lastmod>2026-06-12</lastmod>
+  </url>
+  <url>
+    <loc>https://ecovila.md/politica-confidentialitate.html</loc>
+    <lastmod>2026-06-12</lastmod>
+  </url>
+  <url>
+    <loc>https://ecovila.md/termeni-conditii.html</loc>
+    <lastmod>2026-06-12</lastmod>
   </url>
 </urlset>

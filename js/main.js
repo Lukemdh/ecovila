@@ -446,7 +446,7 @@
 
     prepareLazyImage(element);
     element.src = url;
-    element.alt = photo.alt || '';
+    element.alt = photo.alt || element.alt || '';
   }
 
   function applyPublishedPhotos(library) {

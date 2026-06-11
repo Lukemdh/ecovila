@@ -26,7 +26,7 @@ const localizedHomePages = [
     lang: 'en',
     canonical: `${origin}/en/`,
     title: /EcoVila.+Orheiul Vechi/i,
-    staticText: /all-inclusive refuge in the heart of the forest/i,
+    staticText: /all-inclusive refuge in the heart of Moldova’s forest/i,
   },
 ];
 

@@ -11,6 +11,7 @@ export const TOPHOST_UPLOAD_ENTRIES = [
   'ru',
   'en',
   'rezervari.html',
+  'intrebari-frecvente.html',
   'checkout.html',
   'confirmare.html',
   'anulare.html',
