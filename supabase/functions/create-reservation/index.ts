@@ -3,6 +3,7 @@ import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { createReservationsWithTokens } from '../_shared/reservations.ts';
+import { verifyReservationGroupPricing } from '../_shared/pricingGuard.ts';
 import type { ReservationInput } from '../_shared/reservations.ts';
 
 Deno.serve(async (request) => {
@@ -17,7 +18,9 @@ Deno.serve(async (request) => {
     const reservations = Array.isArray(body?.reservations) ? body.reservations : body;
 
     const client = createServiceClient();
-    const result = await createReservationsWithTokens(client, reservations as ReservationInput[]);
+    const result = await createReservationsWithTokens(client, reservations as ReservationInput[], {
+      priceGuard: (rows) => verifyReservationGroupPricing(client, rows),
+    });
     const primaryPhone = result.reservations[0]?.guest_phone || '';
     const manageToken = await buildManageTokenRow(primaryPhone);
     const { error: manageTokenError } = await client

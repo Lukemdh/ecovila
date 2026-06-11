@@ -130,9 +130,16 @@ export function buildCancellationTokenRows(
 export async function createReservationsWithTokens(
   client: SupabaseClient,
   inputs: ReservationInput[],
-  options: { now?: Date } = {},
+  options: {
+    now?: Date;
+    priceGuard?: (rows: ReservationRow[]) => Promise<ReservationRow[]>;
+  } = {},
 ) {
-  const rows = buildReservationRows(inputs, options);
+  let rows = buildReservationRows(inputs, options);
+
+  if (options.priceGuard) {
+    rows = await options.priceGuard(rows);
+  }
   const { data: reservations, error: reservationError } = await insertTable<ReservationRecord>(
     client,
     'reservations',

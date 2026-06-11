@@ -146,14 +146,28 @@ async function findPayment(
   const { data, error } = await client
     .from('maib_payments')
     .select('pay_id, provider_payment_id, booking_group_id, amount, currency, status, refunded_at')
-    .or(`pay_id.eq.${input.payId},provider_payment_id.eq.${input.payId}`)
+    .eq('pay_id', input.payId)
     .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data;
+  if (data) {
+    return data;
+  }
+
+  const { data: byProviderId, error: providerError } = await client
+    .from('maib_payments')
+    .select('pay_id, provider_payment_id, booking_group_id, amount, currency, status, refunded_at')
+    .eq('provider_payment_id', input.payId)
+    .maybeSingle();
+
+  if (providerError) {
+    throw new Error(providerError.message);
+  }
+
+  return byProviderId;
 }
 
 async function findExistingRefund(client: ServiceClient, payId: string) {

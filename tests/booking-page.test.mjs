@@ -494,36 +494,46 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(js, /checkout\.html/, 'booking page should hand off to checkout');
   });
 
-  it('temporarily sells out Căsuță Mică from May 7 through May 11, leaves one small cottage free on May 20, and sells out every accommodation from May 27 through May 30', () => {
+  it('ships without test blackout scaffolding and uses real availability only', () => {
     const js = read('js/booking.js');
 
-    assert.match(js, /TEST_SOLD_OUT_RANGES/, 'booking.js should support multiple temporary test blackouts');
-    assert.match(js, /type:\s*'small'/, 'one test blackout should target Căsuță Mică only');
-    assert.match(js, /checkIn:\s*'2026-05-07'/, 'the small-cottage blackout should start on May 7, 2026');
-    assert.match(js, /checkOut:\s*'2026-05-12'/, 'the small-cottage blackout should include May 11 as a booked night');
-    assert.match(js, /checkIn:\s*'2026-05-20'/, 'the partial small-cottage blackout should start on May 20, 2026');
-    assert.match(js, /checkOut:\s*'2026-05-21'/, 'the partial small-cottage blackout should cover only the May 20 night');
+    assert.doesNotMatch(js, /TEST_SOLD_OUT_RANGES/, 'test blackout ranges must not ship to production');
+    assert.doesNotMatch(js, /withTestingSoldOutBlocks|createTestingSoldOutBlocks/, 'test blackout helpers must not ship to production');
     assert.match(
       js,
-      /roomNumbers:\s*Object\.freeze\(\[\s*1,\s*2,\s*3,\s*4,\s*5,\s*6,\s*7\s*\]\)/,
-      'the May 20 test blackout should reserve seven small cottages and leave one free',
+      /state\.reservations = normalizeAvailabilityBlocks\(blocks\)/,
+      'fetched availability blocks should be used directly',
     );
-    assert.match(js, /checkIn:\s*'2026-05-27'/, 'the full-site blackout should start on May 27, 2026');
-    assert.match(js, /checkOut:\s*'2026-05-31'/, 'the full-site blackout should include May 30 as a booked night');
+  });
+
+  it('blocks checkout instead of booking on fallback prices when the pricing load fails', () => {
+    const js = read('js/booking.js');
+
     assert.match(
       js,
-      /Object\.freeze\(\{\s*checkIn:\s*'2026-05-27',\s*checkOut:\s*'2026-05-31',\s*\}\)/,
-      'the May 27-30 test blackout should target every accommodation type',
-    );
-    assert.match(
-      js,
-      /flatMap\(\(range\)[\s\S]+rangeRoomNumbers[\s\S]+rangeRoomNumbers\.has\(Number\(room\.number\)\)[\s\S]+room_id: room\.id/,
-      'the test blackout should optionally generate blocks for configured room numbers only',
+      /if \(!pricingTiers\.length\) \{\s*throw new Error/,
+      'an empty pricing_tiers load should be treated as a failure',
     );
     assert.match(
       js,
-      /withTestingSoldOutBlocks\(normalizeAvailabilityBlocks\(blocks\),\s*state\.rooms\)/,
-      'the test blackout should be merged into fetched availability blocks',
+      /state\.pricingTiers = \[\];\s*state\.loadError = t\('booking\.loadError'\)/,
+      'a failed load should clear pricing and surface an error',
+    );
+    assert.match(
+      js,
+      /if \(state\.loading \|\| state\.loadError \|\| !state\.pricingTiers\.length\) \{/,
+      'reserveType should refuse to hand off to checkout without live pricing',
+    );
+  });
+
+  it('loads holidays without a date range because they are recurring month-day rules', () => {
+    const js = read('js/booking.js');
+
+    assert.match(js, /supabaseHelpers\.fetchHolidays\(client\)/, 'holidays should be fetched in full');
+    assert.doesNotMatch(
+      js,
+      /fetchHolidays\(client,\s*\{/,
+      'holiday fetches must not be limited to the visible date window',
     );
   });
 

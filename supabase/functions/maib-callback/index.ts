@@ -1,6 +1,7 @@
 import { assertMethod, errorResponse, HttpError, jsonResponse } from '../_shared/http.ts';
 import { getSiteUrl } from '../_shared/env.ts';
 import {
+  getMaibCallbackAmount,
   getMaibCallbackOrderId,
   getMaibCallbackPayId,
   getMaibCallbackStatus,
@@ -32,6 +33,7 @@ type MaibPaymentRow = {
   pay_id: string;
   provider_payment_id?: string | null;
   booking_group_id: string;
+  amount?: number | string | null;
   status: string;
   processed_at?: string | null;
 };
@@ -136,7 +138,13 @@ Deno.serve(async (request) => {
     const bookingGroupId = payment?.booking_group_id || orderId;
     const reservations = await findReservationsForBookingGroup(client, bookingGroupId);
     const now = new Date().toISOString();
-    const status = getMaibCallbackStatus(payload);
+    const reportedStatus = getMaibCallbackStatus(payload);
+    const amountMismatch = reportedStatus === 'paid' &&
+      hasCallbackAmountMismatch(payload, payment, reservations);
+    // A "paid" callback whose captured amount differs from the amount we asked
+    // MAIB to charge must never confirm the booking. It is kept pending for
+    // manual review instead of being trusted.
+    const status = amountMismatch ? 'pending' : reportedStatus;
     const terminal = isMaibCallbackTerminalStatus(status);
 
     await upsertPaymentCallback(client, {
@@ -158,6 +166,19 @@ Deno.serve(async (request) => {
       status,
       matched: reservations.length,
     };
+
+    if (amountMismatch) {
+      console.error('Maib callback amount mismatch — booking left pending for manual review', {
+        ...callbackContext,
+        callbackAmount: getMaibCallbackAmount(payload),
+        expectedAmount: expectedPaymentAmount(payment, reservations),
+      });
+      return jsonResponse(
+        { ok: true, status: 'amount_mismatch', matched: reservations.length },
+        {},
+        request,
+      );
+    }
 
     if (!reservations.length) {
       console.info('Maib callback processed', {
@@ -234,6 +255,44 @@ Deno.serve(async (request) => {
     return errorResponse(error, request);
   }
 });
+
+function expectedPaymentAmount(
+  payment: MaibPaymentRow | null | undefined,
+  reservations: PaymentReservationRow[],
+) {
+  const storedAmount = Number(payment?.amount ?? NaN);
+
+  if (Number.isFinite(storedAmount)) {
+    return storedAmount;
+  }
+
+  return reservations.reduce(
+    (total, reservation) => total + Number(reservation.total_price || 0),
+    0,
+  );
+}
+
+function hasCallbackAmountMismatch(
+  payload: Record<string, unknown>,
+  payment: MaibPaymentRow | null | undefined,
+  reservations: PaymentReservationRow[],
+) {
+  if (!payment && !reservations.length) {
+    return false;
+  }
+
+  const callbackAmount = getMaibCallbackAmount(payload);
+
+  if (callbackAmount === null) {
+    // MAIB did not report an amount; the signature already proves the callback
+    // is authentic, so the booking proceeds, but the gap is logged for review.
+    console.warn('Maib paid callback did not include an amount field');
+    return false;
+  }
+
+  const expected = expectedPaymentAmount(payment, reservations);
+  return Math.round(callbackAmount * 100) !== Math.round(expected * 100);
+}
 
 async function findPayment(
   client: SupabaseClient,

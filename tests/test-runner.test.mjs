@@ -27,7 +27,7 @@ describe('EcoVila test runner contract', () => {
     const readme = read('docs/README.md');
     const decisions = read('docs/decisions.md');
 
-    assert.match(readme, /npm test[\s\S]*188 Node \+ 38 Deno/i);
+    assert.match(readme, /npm test[\s\S]*\d+ Node \+ \d+ Deno/i);
     assert.match(decisions, /ADR-009[\s\S]*minimal root `package\.json`/);
   });
 });

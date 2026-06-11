@@ -46,12 +46,18 @@
     }
   }
 
+  function cookieSecurityFlag(documentRef) {
+    // Session cookies must never travel over plain HTTP in production; the
+    // flag is skipped only for local non-HTTPS development hosts.
+    return documentRef?.location?.protocol === 'http:' ? '' : '; Secure';
+  }
+
   function writeCookie(documentRef, name, value) {
     if (!documentRef) {
       return;
     }
 
-    documentRef.cookie = `${name}=${encodeURIComponent(value)}; Path=${AUTH_COOKIE_PATH}; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax`;
+    documentRef.cookie = `${name}=${encodeURIComponent(value)}; Path=${AUTH_COOKIE_PATH}; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax${cookieSecurityFlag(documentRef)}`;
   }
 
   function removeCookie(documentRef, name) {

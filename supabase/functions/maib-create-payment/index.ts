@@ -41,6 +41,7 @@ type PayableReservationRow = {
 type ReusablePaymentRow = {
   pay_id: string;
   checkout_url: string;
+  amount?: number | string | null;
   expires_at?: string | null;
   status?: string | null;
 };
@@ -79,20 +80,26 @@ Deno.serve(async (request) => {
       body?.primaryReservationId,
       reservations,
     );
-    const existingPayment = await findReusablePayment(client, bookingGroupId);
-
-    if (existingPayment?.checkout_url) {
-      return json(request, {
-        payUrl: existingPayment.checkout_url,
-        payId: existingPayment.pay_id,
-        reused: true,
-      });
-    }
-
     const amount = reservations.reduce(
       (total, reservation) => total + Number(reservation.total_price || 0),
       0,
     );
+    const existingPayment = await findReusablePayment(client, bookingGroupId);
+
+    if (existingPayment?.checkout_url) {
+      // Only hand back a previous checkout session when it was created for the
+      // exact amount owed now; otherwise the guest would pay a stale total.
+      if (Number(existingPayment.amount) === amount) {
+        return json(request, {
+          payUrl: existingPayment.checkout_url,
+          payId: existingPayment.pay_id,
+          reused: true,
+        });
+      }
+
+      await expireStalePayment(client, existingPayment.pay_id);
+    }
+
     const now = new Date();
     const expiresAt = new Date(
       now.getTime() + MAIB_PAYMENT_SESSION_MINUTES * 60 * 1000,
@@ -182,9 +189,19 @@ async function findPayableReservations(
   return reservations;
 }
 
+async function expireStalePayment(client: SupabaseClient, payId: string) {
+  const { error } = await table(client, 'maib_payments')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('pay_id', payId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 async function findReusablePayment(client: SupabaseClient, bookingGroupId: string) {
   const { data, error } = await table<ReusablePaymentRow>(client, 'maib_payments')
-    .select('pay_id, checkout_url, expires_at, status')
+    .select('pay_id, checkout_url, amount, expires_at, status')
     .eq('booking_group_id', bookingGroupId)
     .in('status', ['created', 'pending'])
     .gt('expires_at', new Date().toISOString())

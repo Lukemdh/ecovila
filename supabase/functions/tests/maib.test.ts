@@ -155,3 +155,14 @@ Deno.test('buildMaibCheckoutPayload omits empty optional payer fields', async ()
   assertEquals(Object.hasOwn(payload.payerInfo, 'ip'), false);
   assertEquals(Object.hasOwn(payload.payerInfo, 'userAgent'), false);
 });
+
+Deno.test('getMaibCallbackAmount reads the captured amount from known payload fields', async () => {
+  const { getMaibCallbackAmount } = await import('../_shared/maib.ts');
+
+  assertEquals(getMaibCallbackAmount({ amount: 3100 }), 3100);
+  assertEquals(getMaibCallbackAmount({ amount: '3100.50' }), 3100.5);
+  assertEquals(getMaibCallbackAmount({ orderAmount: 2600 }), 2600);
+  assertEquals(getMaibCallbackAmount({ result: { amount: 1800 } }), 1800);
+  assertEquals(getMaibCallbackAmount({ amount: 'not-a-number' }), null);
+  assertEquals(getMaibCallbackAmount({}), null);
+});

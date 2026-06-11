@@ -14,23 +14,6 @@
   const STORAGE_LANGUAGE = 'ecovila_language';
   const TYPE_ORDER = ['small', 'large', 'hotel'];
   const LOOKAHEAD_DAYS = 210;
-  const TEST_SOLD_OUT_RANGES = Object.freeze([
-    Object.freeze({
-      type: 'small',
-      checkIn: '2026-05-07',
-      checkOut: '2026-05-12',
-    }),
-    Object.freeze({
-      type: 'small',
-      roomNumbers: Object.freeze([1, 2, 3, 4, 5, 6, 7]),
-      checkIn: '2026-05-20',
-      checkOut: '2026-05-21',
-    }),
-    Object.freeze({
-      checkIn: '2026-05-27',
-      checkOut: '2026-05-31',
-    }),
-  ]);
 
   const cardImages = {
     small: '/assets/photos/small-villa/exterior.svg',
@@ -93,7 +76,7 @@
     selectedType: '',
     currentMonth: firstOfMonth(todayISO()),
     rooms: fallbackRooms,
-    reservations: createTestingSoldOutBlocks(fallbackRooms),
+    reservations: [],
     pricingTiers: fallbackPricingTiers,
     holidays: [],
     loading: true,
@@ -157,34 +140,6 @@
     });
   }
 
-  function createTestingSoldOutBlocks(rooms) {
-    return TEST_SOLD_OUT_RANGES.flatMap((range) => {
-      const rangeRoomNumbers = range.roomNumbers
-        ? new Set(range.roomNumbers.map((number) => Number(number)))
-        : null;
-
-      return (rooms || [])
-        .filter((room) => {
-          return (
-            room.is_active !== false &&
-            (!range.type || room.type === range.type) &&
-            (!rangeRoomNumbers || rangeRoomNumbers.has(Number(room.number)))
-          );
-        })
-        .map((room) => ({
-          room_id: room.id,
-          check_in: range.checkIn,
-          check_out: range.checkOut,
-          payment_status: 'paid',
-          cancelled_at: null,
-        }));
-    });
-  }
-
-  function withTestingSoldOutBlocks(reservations, rooms) {
-    return (reservations || []).concat(createTestingSoldOutBlocks(rooms));
-  }
-
   function normalizeAvailabilityBlocks(blocks) {
     return (blocks || []).map((block) => ({
       room_id: block.room_id,
@@ -218,24 +173,31 @@
       const photoLibraryPromise = supabaseHelpers.fetchPublicPhotoLibrary
         ? supabaseHelpers.fetchPublicPhotoLibrary(client).catch(() => ({}))
         : Promise.resolve({});
+      // Holidays are recurring month-day rules, so every row applies to future
+      // stays regardless of the stored year — never filter them by date range.
       const [rooms, pricingTiers, holidays, blocks, photoLibrary] = await Promise.all([
         supabaseHelpers.fetchRooms(client),
         supabaseHelpers.fetchPricingTiers(client),
-        supabaseHelpers.fetchHolidays(client, { startDate, endDate }),
+        supabaseHelpers.fetchHolidays(client),
         supabaseHelpers.fetchAvailabilityBlocks(client, { startDate, endDate }),
         photoLibraryPromise,
       ]);
 
+      if (!pricingTiers.length) {
+        throw new Error('No pricing tiers configured.');
+      }
+
       mergePublishedPhotos(photoLibrary);
       state.rooms = rooms.length ? rooms : createFallbackRooms();
-      state.pricingTiers = pricingTiers.length ? pricingTiers : fallbackPricingTiers;
+      state.pricingTiers = pricingTiers;
       state.holidays = holidays || [];
-      state.reservations = withTestingSoldOutBlocks(normalizeAvailabilityBlocks(blocks), state.rooms);
+      state.reservations = normalizeAvailabilityBlocks(blocks);
       state.loadError = '';
     } catch (error) {
-      if (!String(error?.message || '').includes('Missing Supabase config')) {
-        state.loadError = t('booking.loadError');
-      }
+      // Booking must not proceed on guessed prices or stale availability, so a
+      // failed load blocks checkout instead of silently using fallbacks.
+      state.pricingTiers = [];
+      state.loadError = t('booking.loadError');
     } finally {
       state.loading = false;
       render();
@@ -783,7 +745,14 @@
       return;
     }
 
-    const canContinue = state.selectedType && hasSelectedDates() && !getPartyError();
+    const canContinue = Boolean(
+      state.selectedType &&
+      hasSelectedDates() &&
+      !getPartyError() &&
+      !state.loading &&
+      !state.loadError &&
+      state.pricingTiers.length,
+    );
     button.hidden = !canContinue;
     button.textContent = t('booking.continue');
   }
@@ -869,6 +838,11 @@
   }
 
   function reserveType(type) {
+    if (state.loading || state.loadError || !state.pricingTiers.length) {
+      showDetailsError(state.loading ? t('booking.loading') : t('booking.loadError'));
+      return;
+    }
+
     const partyError = getPartyError();
     if (partyError) {
       showDetailsError(partyError);

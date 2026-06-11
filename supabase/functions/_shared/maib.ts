@@ -245,6 +245,24 @@ export function getMaibProviderPaymentId(payload: Record<string, unknown>) {
   return trim(payload.paymentId);
 }
 
+export function getMaibCallbackAmount(payload: Record<string, unknown>) {
+  const result = isRecord(payload.result) ? payload.result : {};
+  const candidates = [payload.amount, payload.orderAmount, result.amount, result.orderAmount];
+
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined || trim(candidate) === '') {
+      continue;
+    }
+
+    const amount = Number(candidate);
+    if (Number.isFinite(amount)) {
+      return amount;
+    }
+  }
+
+  return null;
+}
+
 export function normalizeMaibCallbackStatus(payload: Record<string, unknown>): MaibCallbackStatus {
   const paymentStatus = trim(payload.paymentStatus);
   const processingStatus = trim(payload.processingStatus);
