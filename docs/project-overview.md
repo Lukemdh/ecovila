@@ -70,8 +70,16 @@ The product has two surfaces:
   The tier is set by total nights; each night is premium if the next morning is
   Sat/Sun or a marked holiday. See `js/pricing.js` (`getNightsTier`, `getDayType`,
   `enumerateNights`, `calculateStayPrice`).
-- **Holidays**: stored in DB (`holidays`); the night *before* a holiday is premium.
-  Weekend nights are premium by hardcoded rule and are not listed as holidays.
+- **Holidays**: stored in DB (`holidays`) as recurring month-day rules (the stored year
+  is ignored); the night *before* a holiday is premium. Weekend nights are premium by
+  hardcoded rule and are not listed as holidays. Holiday fetches must never be
+  date-range-filtered.
+- **Server-authoritative totals** (since 2026-06-11): the browser quote is advisory.
+  `create-reservation` recomputes the booking total server-side
+  (`supabase/functions/_shared/pricingGuard.ts`, using `_shared/pricing.js` — a
+  byte-identical, test-enforced copy of `js/pricing.js`) and rejects mismatches with
+  HTTP 409; direct anon inserts into `reservations` are revoked; the MAIB callback
+  reconciles the captured amount before marking a booking paid.
 - **Pricing effective dates**: `pricing_tiers` rows carry `effective_from`; a booking
   uses the newest row effective on/before its creation date. Existing reservations are
   never retro-repriced.

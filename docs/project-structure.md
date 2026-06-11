@@ -79,17 +79,18 @@ ecovila/
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260604)
+│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260611)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
-│       ├── _shared/            # cors, env, http, maib, notifications, providers, reminders,
-│       │                       #   reservationManage, reservations, supabaseAdmin, tracking
+│       ├── _shared/            # cors, env, http, maib, notifications, pricing (copy of js/pricing.js),
+│       │                       #   pricingGuard, providers, reminders, reservationManage,
+│       │                       #   reservations, supabaseAdmin, tracking
 │       ├── create-reservation/, confirm-reservation-payment/
 │       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
 │       ├── maib-create-payment/, maib-callback/, maib-refund/, track-event/
 │       ├── reservation-lookup-start/, reservation-lookup-verify/
 │       ├── reservation-manage-details/, reservation-extend-cash/, reservation-cancel/
-│       └── tests/              # Deno tests (cors, http, maib, reservation-manage, reservations, tracking)
+│       └── tests/              # Deno tests (cors, http, maib, pricingGuard, reservation-manage, reservations, tracking)
 │
 └── docs/                       # Documentation only
     ├── AGENTS.md               # Standing agent rules (this audit)
@@ -125,7 +126,7 @@ ecovila/
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
 | `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, daily, towels, photos, pricing, auth). The dashboard module owns the rolling scroll calendar, double-confirm reservation deletion, and staff MAIB refund-before-cancel path; the finance module owns revenue summaries plus the one-day `Încasări` booked-villas detail list. |
-| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reminder scheduling (`reminders.ts`), reservation logic, admin client. |
+| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reminder scheduling (`reminders.ts`), reservation logic, server-side pricing guard (`pricingGuard.ts` + `pricing.js`, a byte-identical copy of `js/pricing.js`), admin client. |
 | `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
 | `supabase/migrations/` | DB schema evolution; apply in filename order. |
 | `supabase/config.toml` | Declares which functions require a verified JWT. |

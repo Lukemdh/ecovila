@@ -113,7 +113,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 188 Node + 38 Deno tests, all passing
+# → 205 Node + 48 Deno tests, all passing (2026-06-11)
 ```
 
 The suites can also be run independently.
@@ -123,14 +123,14 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 188 tests, 20 suites, all passing
+# → 205 tests, 21 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 38 tests, all passing
+# → 48 tests, all passing
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named
@@ -174,9 +174,12 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 
 ## Deployment
 
-> 2026-06-01 production-readiness status: do **not** launch until the open Medium
-> findings in `docs/production-readiness-audit.md`, `docs/security.md`, and
-> `docs/bugs.md` are resolved or explicitly accepted by the owner.
+> 2026-06-11 production-readiness status: the Critical payment-flow findings
+> (S-13/S-14/S-15, B-23..B-25) are fixed and **deployed to production** (migration +
+> Edge Functions, verified live). The updated static site bundle in `dist/tophost/`
+> still needs to be uploaded to TopHost. Remaining open items before/at launch:
+> S-12 (High, SMS PII in URL), S-9/S-10 (Medium), B-10/B-11/B-12/B-13 — fix or get
+> explicit owner acceptance. See the root `bugs.md` for the full 2026-06-11 fix log.
 
 - **Frontend:** prepare the static upload folder with `npm run prepare:tophost`,
   then upload the contents of `dist/tophost/` to the tophost.md document root
@@ -194,13 +197,22 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
   The upload includes `/`, `/ru/`, `/en/`, `robots.txt`, `sitemap.xml`, `llms.txt`,
   and `.htaccess`; `site.html` is not shipped as a duplicate production page and is
   redirected to `/` by the legacy map.
-- **Database:** apply migrations with the Supabase CLI
-  (`supabase db push` against `supabase/migrations/`). Before pushing to production,
-  resolve B-11: the Maib cleanup migrations call `cron.schedule`, but the migration set
-  does not currently enable `pg_cron`.
-- **Edge Functions:** deploy with the Supabase CLI from `supabase/` per
-  `supabase/config.toml` (which sets per-function `verify_jwt`). Set all Edge
-  Function secrets listed above before invoking payment/notification/tracking functions.
+- **Database:** ⚠️ **never run a plain `supabase db push` against the production
+  project** — the remote migration history uses different version IDs than the local
+  files, so a push would re-run the foundation seed upserts and overwrite live
+  `pricing_tiers` / reset `rooms.is_active` (ADR-023 in `docs/decisions.md`). Apply new
+  migrations individually (management API query endpoint or psql) and record them in
+  `supabase_migrations.schema_migrations`, or first reconcile history with
+  `supabase migration repair`. B-11 also remains open: the Maib cleanup migrations call
+  `cron.schedule`, but the migration set does not enable `pg_cron`.
+- **Edge Functions:** deploy with the Supabase CLI from the repo root
+  (`supabase functions deploy <name>`) per `supabase/config.toml` (which sets
+  per-function `verify_jwt`). Set all Edge Function secrets listed above before invoking
+  payment/notification/tracking functions. `create-reservation` enforces server-side
+  price recomputation (`_shared/pricingGuard.ts`): after any change to `js/pricing.js`,
+  copy it to `supabase/functions/_shared/pricing.js` (byte-identity is test-enforced),
+  redeploy `create-reservation`, and promptly upload the static site so client quotes
+  and the server guard stay in agreement.
 - **Cron:** schedule `expire-cash-reservations` and `send-reminders` (and the Maib
   session-expiry cron added by migration) passing `ECOVILA_CRON_SECRET`. Both expect a
   frequent (~1-minute) cadence: the cash-expiry warning window is ~2 minutes wide, and

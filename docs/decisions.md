@@ -248,6 +248,45 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   keys exist and `cookie.text` is now a short subtitle. The settings toggle button must
   never carry `data-cookie-choice` (that attribute saves + closes the banner).
 
+### ADR-022 — Server-side price recomputation rejects mismatches instead of silently correcting them
+- **Date:** 2026-06-11.
+- **Decision:** `create-reservation` now recomputes the authoritative booking total
+  server-side (`_shared/pricingGuard.ts`) from database `rooms`, `pricing_tiers`, and
+  `holidays`, using a byte-identical copy of the browser pricing module
+  (`_shared/pricing.js` ≡ `js/pricing.js`, enforced by `tests/pricing-guard.test.mjs`).
+  A client total that does not match is **rejected with HTTP 409** ("refresh and try
+  again") rather than silently overwritten; on match, the per-room split is normalized
+  server-side. The direct `anon` INSERT path into `reservations` was closed
+  (`20260611120000_revoke_public_reservation_insert.sql`) so the Edge Function is the
+  only public booking entry point. The MAIB callback additionally reconciles the captured
+  amount against `maib_payments.amount` and leaves mismatched "paid" callbacks pending.
+- **Why:** the displayed quote is a contract with the guest. Silently substituting a
+  different (correct) total would charge guests an amount they never saw; rejecting
+  forces the client to re-quote from fresh data. Duplicating the pricing module (instead
+  of importing across the `supabase/functions` boundary) keeps Edge Function bundling
+  simple; the byte-identity test makes the duplication safe.
+- **Consequence:** any change to `js/pricing.js` must be copied to
+  `supabase/functions/_shared/pricing.js` (the Node suite fails otherwise). Pricing data
+  loads must include **all** holidays (recurring month-day semantics) — never
+  date-range-filtered — or live quotes will 409 against the server. Client and server
+  must stay deployed in step: Edge Functions first, static site promptly after.
+
+### ADR-023 — Production migrations are applied individually; plain `supabase db push` is forbidden on this project
+- **Date:** 2026-06-11.
+- **Decision:** the remote `supabase_migrations.schema_migrations` history uses different
+  version IDs than the local `supabase/migrations/` files (earlier changes were applied
+  via the dashboard/MCP under their own timestamps). The 2026-06-11 revoke migration was
+  therefore applied through the management API query endpoint and recorded manually in
+  the remote history under its local version (`20260611120000`).
+- **Why:** a plain `supabase db push` would treat all ~26 local files as unapplied and
+  re-run them — including the foundation seed upserts, which would **overwrite live
+  `pricing_tiers` values and reset `rooms.is_active`**.
+- **Consequence:** until someone reconciles the histories with
+  `supabase migration repair --status applied <version>` for each local file, new
+  migrations must be applied individually (management API or psql) and inserted into
+  `supabase_migrations.schema_migrations` by hand. This warning is also recorded in the
+  root `bugs.md` deploy notes.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

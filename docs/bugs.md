@@ -29,6 +29,15 @@ High / Medium / Low.
 | B-20 | Booking card showed "De la" prefix on the exact-dates stay total | Low | Fixed |
 | B-21 | Finance one-day calendar Apply did nothing | Medium | Fixed |
 | B-22 | CRM delete used typed `sterge` and reset calendar position | Medium | Fixed |
+| B-23 | Reservation price fully client-controlled; server never recomputed it | Critical | Fixed |
+| B-24 | RLS allowed direct `anon` INSERT into `reservations` with any price | Critical | Fixed |
+| B-25 | MAIB callback marked bookings paid without verifying the captured amount | Critical | Fixed |
+| B-26 | Hardcoded May-2026 test "sold out" blocks shipping in `js/booking.js` | High | Fixed |
+| B-27 | Booking page date-range-filtered recurring holidays, missing holiday pricing | High | Fixed |
+| B-28 | Silent fallback to hardcoded prices when the Supabase pricing load failed | Medium | Fixed |
+| B-29 | Reused MAIB checkout session could serve a stale amount | Medium | Fixed |
+| B-30 | PostgREST `.or()` filter injection in `maib-refund` payment lookup | Low | Fixed |
+| B-31 | CRM auth cookie missing the `Secure` flag | Low | Fixed |
 
 ---
 
@@ -399,3 +408,77 @@ High / Medium / Low.
 - `send-sms` and `send-email` are not called from the public browser; they are
   Diana-only direct staff endpoints and shared provider helpers are used internally by
   notification flows.
+
+### B-23 — Reservation price fully client-controlled (Critical) — Fixed 2026-06-11
+- **Description:** the browser computed the stay total from `pricing_tiers`, stored it in
+  `localStorage`, and `create-reservation` accepted any non-negative integer
+  `total_price`; `maib-create-payment` then charged exactly the stored sum. Editing
+  `localStorage` (or calling the public function directly) allowed paying 1 MDL for any
+  stay and receiving a confirmed, room-blocking reservation.
+- **Fix:** server-side pricing guard. `supabase/functions/_shared/pricing.js` is an exact
+  copy of `js/pricing.js` (byte-identity enforced by `tests/pricing-guard.test.mjs`);
+  `supabase/functions/_shared/pricingGuard.ts` recomputes the authoritative total from DB
+  rooms/tiers/holidays inside `create-reservation`, validates the booking group, rejects
+  mismatched totals with HTTP 409, and normalizes the per-room split. Deno coverage in
+  `supabase/functions/tests/pricingGuard.test.ts`. Deployed to production 2026-06-11 and
+  verified live (tampered total → 409; correct total → created).
+
+### B-24 — Direct `anon` INSERT into `reservations` (Critical) — Fixed 2026-06-11
+- **Description:** the RLS policy "Public can create guest reservations" plus the `anon`
+  INSERT grant let any visitor insert reservations straight through PostgREST with an
+  arbitrary `total_price`, bypassing all Edge Function validation (and nullifying B-23's
+  fix). Nothing legitimate used this path — the site books via the `create-reservation`
+  Edge Function and the CRM inserts as authenticated staff.
+- **Fix:** migration `20260611120000_revoke_public_reservation_insert.sql` drops the
+  policy and revokes the grant. Applied to production via the management API (see
+  ADR-023) and verified: direct anon insert now returns `42501 permission denied`.
+
+### B-25 — MAIB callback never reconciled the captured amount (Critical) — Fixed 2026-06-11
+- **Description:** `maib-callback` flipped reservations to `paid` based only on the
+  callback status fields; the amount MAIB reported as captured was never compared against
+  `maib_payments.amount`.
+- **Fix:** `_shared/maib.ts` gained `getMaibCallbackAmount`; a `paid` callback whose
+  amount differs from the stored expected amount is recorded as `pending`, answered with
+  `amount_mismatch`, and logged at error level instead of confirming the booking. A
+  callback with no amount field proceeds (already HMAC-verified) with a logged warning.
+
+### B-26 — Test "sold out" scaffolding shipped to production (High) — Fixed 2026-06-11
+- **Description:** `TEST_SOLD_OUT_RANGES` in `js/booking.js` merged fake May-2026
+  availability blocks into live data on every load.
+- **Fix:** deleted the ranges and helper functions; fetched blocks are used directly. The
+  Node test that previously asserted the scaffolding exists now asserts it is gone.
+
+### B-27 — Recurring holidays missed by the booking page (High) — Fixed 2026-06-11
+- **Description:** holidays are recurring month-day rules (year stripped by
+  `toHolidayKey`; month+day uniqueness enforced by migration `20260509100000`), but
+  `js/booking.js` fetched them filtered to `[today, +210d]` on the stored year-specific
+  `date` column, so holidays stored under an out-of-window year silently priced as
+  weekdays. After B-23's guard this would also have blocked checkout with a 409.
+- **Fix:** `js/booking.js` and the server-side guard both fetch all holidays with no
+  range; locked by tests. CRM pages already fetched all holidays.
+
+### B-28 — Silent fallback to hardcoded prices (Medium) — Fixed 2026-06-11
+- **Description:** an empty/failed `pricing_tiers` load silently substituted hardcoded
+  constants which became the quote and (pre-B-23) the charge; missing-config errors were
+  swallowed.
+- **Fix:** an empty pricing load is a hard failure; any load failure clears
+  `state.pricingTiers`, shows `booking.loadError`, hides the continue button, and
+  `reserveType` refuses checkout handoff while pricing is missing/loading/errored.
+
+### B-29 — Stale MAIB checkout session reuse (Medium) — Fixed 2026-06-11
+- **Description:** `maib-create-payment` reused any non-expired `created`/`pending`
+  session without checking that its `amount` still matched the current reservation total.
+- **Fix:** the current total is computed first; a session is reused only on exact amount
+  match, otherwise the stale `maib_payments` row is cancelled and a new checkout created.
+
+### B-30 — `.or()` filter injection in `maib-refund` (Low) — Fixed 2026-06-11
+- **Description:** `findPayment` interpolated the caller-supplied `payId` into a
+  PostgREST `.or()` filter string; staff-only surface, but a crafted value could alter
+  the filter.
+- **Fix:** replaced with two sequential `.eq()` lookups (`pay_id`, then
+  `provider_payment_id`).
+
+### B-31 — CRM auth cookie missing `Secure` (Low) — Fixed 2026-06-11
+- **Description:** `admin/js/crm-auth.js` wrote the session cookie with `SameSite=Lax`
+  and `Path=/admin` but no `Secure` flag.
+- **Fix:** `Secure` is appended except on plain-HTTP local development hosts.

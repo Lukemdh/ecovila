@@ -19,10 +19,17 @@ findings. Severities: Critical / High / Medium / Low / Info.
 | S-10 | Legacy cancellation tokens are stored plaintext | Medium | `public.cancellation_tokens`, `_shared/reservations.ts` | Open |
 | S-11 | Floating Supabase JS major tag creates supply-chain drift | Low | HTML CDN tags, Deno import map | Open |
 | S-12 | SMS provider call passes phone/message/token in the URL query string | High | `supabase/functions/_shared/providers.ts` | Open / out of SEO-tracking scope |
+| S-13 | Reservation `total_price` trusted from the client end-to-end (payment tampering) | Critical | `create-reservation`, `maib-create-payment` | Fixed |
+| S-14 | RLS policy + grant allowed direct `anon` INSERT into `reservations` | Critical | `supabase/migrations/20260506210000`, `20260508123000` | Fixed |
+| S-15 | MAIB `paid` callback accepted without reconciling the captured amount | Critical | `supabase/functions/maib-callback/index.ts` | Fixed |
+| S-16 | PostgREST `.or()` filter injection via `payId` in `maib-refund` | Low | `supabase/functions/maib-refund/index.ts` | Fixed |
+| S-17 | CRM auth session cookie written without the `Secure` flag | Low | `admin/js/crm-auth.js` | Fixed |
 
-No Critical or High findings remain open. Medium findings still block production launch
-until fixed or explicitly accepted. See `docs/production-readiness-audit.md` for the
-2026-06-01 scan evidence.
+The 2026-06-11 payment-flow audit found and fixed three Critical findings (S-13, S-14,
+S-15); all are deployed to production and verified live. The remaining open findings are
+S-12 (High, SMS provider PII in URL query) and the Mediums S-9/S-10, which still need to
+be fixed or explicitly accepted by the owner. See `docs/production-readiness-audit.md`
+and the root `bugs.md` fix log for evidence.
 
 ## Findings detail
 
@@ -195,3 +202,42 @@ as standalone Step 20 in `docs/plan.md`.
 - Dependency CVEs: no npm dependency audit is available because there is no npm
   lockfile. Deno dependency drift was checked with `deno outdated` on 2026-06-01.
 - No automated dependency or secret scanning is configured (no CI found).
+
+### S-13 — Client-controlled reservation price (Critical) — Fixed 2026-06-11
+The browser quote (`js/booking.js` → `localStorage` → `js/checkout.js`) was the only
+price computation; `create-reservation` validated `total_price` merely as a non-negative
+integer and `maib-create-payment` charged the stored sum. Any guest could pay 1 MDL for
+any stay.
+- **Fixed:** `_shared/pricingGuard.ts` recomputes the authoritative total inside
+  `create-reservation` from DB `rooms`/`pricing_tiers`/`holidays` using the same pricing
+  module as the browser (`_shared/pricing.js`, an exact copy of `js/pricing.js`,
+  byte-identity enforced by `tests/pricing-guard.test.mjs`). Mismatches are rejected with
+  HTTP 409; the per-room split is normalized server-side. Verified in production:
+  tampered total → 409, correct total → created.
+
+### S-14 — Direct `anon` INSERT path into `reservations` (Critical) — Fixed 2026-06-11
+The "Public can create guest reservations" RLS policy plus the `anon` INSERT grant let
+any visitor bypass the Edge Function entirely via PostgREST and set any `total_price`.
+- **Fixed:** migration `20260611120000_revoke_public_reservation_insert.sql` drops the
+  policy and revokes the grant; public bookings exist only through `create-reservation`
+  (service role), staff bookings through the authenticated CRM policy. Verified in
+  production: direct anon insert → `42501 permission denied`.
+
+### S-15 — MAIB callback amount never reconciled (Critical) — Fixed 2026-06-11
+A signed `paid` callback flipped reservations to paid regardless of the amount actually
+captured.
+- **Fixed:** `getMaibCallbackAmount` (`_shared/maib.ts`) extracts the callback amount;
+  on mismatch with the stored `maib_payments.amount` (fallback: reservation total sum)
+  the booking stays `pending`, the response is `amount_mismatch`, and the event is logged
+  at error level for manual review. Absent amount fields proceed with a logged warning
+  (callback authenticity is already HMAC-verified).
+
+### S-16 — PostgREST filter injection in `maib-refund` (Low) — Fixed 2026-06-11
+`findPayment` interpolated the staff-supplied `payId` into an `.or()` filter string.
+- **Fixed:** replaced with two sequential `.eq()` lookups. Staff-only surface (`diana`
+  role), so impact was limited to malformed staff input.
+
+### S-17 — CRM auth cookie without `Secure` (Low) — Fixed 2026-06-11
+`admin/js/crm-auth.js` now appends `Secure` to the `/admin` session cookies except on
+plain-HTTP local development hosts; `SameSite=Lax` and the `/admin` path scope were
+already in place, and `.htaccess` sends HSTS.

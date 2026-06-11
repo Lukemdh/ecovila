@@ -290,3 +290,27 @@ sessions append to the running log at the bottom.
   changes needed. Verified focused CRM tests, full `npm test` (200 Node + 41 Deno),
   `deno check`, `deno lint`, stale-hook grep, and localhost admin auth-gate browser
   smoke.
+- 2026-06-11 — OFF-PLAN pre-launch payment-flow audit, fixes, and production deploy.
+  Full-codebase read found three Criticals: B-23 client-controlled reservation price
+  (no server recomputation), B-24 direct anon INSERT into `reservations` via RLS
+  policy + grant, B-25 MAIB callback confirming bookings without amount
+  reconciliation. Added the server-side pricing guard (`_shared/pricingGuard.ts` +
+  `_shared/pricing.js`, byte-identical copy of `js/pricing.js` enforced by
+  `tests/pricing-guard.test.mjs`), migration
+  `20260611120000_revoke_public_reservation_insert.sql`, and callback amount
+  verification (`getMaibCallbackAmount`; mismatches stay pending). Also fixed B-26
+  (removed `TEST_SOLD_OUT_RANGES` scaffolding from `booking.js`), B-27 (holidays are
+  recurring month-day rules — removed the date-range filter from the booking-page
+  fetch), B-28 (pricing-load failure now blocks checkout instead of falling back to
+  hardcoded prices), B-29 (MAIB session reuse now requires an exact amount match),
+  B-30 (`.or()` filter injection in `maib-refund` → sequential `.eq()` lookups), and
+  B-31 (CRM auth cookie gains `Secure`). Deployed to production via the Supabase CLI +
+  management API: migration applied individually because the local/remote migration
+  histories are drifted (ADR-023 — plain `db push` would re-run seed upserts and
+  overwrite live prices); `create-reservation`, `maib-callback`, `maib-create-payment`,
+  and `maib-refund` redeployed. Verified live: tampered total → 409, direct anon
+  insert → 42501, correct total → created (test row deleted), callback rejects unsigned
+  payloads. `npm test` → 205 Node + 48 Deno. Updated README, production-readiness,
+  security, bugs, decisions, conventions, project-structure, plan, and the root
+  `bugs.md` fix log; `dist/tophost/` rebuilt and awaiting upload. Owner still needs to
+  rotate the Supabase access token shared during the deploy.

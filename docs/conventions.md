@@ -73,6 +73,14 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Privileged DB writes use the service-role client from `_shared/supabaseAdmin.ts`.
 - Guest-facing cancellation rules must be enforced server-side in both the
   `reservation-cancel` Edge Function and the latest `cancel_reservation_by_token` RPC.
+- Money amounts are never trusted from the client. Public reservation totals are
+  recomputed server-side by `_shared/pricingGuard.ts` inside `create-reservation`
+  (mismatch → HTTP 409), and the MAIB callback reconciles the captured amount before
+  marking anything paid. `_shared/pricing.js` must stay byte-identical to
+  `js/pricing.js` — re-copy after any pricing change (`tests/pricing-guard.test.mjs`
+  enforces this).
+- Holidays are recurring month-day rules: fetch the whole `holidays` table; never
+  filter it by a date range (client or server).
   Pending cash holds may be cancelled through the manage-token confirmation flow; paid
   cash reimbursements remain office-only. Browser code may disable buttons and show
   policy copy, but must not be the only enforcement point. Staff Maib refunds remain

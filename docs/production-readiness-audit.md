@@ -7,6 +7,33 @@ The 2026-06-03 SEO/AEO + tracking pass replaced the root maintenance page with t
 Romanian homepage, added `/ru/` and `/en/`, and added consent-gated server-side
 conversion tracking.
 
+## 2026-06-11 addendum — payment-flow Critical fixes deployed
+
+A dedicated pre-launch payment-flow audit (full log in the root `bugs.md`) found three
+**Critical** issues missed by earlier scans, all fixed and **deployed to the production
+Supabase project the same day**:
+
+- **B-23 / S-13** — reservation `total_price` was fully client-controlled; the server
+  charged whatever the browser sent. Fixed with server-side price recomputation in
+  `create-reservation` (`_shared/pricingGuard.ts`; mismatches → HTTP 409).
+- **B-24 / S-14** — RLS allowed direct `anon` INSERT into `reservations`, bypassing the
+  Edge Function. Fixed by `20260611120000_revoke_public_reservation_insert.sql`.
+- **B-25 / S-15** — the MAIB callback marked bookings paid without reconciling the
+  captured amount. Fixed; mismatched amounts stay pending and are logged for review.
+
+Also fixed: B-26 (test sold-out scaffolding in `booking.js`), B-27 (recurring holidays
+date-range-filtered out of quotes), B-28 (silent hardcoded-price fallback), B-29 (stale
+MAIB session amount reuse), B-30 (`.or()` filter injection in `maib-refund`), B-31
+(missing `Secure` on the CRM auth cookie).
+
+Live verification: tampered total → 409; direct anon insert → `42501`; correct total →
+booking created (test row removed); `maib-callback` reachable without JWT and rejecting
+unsigned payloads. `npm test` → **205 Node + 48 Deno tests pass**. Outstanding launch
+items: upload `dist/tophost/` to TopHost, run a MAIB sandbox payment end-to-end, rotate
+the access token used for the deploy, and resolve/accept S-12, S-9/S-10, B-10/B-11/
+B-12/B-13. ⚠️ Migration histories are drifted — never plain `supabase db push`
+(ADR-023).
+
 ## Readiness verdict
 
 **Not production-ready yet.** The automated suites are green, and Steps 15-16 fixed the
@@ -15,7 +42,8 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 188 Node + 38 Deno tests pass on 2026-06-03 |
+| Test suite | Green | `npm test` -> 205 Node + 48 Deno tests pass on 2026-06-11 |
+| Payment integrity | Green (2026-06-11) | B-23/B-24/B-25 fixed and deployed; server-side price guard verified live |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
 | Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
