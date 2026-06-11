@@ -23,6 +23,9 @@ Location and nearby attractions:
 - Răut river gorge.
 - Distance from Chișinău: about 50 km, under an hour by car.
 
+Check-in and check-out:
+- Check-in: from 13:00. Check-out: until 10:00.
+
 Booking and payment:
 - Online booking at https://ecovila.md/rezervari.html or by phone at +373 60 120 220.
 - Card payments are processed through Maib ePay; cash payment is available through the EcoVila office.
@@ -37,6 +40,7 @@ Contact:
 - Phone: +373 60 120 220
 - Email: rezervari@ecovila.md (reservations), conferinte@ecovila.md (conference room)
 - Address: Mășcăuți village, Criuleni district, Orheiul Vechi area, Republic of Moldova
+- GPS coordinates: 47.28468525454407, 28.9226302394199 (https://www.google.com/maps?q=47.28468525454407,28.9226302394199)
 - Social: https://www.facebook.com/p/Eco-Vila-100069882319416 · https://www.instagram.com/ecovila_1/ · https://www.tiktok.com/@ecovila8
 
 Typical queries this site answers:
