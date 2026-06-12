@@ -467,6 +467,6 @@ describe('EcoVila Step 5 checkout', () => {
       globalThis.location = previousLocation;
     }
 
-    assert.equal(location.href, 'confirmare.html?id=reservation-cash&manage=cash-manage-token');
+    assert.equal(location.href, 'gestionare.html?id=reservation-cash&manage=cash-manage-token');
   });
 });

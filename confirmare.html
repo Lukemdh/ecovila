@@ -6,7 +6,7 @@
     <title>EcoVila | Confirmare rezervare</title>
     <meta
       name="description"
-      content="Confirmarea rezervării EcoVila — detalii și termenul de achitare."
+      content="Confirmarea rezervării EcoVila — sejurul tău este rezervat."
     >
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
@@ -18,6 +18,7 @@
       rel="stylesheet"
     >
     <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/booking.css">
     <link rel="stylesheet" href="css/checkout.css">
     <link rel="stylesheet" href="css/confirmation.css">
     <meta name="robots" content="noindex">
@@ -44,12 +45,6 @@
 
     <main class="checkout-page" id="confirmare-page" data-confirmare-app>
       <div class="checkout-shell">
-        <div class="checkout-hero">
-          <h1 data-i18n="confirmare.title">Rezervarea ta</h1>
-          <p data-confirmare-lead data-i18n="confirmare.loadingLead">
-            Se verifică detaliile rezervării...
-          </p>
-        </div>
 
         <!-- Loading state -->
         <div class="an-loading" data-confirmare-loading>
@@ -70,298 +65,150 @@
           </a>
         </section>
 
-        <!-- Main content — two-column grid -->
-        <div class="checkout-grid" data-confirmare-content hidden>
+        <!-- Card payment processing state -->
+        <section class="cb-status-card" data-processing-panel hidden>
+          <span class="an-spinner" aria-hidden="true"></span>
+          <h2 data-i18n="confirmare.cardPendingTitle">Plată în curs</h2>
+          <p data-i18n="confirmare.cardPendingText">
+            Rezervarea dvs. a fost înregistrată. Plata va fi confirmată automat după procesare.
+          </p>
+          <button type="button" class="editorial-button editorial-button--filled" data-retry-payment data-i18n="confirmare.retryPayment" hidden>
+            Continuă plata
+          </button>
+        </section>
 
-          <!-- LEFT: Reservation summary (read-only) -->
-          <section class="co-card co-summary" aria-labelledby="confirmare-summary-title">
-            <h2 id="confirmare-summary-title" class="co-card__title" data-i18n="checkout.summaryTitle">
-              Sumar rezervare
-            </h2>
+        <!-- Payment failed state -->
+        <section class="cb-status-card cb-status-card--failed" data-failed-panel hidden>
+          <div class="an-status-icon an-status-icon--error" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </div>
+          <h2 data-i18n="confirmare.failedTitle">Plata nu a fost finalizată</h2>
+          <p data-i18n="confirmare.failedText">
+            Plata nu a putut fi procesată, iar rezervarea nu a fost confirmată. Poți încerca din nou oricând.
+          </p>
+          <button type="button" class="editorial-button editorial-button--filled" data-retry-payment data-i18n="confirmare.retryPayment" hidden>
+            Continuă plata
+          </button>
+          <a class="editorial-button" href="rezervari.html" data-i18n="confirmare.backToBooking">
+            Rezervați din nou
+          </a>
+        </section>
 
-            <dl class="co-summary__list">
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  </span>
-                  <span data-i18n="checkout.dates">Perioada</span>
-                </dt>
-                <dd data-summary-dates>--</dd>
-              </div>
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                  </span>
-                  <span data-i18n="checkout.nights">Nopți</span>
-                </dt>
-                <dd data-summary-nights>--</dd>
-              </div>
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                  </span>
-                  <span data-i18n="checkout.guests">Oaspeți</span>
-                </dt>
-                <dd data-summary-guests>--</dd>
-              </div>
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                  </span>
-                  <span data-i18n="checkout.accommodation">Cazare</span>
-                </dt>
-                <dd data-summary-accommodation>--</dd>
-              </div>
-              <div class="co-summary__row" data-summary-rooms-row hidden>
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-                  </span>
-                  <span data-i18n="checkout.rooms">Număr</span>
-                </dt>
-                <dd data-summary-rooms>--</dd>
-              </div>
-            </dl>
+        <!-- Cancelled state -->
+        <section class="cb-status-card cb-status-card--failed" data-cancelled-panel hidden>
+          <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </div>
+          <h2 data-i18n="confirmare.cancelledTitle">Rezervare anulată</h2>
+          <p data-i18n="confirmare.cancelledText">
+            Rezervarea dvs. a fost anulată cu succes.
+          </p>
+          <a class="editorial-button editorial-button--filled" href="rezervari.html" data-i18n="confirmare.backToBooking">
+            Rezervați din nou
+          </a>
+        </section>
 
-            <div class="co-breakdown">
-              <h3 data-i18n="checkout.breakdownTitle">Calcul preț</h3>
-              <ul data-summary-breakdown></ul>
+        <!-- Celebration content -->
+        <div data-celebrate-content hidden>
+
+          <!-- Hero -->
+          <section class="cb-hero">
+            <div class="cb-hero__check" aria-hidden="true">
+              <svg viewBox="0 0 64 64" width="72" height="72" fill="none">
+                <circle class="cb-hero__check-ring" cx="32" cy="32" r="29" stroke="currentColor" stroke-width="2.4"/>
+                <path class="cb-hero__check-mark" d="M20 33.5 28.5 42 44 24" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
             </div>
-
-            <div class="co-total">
-              <span data-i18n="checkout.total">Total</span>
-              <strong data-summary-total>--</strong>
-            </div>
-          </section>
-
-          <!-- RIGHT: stacked status / management panels -->
-          <div class="cf-panels">
-
-          <!-- Cash payment panel -->
-          <section class="co-card" aria-labelledby="cf-cash-title" data-cash-panel hidden>
-
-            <!-- Header with status badge -->
-            <div class="cf-card-header">
-              <h2 id="cf-cash-title" class="co-card__title" data-i18n="confirmare.cashTitle">
-                Plată cash
-              </h2>
-              <span class="cf-badge cf-badge--pending" aria-label="Status">
-                <!-- Clock icon -->
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span data-i18n="confirmare.statusPending">În așteptarea plății</span>
-              </span>
-            </div>
-
-            <!-- Timer with botanical decoration -->
-            <div class="cf-timer-wrap" data-timer-block>
-              <!-- Left botanical sprig -->
-              <div class="cf-botanical" aria-hidden="true">
-                <svg width="36" height="100" viewBox="0 0 36 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 97 C17 82 19 66 17 50 C16 36 18 18 17 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                  <path d="M17 80 C10 74 5 65 4 56" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M4 56 C6 57 8 57 9 55" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 68 C24 62 28 53 29 44" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M29 44 C27 45 25 46 24 44" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 53 C10 47 7 38 6 29" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M6 29 C8 30 10 30 11 28" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 38 C23 32 26 22 27 14" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M27 14 C25 16 23 16 22 14" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 22 C14 17 14 11 15 5" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"/>
-                  <path d="M15 13 C13 11 12 9 13 7" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M15 13 C17 11 18 9 17 7" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                </svg>
-              </div>
-
-              <!-- Timer content -->
-              <div class="cf-timer-inner">
-                <span class="cf-timer__label" data-i18n="confirmare.timeRemaining">Timp rămas</span>
-                <span class="cf-timer__digits" data-timer-digits aria-live="polite" aria-atomic="true">--:--</span>
-                <span class="cf-timer__hint" data-i18n="confirmare.timerHint">
-                  După expirarea timpului, rezervarea va fi anulată automat.
-                </span>
-                <span class="cf-timer__note" data-timer-note hidden></span>
-              </div>
-
-              <!-- Right botanical sprig (mirror) -->
-              <div class="cf-botanical cf-botanical--right" aria-hidden="true">
-                <svg width="36" height="100" viewBox="0 0 36 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 97 C17 82 19 66 17 50 C16 36 18 18 17 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                  <path d="M17 80 C10 74 5 65 4 56" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M4 56 C6 57 8 57 9 55" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 68 C24 62 28 53 29 44" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M29 44 C27 45 25 46 24 44" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 53 C10 47 7 38 6 29" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M6 29 C8 30 10 30 11 28" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 38 C23 32 26 22 27 14" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
-                  <path d="M27 14 C25 16 23 16 22 14" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M17 22 C14 17 14 11 15 5" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"/>
-                  <path d="M15 13 C13 11 12 9 13 7" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                  <path d="M15 13 C17 11 18 9 17 7" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- Info rows: office hours + reservation note -->
-            <div class="cf-info-rows">
-              <div class="cf-info-row">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span data-i18n="confirmare.officeHours">Program achitare · 09:00–18:00</span>
-              </div>
-              <div class="cf-info-row">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                <span data-i18n="confirmare.bringReservationId">Păstrează numărul rezervării la achitare</span>
-              </div>
-            </div>
-
-            <!-- Extended note (shown after successful extend) -->
-            <div class="cf-extended-note" data-extend-success hidden>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-              <p data-i18n="confirmare.extendedNote">Termenul a fost extins cu 30 de minute. Aceasta este singura extindere posibilă.</p>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="cf-actions" data-timer-actions>
-              <button
-                class="cf-btn cf-btn--primary"
-                type="button"
-                data-extend-btn
-              >
-                <!-- Hourglass icon -->
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
-                <span data-i18n="confirmare.extend">Extinde cu 30 min</span>
-              </button>
-
-              <button
-                class="cf-btn cf-btn--danger-outline"
-                type="button"
-                data-cancel-btn
-              >
-                <!-- X icon -->
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <span data-i18n="confirmare.cancelBtn">Anulează rezervarea</span>
-              </button>
-            </div>
-
-            <!-- Cancel confirmation (replaces action buttons) -->
-            <div class="cf-cancel-confirm" data-cancel-confirm hidden>
-              <p data-i18n="confirmare.cancelQuestion">Ești sigur că vrei să anulezi rezervarea?</p>
-              <div class="cf-cancel-confirm__actions">
-                <button
-                  class="cf-btn cf-btn--danger-filled"
-                  type="button"
-                  data-cancel-yes
-                >
-                  <span data-i18n="confirmare.cancelYes">Da, anulează</span>
-                </button>
-                <button
-                  class="cf-btn cf-btn--ghost"
-                  type="button"
-                  data-cancel-no
-                >
-                  <span data-i18n="confirmare.cancelNo">Nu, menține</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Error message -->
-            <p class="booking-error" data-confirmare-action-error hidden></p>
-
-          </section>
-
-          <!-- RIGHT: Card / success panel -->
-          <section class="co-card" aria-labelledby="cf-success-title" data-success-panel hidden>
-            <div class="cf-success">
-              <div class="cf-success__icon" aria-hidden="true">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </div>
-
-              <div>
-                <h2 id="cf-success-title" class="cf-success__title" data-success-title data-i18n="confirmare.successTitle">
-                  Rezervare confirmată!
-                </h2>
-                <p class="cf-success__lead" data-i18n="confirmare.successLead">
-                  Vă așteptăm la EcoVila. Detaliile complete au fost trimise pe email și SMS.
-                </p>
-              </div>
-
-              <div class="cf-success__rules">
-                <div class="cf-success__rule">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  <span data-i18n="confirmare.checkinTime">Check-in de la ora 13:00.</span>
-                </div>
-                <div class="cf-success__rule">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-                  <span data-i18n="confirmare.noPets">Accesul cu animale de companie nu este permis pe teritoriul complexului.</span>
-                </div>
-              </div>
-
-              <a
-                class="editorial-button editorial-button--filled"
-                href="index.html"
-                data-i18n="confirmare.backHome"
-              >
-                Înapoi la pagina principală
-              </a>
-            </div>
-          </section>
-
-          <!-- RIGHT: Reservation management panel -->
-          <section class="co-card cf-manage" aria-labelledby="cf-manage-title" data-manage-panel hidden>
-            <div class="cf-card-header">
-              <h2 id="cf-manage-title" class="co-card__title" data-i18n="confirmare.manageTitle">
-                Gestionează rezervarea
-              </h2>
-              <span class="cf-badge cf-badge--pending" data-managed-status>--</span>
-            </div>
-
-            <p class="cf-manage__policy" data-i18n="confirmare.refundPolicy">
-              Anularea online și rambursarea prin MAIB sunt posibile doar dacă mai sunt cel puțin 7 zile până la sosire sau dacă rezervarea a fost creată de mai puțin de 2 ore.
+            <h1 data-i18n="confirmare.successTitle">Rezervare confirmată!</h1>
+            <p class="cb-hero__lead" data-confirmare-lead data-i18n="confirmare.celebrateLead">
+              Abia așteptăm să te primim. Natura, SPA-ul și mesele sunt deja pregătite pentru tine.
             </p>
 
-            <p class="cf-manage__note" data-managed-refund-note></p>
-
-            <div class="cf-actions" data-managed-actions>
-              <button
-                class="cf-btn cf-btn--danger-outline"
-                type="button"
-                data-managed-cancel-btn
-              >
-                <span data-i18n="confirmare.manageCancel">Anulează rezervarea</span>
-              </button>
+            <div class="cb-countdown" data-celebrate-countdown hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span data-celebrate-countdown-value>--</span>
             </div>
+          </section>
 
-            <div class="cf-cancel-confirm" data-managed-cancel-confirm hidden>
-              <p data-i18n="confirmare.managedCancelQuestion">
-                Ești sigur că vrei să anulezi această rezervare?
-              </p>
-              <div class="cf-cancel-confirm__actions">
-                <button
-                  class="cf-btn cf-btn--danger-filled"
-                  type="button"
-                  data-managed-cancel-yes
-                >
-                  <span data-i18n="confirmare.cancelYes">Da, anulează</span>
-                </button>
-                <button
-                  class="cf-btn cf-btn--ghost"
-                  type="button"
-                  data-managed-cancel-no
-                >
-                  <span data-i18n="confirmare.cancelNo">Nu, menține</span>
-                </button>
+          <!-- Stay card -->
+          <section class="cb-stay co-card" aria-labelledby="cb-stay-title">
+            <h2 id="cb-stay-title" class="co-card__title" data-i18n="confirmare.yourStay">Sejurul tău</h2>
+
+            <div class="cb-stay__dates">
+              <div class="cb-stay__date">
+                <span class="cb-stay__date-label" data-i18n="booking.checkIn">Check-in</span>
+                <strong data-celebrate-checkin>--</strong>
+                <span class="cb-stay__date-hour" data-celebrate-checkin-hour>de la 13:00</span>
+              </div>
+              <div class="cb-stay__arrow" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+              <div class="cb-stay__date">
+                <span class="cb-stay__date-label" data-i18n="booking.checkOut">Check-out</span>
+                <strong data-celebrate-checkout>--</strong>
+                <span class="cb-stay__date-hour" data-celebrate-checkout-hour>până la 10:00</span>
               </div>
             </div>
 
-            <p class="booking-error" data-managed-action-error hidden></p>
+            <div class="cb-stay__meta">
+              <div class="cb-stay__meta-item">
+                <span data-i18n="checkout.nights">Nopți</span>
+                <strong data-celebrate-nights>--</strong>
+              </div>
+              <div class="cb-stay__meta-item">
+                <span data-i18n="checkout.guests">Oaspeți</span>
+                <strong data-celebrate-guests>--</strong>
+              </div>
+              <div class="cb-stay__meta-item">
+                <span data-i18n="confirmare.totalPaid">Total achitat</span>
+                <strong data-celebrate-total>--</strong>
+              </div>
+            </div>
+
+            <div class="cb-stay__rooms">
+              <span class="cb-stay__rooms-label" data-i18n="confirmare.roomAssigned">Cazarea ta</span>
+              <div class="cb-room-tags" data-celebrate-rooms></div>
+            </div>
+
+            <div class="cb-stay__actions">
+              <button class="cf-btn cf-btn--primary" type="button" data-add-calendar>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
+                <span data-i18n="confirmare.addToCalendar">Adaugă în calendar</span>
+              </button>
+              <a class="cf-btn cf-btn--ghost" data-celebrate-directions href="https://maps.google.com/?q=EcoVila+Orheiul+Vechi" target="_blank" rel="noopener">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span data-i18n="confirmare.directions">Cum ajungi</span>
+              </a>
+            </div>
+
+            <div class="cb-stay__rules">
+              <div class="cf-info-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span data-i18n="confirmare.checkinTime">Check-in de la ora 13:00.</span>
+              </div>
+              <div class="cf-info-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                <span data-i18n="confirmare.noPets">Accesul cu animale de companie nu este permis pe teritoriul complexului.</span>
+              </div>
+            </div>
+
+            <p class="cb-stay__manage">
+              <span data-i18n="confirmare.manageHint">Vrei să modifici ceva?</span>
+              <a data-celebrate-manage href="gestionare.html" data-i18n="confirmare.manageLink">Gestionează rezervarea</a>
+            </p>
           </section>
 
-          </div><!-- /.cf-panels -->
+          <!-- Included facilities — same cards as the booking page -->
+          <section class="facilities-section" aria-labelledby="facilities-title">
+            <div class="facilities-heading">
+              <h2 id="facilities-title" data-i18n="facilities.heading">Totul este inclus în sejurul tău</h2>
+              <p data-i18n="facilities.subheading">Indiferent de cazarea aleasă, ai acces la tot ce face din EcoVila o vacanță completă — fără costuri ascunse.</p>
+            </div>
+            <div class="facilities-list" data-facilities-list></div>
+          </section>
 
-        </div><!-- /.checkout-grid -->
+        </div><!-- /[data-celebrate-content] -->
+
       </div><!-- /.checkout-shell -->
     </main>
 
@@ -442,6 +289,24 @@
         <button class="cookie-banner__save" type="button" data-cookie-choice="custom" data-i18n="cookie.save">Salvează opțiunile</button>
       </div>
     </div>
+
+    <div class="booking-modal" data-facility-modal hidden>
+      <div class="booking-modal__scrim" data-facility-close></div>
+      <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="facility-modal-title">
+        <button class="booking-modal__close booking-modal__close--icon" type="button" data-facility-close aria-label="Închide">×</button>
+        <div data-facility-gallery></div>
+        <div class="booking-modal__content booking-modal__content--details">
+          <h2 id="facility-modal-title" data-facility-title></h2>
+          <p data-facility-body></p>
+          <div class="facility-heat-banner" data-facility-heat hidden></div>
+          <section class="booking-detail-section" aria-labelledby="facility-highlights-title">
+            <h3 id="facility-highlights-title" data-facility-highlights-label data-i18n="facilities.highlightsLabel">Ce te așteaptă:</h3>
+            <ul class="booking-check-list booking-check-list--wide" data-facility-highlights></ul>
+          </section>
+        </div>
+      </article>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-config.js"></script>
     <script src="js/supabase.js"></script>
@@ -449,7 +314,9 @@
     <script src="js/tracking.js"></script>
     <script src="js/translations.js"></script>
     <script src="js/pricing.js"></script>
+    <script src="js/gallery.js"></script>
     <script src="js/main.js"></script>
     <script src="js/confirmare.js"></script>
+    <script src="js/facilities.js"></script>
   </body>
 </html>

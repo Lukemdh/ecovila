@@ -10,6 +10,7 @@ const shippedPages = [
   'rezervari.html',
   'checkout.html',
   'confirmare.html',
+  'gestionare.html',
   'anulare.html',
   'politica-confidentialitate.html',
   'termeni-conditii.html',

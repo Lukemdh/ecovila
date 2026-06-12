@@ -93,15 +93,15 @@ describe('EcoVila reservation lookup and refunds', () => {
     );
   });
 
-  it('lets confirmation page render managed cancellation and refund state', () => {
-    const html = read('confirmare.html');
-    const confirmare = read('js/confirmare.js');
+  it('lets the management page render managed cancellation and refund state', () => {
+    const html = read('gestionare.html');
+    const gestionare = read('js/gestionare.js');
     const translations = read('js/translations.js');
 
-    assert.match(html, /data-manage-panel/, 'confirmation page should include a manage panel');
-    assert.match(html, /data-managed-cancel-btn/, 'confirmation page should include a managed cancel button');
-    assert.match(confirmare, /loadManagedReservation/, 'confirmation script should fetch manage details');
-    assert.match(confirmare, /handleManagedCancel/, 'confirmation script should cancel through the manage endpoint');
+    assert.match(html, /data-manage-panel/, 'management page should include a manage panel');
+    assert.match(html, /data-managed-cancel-btn/, 'management page should include a managed cancel button');
+    assert.match(gestionare, /loadManagedReservation/, 'management script should fetch manage details');
+    assert.match(gestionare, /handleManagedCancel/, 'management script should cancel through the manage endpoint');
     assert.match(translations, /confirmare\.refundEligible/, 'refund eligibility copy should be translated');
     assert.match(translations, /confirmare\.refundIneligible/, 'non-refundable copy should be translated');
     assert.match(translations, /confirmare\.cashOfficeRefund/, 'cash office-only reimbursement copy should be translated');
@@ -110,19 +110,22 @@ describe('EcoVila reservation lookup and refunds', () => {
   it('requires manage-token proof for confirmation status, cash extension, and pending cancellation', () => {
     const supabase = read('js/supabase.js');
     const confirmare = read('js/confirmare.js');
+    const gestionare = read('js/gestionare.js');
     const config = read('supabase/config.toml');
     const migrations = allMigrations();
 
-    assert.match(
-      confirmare,
-      /if \(!reservationId \|\| !manageToken\)/,
-      'confirmation page should reject bare reservation-id URLs instead of loading UUID-only actions',
-    );
-    assert.doesNotMatch(
-      confirmare,
-      /fetchPendingReservationStatus\(client, reservationId\)/,
-      'confirmation status polling should not call a UUID-only status helper',
-    );
+    for (const script of [confirmare, gestionare]) {
+      assert.match(
+        script,
+        /if \(!reservationId \|\| !manageToken\)/,
+        'guest reservation pages should reject bare reservation-id URLs instead of loading UUID-only actions',
+      );
+      assert.doesNotMatch(
+        script,
+        /fetchPendingReservationStatus\(client, reservationId\)/,
+        'status polling should not call a UUID-only status helper',
+      );
+    }
     assert.match(
       supabase,
       /functions\.invoke\('reservation-manage-details'/,
@@ -192,16 +195,16 @@ describe('EcoVila reservation lookup and refunds', () => {
     );
   });
 
-  it('keeps token-backed managed reservations aligned with the confirmation status panels', () => {
-    const confirmare = read('js/confirmare.js');
+  it('keeps token-backed managed reservations aligned with the management status panels', () => {
+    const gestionare = read('js/gestionare.js');
 
     assert.match(
-      confirmare,
+      gestionare,
       /showContentState\(summary\.paymentType \|\| 'card', serverStatus\)[\s\S]*?renderManagePanel\(summary, details\.payment \|\| null, reservationId, manageToken\)/,
       'managed reservation rendering should keep the status panels current before showing the manage panel',
     );
     assert.match(
-      confirmare,
+      gestionare,
       /summary\.paymentType === 'cash' && summary\.paymentStatus === 'pending'[\s\S]*?wireCashActions\(reservationId, manageToken\)/,
       'pending cash reservations should keep the timer panel and wire token-backed cash actions',
     );

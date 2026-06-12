@@ -1094,7 +1094,7 @@
       return;
     }
 
-    window.location.href = `confirmare.html?id=${encodeURIComponent(reservationId)}&manage=${
+    window.location.href = `gestionare.html?id=${encodeURIComponent(reservationId)}&manage=${
       encodeURIComponent(lookupState.manageToken)
     }`;
   }

@@ -15,7 +15,8 @@ ecovila/
 ├── robots.txt, sitemap.xml, llms.txt, .htaccess
 ├── rezervari.html              # Booking page (party + dates + accommodation + room selection)
 ├── checkout.html               # Checkout: summary, guest form, GDPR, cash/card
-├── confirmare.html             # Confirmation + manage: cash countdown, extend, online cancel, refund
+├── confirmare.html             # Celebration-only confirmation: countdown, stay card, room tag, facilities (ADR-027)
+├── gestionare.html             # Reservation management: cash countdown, extend, online cancel, refund (ADR-027)
 ├── anulare.html                # Token + phone self-service cancellation policy
 ├── politica-confidentialitate.html  # Privacy policy (legal)
 ├── termeni-conditii.html       # Terms & conditions (legal)
@@ -39,7 +40,7 @@ ecovila/
 │   ├── main.css                # Landing + shared header/footer/language UI
 │   ├── booking.css             # rezervari.html
 │   ├── checkout.css            # checkout.html
-│   ├── confirmation.css        # confirmare.html + anulare.html
+│   ├── confirmation.css        # confirmare.html + gestionare.html + anulare.html
 │   ├── legal.css               # legal pages
 │   └── crm.css                 # admin CRM
 │
@@ -56,7 +57,8 @@ ecovila/
 │   ├── facilities.js           # Included-facilities cards + facility detail modal
 │   ├── booking.js              # rezervari.html controller (largest frontend file, 1348 lines)
 │   ├── checkout.js             # checkout.html controller (incl. Maib rail routing)
-│   ├── confirmare.js           # confirmare.html controller
+│   ├── confirmare.js           # confirmare.html controller (celebration + card-status polling)
+│   ├── gestionare.js           # gestionare.html controller (cash timer, extend, cancel, refund)
 │   └── anulare.js              # anulare.html controller
 │
 ├── admin/                      # Staff CRM (admin.ecovila.md)
@@ -117,7 +119,8 @@ ecovila/
 | `site.html` | Local transition source; redirected to `/` in production. |
 | `rezervari.html` + `js/booking.js` | Booking UI and controller; availability, party, room selection. |
 | `checkout.html` + `js/checkout.js` | Checkout UI; builds reservation, picks Maib rail by phone country code. |
-| `confirmare.html` + `js/confirmare.js` | Token-backed post-booking state: cash timer, extend, pending-cash cancellation, online cancellation eligibility, refund display. |
+| `confirmare.html` + `js/confirmare.js` | Token-backed celebration page: confirmed-stay hero, check-in countdown, assigned room, ICS download, included facilities; polls card payments until the Maib callback settles them. |
+| `gestionare.html` + `js/gestionare.js` | Token-backed management page: cash timer, extend, pending-cash cancellation, online cancellation eligibility, refund display. |
 | `anulare.html` + `js/anulare.js` | Token + phone self-service cancellation with 7-day / 2-hour and cash-office rules. |
 | `js/pricing.js` | Pure pricing/billing/date engine. Shared by frontend + CRM + Node tests. |
 | `js/calendar.js` | Shared calendar/date logic (booking page + CRM calendar). |

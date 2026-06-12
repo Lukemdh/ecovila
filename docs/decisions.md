@@ -387,6 +387,58 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   same change — `state.pricingTiers` now starts empty so no guessed MDL prices can flash
   before the DB load resolves (reinforces ADR-022's "prices are never guessed" stance).
 
+### ADR-027 — Confirmation is a celebration page; management moves to `gestionare.html`
+- **Date:** 2026-06-12.
+- **Decision:** the old `confirmare.html` mixed "your booking is confirmed" with cash
+  timers and cancellation/refund controls. It is now split:
+  - `confirmare.html` + `js/confirmare.js` is celebration-only: animated check-mark,
+    "Rezervare confirmată!", a days-until-check-in countdown chip, the stay card
+    (dates with 13:00/10:00 hours, nights, guests, total paid), the assigned room as a
+    key-tag ("Cameră în Hotel #16"), an `.ics` calendar download, a Google Maps
+    directions link, and the same included-facilities cards + photo modal as
+    `rezervari.html` (reuses `facilities.js`/`gallery.js`/`booking.css`). Card returns
+    from MAIB land here, show a processing panel, and the existing 5s status poll flips
+    the page to the celebration when the callback marks the group paid; `payment=failed`
+    and cancelled reservations get their own states.
+  - `gestionare.html` + `js/gestionare.js` owns everything operational with the logic
+    carried over unchanged from the old controller: cash hold countdown, one-time
+    extension, pending-cash cancellation, online cancellation eligibility + refund
+    notes, status badges, and the (previously missing) expired/cancelled overlay markup.
+    When a reservation is paid it links back to the celebration page.
+- **Routing:** cash checkouts redirect to `gestionare.html` (the booking is not
+  confirmed yet); card checkouts and SMS/email "Vezi rezervarea" links keep pointing at
+  `confirmare.html`, which redirects pending-cash reservations to `gestionare.html` so
+  old links never strand a guest. Phone-lookup results on `rezervari.html` open
+  `gestionare.html`. Both pages stay `noindex` and require `id` + `manage` token.
+- **Why:** the post-payment moment should sell the anticipation ("can't wait!") and
+  re-show everything the guest already paid for, while destructive actions live one
+  deliberate click away instead of next to the confetti.
+
+### ADR-028 — The repo is the source of truth for live Supabase; drift is repaired, not tolerated
+- **Date:** 2026-06-12.
+- **Context:** live checkout was completely broken because the live DB never received
+  the `20260603090000_seo_tracking_foundation` migration (`tracking_*` columns), while
+  the migration history table held ~26 auto-timestamped entries applied through other
+  channels (dashboard/MCP) that didn't match the repo's files. Separately, the deployed
+  `reservation-manage-details` Edge Function predated the repo's copy, so the cash
+  countdown on the live confirmation page always showed `--:--`, and the
+  `notification_events` check constraint was missing `guest_cancellation`, silently
+  dropping guest cancellation SMS/emails.
+- **Decision:** local migration files are the canonical history. The live history was
+  aligned 1:1 via `supabase migration repair` (all local versions marked applied,
+  duplicate/transient remote rows removed), the one remote-only migration worth keeping
+  was pulled into the repo (`20260510195523_pg_cron_schedules.sql`), and all 15 Edge
+  Functions were redeployed from the repo after the Deno suite passed. Targeted SQL goes
+  through `supabase db query --linked`; plain `supabase db push` is safe again now that
+  histories match and is the expected path for future migrations
+  (`20260612160000_notification_guest_cancellation_event.sql` documents the constraint
+  fix).
+- **Consequence:** after adding a migration, verify it exists on live
+  (`supabase migration list --linked`) instead of assuming some other channel applied
+  it; Edge Functions deploy separately from DB migrations and must ship together with
+  schema they depend on. Note the live MAIB credentials still point at the sandbox
+  (`checkout-sandbox.maib.md`) and must be switched before accepting real payments.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

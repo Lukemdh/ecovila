@@ -415,7 +415,7 @@
       .filter(Boolean);
   }
 
-  function buildConfirmationUrl(primaryId, manageToken, params) {
+  function buildConfirmationUrl(primaryId, manageToken, params, page) {
     const query = new URLSearchParams();
     query.set('id', primaryId);
 
@@ -429,7 +429,7 @@
       }
     });
 
-    return `confirmare.html?${query.toString()}`;
+    return `${page || 'confirmare.html'}?${query.toString()}`;
   }
 
   function redirectAfterReservation(primaryId, paymentType, payloads, selection, createResult, guestPhone) {
@@ -458,7 +458,9 @@
       });
     }
 
-    root.location.href = buildConfirmationUrl(primaryId, manageToken);
+    // Cash reservations are still awaiting payment, so they land on the
+    // management page where the hold timer and cash actions live.
+    root.location.href = buildConfirmationUrl(primaryId, manageToken, null, 'gestionare.html');
     return Promise.resolve();
   }
 
@@ -586,6 +588,7 @@
           reservationIds,
           manageToken: createResult.manageToken || '',
           paymentType: state.paymentType,
+          paymentRail: getPaymentRail(guestValidation.guest.phone),
           totalPrice: Number(state.selection.totalPrice),
           trackingEventId: tracking.tracking_event_id,
           createdAt: new Date().toISOString(),
@@ -599,10 +602,12 @@
       });
 
       reservationCreated = true;
-      showMessage(
-        '[data-checkout-status]',
-        t(state.paymentType === 'card' ? 'checkout.createdOnline' : 'checkout.createdCash'),
-      );
+      // Card guests are sent straight to the payment gateway, so the button
+      // stays in its loading state instead of flashing an interim notice; only
+      // cash reservations announce the redirect to the confirmation page.
+      if (state.paymentType === 'cash') {
+        showMessage('[data-checkout-status]', t('checkout.createdCash'));
+      }
       await redirectAfterReservation(
         primaryId,
         state.paymentType,
