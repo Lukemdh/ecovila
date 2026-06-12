@@ -65,7 +65,7 @@ describe('Tophost upload preparation', () => {
       ),
       ['index.html', 'ru', 'en', 'robots.txt', 'sitemap.xml', 'llms.txt', '.htaccess'],
     );
-    assert.equal(TOPHOST_UPLOAD_ENTRIES.includes('site.html'), false);
+    assert.equal(TOPHOST_UPLOAD_ENTRIES.includes('site.html'), true);
   });
 
   it('copies static files into a clean folder with cPanel-safe permissions', async () => {

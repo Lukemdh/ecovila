@@ -8,6 +8,7 @@ const IGNORED_NAMES = new Set(['.DS_Store', '__MACOSX']);
 
 export const TOPHOST_UPLOAD_ENTRIES = [
   'index.html',
+  'site.html',
   'ru',
   'en',
   'rezervari.html',
