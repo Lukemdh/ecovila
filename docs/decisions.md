@@ -439,6 +439,46 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   schema they depend on. Note the live MAIB credentials still point at the sandbox
   (`checkout-sandbox.maib.md`) and must be switched before accepting real payments.
 
+### ADR-029 — Card holds expire 5 minutes after the first payment attempt and stay retryable until then
+- **Date:** 2026-06-12.
+- **Context:** card reservations are created `pending` and the guest is sent to MAIB.
+  A declined card, or simply closing the gateway tab, used to be terminal: the
+  `maib-callback` cancelled the reservation on a `failed`/`cancelled` result, so there
+  was no way back, and the unconfirmed hold otherwise lingered for the old 15-minute
+  session window — extended on every retry because each attempt re-stamped a fresh
+  `now + 15min` deadline.
+- **Decision:** a card hold lasts **5 minutes from the guest's first payment attempt**,
+  and the guest can retry freely within that window:
+  - **Window length + anchor.** `MAIB_PAYMENT_SESSION_MINUTES` drops 15 → 5
+    (`_shared/maib.ts`). `maib-create-payment` reads the reservations' existing
+    `payment_session_expires_at`: the first attempt stamps `now + 5min`, every later
+    attempt **reuses that earliest deadline** instead of extending it, and a request
+    after it has lapsed returns `410` rather than opening a doomed checkout. No new
+    column and no cron change — the per-minute `ecovila-expire-maib-sessions` job
+    (ADR via `20260527082000`) already cancels in-flight card holds once
+    `payment_session_expires_at` passes, so it remains the single authority that
+    releases the room.
+  - **Retry stays open.** On a `failed`/`cancelled` callback, `maib-callback` marks
+    only the `maib_payments` row terminal (which forces a fresh checkout on the next
+    attempt, since `findReusablePayment` only reuses `created`/`pending` sessions) and
+    **no longer touches the reservation** — it stays `pending` + `payment_in_progress`
+    until the cron expires it. A `paid` callback still settles normally.
+  - **Frontend.** `confirmare.html`/`js/confirmare.js` show a "Continuă plata" retry
+    button on both the processing (closed-gateway) and failed panels; it rebuilds the
+    `maib-create-payment` request from the pending-reservation blob, so checkout now
+    persists `paymentRail` alongside it. The button is hidden when no matching pending
+    context exists; on a lapsed window the status poll flips the page to cancelled.
+- **UX:** card checkout no longer flashes "Rezervarea a fost creată. Se deschide pagina
+  de plată." — the submit button stays in its "Se procesează…" loading state until the
+  browser navigates to the gateway (cash still announces its redirect).
+- **Why:** the guest gets the full five minutes to re-try a declined card or reopen a
+  gateway they closed, without any single attempt locking the room indefinitely; an
+  abandoned hold self-releases on a predictable timer.
+- **Consequence:** clicking **Cancel** on the MAIB page no longer frees the room
+  instantly — it is held and retryable until the 5-minute mark. Ships as Edge Functions
+  only (`maib-create-payment`, `maib-callback`); the static `confirmare.html`/`js/*`
+  must be uploaded together so the retry button and loading state match the backend.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
