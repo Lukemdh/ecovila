@@ -77,7 +77,6 @@ describe('EcoVila Step 5 checkout', () => {
       'data-payment-option="card"',
       'data-payment-option="cash"',
       'data-online-payment-title',
-      'data-online-payment-meta',
       'data-cash-disclaimer',
       'data-checkout-submit',
       'data-checkout-error',
@@ -99,6 +98,22 @@ describe('EcoVila Step 5 checkout', () => {
     assert.doesNotMatch(translations, /checkout\.summaryLead/);
     assert.doesNotMatch(translations, /checkout\.breakdownGuests/);
     assert.doesNotMatch(checkoutScript, /checkout\.breakdownGuests/);
+  });
+
+  it('omits the removed payment method description copy', () => {
+    const html = read('checkout.html');
+    const translations = read('js/translations.js');
+    const checkoutScript = read('js/checkout.js');
+
+    for (const key of ['checkout.payMiaMeta', 'checkout.payCardMeta', 'checkout.payCashMeta']) {
+      const pattern = new RegExp(key.replace('.', '\\.'));
+      assert.doesNotMatch(html, pattern);
+      assert.doesNotMatch(translations, pattern);
+      assert.doesNotMatch(checkoutScript, pattern);
+    }
+
+    assert.doesNotMatch(html, /data-online-payment-meta/);
+    assert.doesNotMatch(checkoutScript, /data-online-payment-meta/);
   });
 
   it('hides the room number summary row until the guest selected a number', () => {
@@ -134,9 +149,7 @@ describe('EcoVila Step 5 checkout', () => {
         'checkout.gdpr',
         'checkout.paymentTitle',
         'checkout.payMia',
-        'checkout.payMiaMeta',
         'checkout.payCard',
-        'checkout.payCardMeta',
         'checkout.payCash',
         'checkout.cashDisclaimer',
         'checkout.reserve',
@@ -225,11 +238,9 @@ describe('EcoVila Step 5 checkout', () => {
     assert.equal(checkout.getPaymentRail('+40721234567'), 'card');
     assert.deepEqual(checkout.getOnlinePaymentCopy('+37360123456'), {
       titleKey: 'checkout.payMia',
-      metaKey: 'checkout.payMiaMeta',
     });
     assert.deepEqual(checkout.getOnlinePaymentCopy('+40721234567'), {
       titleKey: 'checkout.payCard',
-      metaKey: 'checkout.payCardMeta',
     });
   });
 

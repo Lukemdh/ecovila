@@ -99,6 +99,10 @@ type NotificationEventRow = {
   id: string;
 };
 
+type ReservationIdRow = {
+  id: string;
+};
+
 type PaymentConfirmationDispatchResult = {
   sent: boolean;
   skipped_duplicate?: boolean;
@@ -180,7 +184,7 @@ Deno.serve(async (request) => {
       );
     }
 
-    if (!reservations.length) {
+    if (!reservations.length && status !== 'paid') {
       console.info('Maib callback processed', {
         ...callbackContext,
         decision: 'no_matching_reservation',
@@ -189,33 +193,78 @@ Deno.serve(async (request) => {
     }
 
     if (status === 'paid') {
-      const ids = reservations.map((reservation) => reservation.id);
-      const { error } = await table(client, 'reservations')
-        .update({
-          payment_status: 'paid',
-          cash_expires_at: null,
-          payment_in_progress: false,
-          payment_session_expires_at: null,
-          paid_at: now,
-        })
-        .in('id', ids)
-        .eq('payment_status', 'pending')
-        .is('cancelled_at', null);
+      const settledIds = new Set(
+        reservations
+          .filter((reservation) => reservation.payment_status === 'paid')
+          .map((reservation) => reservation.id),
+      );
+      const pendingIds = reservations
+        .filter((reservation) => reservation.payment_status === 'pending')
+        .map((reservation) => reservation.id);
 
-      if (error) {
-        throw new Error(error.message);
+      if (pendingIds.length) {
+        const { data: updatedRows, error } = await table<ReservationIdRow[]>(
+          client,
+          'reservations',
+        )
+          .update({
+            payment_status: 'paid',
+            cash_expires_at: null,
+            payment_in_progress: false,
+            payment_session_expires_at: null,
+            paid_at: now,
+          })
+          .in('id', pendingIds)
+          .eq('payment_status', 'pending')
+          .is('cancelled_at', null)
+          .select('id');
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        for (const row of updatedRows || []) {
+          settledIds.add(row.id);
+        }
+      }
+
+      // The expiry cron may have released the hold while the guest was still on
+      // the gateway. The money is captured, so the booking is reinstated when
+      // the room is still free; otherwise it stays cancelled and the failure is
+      // logged loudly for a manual refund.
+      const reinstated = await reinstateExpiredCardReservations(client, bookingGroupId, now);
+      const paidReservations = [
+        ...reservations.filter((reservation) => settledIds.has(reservation.id)),
+        ...reinstated,
+      ];
+
+      if (!paidReservations.length) {
+        console.error(
+          'Maib paid callback settled no reservation — guest was charged, manual refund review required',
+          callbackContext,
+        );
+        return jsonResponse(
+          { ok: true, status: 'paid', matched: 0, requiresManualReview: true },
+          {},
+          request,
+        );
       }
 
       const [notificationResults, trackingResult] = await Promise.all([
-        notifyPaidReservations(client, reservations),
-        dispatchPurchaseTrackingOnce(client, reservations, { source: 'maib-callback' }),
+        notifyPaidReservations(client, paidReservations),
+        dispatchPurchaseTrackingOnce(client, paidReservations, { source: 'maib-callback' }),
       ]);
-      console.info('Maib callback processed', { ...callbackContext, decision: 'paid' });
+      console.info('Maib callback processed', {
+        ...callbackContext,
+        decision: 'paid',
+        reinstated: reinstated.length,
+      });
       return jsonResponse(
         {
           ok: true,
           status: 'paid',
-          matched: reservations.length,
+          matched: paidReservations.length,
+          reinstated: reinstated.length,
           notificationResults,
           trackingResult,
         },
@@ -347,6 +396,69 @@ async function findReservationsForBookingGroup(client: SupabaseClient, bookingGr
   }
 
   return (data || []).map(withRoomFields);
+}
+
+// Cancellation reasons stamped by the expiry cron. Only these may be undone by
+// a late paid callback — guest- or staff-cancelled bookings stay cancelled.
+const REINSTATABLE_CANCELLATION_REASONS = ['maib_session_expired', 'maib_payment_not_started'];
+
+async function reinstateExpiredCardReservations(
+  client: SupabaseClient,
+  bookingGroupId: string,
+  now: string,
+): Promise<PaymentReservationRow[]> {
+  const { data, error } = await table<RawPaymentReservationRow[]>(client, 'reservations')
+    .select(
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, payment_status, tracking_event_id, tracking_fbp, tracking_fbc, tracking_user_agent, tracking_source_url, rooms(number, type)',
+    )
+    .eq('booking_group_id', bookingGroupId)
+    .eq('payment_type', 'card')
+    .eq('payment_status', 'cancelled')
+    .in('cancellation_reason', REINSTATABLE_CANCELLATION_REASONS);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const cancelled = data || [];
+  if (!cancelled.length) {
+    return [];
+  }
+
+  const ids = cancelled.map((reservation) => reservation.id);
+  const { data: reinstatedRows, error: updateError } = await table<ReservationIdRow[]>(
+    client,
+    'reservations',
+  )
+    .update({
+      payment_status: 'paid',
+      cancelled_at: null,
+      cancellation_reason: null,
+      cash_expires_at: null,
+      payment_in_progress: false,
+      payment_session_expires_at: null,
+      paid_at: now,
+    })
+    .in('id', ids)
+    .eq('payment_status', 'cancelled')
+    .in('cancellation_reason', REINSTATABLE_CANCELLATION_REASONS)
+    .select('id');
+
+  if (updateError) {
+    // Most likely the room was rebooked after the hold expired, so the overlap
+    // exclusion constraint rejected the reinstate. The guest's charge has no
+    // booking behind it and must be refunded by hand.
+    console.error(
+      'Maib paid callback could not reinstate expired reservations — manual refund required',
+      { bookingGroupId, reservationIds: ids, message: updateError.message },
+    );
+    return [];
+  }
+
+  const reinstatedIds = new Set((reinstatedRows || []).map((row) => row.id));
+  return cancelled
+    .filter((reservation) => reinstatedIds.has(reservation.id))
+    .map((reservation) => withRoomFields({ ...reservation, payment_status: 'paid' }));
 }
 
 async function upsertPaymentCallback(client: SupabaseClient, input: UpsertPaymentCallbackInput) {

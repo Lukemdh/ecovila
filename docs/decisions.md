@@ -479,6 +479,39 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   only (`maib-create-payment`, `maib-callback`); the static `confirmare.html`/`js/*`
   must be uploaded together so the retry button and loading state match the backend.
 
+### ADR-030 — A captured payment always wins against the expiry cron
+- **Date:** 2026-06-12.
+- **Context:** the expiry cron and the MAIB `paid` callback race in two directions.
+  The cron selected expired holds and then cancelled them **by id only**, so a payment
+  confirmed between its SELECT and UPDATE was flipped to cancelled. And a `paid`
+  callback that arrived after the cron had already released the hold matched zero
+  reservations: the guest was charged, the booking stayed cancelled, and only a
+  `console.info` recorded it.
+- **Decision:** the guest's money is the source of truth:
+  - **Cron side.** Every cancellation UPDATE in `expire-cash-reservations`
+    (`cash_expired`, `maib_session_expired`, `maib_payment_not_started`) re-asserts
+    `payment_status = 'pending' and cancelled_at is null` inside the statement and
+    notifies only the rows that actually flipped, so a mid-run payment can never be
+    cancelled or emailed an expiry notice. `confirm-reservation-payment` carries the
+    same guard.
+  - **Callback side.** The `paid` branch of `maib-callback` updates with
+    `.select('id')` and only notifies/tracks reservations that actually settled. If
+    the cron already cancelled the hold (`maib_session_expired` /
+    `maib_payment_not_started` — never guest or staff cancellations), the callback
+    **reinstates** the booking group to `paid`; the `reservations_no_room_overlap`
+    exclusion constraint rejects the reinstate if the room was rebooked, in which case
+    the callback logs `manual refund required` via `console.error` and answers with
+    `requiresManualReview: true`.
+  - **Checkout side.** If `maib-create-payment` fails after the reservation rows
+    exist, `js/checkout.js` no longer strands the guest on the checkout form (where a
+    resubmit would collide with its own pending hold); it redirects to
+    `confirmare.html`, whose status poll and ADR-029 retry button own recovery.
+- **Why:** a charged card with no booking is the worst outcome the system can produce;
+  every race now resolves toward "paid booking stands" with a loud, reviewable trail
+  for the one unrecoverable case (room rebooked before the late payment landed).
+- **Consequence:** ships as Edge Functions (`maib-callback`,
+  `expire-cash-reservations`, `confirm-reservation-payment`) plus static `js/checkout.js`.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

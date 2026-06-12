@@ -169,6 +169,43 @@ describe('EcoVila Maib Checkout integration', () => {
     }
   });
 
+  it('sends the guest to the confirmation page instead of stranding them when payment start fails', async () => {
+    const checkout = require('../js/checkout.js');
+    const supabaseHelpers = require('../js/supabase.js');
+    const location = { href: '' };
+    const previousLocation = globalThis.location;
+    const previousGetClient = supabaseHelpers.getSupabaseClient;
+    const previousCreatePayment = supabaseHelpers.createMaibPaymentRequest;
+    const previousConsoleError = console.error;
+
+    globalThis.location = location;
+    console.error = () => {};
+    supabaseHelpers.getSupabaseClient = () => ({});
+    supabaseHelpers.createMaibPaymentRequest = () => Promise.reject(new Error('gateway down'));
+
+    try {
+      await checkout.redirectAfterReservation(
+        'reservation-a',
+        'card',
+        [{ id: 'reservation-a' }],
+        { totalPrice: 3100 },
+        { bookingGroupId: 'group-a', reservationIds: ['reservation-a'], manageToken: 'manage-token-a' },
+        '+37360123456',
+      );
+
+      assert.equal(
+        location.href,
+        'confirmare.html?id=reservation-a&manage=manage-token-a',
+        'a failed payment start should land on the confirmation page where the retry button lives',
+      );
+    } finally {
+      globalThis.location = previousLocation;
+      console.error = previousConsoleError;
+      supabaseHelpers.getSupabaseClient = previousGetClient;
+      supabaseHelpers.createMaibPaymentRequest = previousCreatePayment;
+    }
+  });
+
   it('keeps the Maib return page pending and polls for callback-confirmed status', () => {
     const confirmare = read('js/confirmare.js');
 
@@ -237,5 +274,55 @@ describe('EcoVila Maib Checkout integration', () => {
     assert.match(expiry, /payment_session_expires_at/, 'online session expiry should be time boxed');
     assert.match(expiry, /maib_session_expired/, 'stale online sessions should have a distinct reason');
     assert.match(expiry, /maib_payment_not_started/, 'unstarted online bookings should be released');
+  });
+
+  it('never lets the expiry cron cancel a reservation that was paid mid-run', () => {
+    const expiry = read('supabase/functions/expire-cash-reservations/index.ts');
+
+    assert.match(
+      expiry,
+      /cancelPendingReservations/,
+      'all expiry cancellations should funnel through the guarded helper',
+    );
+    assert.match(
+      expiry,
+      /\.eq\('payment_status', 'pending'\)[\s\S]*?\.is\('cancelled_at', null\)[\s\S]*?\.select\('id'\)/,
+      'the cancel UPDATE should re-assert pending and report which rows actually flipped',
+    );
+    assert.doesNotMatch(
+      expiry,
+      /\.update\(\{\s*payment_status: 'cancelled'/,
+      'no expiry path should cancel by id without the pending guard',
+    );
+  });
+
+  it('reinstates expired card holds when the paid callback loses the race against the cron', () => {
+    const callback = read('supabase/functions/maib-callback/index.ts');
+
+    assert.match(
+      callback,
+      /reinstateExpiredCardReservations/,
+      'a paid callback should try to restore holds the cron already released',
+    );
+    assert.match(
+      callback,
+      /maib_session_expired[\s\S]*maib_payment_not_started/,
+      'only cron-expired cancellations may be reinstated',
+    );
+    assert.match(
+      callback,
+      /manual refund required/,
+      'an unrecoverable charge (room rebooked) should be flagged for manual refund',
+    );
+    assert.match(
+      callback,
+      /requiresManualReview: true/,
+      'a paid callback that settles nothing should be flagged for review',
+    );
+    assert.match(
+      callback,
+      /\.eq\('payment_status', 'pending'\)\s*\.is\('cancelled_at', null\)\s*\.select\('id'\)/,
+      'the paid UPDATE should report which reservations actually flipped before notifying',
+    );
   });
 });

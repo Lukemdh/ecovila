@@ -18,6 +18,32 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   lt(column: string, value: unknown): QueryBuilder<T>;
 };
 
+// Every cancellation below re-asserts `payment_status = 'pending'` inside the
+// UPDATE itself: a payment confirmed between this cron's SELECT and UPDATE
+// (Maib callback or staff confirmation) must never be flipped to cancelled.
+async function cancelPendingReservations(
+  client: SupabaseClient,
+  ids: string[],
+  values: Record<string, unknown>,
+) {
+  if (!ids.length) {
+    return [];
+  }
+
+  const { data, error } = await table<ReservationIdRow[]>(client, 'reservations')
+    .update(values)
+    .in('id', ids)
+    .eq('payment_status', 'pending')
+    .is('cancelled_at', null)
+    .select('id');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []).map((reservation) => reservation.id);
+}
+
 type RoomJoin = {
   number?: number | string | null;
   type?: string | null;
@@ -81,29 +107,27 @@ Deno.serve(async (request) => {
     }
 
     const reservations = (expiredReservations || []).map(withRoomFields);
-    const ids = reservations.map((reservation) => reservation.id);
+    const cancelledIds = await cancelPendingReservations(
+      client,
+      reservations.map((reservation) => reservation.id),
+      {
+        payment_status: 'cancelled',
+        cancelled_at: now,
+        cancellation_reason: 'cash_expired',
+      },
+    );
+    const cancelledIdSet = new Set(cancelledIds);
+    const cancelledReservations = reservations.filter((reservation) =>
+      cancelledIdSet.has(reservation.id)
+    );
 
-    if (ids.length) {
-      const { error: updateError } = await table(client, 'reservations')
-        .update({
-          payment_status: 'cancelled',
-          cancelled_at: now,
-          cancellation_reason: 'cash_expired',
-        })
-        .in('id', ids);
-
-      if (updateError) {
-        throw new Error(updateError.message);
-      }
-    }
-
-    const notificationResults = await notifyExpiredReservations(client, reservations);
+    const notificationResults = await notifyExpiredReservations(client, cancelledReservations);
     const expiredMaibSessions = await expireStaleMaibSessions(client, now);
 
     return jsonResponse(
       {
-        expired: ids.length,
-        reservationIds: ids,
+        expired: cancelledIds.length,
+        reservationIds: cancelledIds,
         notificationResults,
         expiredMaibSessions,
       },
@@ -142,24 +166,20 @@ async function expireInFlightMaibSessions(client: SupabaseClient, now: string) {
     throw new Error(selectError.message);
   }
 
-  const ids = (data || []).map((reservation) => reservation.id);
-
-  if (!ids.length) {
-    return [];
-  }
-
-  const { error: updateError } = await table(client, 'reservations')
-    .update({
+  const ids = await cancelPendingReservations(
+    client,
+    (data || []).map((reservation) => reservation.id),
+    {
       payment_status: 'cancelled',
       payment_in_progress: false,
       payment_session_expires_at: null,
       cancelled_at: now,
       cancellation_reason: 'maib_session_expired',
-    })
-    .in('id', ids);
+    },
+  );
 
-  if (updateError) {
-    throw new Error(updateError.message);
+  if (!ids.length) {
+    return [];
   }
 
   const { error: paymentUpdateError } = await table(client, 'maib_payments')
@@ -193,26 +213,16 @@ async function expireUnstartedCardReservations(client: SupabaseClient, now: stri
     throw new Error(selectError.message);
   }
 
-  const ids = (data || []).map((reservation) => reservation.id);
-
-  if (!ids.length) {
-    return [];
-  }
-
-  const { error: updateError } = await table(client, 'reservations')
-    .update({
+  return await cancelPendingReservations(
+    client,
+    (data || []).map((reservation) => reservation.id),
+    {
       payment_status: 'cancelled',
       payment_session_expires_at: null,
       cancelled_at: now,
       cancellation_reason: 'maib_payment_not_started',
-    })
-    .in('id', ids);
-
-  if (updateError) {
-    throw new Error(updateError.message);
-  }
-
-  return ids;
+    },
+  );
 }
 
 async function notifyExpiredReservations(

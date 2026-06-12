@@ -127,14 +127,8 @@
 
   function getOnlinePaymentCopy(phone) {
     return getPaymentRail(phone) === 'mia'
-      ? {
-        titleKey: 'checkout.payMia',
-        metaKey: 'checkout.payMiaMeta',
-      }
-      : {
-        titleKey: 'checkout.payCard',
-        metaKey: 'checkout.payCardMeta',
-      };
+      ? { titleKey: 'checkout.payMia' }
+      : { titleKey: 'checkout.payCard' };
   }
 
   function normalizeGuestDetails(details) {
@@ -455,6 +449,13 @@
         }
 
         root.location.href = buildConfirmationUrl(primaryId, manageToken);
+      }).catch((error) => {
+        // The reservation already exists, so resubmitting the checkout form
+        // would only collide with its own pending hold. The confirmation page
+        // polls the reservation status and offers the "Continuă plata" retry
+        // (ADR-029), so the guest lands there instead of being stranded here.
+        console.error('Maib payment could not be started; continuing on the confirmation page', error);
+        root.location.href = buildConfirmationUrl(primaryId, manageToken);
       });
     }
 
@@ -509,16 +510,10 @@
     const guestPhone = documentRef.querySelector('[data-guest-phone]')?.value || '';
     const onlinePaymentCopy = getOnlinePaymentCopy(guestPhone);
     const onlinePaymentTitle = documentRef.querySelector('[data-online-payment-title]');
-    const onlinePaymentMeta = documentRef.querySelector('[data-online-payment-meta]');
 
     if (onlinePaymentTitle) {
       onlinePaymentTitle.dataset.i18n = onlinePaymentCopy.titleKey;
       onlinePaymentTitle.textContent = t(onlinePaymentCopy.titleKey);
-    }
-
-    if (onlinePaymentMeta) {
-      onlinePaymentMeta.dataset.i18n = onlinePaymentCopy.metaKey;
-      onlinePaymentMeta.textContent = t(onlinePaymentCopy.metaKey);
     }
 
     documentRef.querySelectorAll('[data-payment-option]').forEach((button) => {
@@ -545,7 +540,6 @@
   async function submitCheckout(state, form) {
     showMessage('[data-checkout-error]', '');
     showMessage('[data-checkout-status]', '');
-    let reservationCreated = false;
 
     const guestValidation = validateGuestDetails(collectGuestDetails(form));
 
@@ -601,7 +595,6 @@
         currency: 'MDL',
       });
 
-      reservationCreated = true;
       // Card guests are sent straight to the payment gateway, so the button
       // stays in its loading state instead of flashing an interim notice; only
       // cash reservations announce the redirect to the confirmation page.
@@ -620,9 +613,7 @@
       const message = String(error?.message || '');
       const key = message.includes('Missing Supabase config')
         ? 'checkout.errorSupabaseConfig'
-        : reservationCreated && state.paymentType === 'card'
-          ? 'checkout.errorPaymentStart'
-          : 'checkout.errorCreate';
+        : 'checkout.errorCreate';
       showMessage('[data-checkout-status]', '');
       showMessage('[data-checkout-error]', t(key));
     } finally {

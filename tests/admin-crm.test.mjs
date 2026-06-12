@@ -1084,6 +1084,7 @@ describe('EcoVila Step 9 CRM', () => {
       },
       formWithFields({
         '[data-add-room-numbers]': field('1'),
+        '[data-add-adults]': field('2'),
         '[data-add-kids]': field('0'),
         '[data-add-check-in]': field('2026-06-01'),
         '[data-add-check-out]': field('2026-06-02'),
@@ -1094,6 +1095,67 @@ describe('EcoVila Step 9 CRM', () => {
     );
 
     assert.equal(message, 'Introdu un telefon valid în format internațional.');
+  });
+
+  it('blocks CRM add submit without at least one adult and with an invalid email', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const baseFields = {
+      '[data-add-room-numbers]': field('1'),
+      '[data-add-kids]': field('0'),
+      '[data-add-check-in]': field('2026-06-01'),
+      '[data-add-check-out]': field('2026-06-02'),
+      '[data-add-phone]': field('+37369857607'),
+      '[data-add-total]': field('', { dataset: { total: '1900' } }),
+    };
+    const state = { rooms: [{ id: 'room-1', number: 1 }], reservations: [] };
+
+    assert.equal(
+      sidebar.validateAddForm(
+        state,
+        formWithFields({ ...baseFields, '[data-add-adults]': field('0') }),
+        { childBuckets: [] },
+      ),
+      'Indică cel puțin un adult.',
+    );
+    assert.equal(
+      sidebar.validateAddForm(
+        state,
+        formWithFields({
+          ...baseFields,
+          '[data-add-adults]': field('2'),
+          '[data-add-email]': field('not-an-email'),
+        }),
+        { childBuckets: [] },
+      ),
+      'Introdu un email valid sau lasă câmpul gol.',
+    );
+  });
+
+  it('normalizes local Moldovan phone formats in CRM staff reservation rows', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const rows = sidebar.buildStaffReservationRows(
+      formWithFields({
+        '[data-add-room-numbers]': field('1'),
+        '[data-add-full-name]': field('Ana Munteanu'),
+        '[data-add-phone]': field('069 857 607'),
+        '[data-add-email]': field('ana@example.md'),
+        '[data-add-check-in]': field('2026-06-01'),
+        '[data-add-check-out]': field('2026-06-02'),
+        '[data-add-adults]': field('2'),
+        '[data-add-child-bucket]:checked': [],
+        '[data-add-total]': field('', { dataset: { total: '1900' } }),
+        '[data-add-conference]': field('', { checked: false }),
+        '[data-add-notes]': field(''),
+      }),
+      [{ id: 'room-1', number: 1 }],
+      { role: 'diana' },
+      {
+        createGroupId: () => 'staff-group',
+        now: new Date('2026-05-08T09:00:00.000Z'),
+      },
+    );
+
+    assert.equal(rows[0].guest_phone, '+37369857607');
   });
 
   it('renders din oficiu as a CRM detail payment label', () => {

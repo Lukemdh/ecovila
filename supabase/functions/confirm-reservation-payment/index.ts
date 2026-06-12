@@ -109,9 +109,13 @@ Deno.serve(async (request) => {
       .map((reservation) => reservation.id);
 
     if (pendingIds.length) {
+      // Re-assert pending inside the UPDATE so a reservation the expiry cron
+      // cancelled between this function's SELECT and UPDATE is left untouched.
       const { error } = await table(client, 'reservations')
         .update({ payment_status: 'paid', cash_expires_at: null, paid_at: now })
-        .in('id', pendingIds);
+        .in('id', pendingIds)
+        .eq('payment_status', 'pending')
+        .is('cancelled_at', null);
 
       if (error) {
         throw new Error(error.message);

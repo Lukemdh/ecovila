@@ -10,6 +10,27 @@
     '12+': 12,
   });
   const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Mirrors the normalization in the public reservation Edge Function so staff
+  // can type local Moldovan formats (069..., 69...) without the +373 prefix.
+  function normalizeStaffPhone(value) {
+    const compact = String(value || '').trim().replace(/[\s().-]/g, '');
+
+    if (/^0\d{8}$/.test(compact)) {
+      return `+373${compact.slice(1)}`;
+    }
+
+    if (/^\d{8}$/.test(compact)) {
+      return `+373${compact}`;
+    }
+
+    if (/^373\d{8}$/.test(compact)) {
+      return `+${compact}`;
+    }
+
+    return compact;
+  }
 
   function qs(selector, scope) {
     return (scope || root.document).querySelector(selector);
@@ -229,7 +250,7 @@
       room_id: room.id,
       guest_first_name: fullName.firstName || 'Client',
       guest_last_name: fullName.lastName,
-      guest_phone: qs('[data-add-phone]', form)?.value?.trim() || '',
+      guest_phone: normalizeStaffPhone(qs('[data-add-phone]', form)?.value) || '',
       guest_email: qs('[data-add-email]', form)?.value?.trim() || 'rezervari@ecovila.md',
       check_in: qs('[data-add-check-in]', form)?.value,
       check_out: qs('[data-add-check-out]', form)?.value,
@@ -593,6 +614,8 @@
     const uniqueNumbers = uniqueRoomNumbers(roomNumbers);
     const selectedRooms = selectedRoomsFromNumbers(state.rooms || [], uniqueNumbers);
     const kidsCount = Number(qs('[data-add-kids]', form)?.value || 0);
+    const adults = Number(qs('[data-add-adults]', form)?.value || 0);
+    const email = qs('[data-add-email]', form)?.value?.trim() || '';
     const checkIn = qs('[data-add-check-in]', form)?.value;
     const checkOut = qs('[data-add-check-out]', form)?.value;
 
@@ -602,14 +625,20 @@
     if (selectedRooms.length !== uniqueNumbers.length || roomNumbers.length !== uniqueNumbers.length) {
       return 'Verifică numerele camerelor selectate.';
     }
+    if (!Number.isInteger(adults) || adults < 1) {
+      return 'Indică cel puțin un adult.';
+    }
     if (kidsCount !== formState.childBuckets.length || !formState.childBuckets.every(Boolean)) {
       return 'Selectează intervalul de vârstă pentru fiecare copil.';
     }
     if (!checkIn || !checkOut || checkOut <= checkIn) {
       return 'Alege check-in și check-out.';
     }
-    if (!INTERNATIONAL_PHONE_PATTERN.test(qs('[data-add-phone]', form)?.value?.trim() || '')) {
+    if (!INTERNATIONAL_PHONE_PATTERN.test(normalizeStaffPhone(qs('[data-add-phone]', form)?.value))) {
       return 'Introdu un telefon valid în format internațional.';
+    }
+    if (email && !EMAIL_PATTERN.test(email)) {
+      return 'Introdu un email valid sau lasă câmpul gol.';
     }
     if (!areSelectedRoomsAvailable({
       rooms: state.rooms || [],
@@ -688,6 +717,14 @@
         addController.refresh();
         await state.reload?.();
       } catch (error) {
+        // 23P01 = exclusion constraint (reservations_no_room_overlap): another
+        // booking won the room between the local availability check and the
+        // insert. Reload so the calendar reflects the conflict.
+        if (error?.code === '23P01' || String(error?.message || '').includes('reservations_no_room_overlap')) {
+          context.setAlert('Camerele selectate tocmai au fost rezervate pentru perioada aleasă. Calendarul a fost actualizat — verifică disponibilitatea.');
+          await state.reload?.();
+          return;
+        }
         context.setAlert(error?.message || 'Rezervarea nu a putut fi adăugată.');
       }
     });
