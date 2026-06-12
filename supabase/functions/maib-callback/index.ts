@@ -229,25 +229,16 @@ Deno.serve(async (request) => {
       return jsonResponse({ ok: true, status, matched: reservations.length }, {}, request);
     }
 
-    const { error } = await table(client, 'reservations')
-      .update({
-        payment_status: 'cancelled',
-        payment_in_progress: false,
-        payment_session_expires_at: null,
-        cancelled_at: now,
-        cancellation_reason: status === 'cancelled' ? 'maib_cancelled' : 'maib_failed',
-      })
-      .in('id', reservations.map((reservation) => reservation.id))
-      .eq('payment_status', 'pending')
-      .is('cancelled_at', null);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
+    // A failed or cancelled gateway result does NOT release the reservation. The
+    // payment session row is already marked terminal above, which forces a fresh
+    // checkout on retry, but the reservation stays pending and
+    // payment_in_progress until its five-minute hold elapses. The per-minute
+    // expiry cron is the sole authority that finally cancels the room, so the
+    // guest can re-attempt payment (or return after closing the gateway) for the
+    // remainder of the window.
     console.info('Maib callback processed', {
       ...callbackContext,
-      decision: status === 'cancelled' ? 'cancelled' : 'failed',
+      decision: status === 'cancelled' ? 'cancelled_retryable' : 'failed_retryable',
     });
 
     return jsonResponse({ ok: true, status, matched: reservations.length }, {}, request);

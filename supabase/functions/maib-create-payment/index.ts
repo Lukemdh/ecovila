@@ -36,6 +36,7 @@ type PayableReservationRow = {
   payment_type: string;
   payment_status: string;
   cancelled_at?: string | null;
+  payment_session_expires_at?: string | null;
 };
 
 type ReusablePaymentRow = {
@@ -101,9 +102,10 @@ Deno.serve(async (request) => {
     }
 
     const now = new Date();
-    const expiresAt = new Date(
-      now.getTime() + MAIB_PAYMENT_SESSION_MINUTES * 60 * 1000,
-    ).toISOString();
+    // The hold is anchored to the guest's first payment attempt: the earliest
+    // deadline already stamped on the reservations is reused so retries (a
+    // failed charge or a closed gateway) never extend the five-minute window.
+    const expiresAt = resolvePaymentDeadline(reservations, now);
     const firstReservation = reservations[0];
     const siteUrl = getSiteUrl();
     const manageToken = String(body?.manageToken || '').trim();
@@ -164,7 +166,7 @@ async function findPayableReservations(
 ) {
   const { data, error } = await table<PayableReservationRow[]>(client, 'reservations')
     .select(
-      'id, booking_group_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, total_price, payment_type, payment_status, cancelled_at',
+      'id, booking_group_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, total_price, payment_type, payment_status, cancelled_at, payment_session_expires_at',
     )
     .eq('booking_group_id', bookingGroupId)
     .eq('payment_type', 'card')
@@ -187,6 +189,26 @@ async function findPayableReservations(
   }
 
   return reservations;
+}
+
+function resolvePaymentDeadline(reservations: PayableReservationRow[], now: Date) {
+  const anchors = reservations
+    .map((reservation) => reservation.payment_session_expires_at)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value).getTime())
+    .filter((time) => Number.isFinite(time));
+
+  if (anchors.length) {
+    const earliest = Math.min(...anchors);
+    // A guest returning after the window has lapsed cannot restart payment; the
+    // expiry cron has either already released the room or is about to.
+    if (earliest <= now.getTime()) {
+      throw new HttpError(410, 'The payment window for this reservation has expired.');
+    }
+    return new Date(earliest).toISOString();
+  }
+
+  return new Date(now.getTime() + MAIB_PAYMENT_SESSION_MINUTES * 60 * 1000).toISOString();
 }
 
 async function expireStalePayment(client: SupabaseClient, payId: string) {

@@ -1,6 +1,10 @@
 import { optionalEnv, requiredEnv } from './env.ts';
 
-export const MAIB_PAYMENT_SESSION_MINUTES = 15;
+// The card payment hold lasts five minutes from the guest's first payment
+// attempt. Retries within the window reuse this same deadline (see
+// maib-create-payment) so closing the gateway or a failed charge never extends
+// the hold; the per-minute expiry cron releases the room once it elapses.
+export const MAIB_PAYMENT_SESSION_MINUTES = 5;
 export const MAIB_SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
 
 export type MaibCheckoutPayloadInput = {
