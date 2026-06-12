@@ -287,9 +287,39 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `supabase_migrations.schema_migrations` by hand. This warning is also recorded in the
   root `bugs.md` deploy notes.
 
+### ADR-024 — FAQ page carries a per-language `FAQPage` `@graph` on one URL (interim, pending split)
+- **Date:** 2026-06-12.
+- **Decision:** the "Unde ne aflăm" location section was removed from all three landing
+  pages (`index.html`, `en/index.html`, `ru/index.html`) and its unique
+  nearby-attractions copy relocated to `intrebari-frecvente.html` as a new Q&A
+  (`faq.q11`/`faq.a11`, RO/RU/EN). The FAQ page's JSON-LD was converted from a single
+  RO `FAQPage` into an `@graph` of three `FAQPage` nodes — `#faq-ro`, `#faq-ru`,
+  `#faq-en`, each with its own `inLanguage` and the full 11-question set.
+- **Why:** the landing keeps all core location signals (LodgingBusiness address/geo/
+  areaServed, title/meta/OG, `intro.title`, `hero.place`, footer), so removing the prose
+  section is low-impact; relocating the attractions copy into FAQPage schema is net-
+  positive for GEO. A single mixed-language `FAQPage` would have contradicted the page's
+  `inLanguage` declaration, so each language gets its own node.
+- **Tension with ADR-016:** the homepage uses static per-language URLs (`/`, `/ru/`,
+  `/en/`) precisely to avoid single-URL JS i18n. `intrebari-frecvente.html` is still a
+  single URL with client-side i18n, so this `@graph` is an **interim** measure, not the
+  target state. Google's textbook-ideal is to split the FAQ into per-language URLs with a
+  reciprocal hreflang cluster, mirroring the homepage; when that split happens the schema
+  should split with it (one `FAQPage` per URL) and the `@graph` collapses back to a
+  single node per page.
+- **Consequence:** the dead `location.*` i18n keys were removed from all three locales in
+  `js/translations.js`. The FAQ page now has three FAQPage nodes on one URL — valid, and
+  crawlers typically surface the node matching the user's language, but it is not the
+  clean crawlable language architecture ADR-016 established for the homepage. Recorded as
+  an open item below.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
+
+- Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
+  `/ru/...`, `/en/...`) with hreflang, mirroring the homepage (ADR-016) and superseding the
+  interim single-URL `@graph` from ADR-024?
 
 - Should the owner-retained unused media (`ecovilavideo.mp4`, `ecovilavideo-web.mp4`,
   `assets/logo_small.png`) stay in production deploy artifacts even though they are not
