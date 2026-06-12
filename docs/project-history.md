@@ -389,3 +389,23 @@ sessions append to the running log at the bottom.
   mobile, and RO/RU/EN. Note: the four facility photo sections must be published in the
   CRM (uploads default to `draft`) before real photos replace the placeholders.
   `dist/tophost/` not yet rebuilt; change awaits the tophost upload to go live.
+- 2026-06-12 — Pop-up photo carousel rebuild (ADR-025). Replaced the three duplicated
+  modal-gallery implementations (`main.js`, `booking.js`, `facilities.js`) with one
+  shared module, `js/gallery.js`: a scroll-snap track with native touch swipe + mouse
+  drag, arrows that clamp/disable at the ends, a "n / N" counter chip (dots removed),
+  a synced thumbnail strip, and document-level arrow-key paging while the pop-up is
+  visible. Photos render `object-fit: contain` in a 3:2 stage (4:3 mobile) over a
+  blurred cover backdrop, and clicking a photo (or the expand button) opens a shared
+  photo-only fullscreen lightbox (swipe, counter, arrows, Escape closes only the
+  lightbox, index syncs back to the carousel). Gallery markup in `index.html`,
+  `en/index.html`, `ru/index.html`, `rezervari.html`, and `site.html` collapsed to a
+  single mount `<div>`; all five pages include `js/gallery.js`; `gallery.*` i18n keys
+  added (RO/RU/EN). Root cause of the "cropped/zoomed, especially portrait" photos was
+  server-side, not CSS: the Supabase `full` variant used `resize:'cover'` 1800×1200, so
+  portraits arrived pre-cropped to landscape — changed to `1800×1800 resize:'contain'`
+  in `js/supabase.js` (other variants keep `cover` for fixed-crop boxes). Verified live
+  in the preview: portraits now arrive 1200×1800 and render uncropped in both carousel
+  and lightbox; desktop + 375px mobile, RO/EN, both modals, `rezervari.html` flow.
+  Tests asserting the old markup/transforms updated (`booking-page`, `landing`,
+  `supabase-wiring`); only the pre-existing availability-lead failure remains (flagged
+  as a separate task). `dist/tophost/` regenerated; still awaits the tophost upload.

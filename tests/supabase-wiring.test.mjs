@@ -115,7 +115,7 @@ describe('EcoVila live Supabase wiring', () => {
     assert.equal(library.landing[0].wideUrl, '/public/ecovila-photos/landing/forest.jpg/2200x950');
     assert.equal(library.landing[0].cardUrl, '/public/ecovila-photos/landing/forest.jpg/900x600');
     assert.equal(library.landing[0].thumbnailUrl, '/public/ecovila-photos/landing/forest.jpg/360x240');
-    assert.equal(library.landing[0].fullUrl, '/public/ecovila-photos/landing/forest.jpg/1800x1200');
+    assert.equal(library.landing[0].fullUrl, '/public/ecovila-photos/landing/forest.jpg/1800x1800');
     assert.equal(library.landing[0].url, library.landing[0].previewUrl);
     assert.deepEqual(
       calls
@@ -132,7 +132,9 @@ describe('EcoVila live Supabase wiring', () => {
         { width: 2200, height: 950, quality: 72, resize: 'cover' },
         { width: 900, height: 600, quality: 72, resize: 'cover' },
         { width: 360, height: 240, quality: 65, resize: 'cover' },
-        { width: 1800, height: 1200, quality: 78, resize: 'cover' },
+        // The full variant keeps the original aspect ratio so the pop-up
+        // carousel and lightbox never receive server-cropped portraits.
+        { width: 1800, height: 1800, quality: 78, resize: 'contain' },
       ],
     );
   });

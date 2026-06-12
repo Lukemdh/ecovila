@@ -351,15 +351,7 @@
     <div class="booking-modal__scrim" data-modal-close></div>
     <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
       <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
-      <div class="booking-details-gallery" data-booking-modal-gallery>
-        <div class="booking-details-gallery__main">
-          <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-booking-modal-prev aria-label="Imaginea precedentă">‹</button>
-          <img src="/assets/photos/small-villa/exterior.svg" alt="EcoVila small villa — sleeps 2 adults and 2 children" loading="lazy" decoding="async" data-booking-modal-image>
-          <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-booking-modal-next aria-label="Imaginea următoare">›</button>
-          <div class="booking-details-gallery__dots" data-booking-modal-dots aria-hidden="true"></div>
-        </div>
-        <div class="booking-details-gallery__thumbs" data-booking-modal-thumbnails></div>
-      </div>
+      <div data-booking-modal-gallery></div>
       <div class="booking-modal__content booking-modal__content--details">
         <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
         <p data-booking-modal-body></p>
@@ -384,6 +376,7 @@
   <script src="/js/tracking-config.js"></script>
   <script src="/js/tracking.js"></script>
   <script src="/js/translations.js"></script>
+  <script src="/js/gallery.js"></script>
   <script src="/js/main.js"></script>
 </body>
 

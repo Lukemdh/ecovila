@@ -65,7 +65,6 @@
   const state = {
     library: window.EcoVilaPhotoLibrary || null,
     activeFacility: '',
-    imageIndex: 0,
   };
 
   function getTranslations() {
@@ -106,24 +105,6 @@
   function prepareLazyImage(image) {
     image.loading = 'lazy';
     image.decoding = 'async';
-  }
-
-  function markImageOrientation(image) {
-    const update = () => {
-      const { naturalHeight, naturalWidth } = image;
-      const isPortrait = naturalHeight > naturalWidth;
-      image.classList.toggle('is-portrait', isPortrait);
-      image.classList.toggle('is-landscape', !isPortrait);
-    };
-
-    image.classList.remove('is-portrait', 'is-landscape');
-
-    if (image.complete && image.naturalWidth) {
-      update();
-      return;
-    }
-
-    image.addEventListener('load', update, { once: true });
   }
 
   function getFacilityPhotos(facility) {
@@ -238,26 +219,36 @@
       return;
     }
     state.activeFacility = id;
-    state.imageIndex = 0;
-    renderModal();
+    renderModal({ resetIndex: true });
     showModal();
   }
 
-  function renderModal() {
+  function galleryLabels() {
+    return {
+      prev: t('gallery.prev'),
+      next: t('gallery.next'),
+      close: t('gallery.close'),
+      expand: t('gallery.expand'),
+      image: t('booking.image'),
+    };
+  }
+
+  function renderModal(options) {
     const facility = FACILITIES.find((item) => item.id === state.activeFacility);
     if (!facility) {
       return;
     }
 
     const photos = getFacilityPhotos(facility);
-    const activeIndex = Math.min(state.imageIndex, photos.length - 1);
-    const single = photos.length <= 1;
-
-    const mainImage = modal.querySelector('[data-facility-image]');
-    prepareLazyImage(mainImage);
-    mainImage.src = photoUrl(photos[activeIndex], 'full');
-    mainImage.alt = '';
-    markImageOrientation(mainImage);
+    const galleryElement = modal.querySelector('[data-facility-gallery]');
+    if (galleryElement && window.EcoVilaGallery) {
+      window.EcoVilaGallery.attach(galleryElement).update({
+        photos,
+        alt: t(`facilities.${facility.id}.title`),
+        labels: galleryLabels(),
+        startIndex: options?.resetIndex ? 0 : undefined,
+      });
+    }
 
     modal.querySelector('[data-facility-title]').textContent = t(`facilities.${facility.id}.title`);
     modal.querySelector('[data-facility-body]').textContent = t(`facilities.${facility.id}.details`);
@@ -284,57 +275,6 @@
       listItem.textContent = item;
       highlights.appendChild(listItem);
     });
-
-    modal.querySelector('[data-facility-prev]').hidden = single;
-    modal.querySelector('[data-facility-next]').hidden = single;
-
-    const thumbs = modal.querySelector('[data-facility-thumbs]');
-    thumbs.innerHTML = '';
-    thumbs.hidden = single;
-    if (!single) {
-      photos.forEach((photo, index) => {
-        const button = document.createElement('button');
-        const thumbnail = document.createElement('img');
-        button.type = 'button';
-        button.classList.toggle('is-active', index === activeIndex);
-        button.setAttribute('aria-label', `${t('booking.image')} ${index + 1}`);
-        prepareLazyImage(thumbnail);
-        thumbnail.src = photoUrl(photo, 'thumbnail');
-        thumbnail.alt = '';
-        markImageOrientation(thumbnail);
-        button.appendChild(thumbnail);
-        button.addEventListener('click', () => {
-          state.imageIndex = index;
-          renderModal();
-        });
-        thumbs.appendChild(button);
-      });
-    }
-
-    const dots = modal.querySelector('[data-facility-dots]');
-    dots.innerHTML = '';
-    if (!single) {
-      photos.forEach((_, index) => {
-        const dot = document.createElement('span');
-        dot.classList.toggle('is-active', index === activeIndex);
-        dots.appendChild(dot);
-      });
-    }
-  }
-
-  function moveImage(direction) {
-    const facility = FACILITIES.find((item) => item.id === state.activeFacility);
-    if (!facility) {
-      return;
-    }
-
-    const photos = getFacilityPhotos(facility);
-    if (photos.length <= 1) {
-      return;
-    }
-
-    state.imageIndex = (state.imageIndex + direction + photos.length) % photos.length;
-    renderModal();
   }
 
   function showModal() {
@@ -358,8 +298,6 @@
     modal.querySelectorAll('[data-facility-close]').forEach((button) => {
       button.addEventListener('click', closeModal);
     });
-    modal.querySelector('[data-facility-prev]').addEventListener('click', () => moveImage(-1));
-    modal.querySelector('[data-facility-next]').addEventListener('click', () => moveImage(1));
 
     document.addEventListener('keydown', (event) => {
       if (modal.hidden) {
@@ -367,10 +305,6 @@
       }
       if (event.key === 'Escape') {
         closeModal();
-      } else if (event.key === 'ArrowLeft') {
-        moveImage(-1);
-      } else if (event.key === 'ArrowRight') {
-        moveImage(1);
       }
     });
   }

@@ -84,7 +84,6 @@
     activeModalType: '',
     activeRoomType: '',
     activeSoldoutType: '',
-    modalImageIndex: 0,
     soldoutCheckIn: '',
     selectedRoomNumbers: {
       small: [],
@@ -771,68 +770,41 @@
 
   function openDetails(type) {
     state.activeModalType = type;
-    state.modalImageIndex = 0;
-    renderDetailsModal(type);
+    renderDetailsModal(type, { resetIndex: true });
     showModal(document.querySelector('[data-booking-modal]'));
   }
 
-  function renderDetailsModal(type) {
+  function galleryLabels() {
+    return {
+      prev: t('gallery.prev'),
+      next: t('gallery.next'),
+      close: t('gallery.close'),
+      expand: t('gallery.expand'),
+      image: t('booking.image'),
+    };
+  }
+
+  function renderDetailsModal(type, options) {
     const modal = document.querySelector('[data-booking-modal]');
     const gallery = typeGalleries[type] || [typeImages[type]];
-    const activeIndex = Math.min(state.modalImageIndex, gallery.length - 1);
-    const activeImage = photoUrl(gallery[activeIndex], 'full') || typeImages[type];
     const galleryElement = modal.querySelector('[data-booking-modal-gallery]');
 
-    galleryElement.dataset.imageCount = String(gallery.length);
-    const activeImageElement = modal.querySelector('[data-booking-modal-image]');
-    prepareLazyImage(activeImageElement);
-    activeImageElement.src = activeImage;
-    markImageOrientation(activeImageElement);
+    if (galleryElement && window.EcoVilaGallery) {
+      window.EcoVilaGallery.attach(galleryElement).update({
+        photos: gallery,
+        alt: t(`accommodation.${type}.title`),
+        labels: galleryLabels(),
+        startIndex: options?.resetIndex ? 0 : undefined,
+      });
+    }
+
     modal.querySelector('[data-booking-modal-title]').textContent = t(`accommodation.${type}.title`);
     modal.querySelector('[data-booking-modal-body]').textContent = t(`accommodation.${type}.details`);
 
     renderPlainList(modal.querySelector('[data-booking-modal-bathroom]'), getTranslatedList('accommodation.shared.bathroom'));
     renderPlainList(modal.querySelector('[data-booking-modal-facilities]'), getTranslatedList('accommodation.shared.facilities'));
 
-    const thumbnails = modal.querySelector('[data-booking-modal-thumbnails]');
-    thumbnails.innerHTML = '';
-    gallery.forEach((image, index) => {
-      const button = document.createElement('button');
-      const thumbnail = document.createElement('img');
-      button.type = 'button';
-      button.classList.toggle('is-active', index === activeIndex);
-      button.setAttribute('aria-label', `${t('booking.image')} ${index + 1}`);
-      prepareLazyImage(thumbnail);
-      thumbnail.src = photoUrl(image, 'thumbnail');
-      thumbnail.alt = '';
-      markImageOrientation(thumbnail);
-      button.appendChild(thumbnail);
-      button.addEventListener('click', () => {
-        state.modalImageIndex = index;
-        renderDetailsModal(type);
-      });
-      thumbnails.appendChild(button);
-    });
-
-    const dots = modal.querySelector('[data-booking-modal-dots]');
-    dots.innerHTML = '';
-    gallery.forEach((_, index) => {
-      const dot = document.createElement('span');
-      dot.classList.toggle('is-active', index === activeIndex);
-      dots.appendChild(dot);
-    });
-
     modal.querySelector('[data-booking-modal-error]').hidden = true;
-  }
-
-  function moveDetailsImage(direction) {
-    if (!state.activeModalType) {
-      return;
-    }
-
-    const gallery = typeGalleries[state.activeModalType] || [typeImages[state.activeModalType]];
-    state.modalImageIndex = (state.modalImageIndex + direction + gallery.length) % gallery.length;
-    renderDetailsModal(state.activeModalType);
   }
 
   function showDetailsError(message) {
@@ -1270,9 +1242,6 @@
     document.querySelectorAll('[data-lookup-close]').forEach((button) => {
       button.addEventListener('click', closeAllModals);
     });
-
-    document.querySelector('[data-booking-modal-prev]').addEventListener('click', () => moveDetailsImage(-1));
-    document.querySelector('[data-booking-modal-next]').addEventListener('click', () => moveDetailsImage(1));
 
     document.querySelector('[data-booking-modal-reserve]').addEventListener('click', () => {
       selectType(state.activeModalType);

@@ -100,17 +100,21 @@ describe('EcoVila landing page structure', () => {
 
   it('marks public photo surfaces for lazy asynchronous loading', () => {
     const html = read('site.html');
+    const gallery = read('js/gallery.js');
     const photoTags = Array.from(
-      html.matchAll(/<img[^>]+(?:data-photo-section|data-accommodation-type|data-booking-modal-image)[^>]*>/g),
+      html.matchAll(/<img[^>]+(?:data-photo-section|data-accommodation-type)[^>]*>/g),
       (match) => match[0],
     );
 
-    assert.ok(photoTags.length >= 10, 'landing page should expose public photo tags');
+    assert.ok(photoTags.length >= 9, 'landing page should expose public photo tags');
 
     for (const tag of photoTags) {
       assert.match(tag, /loading="lazy"/, `${tag} should lazy-load`);
       assert.match(tag, /decoding="async"/, `${tag} should decode asynchronously`);
     }
+
+    assert.match(gallery, /loading = index === state\.index \? 'eager' : 'lazy'/, 'modal gallery should lazy-load non-active slides');
+    assert.match(gallery, /decoding: 'async'/, 'modal gallery images should decode asynchronously');
   });
 
   it('defines the editorial hospitality design language and translation surface', () => {

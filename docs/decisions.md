@@ -313,6 +313,41 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   clean crawlable language architecture ADR-016 established for the homepage. Recorded as
   an open item below.
 
+### ADR-025 — One shared swipeable pop-up carousel (`js/gallery.js`); `full` photo variant is never server-cropped
+- **Date:** 2026-06-12.
+- **Decision:** all detail pop-up galleries (accommodation modal on the landing pages and
+  `rezervari.html`, facility modal everywhere) are rendered by a single new module,
+  `js/gallery.js` (`window.EcoVilaGallery.attach(container)`), replacing three
+  copy-pasted swap-the-`src` implementations in `main.js`, `booking.js`, and
+  `facilities.js`. The carousel is a horizontal CSS scroll-snap track (native touch
+  swipe; mouse drag-to-swipe added in JS) with arrows, a "n / N" counter chip (the dots
+  were dropped), and a synced thumbnail strip. Photos render `object-fit: contain`
+  inside a fixed 3:2 stage (4:3 on mobile) over a blurred `cover` backdrop of the same
+  image, so portrait and landscape both display uncropped. Clicking a photo (or the
+  expand button) opens a shared photo-only fullscreen lightbox singleton with its own
+  swipe track, counter, arrows, and keyboard handling; Escape closes only the lightbox
+  (capture-phase listener), and the lightbox position syncs back to the carousel on
+  close. The static gallery markup in the five pages collapsed to one
+  `<div data-...-gallery></div>` mount node.
+- **Decision (transform):** the Supabase `full` photo variant changed from
+  `1800×1200 resize:'cover'` to `1800×1800 resize:'contain'` in `js/supabase.js`. The
+  other variants (`preview`/`wide`/`card`/`thumbnail`) intentionally keep `cover` — they
+  feed fixed-crop boxes (cards, backdrops, thumbs) where filling is correct.
+- **Why:** the pop-up photos rendered cropped/zoomed regardless of CSS because the
+  storage render API was cropping server-side: every `full` URL returned exactly
+  1800×1200, so portrait originals arrived pre-cropped to landscape and smaller photos
+  were upscaled. No client-side `object-fit` can undo a server crop; the variant that
+  feeds full-photo views must preserve the original aspect ratio.
+- **Consequence:** portrait photos now arrive as e.g. 1200×1800 and are letterboxed, not
+  cropped. The old cropped renders may persist in browser caches (variant URLs carry
+  `cache-control: 31536000`), but the new URLs differ by query string so normal loads
+  fetch fresh. `markImageOrientation`/`is-portrait` CSS hooks were removed from the
+  modals (booking.js keeps orientation marking for stay-card images only). Two CSS
+  gotchas are load-bearing: percentage `max-height` does not resolve inside grid `auto`
+  tracks (slides are flex, the lightbox viewport is `position: absolute; inset: 0`), and
+  scroll-index syncing uses a `setTimeout` debounce instead of `requestAnimationFrame`
+  (rAF is suspended in hidden tabs). New `gallery.*` i18n keys exist in RO/RU/EN.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

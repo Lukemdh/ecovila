@@ -327,36 +327,40 @@ describe('EcoVila Step 4 booking page', () => {
     );
   });
 
-  it('uses larger 3:2 media boxes and supports portrait images in the details gallery', () => {
+  it('uses a swipeable 3:2 gallery stage that fits both portrait and landscape photos', () => {
     const js = read('js/booking.js');
+    const gallery = read('js/gallery.js');
     const css = read('css/booking.css');
 
     assert.match(css, /\.booking-stay-card img\s*{[^}]*aspect-ratio:\s*3 \/ 2/s, 'card photos should use a 3:2 crop box');
-    assert.match(css, /\.booking-details-gallery__main\s*{[^}]*display:\s*grid[^}]*place-items:\s*center[^}]*aspect-ratio:\s*3 \/ 2/s, 'details gallery should use a centered 3:2 media stage');
-    assert.match(css, /\.booking-details-gallery__main > img\s*{[^}]*object-fit:\s*cover/s, 'landscape media should crop into 3:2');
-    assert.match(
-      css,
-      /\.booking-details-gallery__main > img\.is-portrait\s*{[^}]*width:\s*auto[^}]*height:\s*100%[^}]*object-fit:\s*contain/s,
-      'portrait media should be contained at full frame height inside the details gallery',
-    );
-    assert.match(js, /function markImageOrientation/, 'booking.js should mark loaded images by orientation');
+    assert.match(css, /\.ev-gallery__stage\s*{[^}]*aspect-ratio:\s*3 \/ 2/s, 'details gallery should use a 3:2 media stage');
+    assert.match(css, /\.ev-gallery__viewport\s*{[^}]*scroll-snap-type:\s*x mandatory/s, 'gallery viewport should snap-scroll horizontally so photos can be swiped');
+    assert.match(css, /\.ev-gallery__photo\s*{[^}]*object-fit:\s*contain/s, 'photos should be contained so portrait and landscape images are never cropped');
+    assert.match(css, /\.ev-gallery__backdrop\s*{[^}]*object-fit:\s*cover[^}]*filter:[^}]*blur/s, 'a blurred cover backdrop should fill the letterboxed space');
+    assert.match(gallery, /openLightbox/, 'gallery.js should provide a photo-only fullscreen lightbox');
+    assert.match(css, /\.ev-lightbox__slide img\s*{[^}]*object-fit:\s*contain/s, 'lightbox photos should be fully contained in the viewport');
+    assert.match(js, /function markImageOrientation/, 'booking.js should mark loaded card images by orientation');
     assert.match(js, /naturalHeight\s*>\s*naturalWidth/, 'orientation marking should detect portrait images from natural dimensions');
     assert.match(js, /dataset\.orientation/, 'orientation marking should expose image orientation to CSS and browser checks');
   });
 
   it('marks booking photo previews and modal images for lazy asynchronous loading', () => {
     const html = read('rezervari.html');
+    const gallery = read('js/gallery.js');
     const photoTags = Array.from(
-      html.matchAll(/<img[^>]+(?:data-card-image|data-booking-modal-image)[^>]*>/g),
+      html.matchAll(/<img[^>]+data-card-image[^>]*>/g),
       (match) => match[0],
     );
 
-    assert.ok(photoTags.length >= 4, 'booking page should expose card and modal photo tags');
+    assert.ok(photoTags.length >= 3, 'booking page should expose card photo tags');
 
     for (const tag of photoTags) {
       assert.match(tag, /loading="lazy"/, `${tag} should lazy-load`);
       assert.match(tag, /decoding="async"/, `${tag} should decode asynchronously`);
     }
+
+    assert.match(gallery, /loading = index === state\.index \? 'eager' : 'lazy'/, 'modal gallery should lazy-load non-active slides');
+    assert.match(gallery, /decoding: 'async'/, 'modal gallery images should decode asynchronously');
   });
 
   it('removes vertical guide-line backgrounds from the reservation experience', () => {
@@ -377,7 +381,6 @@ describe('EcoVila Step 4 booking page', () => {
 
     for (const hook of [
       'data-booking-modal-gallery',
-      'data-booking-modal-thumbnails',
       'data-booking-modal-bathroom',
       'data-booking-modal-facilities',
     ]) {

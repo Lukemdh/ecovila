@@ -24,7 +24,9 @@
     wide: Object.freeze({ width: 2200, height: 950, quality: 72, resize: 'cover' }),
     card: Object.freeze({ width: 900, height: 600, quality: 72, resize: 'cover' }),
     thumbnail: Object.freeze({ width: 360, height: 240, quality: 65, resize: 'cover' }),
-    full: Object.freeze({ width: 1800, height: 1200, quality: 78, resize: 'cover' }),
+    // 'contain' keeps the original aspect ratio: this variant feeds the pop-up
+    // carousel and lightbox, where portrait photos must never be cropped.
+    full: Object.freeze({ width: 1800, height: 1800, quality: 78, resize: 'contain' }),
   });
 
   function queryMeta(documentRef, selector, attribute) {

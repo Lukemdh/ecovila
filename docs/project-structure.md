@@ -52,6 +52,8 @@ ecovila/
 │   ├── calendar.js             # Calendar/date-range rendering (shared: booking + CRM)
 │   ├── translations.js         # RO/RU/EN i18n strings
 │   ├── main.js                 # Shared: header, language switcher, landing behaviors
+│   ├── gallery.js              # Shared pop-up photo carousel + fullscreen lightbox (ADR-025)
+│   ├── facilities.js           # Included-facilities cards + facility detail modal
 │   ├── booking.js              # rezervari.html controller (largest frontend file, 1348 lines)
 │   ├── checkout.js             # checkout.html controller (incl. Maib rail routing)
 │   ├── confirmare.js           # confirmare.html controller
