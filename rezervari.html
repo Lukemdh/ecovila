@@ -142,9 +142,8 @@
           <div class="booking-panel__heading booking-panel__heading--wide">
             <div>
               <h2 id="booking-accommodation-title" data-i18n="booking.accommodationTitle">Alege cazarea</h2>
-              <p class="booking-accommodation-lead" data-i18n="booking.accommodationLead">Disponibilitatea se actualizează după persoanele și datele selectate.</p>
             </div>
-            <p class="stay-summary" data-stay-summary data-i18n="booking.noDates">Alege datele pentru preț și disponibilitate.</p>
+            <p class="stay-summary" data-stay-summary data-i18n="booking.noDates">Vezi mai jos facilitățile incluse ↓</p>
           </div>
 
           <div class="booking-stay-grid">
@@ -238,6 +237,14 @@
               Continuă
             </button>
           </div>
+        </section>
+
+        <section class="facilities-section" aria-labelledby="facilities-title">
+          <div class="facilities-heading">
+            <h2 id="facilities-title" data-i18n="facilities.heading">Totul este inclus în sejurul tău</h2>
+            <p data-i18n="facilities.subheading">Indiferent de cazarea aleasă, ai acces la tot ce face din EcoVila o vacanță completă — fără costuri ascunse.</p>
+          </div>
+          <div class="facilities-list" data-facilities-list></div>
         </section>
       </section>
     </main>
@@ -430,6 +437,31 @@
       </article>
     </div>
 
+    <div class="booking-modal" data-facility-modal hidden>
+      <div class="booking-modal__scrim" data-facility-close></div>
+      <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="facility-modal-title">
+        <button class="booking-modal__close booking-modal__close--icon" type="button" data-facility-close aria-label="Închide">×</button>
+        <div class="booking-details-gallery" data-facility-gallery>
+          <div class="booking-details-gallery__main">
+            <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-facility-prev aria-label="Imaginea precedentă">‹</button>
+            <img src="/assets/photos/spa/pool.svg" alt="" loading="lazy" decoding="async" data-facility-image>
+            <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-facility-next aria-label="Imaginea următoare">›</button>
+            <div class="booking-details-gallery__dots" data-facility-dots aria-hidden="true"></div>
+          </div>
+          <div class="booking-details-gallery__thumbs" data-facility-thumbs></div>
+        </div>
+        <div class="booking-modal__content booking-modal__content--details">
+          <h2 id="facility-modal-title" data-facility-title></h2>
+          <p data-facility-body></p>
+          <div class="facility-heat-banner" data-facility-heat hidden></div>
+          <section class="booking-detail-section" aria-labelledby="facility-highlights-title">
+            <h3 id="facility-highlights-title" data-facility-highlights-label data-i18n="facilities.highlightsLabel">Ce te așteaptă:</h3>
+            <ul class="booking-check-list booking-check-list--wide" data-facility-highlights></ul>
+          </section>
+        </div>
+      </article>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-config.js"></script>
     <script src="js/supabase.js"></script>
@@ -440,5 +472,6 @@
     <script src="js/calendar.js"></script>
     <script src="js/main.js"></script>
     <script src="js/booking.js"></script>
+    <script src="js/facilities.js"></script>
   </body>
 </html>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Playground sandbox placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila children's sandbox.</desc>
+  <rect width="1000" height="760" fill="#8B9D83"/>
+  <path d="M0 0h1000v470c-150 44-330 44-510 12C320 450 150 454 0 498z" fill="#606C38"/>
+  <ellipse cx="500" cy="556" rx="360" ry="118" fill="#DDA15E"/>
+  <ellipse cx="500" cy="540" rx="320" ry="96" fill="#E9C99A"/>
+  <rect x="470" y="430" width="20" height="120" rx="6" fill="#3A2F24"/>
+  <path d="M408 470h144l-18 70h-108z" fill="#BC6C25"/>
+  <circle cx="660" cy="520" r="34" fill="#BC6C25"/>
+  <text x="120" y="702" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Sandbox</text>
+</svg>

@@ -351,3 +351,41 @@ sessions append to the running log at the bottom.
   three landing pages (RO/EN/RU) since they share the markup and load `booking.css`.
   Verified all three fixes in the browser preview at desktop and mobile widths.
   `dist/tophost/` not yet rebuilt; awaits the tophost upload to go live.
+- 2026-06-12 — Included-facilities section + reusable detail modal + landing CTAs.
+  Added a new "Totul este inclus" section below the villa cards on `rezervari.html`:
+  four long, alternating editorial cards — SPA, Mese All-Inclusive, Locație & Natură,
+  Distracție pentru copii — each with title/short summary/"Vezi mai mult" CTA and a
+  media strip (2 photos on desktop, 1 on mobile). Cards pull published photos from the
+  DB by section slug (`spa`, `restaurant-food`, `territory`, `playground`) with local SVG
+  fallbacks; added `assets/photos/playground/{slide,swings,sandbox}.svg` placeholders
+  since that section had no local art. The "Vezi mai mult" CTA opens a detail modal that
+  reuses the existing `booking-modal`/`booking-details-gallery`/`booking-check-list`
+  styles (gallery + description + highlights). New module `js/facilities.js` owns the
+  cards, modal, i18n and language/photo reactivity; `js/booking.js` now publishes the
+  fetched photo library via `window.EcoVilaPhotoLibrary` + a `ecovila:photolibrary`
+  event so facilities reuse it with no second fetch. Added `facilities.*` strings
+  (RO/RU/EN) to `js/translations.js`. Also on `rezervari.html`: removed the old
+  accommodation lead line and changed the no-dates stay-summary to
+  "Vezi mai jos facilitățile incluse ↓".
+  SPA card carries a warm "all pools heated · min. 30°C*" trust cue in two forms — a
+  floating chip on the card media and a compact banner in the detail modal — with the
+  asterisk tying to the `*Piscină rece (12°C)` highlight (the deliberate cold-plunge
+  exception). Copy for the Locație card (now "10 minutes from Orheiul Vechi", forest,
+  wine, all-inclusive/SPA highlights) and the Distracție-copii card (now honest to the
+  real offer: a big outdoor playground, an indoor playground, and free play on the
+  grounds — dropped the invented kids' menu / activities) was rewritten in all three
+  locales. Refactored `js/facilities.js` so the detail modal works standalone (the cards
+  list is optional, modal required), exposing `window.EcoVilaFacilities.open(id)` and
+  binding any `[data-facility-open]` trigger. Wired the same detail view into the
+  landing: `index.html` `#spa` and `#restaurant` sections got CTAs ("Descoperă zona SPA",
+  "Vezi ce este inclus") plus the facility modal markup and the `facilities.js` include;
+  `js/main.js` now also publishes the photo library + event; `css/main.css` adds CTA
+  spacing and a light button treatment scoped to the dark restaurant hero
+  (`.image-hero__cta .editorial-button`); `showcase.spa.cta`/`showcase.restaurant.cta`
+  added (RO/RU/EN). Hero title tweak: RO dropped "din Moldova" → "Un refugiu
+  all-inclusive în inima pădurii"; RU rewritten to "All-Inclusive отдых в глубинке леса";
+  EN left untouched. All facility-card layouts, both modals, the heat cue, the landing
+  CTAs, and the hero/copy changes were verified in the browser preview across desktop,
+  mobile, and RO/RU/EN. Note: the four facility photo sections must be published in the
+  CRM (uploads default to `draft`) before real photos replace the placeholders.
+  `dist/tophost/` not yet rebuilt; change awaits the tophost upload to go live.

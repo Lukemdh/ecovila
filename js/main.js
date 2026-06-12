@@ -499,6 +499,9 @@
       const client = supabaseHelpers.getSupabaseClient();
       const library = await supabaseHelpers.fetchPublicPhotoLibrary(client);
       applyPublishedPhotos(library);
+      // Share the published library so facilities.js can render real photos.
+      window.EcoVilaPhotoLibrary = library;
+      window.dispatchEvent(new CustomEvent('ecovila:photolibrary', { detail: { library } }));
     } catch (_error) {
       // Keep local SVG placeholders when Supabase photos are not available.
     }

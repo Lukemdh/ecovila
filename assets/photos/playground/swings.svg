@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Playground swings placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila children's swings.</desc>
+  <rect width="1000" height="760" fill="#DDA15E"/>
+  <path d="M0 612c160-46 340-46 520-14 170 30 320 26 480-18v180H0z" fill="#606C38"/>
+  <path d="M250 180 500 150 750 180" fill="none" stroke="#3A2F24" stroke-width="22" stroke-linecap="round"/>
+  <path d="M250 180 180 560M750 180 820 560" stroke="#3A2F24" stroke-width="22" stroke-linecap="round"/>
+  <path d="M400 168v300M600 168v300" stroke="#8B9D83" stroke-width="12"/>
+  <rect x="356" y="468" width="88" height="22" rx="8" fill="#BC6C25"/>
+  <rect x="556" y="468" width="88" height="22" rx="8" fill="#BC6C25"/>
+  <text x="120" y="702" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Swings</text>
+</svg>

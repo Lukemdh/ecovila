@@ -1831,6 +1831,326 @@ body.page-booking .site-header {
   border-color: var(--booking-green);
 }
 
+/* Included facilities — long alternating editorial cards */
+.facilities-section {
+  margin-top: 56px;
+}
+
+.facilities-heading {
+  margin: 0 0 26px;
+}
+
+.facilities-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--heading-font);
+  font-size: clamp(2.2rem, 3vw, 3.6rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.facilities-heading p {
+  max-width: 720px;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-family: var(--heading-font);
+  font-size: clamp(1.12rem, 1.4vw, 1.42rem);
+  line-height: 1.45;
+}
+
+.facilities-list {
+  display: grid;
+  gap: 26px;
+}
+
+.facility-card {
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(51, 47, 44, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(51, 38, 31, 0.06);
+  cursor: pointer;
+  transition: transform 320ms cubic-bezier(0.22, 0.68, 0, 1), box-shadow 320ms ease;
+}
+
+.facility-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 34px 92px rgba(51, 38, 31, 0.14);
+}
+
+.facility-card:focus-visible {
+  outline: 3px solid var(--booking-green);
+  outline-offset: 4px;
+}
+
+.facility-card--reverse .facility-card__media {
+  order: 2;
+}
+
+.facility-card--reverse .facility-card__body {
+  order: 1;
+}
+
+.facility-card__media {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  overflow: hidden;
+  min-height: 360px;
+  background: var(--paper);
+}
+
+.facility-card__media--single {
+  grid-template-columns: 1fr;
+}
+
+.facility-card__photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 700ms cubic-bezier(0.22, 0.68, 0, 1);
+}
+
+.facility-card:hover .facility-card__photo {
+  transform: scale(1.05);
+}
+
+.facility-card__photo.is-portrait {
+  object-fit: contain;
+  background: var(--paper);
+}
+
+.facility-card__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  padding: 44px 48px;
+}
+
+.facility-card__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px 6px 11px;
+  color: var(--booking-green-dark);
+  background: rgba(95, 122, 58, 0.12);
+  border-radius: 999px;
+  font-family: var(--body-font);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.facility-card__title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--heading-font);
+  font-size: clamp(2.3rem, 3vw, 3.3rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.facility-card__summary {
+  max-width: 44ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.04rem;
+  line-height: 1.6;
+}
+
+.facility-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 0;
+  color: var(--booking-green-dark);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  font-family: var(--heading-font);
+  font-size: 1.22rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.facility-card__cta span {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+}
+
+.facility-card__cta svg {
+  transition: transform 240ms cubic-bezier(0.22, 0.68, 0, 1);
+}
+
+.facility-card:hover .facility-card__cta svg,
+.facility-card__cta:hover svg,
+.facility-card__cta:focus-visible svg {
+  transform: translateX(5px);
+}
+
+.facility-card__cta:focus-visible {
+  outline: 3px solid rgba(95, 122, 58, 0.34);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* "All pools heated" — warm trust cue, floats over the SPA media */
+.facility-card__heat {
+  position: absolute;
+  z-index: 2;
+  bottom: 14px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 15px 9px 12px;
+  color: #FFF7EF;
+  background: linear-gradient(135deg, #E0843C 0%, #BC6C25 100%);
+  border-radius: 999px;
+  box-shadow: 0 10px 26px rgba(188, 108, 37, 0.42);
+  animation: heatGlow 2.8s ease-in-out infinite;
+}
+
+.facility-card__heat svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.facility-card__heat span {
+  font-family: var(--heading-font);
+  font-size: 1.04rem;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+
+.facility-card__heat strong {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@keyframes heatGlow {
+  0%,
+  100% {
+    box-shadow: 0 10px 26px rgba(188, 108, 37, 0.32);
+  }
+  50% {
+    box-shadow: 0 12px 34px rgba(224, 132, 60, 0.62);
+  }
+}
+
+/* "All pools heated" — subtle inline cue inside the detail modal */
+.facility-heat-banner {
+  display: inline-grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 14px 9px 10px;
+  background: rgba(247, 241, 233, 0.7);
+  border: 1px solid rgba(188, 108, 37, 0.2);
+  border-left: 3px solid #C0532A;
+  border-radius: 9px;
+}
+
+.facility-heat-banner__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: #FFF7EF;
+  background: linear-gradient(135deg, #E0843C 0%, #BC6C25 100%);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(188, 108, 37, 0.26);
+}
+
+.facility-heat-banner__icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.facility-heat-banner__text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.facility-heat-banner__text strong {
+  color: var(--ink);
+  font-family: var(--heading-font);
+  font-size: 1.04rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.facility-heat-banner__value {
+  color: #B0501F;
+  font-family: var(--body-font);
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .facility-card__heat {
+    animation: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .facility-card,
+  .facility-card--reverse {
+    grid-template-columns: 1fr;
+  }
+
+  .facility-card--reverse .facility-card__media,
+  .facility-card--reverse .facility-card__body {
+    order: 0;
+  }
+
+  .facility-card__media {
+    min-height: 260px;
+  }
+
+  .facility-card__body {
+    padding: 32px 30px;
+  }
+}
+
+@media (max-width: 700px) {
+  .facilities-section {
+    margin-top: 40px;
+  }
+
+  .facility-card__media {
+    grid-template-columns: 1fr;
+    min-height: 220px;
+  }
+
+  .facility-card__photo--second {
+    display: none;
+  }
+
+  .facility-card__body {
+    padding: 26px 22px;
+  }
+
+  .facility-card__summary {
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 1180px) {
   .booking-intro,
   .booking-panel__heading,

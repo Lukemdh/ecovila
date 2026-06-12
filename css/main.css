@@ -321,6 +321,27 @@ h3 {
   border-color: var(--espresso);
 }
 
+.showcase__cta {
+  margin-top: 30px;
+}
+
+/* Light CTA over the dark restaurant hero — scoped so it reliably wins. */
+.image-hero__cta {
+  margin-top: 28px;
+}
+
+.image-hero__cta .editorial-button {
+  color: var(--white);
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.image-hero__cta .editorial-button:hover,
+.image-hero__cta .editorial-button:focus-visible {
+  color: var(--ink);
+  background: var(--white);
+  border-color: var(--white);
+}
+
 .quiet-serif-link {
   display: inline-block;
   margin-left: 6px;

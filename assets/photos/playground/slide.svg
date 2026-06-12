@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">Playground slide placeholder</title>
+  <desc id="desc">Replace with a photo of the EcoVila children's playground.</desc>
+  <rect width="1000" height="760" fill="#D4B895"/>
+  <path d="M0 596c150-40 320-40 500-12 180 28 350 24 500-16v192H0z" fill="#606C38"/>
+  <rect x="690" y="250" width="26" height="300" rx="8" fill="#3A2F24"/>
+  <path d="M690 286c-150 60-250 180-300 300h120c40-118 120-214 200-262z" fill="#BC6C25"/>
+  <rect x="640" y="226" width="126" height="40" rx="10" fill="#8B9D83"/>
+  <circle cx="320" cy="300" r="64" fill="#DDA15E"/>
+  <path d="M256 300a64 64 0 0 1 128 0z" fill="#BC6C25"/>
+  <text x="120" y="700" fill="#3A2F24" font-family="Georgia, serif" font-size="54" font-weight="700">Playground</text>
+</svg>

@@ -188,6 +188,10 @@
       }
 
       mergePublishedPhotos(photoLibrary);
+      // Share the published photo library so other modules (e.g. facilities.js)
+      // can reuse it instead of issuing a second fetch.
+      window.EcoVilaPhotoLibrary = photoLibrary;
+      window.dispatchEvent(new CustomEvent('ecovila:photolibrary', { detail: { library: photoLibrary } }));
       state.rooms = rooms.length ? rooms : createFallbackRooms();
       state.pricingTiers = pricingTiers;
       state.holidays = holidays || [];

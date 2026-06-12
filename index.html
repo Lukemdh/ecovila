@@ -141,7 +141,7 @@
       </video>
       <div class="hero__video-overlay"></div>
       <div class="hero__content">
-        <h1 class="hero__title" id="hero-title" data-i18n="hero.title">Un refugiu all-inclusive în inima pădurii din Moldova</h1>
+        <h1 class="hero__title" id="hero-title" data-i18n="hero.title">Un refugiu all-inclusive în inima pădurii</h1>
         <a class="hero__cta editorial-link" href="/rezervari.html" data-i18n="hero.cta">Către rezervări →</a>
       </div>
     </section>
@@ -165,6 +165,9 @@
           <p class="section-kicker" data-i18n="showcase.spa.kicker">Zona SPA</p>
           <h2 id="spa-title" data-i18n="showcase.spa.title">Apă caldă, saune și liniște după pădure</h2>
           <p data-i18n="showcase.spa.body">Două piscine interioare, o piscină exterioară, jacuzzi, trei tipuri de saună, salină, cameră rece și piscină rece pentru zile tihnite la EcoVila.</p>
+          <div class="showcase__cta">
+            <button class="editorial-button" type="button" data-facility-open="spa" data-i18n="showcase.spa.cta">Descoperă zona SPA</button>
+          </div>
         </div>
         <div class="photo-stack" aria-label="Zona SPA">
           <img src="/assets/photos/spa/pool.svg" alt="Piscina caldă interioară din zona SPA EcoVila" class="photo-stack__large" loading="lazy" decoding="async" data-photo-section="landing" data-photo-index="1">
@@ -183,6 +186,9 @@
           <h2 id="restaurant-title" data-i18n="showcase.restaurant.title">Trei mese pe zi, fără grija meniului</h2>
         </div>
         <p data-i18n="showcase.restaurant.body">Mic dejun, prânz și cină, deserturi, cafea, ceai și apă dulce sunt incluse, ca oaspeții să-și păstreze ziua pentru odihnă.</p>
+        <div class="image-hero__cta">
+          <button class="editorial-button" type="button" data-facility-open="dining" data-i18n="showcase.restaurant.cta">Vezi ce este inclus</button>
+        </div>
       </div>
     </section>
 
@@ -378,6 +384,31 @@
     </article>
   </div>
 
+  <div class="booking-modal" data-facility-modal hidden>
+    <div class="booking-modal__scrim" data-facility-close></div>
+    <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="facility-modal-title">
+      <button class="booking-modal__close booking-modal__close--icon" type="button" data-facility-close aria-label="Închide">×</button>
+      <div class="booking-details-gallery" data-facility-gallery>
+        <div class="booking-details-gallery__main">
+          <button class="booking-details-gallery__nav booking-details-gallery__nav--prev" type="button" data-facility-prev aria-label="Imaginea precedentă">‹</button>
+          <img src="/assets/photos/spa/pool.svg" alt="" loading="lazy" decoding="async" data-facility-image>
+          <button class="booking-details-gallery__nav booking-details-gallery__nav--next" type="button" data-facility-next aria-label="Imaginea următoare">›</button>
+          <div class="booking-details-gallery__dots" data-facility-dots aria-hidden="true"></div>
+        </div>
+        <div class="booking-details-gallery__thumbs" data-facility-thumbs></div>
+      </div>
+      <div class="booking-modal__content booking-modal__content--details">
+        <h2 id="facility-modal-title" data-facility-title></h2>
+        <p data-facility-body></p>
+        <div class="facility-heat-banner" data-facility-heat hidden></div>
+        <section class="booking-detail-section" aria-labelledby="facility-highlights-title">
+          <h3 id="facility-highlights-title" data-facility-highlights-label data-i18n="facilities.highlightsLabel">Ce te așteaptă:</h3>
+          <ul class="booking-check-list booking-check-list--wide" data-facility-highlights></ul>
+        </section>
+      </div>
+    </article>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/js/supabase-config.js"></script>
   <script src="/js/supabase.js"></script>
@@ -385,6 +416,7 @@
   <script src="/js/tracking.js"></script>
   <script src="/js/translations.js"></script>
   <script src="/js/main.js"></script>
+  <script src="/js/facilities.js"></script>
 </body>
 
 </html>
