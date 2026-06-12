@@ -295,6 +295,7 @@
         decoding: 'async',
       });
       image.loading = index === lightbox.index ? 'eager' : 'lazy';
+      image.fetchPriority = index === lightbox.index ? 'high' : 'low';
       image.draggable = false;
       image.src = photoUrl(photo, 'full');
       slide.appendChild(image);
@@ -416,6 +417,8 @@
             decoding: 'async',
           });
           backdrop.loading = index === state.index ? 'eager' : 'lazy';
+          // Decorative blurred cover: never let it outrank the real photo.
+          backdrop.fetchPriority = 'low';
           backdrop.draggable = false;
           backdrop.src = backdropUrl;
           slide.appendChild(backdrop);
@@ -425,6 +428,7 @@
           decoding: 'async',
         });
         image.loading = index === state.index ? 'eager' : 'lazy';
+        image.fetchPriority = index === state.index ? 'high' : 'low';
         image.draggable = false;
         image.src = photoUrl(photo, 'full');
         slide.appendChild(image);

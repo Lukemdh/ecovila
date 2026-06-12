@@ -6,6 +6,13 @@
 
   const ECOVILA_PHOTO_BUCKET = 'ecovila-photos';
   const PUBLISH_RPC = 'publish_crm_photos';
+  // Uploads are downscaled and re-encoded to WebP in the browser before they
+  // reach storage, so the stored master is a few hundred KB instead of a
+  // multi-MB phone photo. 2000px on the long edge keeps headroom above the
+  // 1800px lightbox variant; quality 0.82 is visually lossless for photos.
+  const UPLOAD_MAX_EDGE = 2000;
+  const UPLOAD_WEBP_QUALITY = 0.82;
+  const TRANSFORMABLE_TYPE = /^image\/(jpeg|png|webp|avif)$/i;
   let photoToastTimer;
   let photoToastHideTimer;
   const FALLBACK_SECTIONS = [
@@ -255,11 +262,61 @@
     wirePhotoReordering(context, section, ordered, existing);
   }
 
+  function fileExtension(file) {
+    return (file.name.split('.').pop() || 'jpg').toLowerCase();
+  }
+
+  // Downscale + re-encode to WebP in the browser. Animated GIFs and anything we
+  // can't decode are passed through untouched so the upload still succeeds.
+  async function prepareUpload(file) {
+    const passthrough = {
+      blob: file,
+      extension: fileExtension(file),
+      contentType: file.type || 'application/octet-stream',
+    };
+
+    if (!file || !TRANSFORMABLE_TYPE.test(file.type) || typeof root.createImageBitmap !== 'function') {
+      return passthrough;
+    }
+
+    try {
+      // 'from-image' applies EXIF orientation so portrait phone shots aren't
+      // rotated once the orientation tag is dropped by the canvas.
+      const bitmap = await root.createImageBitmap(file, { imageOrientation: 'from-image' });
+      const scale = Math.min(1, UPLOAD_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+
+      const useOffscreen = typeof root.OffscreenCanvas === 'function';
+      const canvas = useOffscreen
+        ? new root.OffscreenCanvas(width, height)
+        : Object.assign(root.document.createElement('canvas'), { width, height });
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close?.();
+
+      const blob = canvas.convertToBlob
+        ? await canvas.convertToBlob({ type: 'image/webp', quality: UPLOAD_WEBP_QUALITY })
+        : await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', UPLOAD_WEBP_QUALITY));
+
+      if (!blob || blob.type !== 'image/webp') {
+        return passthrough;
+      }
+
+      return { blob, extension: 'webp', contentType: 'image/webp' };
+    } catch (error) {
+      return passthrough;
+    }
+  }
+
   async function uploadFiles(context, section, files, currentCount) {
     for (const [index, file] of files.entries()) {
-      const extension = file.name.split('.').pop() || 'jpg';
-      const storagePath = `${section.slug}/${Date.now()}-${index}.${extension}`;
-      const upload = await root.EcoVilaSupabase.uploadCrmPhoto(context.client, storagePath, file);
+      const prepared = await prepareUpload(file);
+      const storagePath = `${section.slug}/${Date.now()}-${index}.${prepared.extension}`;
+      const upload = await root.EcoVilaSupabase.uploadCrmPhoto(context.client, storagePath, prepared.blob, {
+        contentType: prepared.contentType,
+      });
       if (upload.error) {
         throw upload.error;
       }

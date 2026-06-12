@@ -348,6 +348,45 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   scroll-index syncing uses a `setTimeout` debounce instead of `requestAnimationFrame`
   (rAF is suspended in hidden tabs). New `gallery.*` i18n keys exist in RO/RU/EN.
 
+### ADR-026 — Photos are shrunk to WebP at the source; render transforms become an optimization, not the only line of defence
+- **Date:** 2026-06-12.
+- **Context:** every CRM photo was uploaded as its raw original — 4–14MB, 6000×4000
+  JPEG/PNG phone shots — into the public `ecovila-photos` bucket. The frontend leans on
+  Supabase's `/render/image/` endpoint (variant params in `js/supabase.js`
+  `PHOTO_VARIANTS`) to resize on the fly, which was assumed unavailable on the project's
+  plan. On inspection that endpoint does return `200` and transforms, but it still fetches
+  the multi-MB original as its source, and any transform outage/quota would expose those
+  originals directly.
+- **Decision (upload):** `admin/js/crm-photos.js` now downscales each upload to 2000px on
+  the long edge and re-encodes to WebP (q0.82) in the browser (`createImageBitmap` →
+  canvas → `toBlob('image/webp')`, EXIF orientation baked in via `imageOrientation:
+  'from-image'`) before it reaches storage. Animated GIFs and undecodable files pass
+  through untouched. `uploadCrmPhoto` (`js/supabase.js`) forwards the `image/webp`
+  content-type. 2000px keeps headroom above the 1800px `full` variant.
+- **Decision (backfill):** `scripts/backfill-photos-webp.mjs` (needs `npm i --no-save
+  sharp`; run with `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) shrank all 83 existing
+  objects **in place** — same path, same `.jpg`/`.png` name, bytes overwritten and
+  `Content-Type` set to `image/webp`. ~480MB → a few MB. Done 2026-06-12 against the live
+  bucket (83 shrunk, 0 failed).
+- **Decision (priority):** the gallery's eager (current) carousel slide and lightbox photo
+  get `fetchpriority="high"`; offscreen slides and the decorative blurred backdrop get
+  `low` so they never outrank the visible photo (`js/gallery.js`).
+- **Why in place, not renamed:** `publish_crm_photos()` regenerates published rows from
+  drafts by copying `storage_path`, and the frontend builds every URL from
+  `storage_path`. Overwriting the bytes leaves the publish flow, the DB rows, and the
+  frontend untouched — Supabase serves by stored content-type, so a `.jpg`-named object
+  full of WebP bytes renders correctly. The extension "lie" is cosmetic; new admin uploads
+  use real `.webp` paths and will replace the legacy names as staff re-upload.
+- **Consequence:** transforms now resize a ~150–500KB WebP instead of a 14MB original, and
+  if transforms ever go away the originals are already small. The backfill is idempotent
+  (already-WebP ≤2000px objects are skipped), so it is safe to re-run. Old big renders may
+  persist in browser caches under `cache-control: 31536000`, but the site is still a
+  pre-launch placeholder, so no warm cache exists yet. `sharp` is a dev-only, unsaved
+  install (`node_modules/` is gitignored).
+- **Related:** removed the hardcoded `fallbackPricingTiers` from `js/booking.js` in the
+  same change — `state.pricingTiers` now starts empty so no guessed MDL prices can flash
+  before the DB load resolves (reinforces ADR-022's "prices are never guessed" stance).
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

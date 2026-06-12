@@ -54,15 +54,6 @@
     hotel: '/assets/photos/hotel/building.svg',
   };
 
-  const fallbackPricingTiers = [
-    { nights_tier: 1, day_type: 'weekday', adult_price: 1100, kid_price: 900, effective_from: '2026-05-06' },
-    { nights_tier: 1, day_type: 'holiday', adult_price: 1300, kid_price: 1000, effective_from: '2026-05-06' },
-    { nights_tier: 2, day_type: 'weekday', adult_price: 1000, kid_price: 800, effective_from: '2026-05-06' },
-    { nights_tier: 2, day_type: 'holiday', adult_price: 1200, kid_price: 900, effective_from: '2026-05-06' },
-    { nights_tier: 3, day_type: 'weekday', adult_price: 900, kid_price: 700, effective_from: '2026-05-06' },
-    { nights_tier: 3, day_type: 'holiday', adult_price: 1100, kid_price: 800, effective_from: '2026-05-06' },
-  ];
-
   const fallbackRooms = createFallbackRooms();
 
   const state = {
@@ -77,7 +68,9 @@
     currentMonth: firstOfMonth(todayISO()),
     rooms: fallbackRooms,
     reservations: [],
-    pricingTiers: fallbackPricingTiers,
+    // Prices are never guessed: until the DB load resolves, there are no tiers,
+    // so no price renders and checkout stays blocked (see loadBookingData).
+    pricingTiers: [],
     holidays: [],
     loading: true,
     loadError: '',

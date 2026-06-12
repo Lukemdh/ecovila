@@ -586,9 +586,14 @@
   }
 
   function uploadCrmPhoto(client, path, file, options) {
+    const uploadOptions = { upsert: options?.upsert === true, cacheControl: PHOTO_CACHE_CONTROL };
+    if (options?.contentType) {
+      uploadOptions.contentType = options.contentType;
+    }
+
     return client.storage
       .from(PHOTO_BUCKET)
-      .upload(path, file, { upsert: options?.upsert === true, cacheControl: PHOTO_CACHE_CONTROL });
+      .upload(path, file, uploadOptions);
   }
 
   function getPhotoTransform(options) {
