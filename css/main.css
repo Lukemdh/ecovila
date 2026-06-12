@@ -947,7 +947,7 @@ h3 {
   padding-left: 20px;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 900px) {
   .site-header {
     grid-template-columns: minmax(84px, 112px) auto;
     padding-inline: 18px;
@@ -966,7 +966,7 @@ h3 {
 
   .site-footer__grid {
     width: 100%;
-    margin-inline: 0;
+    margin-inline: auto;
     gap: 18px;
   }
 

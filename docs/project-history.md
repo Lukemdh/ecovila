@@ -314,3 +314,40 @@ sessions append to the running log at the bottom.
   security, bugs, decisions, conventions, project-structure, plan, and the root
   `bugs.md` fix log; `dist/tophost/` rebuilt and awaiting upload. Owner still needs to
   rotate the Supabase access token shared during the deploy.
+- 2026-06-12 — OFF-PLAN content move: location section landing → FAQ, multilingual FAQ
+  schema. Removed the "Unde ne aflăm" (`#locatie`) section from all three landing pages
+  (`index.html`, `en/index.html`, `ru/index.html`) at the owner's request — the landing
+  retains its core location SEO via the LodgingBusiness schema (address/geo/areaServed),
+  title/meta/OG, `intro.title`, `hero.place`, and footer, so impact is low. The unique
+  nearby-attractions copy (`location.body2`) was relocated to `intrebari-frecvente.html`
+  as a new Q&A `faq.q11`/`faq.a11` (RO/RU/EN added to `js/translations.js`), in both the
+  visible `.faq-list` (now 11 items) and the FAQPage JSON-LD. Converted that JSON-LD from
+  a single RO `FAQPage` into an `@graph` of three nodes (`#faq-ro`, `#faq-ru`, `#faq-en`),
+  each `inLanguage`-tagged with the full 11-question set (ADR-024 — interim on a single
+  URL; ideal is a per-language URL split per ADR-016). Removed the now-orphaned
+  `location.*` keys (kicker/title/body1/body2/faq) from all three locales. Verified on the
+  local static server: landing section order is hero→despre→spa→… with no `#locatie`,
+  the new FAQ item renders and translates across RO/EN/RU, the JSON-LD parses to 3
+  FAQPage nodes × 11 Q&As, `node --check js/translations.js` passes, and no console
+  errors on either page. `dist/tophost/` not yet rebuilt; change still awaits the tophost
+  upload to go live. Updated decisions (ADR-024 + open question) and history.
+- 2026-06-12 — Responsive/UI fixes: desktop breakpoint, mobile footer, villa-modal CTA.
+  Three CSS-only fixes (`css/main.css`, `css/booking.css`), no markup or JS changes.
+  (1) Lowered the desktop→mobile collapse breakpoint from `max-width: 1120px` to
+  `900px` in `main.css` — 11" laptops (often <1120 CSS px) were dropping to the
+  single-column "mobile" layout; verified the intro/showcase/footer grids stay
+  two-column at 1024px and still collapse at 880px. (2) Fixed the footer rendering
+  off-centre on mobile: `.site-footer__grid` is a `.section-inner` (centred via
+  `margin: 0 auto`), but the ≤900px override forced `margin-inline: 0`, left-aligning
+  the 343px grid and leaving a ~32px dead gap on the right — changed it to
+  `margin-inline: auto` so the footer centres (16px each side) across the 700–900px
+  range. (3) Made the villa-details modal "Rezervă acum →" CTA visible: the button
+  (already wired to navigate to `rezervari.html` and `position: sticky`) used
+  `var(--booking-green)` for background/border, but that custom property is defined only
+  under `.booking-page` (the reservations page), not on the landing pages — so on the
+  landing modal the declaration was invalid and the button rendered transparent with
+  white text (invisible on the white modal). Added a literal fallback
+  `var(--booking-green, #5F7A3A)` so it renders solid green everywhere; applies to all
+  three landing pages (RO/EN/RU) since they share the markup and load `booking.css`.
+  Verified all three fixes in the browser preview at desktop and mobile widths.
+  `dist/tophost/` not yet rebuilt; awaits the tophost upload to go live.
