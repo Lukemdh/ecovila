@@ -221,14 +221,16 @@ describe('EcoVila Step 5 checkout', () => {
     assert.equal(checkout.validateGuestDetails({ firstName: 'Ana', lastName: 'Munteanu', phone: '+37360123456', email: 'ana@example.md', gdprAccepted: false }).errors[0], 'checkout.errorGdpr');
   });
 
-  it('keeps the checkout phone prefix as a placeholder instead of a submitted default', () => {
+  it('pre-fills the phone field with a deletable +373 and enforces a leading +', () => {
     const html = read('checkout.html');
     const checkoutScript = read('js/checkout.js');
     const phoneInput = html.match(/<input[^>]*data-guest-phone[^>]*>/)?.[0] || '';
 
-    assert.match(phoneInput, /placeholder="\+373"/);
-    assert.doesNotMatch(phoneInput, /\svalue="\+373"/);
-    assert.doesNotMatch(checkoutScript, /\|\|\s*['"]\+373['"]/);
+    // +373 is pre-written as an editable value (not just a placeholder),
+    // and the script enforces the "always starts with +" rule on input.
+    assert.match(phoneInput, /\svalue="\+373"/);
+    assert.match(checkoutScript, /function enforcePhonePlus/);
+    assert.match(checkoutScript, /enforcePhonePlus\(phoneInput\)/);
   });
 
   it('routes Moldovan online payments through MIA and other valid phones through card', () => {

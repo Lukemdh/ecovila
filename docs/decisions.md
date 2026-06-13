@@ -614,6 +614,45 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-034 — Gallery thumbnails wrap under the photo; checkout phone pre-fills a deletable +373 that always keeps its +
+- **Date:** 2026-06-13.
+- **Context:** two owner-requested UX changes. (1) In every detail pop-up (accommodation
+  and facility), the thumbnail strip under the main photo was a single horizontal row that
+  scrolled left↔right (`overflow-x: auto`), so most photos were off-screen and hard to reach.
+  The owner wanted all thumbnails visible at once, **under** the photo, like a booking site.
+  (2) On `checkout.html` the phone field only carried `+373` as a placeholder; the owner
+  wanted `+373` pre-written (but deletable), with a rule that the number always starts with `+`.
+- **Decision:**
+  1. **Wrapping thumbnail grid** — in `css/booking.css`, `.ev-gallery__thumbs` switched from
+     `display: flex; overflow-x: auto` to `display: grid;
+     grid-template-columns: repeat(auto-fill, minmax(76px, 1fr))` (64px on mobile). Every
+     thumbnail stays visible, wrapping into as many rows as needed with no horizontal or
+     vertical scroll. `.ev-gallery` reverted to its stacked grid (stage above, thumbs below).
+     No JS change — clicking a thumb still jumps the carousel and the active one keeps its
+     green border. Because `js/gallery.js` + `booking.css` are the one shared gallery
+     component, the change is site-wide (`rezervari.html`, `site.html`, `confirmare.html`,
+     `en/`, `ru/`).
+  2. **Deletable +373 with enforced leading +** — `checkout.html` gained `value="+373"` on the
+     phone input (placeholder kept). `js/checkout.js` added `enforcePhonePlus(phoneInput)`,
+     run on every `input`: it strips any `+` and re-adds a single leading one
+     (`rest ? '+'+rest : ''`), so the field can be cleared to empty (deletable) yet any typed
+     content always begins with `+`; caret is kept at the end when editing there.
+- **Why:** the wrapping grid matches the familiar booking-site pattern and makes every photo
+  one tap away. Pre-filling `+373` saves the most common country code while staying editable;
+  the leading-`+` rule keeps phones in the E.164 shape the `INTERNATIONAL_PHONE_PATTERN`
+  validator and the MIA/card rail detection (`getPaymentRail`) already expect.
+- **Consequence:** pre-filling `+373` means the default online payment rail now resolves to
+  **MIA** instead of card on first load (it was `card` for an empty field), updating to the
+  correct rail as soon as the guest types their real number. The prior test
+  "keeps the checkout phone prefix as a placeholder instead of a submitted default" encoded
+  the opposite decision and was rewritten in `tests/checkout.test.mjs` to assert the
+  pre-filled value and the enforcement helper. Pure front-end change — no Edge Function or
+  pricing-guard impact; the static site still needs a TopHost upload
+  (`npm run prepare:tophost`) to go live. The node baseline of 11 maintenance-placeholder
+  failures is unchanged.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

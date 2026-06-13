@@ -1069,15 +1069,15 @@ body.page-booking .site-header {
 }
 
 .ev-gallery__thumbs {
-  display: flex;
+  /* Wrapping grid under the photo: every thumbnail stays visible, rows
+     flow downward (no horizontal scroll) so any photo is one tap away. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
   gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
 }
 
 .ev-gallery__thumbs button {
-  flex: 0 0 96px;
+  width: 100%;
   padding: 0;
   overflow: hidden;
   cursor: pointer;
@@ -2449,8 +2449,9 @@ body.page-booking .site-header {
     height: 40px;
   }
 
-  .ev-gallery__thumbs button {
-    flex-basis: 76px;
+  .ev-gallery__thumbs {
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 8px;
   }
 
   .ev-lightbox__nav {

@@ -116,6 +116,29 @@
     return compact;
   }
 
+  // Rule: a phone number always starts with "+". The field is pre-filled
+  // with "+373" but stays fully editable — the user can delete it down to
+  // empty. As soon as they type anything, we guarantee a single leading "+"
+  // (dropping any stray "+" elsewhere), so the number can never start
+  // without one.
+  function enforcePhonePlus(input) {
+    const raw = input.value;
+    const rest = raw.replace(/\+/g, '');
+    const next = rest ? `+${rest}` : '';
+    if (next === raw) {
+      return;
+    }
+    const atEnd = input.selectionStart === raw.length;
+    input.value = next;
+    if (atEnd) {
+      try {
+        input.setSelectionRange(next.length, next.length);
+      } catch (_error) {
+        // setSelectionRange is unsupported on some input types; ignore.
+      }
+    }
+  }
+
   function normalizeLanguage(value) {
     const language = trimText(value).toLowerCase();
     return SUPPORTED_LANGUAGES.has(language) ? language : 'ro';
@@ -649,6 +672,7 @@
     });
 
     phoneInput?.addEventListener('input', () => {
+      enforcePhonePlus(phoneInput);
       renderCheckout(state);
     });
 
