@@ -619,19 +619,18 @@ function bookingConfirmationSms(input: {
   checkIn: string;
   checkOut: string;
 }) {
-  const useShortDate = input.language === 'ru';
-  const date = formatSmsDate(input.checkIn, input.language, useShortDate);
-  const checkOutDate = formatSmsDate(input.checkOut, input.language, useShortDate);
+  const date = formatSmsDate(input.checkIn, input.language);
+  const checkOutDate = formatSmsDate(input.checkOut, input.language);
 
   if (input.language === 'ru') {
-    return `Бронь: ${date}, 13.00 - ${checkOutDate}, 10.00. Вход с 13.00.`;
+    return `Ваша бронь подтверждена: ${date} (13.00) - ${checkOutDate} (10.00) Доступ на территорию: после 13.00. Ждём вас!`;
   }
 
   if (input.language === 'en') {
-    return `Your reservation is confirmed: ${date}, 13.00 - ${checkOutDate}, 10.00. Access to the property: after 13.00. See you soon!`;
+    return `Your reservation is confirmed: ${date} (13.00) - ${checkOutDate} (10.00) Access to the property: after 13.00. See you soon!`;
   }
 
-  return `Rezervarea dvs este confirmata: ${date}, 13.00 - ${checkOutDate}, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!`;
+  return `Rezervarea dvs este confirmata: ${date} (13.00) - ${checkOutDate} (10.00) Acces pe teritoriu: dupa 13.00. Va asteptam!`;
 }
 
 function formatSmsDate(value: string, language: string, short = false) {

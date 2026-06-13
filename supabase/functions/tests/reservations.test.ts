@@ -190,7 +190,7 @@ Deno.test('composeBookingConfirmation keeps links in email and sends full stay S
   assertEquals(message.sms.to, '+37360123456');
   assertEquals(
     message.sms.message,
-    'Rezervarea dvs este confirmata: 16 Mai 2026, 13.00 - 18 Mai 2026, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!',
+    'Rezervarea dvs este confirmata: 16 Mai 2026 (13.00) - 18 Mai 2026 (10.00) Acces pe teritoriu: dupa 13.00. Va asteptam!',
   );
   assertEquals([...message.sms.message].length <= 160, true);
   assertEquals(message.sms.message.includes('EcoVila:'), false);
@@ -207,20 +207,21 @@ Deno.test('composeBookingConfirmation keeps SMS inside one segment where possibl
       language: 'ro',
       checkIn: '2026-09-16',
       expected:
-        'Rezervarea dvs este confirmata: 16 Septembrie 2026, 13.00 - 18 Septembrie 2026, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!',
+        'Rezervarea dvs este confirmata: 16 Septembrie 2026 (13.00) - 18 Septembrie 2026 (10.00) Acces pe teritoriu: dupa 13.00. Va asteptam!',
       maxLength: 160,
     },
     {
       language: 'ru',
       checkIn: '2026-09-16',
-      expected: 'Бронь: 16 сен 2026, 13.00 - 18 сен 2026, 10.00. Вход с 13.00.',
-      maxLength: 70,
+      expected:
+        'Ваша бронь подтверждена: 16 сентября 2026 (13.00) - 18 сентября 2026 (10.00) Доступ на территорию: после 13.00. Ждём вас!',
+      maxLength: 140,
     },
     {
       language: 'en',
       checkIn: '2026-09-16',
       expected:
-        'Your reservation is confirmed: 16 September 2026, 13.00 - 18 September 2026, 10.00. Access to the property: after 13.00. See you soon!',
+        'Your reservation is confirmed: 16 September 2026 (13.00) - 18 September 2026 (10.00) Access to the property: after 13.00. See you soon!',
       maxLength: 160,
     },
   ];
