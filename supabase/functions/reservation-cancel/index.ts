@@ -9,7 +9,14 @@ import {
   refundEligibilityReason,
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import {
+  buildCancellationEmail,
+  cancellationConfirmationSms,
+  normalizeEmailLang,
+  titleCaseName,
+} from '../_shared/notifications.ts';
 import type { NotificationMessage } from '../_shared/notifications.ts';
+import { getSiteUrl } from '../_shared/env.ts';
 import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -339,30 +346,36 @@ function composeCancellationConfirmation(
   reservation: CancellationReservationRow,
 ): NotificationMessage {
   const roomCopy = roomLabel(reservation);
-  const period = formatSmsPeriod(reservation);
-  const fullName = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`
-    .trim();
+  const lang = normalizeEmailLang(reservation.guest_language);
+  const firstName = titleCaseName(reservation.guest_first_name || '');
+  const fullName = titleCaseName(
+    `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`,
+  );
+
+  const email = buildCancellationEmail({
+    lang,
+    firstName,
+    fullName,
+    roomCopy,
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+    siteUrl: getSiteUrl(),
+  });
 
   return {
     sms: {
       to: reservation.guest_phone,
-      message: `Rezervarea dvs ${period} este anulata`,
+      message: cancellationConfirmationSms({
+        checkIn: reservation.check_in,
+        checkOut: reservation.check_out,
+        language: lang,
+      }),
     },
     email: {
       to: reservation.guest_email,
-      subject: 'Anulare rezervare EcoVila',
-      text: [
-        fullName ? `Bună, ${fullName}.` : 'Bună.',
-        `Rezervarea dvs. (${period}, ${roomCopy}) a fost anulată.`,
-        'Camera a fost eliberată în calendarul EcoVila.',
-      ].join('\n'),
-      html: [
-        '<!doctype html><html><body>',
-        `<p>${escapeHtml(fullName ? `Bună, ${fullName}.` : 'Bună.')}</p>`,
-        `<p>Rezervarea dvs. (${escapeHtml(period)}, ${escapeHtml(roomCopy)}) a fost anulată.</p>`,
-        '<p>Camera a fost eliberată în calendarul EcoVila.</p>',
-        '</body></html>',
-      ].join(''),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
     },
   };
 }
@@ -375,56 +388,8 @@ function roomLabel(reservation: CancellationReservationRow) {
   return number ? `${typeLabel} #${number}` : typeLabel;
 }
 
-function formatSmsPeriod(reservation: CancellationReservationRow) {
-  return `${formatSmsDate(reservation.check_in)} - ${formatSmsDate(reservation.check_out)}`;
-}
-
-function formatSmsDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
-  if (!match) {
-    return value;
-  }
-
-  const [, year, monthText, dayText] = match;
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const monthName = smsMonthName(month);
-
-  if (!monthName || day < 1 || day > 31) {
-    return value;
-  }
-
-  return `${day} ${monthName} ${year}`;
-}
-
-function smsMonthName(month: number) {
-  return [
-    'Ianuarie',
-    'Februarie',
-    'Martie',
-    'Aprilie',
-    'Mai',
-    'Iunie',
-    'Iulie',
-    'August',
-    'Septembrie',
-    'Octombrie',
-    'Noiembrie',
-    'Decembrie',
-  ][month - 1] || '';
-}
-
 function providerError(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Provider request failed.');
-}
-
-function escapeHtml(value: string) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
 }
 
 async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {

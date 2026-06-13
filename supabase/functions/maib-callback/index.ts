@@ -12,7 +12,12 @@ import {
 } from '../_shared/maib.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
-import { bookingConfirmationSms } from '../_shared/notifications.ts';
+import {
+  bookingConfirmationSms,
+  buildConfirmationEmail,
+  normalizeEmailLang,
+  titleCaseName,
+} from '../_shared/notifications.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { dispatchPurchaseTrackingOnce } from '../_shared/tracking.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
@@ -678,48 +683,38 @@ function composePaymentConfirmation(
   siteUrl: string,
   manageToken: string,
 ) {
-  const language = String(reservation.guest_language || 'ro').toLowerCase();
-  const roomCopy = roomLabel(reservation, language);
+  const lang = normalizeEmailLang(reservation.guest_language);
+  const roomCopy = roomLabel(reservation, lang);
   const confirmationLink = confirmationUrl(siteUrl, reservation.id, manageToken);
   const cancelLink = `${siteUrl}/anulare.html?token=${encodeURIComponent(cancellationToken)}`;
-  const name = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`.trim();
-  const stay = `${reservation.check_in} - ${reservation.check_out}`;
+  const firstName = titleCaseName(reservation.guest_first_name || '');
+  const fullName = titleCaseName(
+    `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`,
+  );
   const sms = bookingConfirmationSms({
-    language,
+    language: lang,
     checkIn: reservation.check_in,
     checkOut: reservation.check_out,
   });
-  const subject = subjectLine(language);
-  const text = [
-    greeting(language, name),
-    `${label(language, 'period')}: ${stay}`,
-    `${label(language, 'room')}: ${roomCopy}`,
-    `${label(language, 'total')}: ${reservation.total_price} MDL`,
-    `${label(language, 'confirm')}: ${confirmationLink}`,
-    `${label(language, 'cancel')}: ${cancelLink}`,
-  ].join('\n');
+
+  const email = buildConfirmationEmail({
+    lang,
+    firstName,
+    fullName,
+    roomCopy,
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+    totalPrice: Number(reservation.total_price || 0),
+    confirmationUrl: confirmationLink,
+    cancellationUrl: cancelLink,
+    siteUrl,
+  });
 
   return {
     sms,
-    subject,
-    text,
-    html: [
-      '<!doctype html><html><body>',
-      `<h1>${escapeHtml(subject)}</h1>`,
-      `<p>${escapeHtml(greeting(language, name))}</p>`,
-      '<table>',
-      row(label(language, 'period'), stay),
-      row(label(language, 'room'), roomCopy),
-      row(label(language, 'total'), `${reservation.total_price} MDL`),
-      '</table>',
-      `<p><a href="${escapeAttribute(confirmationLink)}">${
-        escapeHtml(label(language, 'confirm'))
-      }</a></p>`,
-      `<p><a href="${escapeAttribute(cancelLink)}">${
-        escapeHtml(label(language, 'cancel'))
-      }</a></p>`,
-      '</body></html>',
-    ].join(''),
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
   };
 }
 
@@ -734,66 +729,9 @@ function confirmationUrl(siteUrl: string, reservationId: string, manageToken: st
   return `${siteUrl}/confirmare.html?${params.toString()}`;
 }
 
-function subjectLine(language: string) {
-  if (language === 'ru') return 'Бронирование EcoVila подтверждено';
-  if (language === 'en') return 'EcoVila reservation confirmed';
-  return 'Rezervarea EcoVila este confirmată';
-}
-
-function greeting(language: string, name: string) {
-  if (language === 'ru') return `Здравствуйте${name ? `, ${name}` : ''}!`;
-  if (language === 'en') return `Hello${name ? `, ${name}` : ''}!`;
-  return `Bună${name ? `, ${name}` : ''}!`;
-}
-
-function label(language: string, key: string) {
-  const labels: Record<string, Record<string, string>> = {
-    ro: {
-      period: 'Perioada',
-      room: 'Cazare',
-      total: 'Total',
-      confirm: 'Vezi rezervarea',
-      cancel: 'Anulează rezervarea',
-    },
-    ru: {
-      period: 'Период',
-      room: 'Размещение',
-      total: 'Итого',
-      confirm: 'Открыть бронирование',
-      cancel: 'Отменить бронирование',
-    },
-    en: {
-      period: 'Period',
-      room: 'Accommodation',
-      total: 'Total',
-      confirm: 'View reservation',
-      cancel: 'Cancel reservation',
-    },
-  };
-
-  return labels[language]?.[key] || labels.ro[key] || key;
-}
-
 function roomLabel(reservation: PaymentReservationRow, language: string) {
   if (!reservation.room_number) return 'EcoVila';
   if (language === 'ru') return `Домик #${reservation.room_number}`;
   if (language === 'en') return `Villa #${reservation.room_number}`;
   return `Căsuța #${reservation.room_number}`;
-}
-
-function row(labelText: string, value: string) {
-  return `<tr><th align="left">${escapeHtml(labelText)}</th><td>${escapeHtml(value)}</td></tr>`;
-}
-
-function escapeHtml(value: string) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replaceAll('`', '&#096;');
 }

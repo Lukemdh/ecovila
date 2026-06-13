@@ -296,30 +296,50 @@ Deno.test('composeArrivalReminder sends short translated SMS without sender pref
   }
 });
 
-Deno.test('composeCancellationConfirmation sends the requested short Romanian SMS with dates only', async () => {
+Deno.test('composeCancellationConfirmation sends a localized cancellation SMS with full-letter dates', async () => {
   const { composeCancellationConfirmation } = await import('../_shared/notifications.ts');
-  const message = composeCancellationConfirmation({
-    id: 'reservation-cancelled',
-    room_number: 8,
-    check_in: '2026-06-01',
-    check_out: '2026-06-03',
-    total_price: 5200,
-    payment_type: 'card',
-    guest_email: 'ana@example.md',
-    guest_phone: '+37360123456',
-    guest_first_name: 'Ana',
-    guest_last_name: 'Munteanu',
-    guest_language: 'ro',
-  });
+  const cases = [
+    {
+      language: 'ro',
+      expected:
+        'Rezervarea dvs este anulata: 20 Septembrie 2026 - 21 Septembrie 2026. Speram sa ne mai vedem in curand!',
+      maxLength: 160,
+    },
+    {
+      language: 'ru',
+      expected:
+        'Ваша бронь отменена: 20 сентября 2026 - 21 сентября 2026. Надеемся снова увидеть вас!',
+      maxLength: 140,
+    },
+    {
+      language: 'en',
+      expected:
+        'Your reservation is cancelled: 20 September 2026 - 21 September 2026. We hope to see you again soon!',
+      maxLength: 160,
+    },
+  ];
 
-  assertEquals(message.sms.to, '+37360123456');
-  assertEquals(
-    message.sms.message,
-    'Rezervarea dvs 1 Iunie 2026 - 3 Iunie 2026 este anulata',
-  );
-  assertEquals(message.sms.message.includes('EcoVila:'), false);
-  assertEquals(message.sms.message.includes('Căsuța'), false);
-  assertEquals([...message.sms.message].length <= 160, true);
+  for (const testCase of cases) {
+    const message = composeCancellationConfirmation({
+      id: `reservation-cancelled-${testCase.language}`,
+      room_number: 8,
+      check_in: '2026-09-20',
+      check_out: '2026-09-21',
+      total_price: 5200,
+      payment_type: 'card',
+      guest_email: 'ana@example.md',
+      guest_phone: '+37360123456',
+      guest_first_name: 'Ana',
+      guest_last_name: 'Munteanu',
+      guest_language: testCase.language,
+    });
+
+    assertEquals(message.sms.to, '+37360123456');
+    assertEquals(message.sms.message, testCase.expected);
+    assertEquals(message.sms.message.includes('EcoVila:'), false);
+    assertEquals(message.sms.message.includes('Căsuța'), false);
+    assertEquals([...message.sms.message].length <= testCase.maxLength, true);
+  }
 });
 
 Deno.test('sendSms follows the SMS.md authorized legacy request shape', async () => {

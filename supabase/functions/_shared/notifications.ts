@@ -64,14 +64,29 @@ export function composeBookingConfirmation(
   reservation: NotificationReservation,
   options: { cancellationToken: string; siteUrl: string; manageToken?: string },
 ): NotificationMessage {
-  const language = reservationLanguage(reservation);
-  const roomCopy = roomLabel(reservation, 'ro');
+  const language = reservationLanguage(reservation) as EmailLang;
+  const roomCopy = roomLabel(reservation, language);
   const cancellationLink = `${options.siteUrl}/anulare.html?token=${
     encodeURIComponent(options.cancellationToken)
   }`;
   const confirmationLink = confirmationUrl(options.siteUrl, reservation.id, options.manageToken);
-  const fullName = `${reservation.guest_first_name} ${reservation.guest_last_name}`;
-  const total = `${reservation.total_price} MDL`;
+  const firstName = titleCaseName(reservation.guest_first_name);
+  const fullName = titleCaseName(
+    `${reservation.guest_first_name} ${reservation.guest_last_name}`,
+  );
+
+  const email = buildConfirmationEmail({
+    lang: language,
+    firstName,
+    fullName,
+    roomCopy,
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+    totalPrice: reservation.total_price,
+    confirmationUrl: confirmationLink,
+    cancellationUrl: cancellationLink,
+    siteUrl: options.siteUrl,
+  });
 
   return {
     sms: {
@@ -84,31 +99,9 @@ export function composeBookingConfirmation(
     },
     email: {
       to: reservation.guest_email,
-      subject: 'Confirmare rezervare EcoVila',
-      text: [
-        `Bună, ${fullName}.`,
-        `Rezervarea dvs. pentru ${roomCopy} este înregistrată.`,
-        `Perioada: ${reservation.check_in} - ${reservation.check_out}.`,
-        `Total: ${total}.`,
-        `Confirmare: ${confirmationLink}`,
-        `Anulare 20 zile+: ${cancellationLink}`,
-      ].join('\n'),
-      html: reservationEmailHtml({
-        title: 'Rezervarea dvs. EcoVila este confirmată',
-        greeting: `Bună, ${escapeHtml(fullName)}.`,
-        rows: [
-          ['Cazare', roomCopy],
-          ['Perioada', `${reservation.check_in} - ${reservation.check_out}`],
-          ['Total', total],
-          ['Tip plată', reservation.payment_type],
-        ],
-        body:
-          'Check-in este de la ora 13:00. Vă rugăm să rețineți că accesul cu animale de companie nu este permis.',
-        ctaUrl: confirmationLink,
-        ctaLabel: 'Deschide confirmarea',
-        secondaryUrl: cancellationLink,
-        secondaryLabel: 'Link anulare',
-      }),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
     },
   };
 }
@@ -179,29 +172,40 @@ export function composeExpiredCashCancellation(
 
 export function composeCancellationConfirmation(
   reservation: NotificationReservation,
+  options: { siteUrl?: string } = {},
 ): NotificationMessage {
-  const language = reservationLanguage(reservation);
-  const roomCopy = roomLabel(reservation, 'ro');
+  const language = reservationLanguage(reservation) as EmailLang;
+  const roomCopy = roomLabel(reservation, language);
+  const siteUrl = (options.siteUrl || 'https://ecovila.md').replace(/\/+$/, '');
+  const firstName = titleCaseName(reservation.guest_first_name);
+  const fullName = titleCaseName(
+    `${reservation.guest_first_name} ${reservation.guest_last_name}`,
+  );
+
+  const email = buildCancellationEmail({
+    lang: language,
+    firstName,
+    fullName,
+    roomCopy,
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+    siteUrl,
+  });
 
   return {
     sms: {
       to: reservation.guest_phone,
-      message: cancellationConfirmationSms(reservation, language),
+      message: cancellationConfirmationSms({
+        checkIn: reservation.check_in,
+        checkOut: reservation.check_out,
+        language,
+      }),
     },
     email: {
       to: reservation.guest_email,
-      subject: 'Anulare rezervare EcoVila',
-      text:
-        `Rezervarea dvs. (${reservation.check_in} - ${reservation.check_out}, ${roomCopy}) a fost anulată.`,
-      html: reservationEmailHtml({
-        title: 'Rezervarea a fost anulată',
-        greeting: `Bună, ${escapeHtml(reservation.guest_first_name)}.`,
-        rows: [
-          ['Cazare', roomCopy],
-          ['Perioada', `${reservation.check_in} - ${reservation.check_out}`],
-        ],
-        body: 'Camera a fost eliberată în calendarul EcoVila.',
-      }),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
     },
   };
 }
@@ -763,23 +767,24 @@ function expiredCashCancellationSms(language: string) {
   ].join('\n');
 }
 
-function cancellationConfirmationSms(
-  reservation: NotificationReservation,
-  language: string,
-) {
-  const useShortDate = language === 'ru';
-  const checkIn = formatSmsDate(reservation.check_in, language, useShortDate);
-  const checkOut = formatSmsDate(reservation.check_out, language, useShortDate);
+export function cancellationConfirmationSms(input: {
+  checkIn: string;
+  checkOut: string;
+  language: string;
+}) {
+  const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
+  const checkIn = formatSmsDate(input.checkIn, language);
+  const checkOut = formatSmsDate(input.checkOut, language);
 
   if (language === 'ru') {
-    return `Бронь ${checkIn} - ${checkOut} отменена.`;
+    return `Ваша бронь отменена: ${checkIn} - ${checkOut}. Надеемся снова увидеть вас!`;
   }
 
   if (language === 'en') {
-    return `Your reservation ${checkIn} - ${checkOut} was cancelled.`;
+    return `Your reservation is cancelled: ${checkIn} - ${checkOut}. We hope to see you again soon!`;
   }
 
-  return `Rezervarea dvs ${checkIn} - ${checkOut} este anulata`;
+  return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}. Speram sa ne mai vedem in curand!`;
 }
 
 function arrivalReminderSms(language: string) {
@@ -792,6 +797,626 @@ function arrivalReminderSms(language: string) {
   }
 
   return 'Va asteptam maine la EcoVila! Check-in si acces pe teritoriu - de la 13.00. Pentru intrebari: 060120220';
+}
+
+export type EmailLang = 'ro' | 'ru' | 'en';
+
+const EMAIL_PHONE_DISPLAY = '+373 60 120 220';
+const EMAIL_PHONE_HREF = 'tel:+37360120220';
+const EMAIL_LOGO_PATH = '/assets/logo.png';
+
+const EMAIL_COLORS = {
+  bg: '#F7F4EF',
+  card: '#FFFAF2',
+  white: '#FFFFFF',
+  green: '#5F7A3A',
+  greenDark: '#4B6529',
+  greenSoft: '#EEF3E6',
+  cocoa: '#8B7564',
+  ink: '#332F2C',
+  muted: '#6E6760',
+  border: '#E7DFD2',
+  row: '#EFE8DC',
+};
+
+const EMAIL_MONTHS: Record<EmailLang, string[]> = {
+  ro: [
+    'ianuarie',
+    'februarie',
+    'martie',
+    'aprilie',
+    'mai',
+    'iunie',
+    'iulie',
+    'august',
+    'septembrie',
+    'octombrie',
+    'noiembrie',
+    'decembrie',
+  ],
+  ru: [
+    'января',
+    'февраля',
+    'марта',
+    'апреля',
+    'мая',
+    'июня',
+    'июля',
+    'августа',
+    'сентября',
+    'октября',
+    'ноября',
+    'декабря',
+  ],
+  en: [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ],
+};
+
+export function normalizeEmailLang(value: unknown): EmailLang {
+  const lang = String(value || '').trim().toLowerCase();
+  return lang === 'ru' || lang === 'en' ? lang : 'ro';
+}
+
+export function titleCaseName(value: string): string {
+  return String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toLocaleUpperCase() + word.slice(1).toLocaleLowerCase())
+    .join(' ');
+}
+
+function formatEmailDate(value: string, lang: EmailLang): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) {
+    return String(value || '');
+  }
+
+  const [, year, monthText, dayText] = match;
+  const monthName = EMAIL_MONTHS[lang]?.[Number(monthText) - 1];
+  const day = Number(dayText);
+
+  if (!monthName || day < 1 || day > 31) {
+    return value;
+  }
+
+  return `${day} ${monthName} ${year}`;
+}
+
+function nightsBetween(checkIn: string, checkOut: string): number {
+  const start = Date.parse(`${checkIn}T00:00:00Z`);
+  const end = Date.parse(`${checkOut}T00:00:00Z`);
+
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((end - start) / 86_400_000));
+}
+
+function nightsLabel(count: number, lang: EmailLang): string {
+  if (lang === 'ru') {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    let word = 'ночей';
+
+    if (mod10 === 1 && mod100 !== 11) {
+      word = 'ночь';
+    } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      word = 'ночи';
+    }
+
+    return `${count} ${word}`;
+  }
+
+  if (lang === 'en') {
+    return `${count} ${count === 1 ? 'night' : 'nights'}`;
+  }
+
+  return `${count} ${count === 1 ? 'noapte' : 'nopți'}`;
+}
+
+function formatEmailMoney(amount: number): string {
+  const value = Math.round(Number(amount) || 0);
+  const grouped = String(Math.abs(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return value < 0 ? `-${grouped}` : grouped;
+}
+
+type EmailRow = { label: string; value: string; total?: boolean };
+
+type EmailInfoCard = {
+  title: string;
+  lines: string[];
+  phoneLead: string;
+};
+
+function renderReservationEmail(input: {
+  lang: EmailLang;
+  siteUrl: string;
+  preheader: string;
+  tagline: string;
+  badgeSymbol: string;
+  badgeBg: string;
+  heading: string;
+  greetingHtml: string;
+  intro: string;
+  rows: EmailRow[];
+  primary?: { label: string; url: string };
+  secondary?: { label: string; url: string };
+  info?: EmailInfoCard;
+  closing: string;
+}): string {
+  const c = EMAIL_COLORS;
+  const logoUrl = `${input.siteUrl}${EMAIL_LOGO_PATH}`;
+
+  const rowsHtml = input.rows
+    .map((row, index) => {
+      const isLast = index === input.rows.length - 1;
+
+      if (row.total) {
+        return `<tr>
+                <td style="padding:18px 20px; background:${c.greenSoft}; font-size:16px; font-weight:700; color:${c.ink};">${
+          escapeHtml(row.label)
+        }</td>
+                <td align="right" style="padding:18px 20px; background:${c.greenSoft}; font-size:22px; line-height:1.1; font-weight:800; color:${c.greenDark}; white-space:nowrap;">${
+          escapeHtml(row.value)
+        }</td>
+              </tr>`;
+      }
+
+      const border = isLast ? '' : ` border-bottom:1px solid ${c.row};`;
+      return `<tr>
+              <td style="padding:14px 20px;${border} font-size:15px; color:${c.muted};">${
+        escapeHtml(row.label)
+      }</td>
+              <td align="right" style="padding:14px 20px;${border} font-size:15px; font-weight:600; color:${c.ink};">${
+        escapeHtml(row.value)
+      }</td>
+            </tr>`;
+    })
+    .join('');
+
+  const primaryHtml = input.primary
+    ? `<tr>
+            <td align="center" style="padding:26px 0 8px 0;">
+              <a href="${
+      escapeAttribute(input.primary.url)
+    }" style="display:inline-block; background:${c.green}; color:#ffffff; text-decoration:none; font-size:16px; font-weight:700; line-height:1; padding:16px 36px; border-radius:999px;">${
+      escapeHtml(input.primary.label)
+    }</a>
+            </td>
+          </tr>`
+    : '';
+
+  const secondaryHtml = input.secondary
+    ? `<tr>
+            <td align="center" style="padding:6px 0 2px 0;">
+              <a href="${
+      escapeAttribute(input.secondary.url)
+    }" style="color:${c.muted}; font-size:14px; text-decoration:underline;">${
+      escapeHtml(input.secondary.label)
+    }</a>
+            </td>
+          </tr>`
+    : '';
+
+  const infoHtml = input.info
+    ? `<tr>
+          <td style="padding-top:18px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${c.card}; border:1px solid ${c.border}; border-radius:18px;">
+              <tr>
+                <td style="padding:18px 22px;">
+                  <p style="margin:0 0 10px 0; font-size:15px; line-height:1.5; color:${c.ink};"><strong>${
+      escapeHtml(input.info.title)
+    }</strong></p>
+                  ${
+      input.info.lines
+        .map(
+          (line) =>
+            `<p style="margin:0 0 6px 0; font-size:14px; line-height:1.5; color:${c.muted};">${
+              escapeHtml(line)
+            }</p>`,
+        )
+        .join('')
+    }
+                  <p style="margin:6px 0 0 0; font-size:14px; line-height:1.5; color:${c.muted};">${
+      escapeHtml(input.info.phoneLead)
+    } <a href="${EMAIL_PHONE_HREF}" style="color:${c.green}; font-weight:700; text-decoration:none;">${EMAIL_PHONE_DISPLAY}</a>.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`
+    : '';
+
+  return [
+    '<!doctype html>',
+    `<html lang="${input.lang}">`,
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<meta name="color-scheme" content="light only">',
+    `<title>${escapeHtml(input.heading)}</title>`,
+    '</head>',
+    `<body style="margin:0; padding:0; background:${c.bg}; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color:${c.ink};">`,
+    `<div style="display:none; max-height:0; overflow:hidden; opacity:0; color:${c.bg};">${
+      escapeHtml(input.preheader)
+    }</div>`,
+    `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${c.bg}; margin:0; padding:0;">`,
+    '<tr>',
+    '<td align="center" style="padding:28px 14px;">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%;">',
+    '<tr>',
+    '<td align="center" style="padding:8px 18px 16px 18px;">',
+    `<img src="${
+      escapeAttribute(logoUrl)
+    }" width="148" alt="EcoVila" style="display:block; max-width:148px; height:auto; border:0; margin:0 auto;">`,
+    `<div style="font-size:12px; letter-spacing:2px; text-transform:uppercase; color:${c.cocoa}; margin-top:12px;">${
+      escapeHtml(input.tagline)
+    }</div>`,
+    '</td>',
+    '</tr>',
+    '<tr>',
+    `<td style="background:${c.card}; border:1px solid ${c.border}; border-radius:24px; padding:30px 24px;">`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">',
+    '<tr>',
+    '<td align="center" style="padding-bottom:14px;">',
+    `<div style="width:56px; height:56px; line-height:56px; border-radius:50%; background:${input.badgeBg}; color:#ffffff; font-size:30px; font-weight:700; text-align:center;">${input.badgeSymbol}</div>`,
+    '</td>',
+    '</tr>',
+    '<tr>',
+    '<td align="center" style="padding:0 6px;">',
+    `<h1 style="margin:0; font-size:27px; line-height:1.22; font-weight:700; color:${c.ink};">${
+      escapeHtml(input.heading)
+    }</h1>`,
+    '</td>',
+    '</tr>',
+    '<tr>',
+    '<td align="center" style="padding:16px 6px 22px 6px;">',
+    `<p style="margin:0 0 6px 0; font-size:18px; line-height:1.4; font-weight:600; color:${c.cocoa};">${input.greetingHtml}</p>`,
+    `<p style="margin:0; font-size:15px; line-height:1.55; color:${c.muted};">${
+      escapeHtml(input.intro)
+    }</p>`,
+    '</td>',
+    '</tr>',
+    '<tr>',
+    `<td style="background:${c.white}; border:1px solid ${c.border}; border-radius:18px; overflow:hidden;">`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">',
+    rowsHtml,
+    '</table>',
+    '</td>',
+    '</tr>',
+    primaryHtml,
+    secondaryHtml,
+    '</table>',
+    '</td>',
+    '</tr>',
+    infoHtml,
+    '<tr>',
+    '<td align="center" style="padding:26px 20px 4px 20px;">',
+    `<p style="margin:0; font-size:18px; line-height:1.5; color:${c.cocoa}; font-weight:600;">${
+      escapeHtml(input.closing)
+    }</p>`,
+    `<p style="margin:12px 0 0 0; font-size:12px; line-height:1.5; color:#9a9085;">EcoVila</p>`,
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</body>',
+    '</html>',
+  ].join('');
+}
+
+const CONFIRM_COPY: Record<EmailLang, {
+  subject: string;
+  preheader: string;
+  tagline: string;
+  heading: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  intro: string;
+  labels: {
+    checkIn: string;
+    checkOut: string;
+    duration: string;
+    accommodation: string;
+    total: string;
+  };
+  cta: string;
+  cancel: string;
+  cancelTextLabel: string;
+  info: { title: string; lines: string[]; phoneLead: string };
+  closing: string;
+  textDetails: string;
+  textArrival: string;
+}> = {
+  ro: {
+    subject: 'Rezervarea ta la EcoVila este confirmată',
+    preheader: 'Detaliile rezervării tale și informații utile pentru sosire.',
+    tagline: 'Odihnă all-inclusive la Orheiul Vechi',
+    heading: 'Rezervarea ta la EcoVila este confirmată',
+    greeting: (name) => `Bună, ${name}!`,
+    greetingFallback: 'Bună!',
+    intro: 'Îți mulțumim pentru rezervare. Ne bucurăm să te primim la EcoVila.',
+    labels: {
+      checkIn: 'Check-in',
+      checkOut: 'Check-out',
+      duration: 'Durată',
+      accommodation: 'Cazare',
+      total: 'Total',
+    },
+    cta: 'Vezi rezervarea',
+    cancel: 'Anulează rezervarea',
+    cancelTextLabel: 'Anulare 20 zile+',
+    info: {
+      title: 'Accesul pe teritoriu este permis după ora 13:00.',
+      lines: ['Check-in de la 13:00.', 'Check-out până la 10:00.'],
+      phoneLead: 'Pentru întrebări ne poți suna la',
+    },
+    closing: 'Te așteptăm cu drag la EcoVila.',
+    textDetails: 'Detaliile rezervării',
+    textArrival: 'Informații utile',
+  },
+  ru: {
+    subject: 'Ваша бронь в EcoVila подтверждена',
+    preheader: 'Детали вашей брони и полезная информация к заезду.',
+    tagline: 'All-inclusive отдых в Орхеюл Векь',
+    heading: 'Ваша бронь в EcoVila подтверждена',
+    greeting: (name) => `Здравствуйте, ${name}!`,
+    greetingFallback: 'Здравствуйте!',
+    intro: 'Спасибо за бронирование. Будем рады встретить вас в EcoVila.',
+    labels: {
+      checkIn: 'Заезд',
+      checkOut: 'Выезд',
+      duration: 'Длительность',
+      accommodation: 'Размещение',
+      total: 'Итого',
+    },
+    cta: 'Открыть бронь',
+    cancel: 'Отменить бронь',
+    cancelTextLabel: 'Отмена (от 20 дней)',
+    info: {
+      title: 'Доступ на территорию открыт после 13:00.',
+      lines: ['Заезд с 13:00.', 'Выезд до 10:00.'],
+      phoneLead: 'По вопросам звоните нам по номеру',
+    },
+    closing: 'Будем рады видеть вас в EcoVila.',
+    textDetails: 'Детали брони',
+    textArrival: 'Полезная информация',
+  },
+  en: {
+    subject: 'Your EcoVila reservation is confirmed',
+    preheader: 'Your reservation details and helpful arrival information.',
+    tagline: 'All-inclusive escape at Orheiul Vechi',
+    heading: 'Your EcoVila reservation is confirmed',
+    greeting: (name) => `Hi ${name}!`,
+    greetingFallback: 'Hello!',
+    intro: 'Thank you for your reservation. We look forward to welcoming you to EcoVila.',
+    labels: {
+      checkIn: 'Check-in',
+      checkOut: 'Check-out',
+      duration: 'Duration',
+      accommodation: 'Accommodation',
+      total: 'Total',
+    },
+    cta: 'View reservation',
+    cancel: 'Cancel reservation',
+    cancelTextLabel: 'Cancellation (20+ days)',
+    info: {
+      title: 'Access to the property opens after 13:00.',
+      lines: ['Check-in from 13:00.', 'Check-out until 10:00.'],
+      phoneLead: 'For any questions, call us at',
+    },
+    closing: 'We look forward to welcoming you to EcoVila.',
+    textDetails: 'Reservation details',
+    textArrival: 'Helpful information',
+  },
+};
+
+const CANCEL_COPY: Record<EmailLang, {
+  subject: string;
+  preheader: string;
+  tagline: string;
+  heading: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  intro: string;
+  labels: { period: string; duration: string; accommodation: string };
+  cta: string;
+  closing: string;
+  textDetails: string;
+}> = {
+  ro: {
+    subject: 'Rezervarea ta la EcoVila a fost anulată',
+    preheader: 'Rezervarea a fost anulată. Te poți întoarce la noi oricând.',
+    tagline: 'Odihnă all-inclusive la Orheiul Vechi',
+    heading: 'Rezervarea ta a fost anulată',
+    greeting: (name) => `Bună, ${name}.`,
+    greetingFallback: 'Bună.',
+    intro:
+      'Rezervarea de mai jos a fost anulată, iar camera a fost eliberată în calendarul EcoVila.',
+    labels: { period: 'Perioada', duration: 'Durată', accommodation: 'Cazare' },
+    cta: 'Rezervează din nou',
+    closing: 'Sperăm să te revedem curând la EcoVila.',
+    textDetails: 'Rezervarea anulată',
+  },
+  ru: {
+    subject: 'Ваша бронь в EcoVila отменена',
+    preheader: 'Бронь отменена. Вы всегда можете вернуться к нам.',
+    tagline: 'All-inclusive отдых в Орхеюл Векь',
+    heading: 'Ваша бронь отменена',
+    greeting: (name) => `Здравствуйте, ${name}.`,
+    greetingFallback: 'Здравствуйте.',
+    intro: 'Бронь, указанная ниже, отменена, и домик снова свободен в календаре EcoVila.',
+    labels: { period: 'Период', duration: 'Длительность', accommodation: 'Размещение' },
+    cta: 'Забронировать снова',
+    closing: 'Будем рады снова видеть вас в EcoVila.',
+    textDetails: 'Отменённая бронь',
+  },
+  en: {
+    subject: 'Your EcoVila reservation has been cancelled',
+    preheader: 'Your reservation was cancelled. You are welcome back anytime.',
+    tagline: 'All-inclusive escape at Orheiul Vechi',
+    heading: 'Your reservation has been cancelled',
+    greeting: (name) => `Hi ${name},`,
+    greetingFallback: 'Hello,',
+    intro:
+      'The reservation below has been cancelled and the room is free again in the EcoVila calendar.',
+    labels: { period: 'Dates', duration: 'Duration', accommodation: 'Accommodation' },
+    cta: 'Book again',
+    closing: 'We hope to welcome you back to EcoVila soon.',
+    textDetails: 'Cancelled reservation',
+  },
+};
+
+export function buildConfirmationEmail(args: {
+  lang: EmailLang;
+  firstName: string;
+  fullName: string;
+  roomCopy: string;
+  checkIn: string;
+  checkOut: string;
+  totalPrice: number;
+  confirmationUrl: string;
+  cancellationUrl: string;
+  siteUrl: string;
+}): { subject: string; text: string; html: string } {
+  const copy = CONFIRM_COPY[args.lang];
+  const checkInLabel = formatEmailDate(args.checkIn, args.lang);
+  const checkOutLabel = formatEmailDate(args.checkOut, args.lang);
+  const stay = nightsLabel(nightsBetween(args.checkIn, args.checkOut), args.lang);
+  const totalLabel = `${formatEmailMoney(args.totalPrice)} MDL`;
+  const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
+  const greetingHtml = args.firstName
+    ? copy.greeting(escapeHtml(args.firstName))
+    : copy.greetingFallback;
+
+  const rows: EmailRow[] = [
+    { label: copy.labels.checkIn, value: checkInLabel },
+    { label: copy.labels.checkOut, value: checkOutLabel },
+    { label: copy.labels.duration, value: stay },
+    { label: copy.labels.accommodation, value: args.roomCopy },
+    { label: copy.labels.total, value: totalLabel, total: true },
+  ];
+
+  const html = renderReservationEmail({
+    lang: args.lang,
+    siteUrl: args.siteUrl,
+    preheader: copy.preheader,
+    tagline: copy.tagline,
+    badgeSymbol: '✓',
+    badgeBg: EMAIL_COLORS.green,
+    heading: copy.heading,
+    greetingHtml,
+    intro: copy.intro,
+    rows,
+    primary: { label: copy.cta, url: args.confirmationUrl },
+    secondary: { label: copy.cancel, url: args.cancellationUrl },
+    info: copy.info,
+    closing: copy.closing,
+  });
+
+  const text = [
+    copy.heading,
+    '',
+    greetingText,
+    '',
+    copy.intro,
+    '',
+    copy.textDetails,
+    `${copy.labels.checkIn}: ${checkInLabel}`,
+    `${copy.labels.checkOut}: ${checkOutLabel}`,
+    `${copy.labels.duration}: ${stay}`,
+    `${copy.labels.accommodation}: ${args.roomCopy}`,
+    `${copy.labels.total}: ${totalLabel}`,
+    '',
+    `${copy.cta}: ${args.confirmationUrl}`,
+    `${copy.cancelTextLabel}: ${args.cancellationUrl}`,
+    '',
+    copy.textArrival,
+    copy.info.title,
+    ...copy.info.lines,
+    `${copy.info.phoneLead} ${EMAIL_PHONE_DISPLAY}.`,
+    '',
+    copy.closing,
+  ].join('\n');
+
+  return { subject: copy.subject, text, html };
+}
+
+export function buildCancellationEmail(args: {
+  lang: EmailLang;
+  firstName: string;
+  fullName: string;
+  roomCopy: string;
+  checkIn: string;
+  checkOut: string;
+  siteUrl: string;
+}): { subject: string; text: string; html: string } {
+  const copy = CANCEL_COPY[args.lang];
+  const period = `${formatEmailDate(args.checkIn, args.lang)} – ${
+    formatEmailDate(args.checkOut, args.lang)
+  }`;
+  const stay = nightsLabel(nightsBetween(args.checkIn, args.checkOut), args.lang);
+  const rebookUrl = `${args.siteUrl}/rezervari.html`;
+  const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
+  const greetingHtml = args.firstName
+    ? copy.greeting(escapeHtml(args.firstName))
+    : copy.greetingFallback;
+
+  const rows: EmailRow[] = [
+    { label: copy.labels.period, value: period },
+    { label: copy.labels.duration, value: stay },
+    { label: copy.labels.accommodation, value: args.roomCopy },
+  ];
+
+  const html = renderReservationEmail({
+    lang: args.lang,
+    siteUrl: args.siteUrl,
+    preheader: copy.preheader,
+    tagline: copy.tagline,
+    badgeSymbol: '✕',
+    badgeBg: EMAIL_COLORS.cocoa,
+    heading: copy.heading,
+    greetingHtml,
+    intro: copy.intro,
+    rows,
+    primary: { label: copy.cta, url: rebookUrl },
+    closing: copy.closing,
+  });
+
+  const text = [
+    copy.heading,
+    '',
+    greetingText,
+    '',
+    copy.intro,
+    '',
+    copy.textDetails,
+    `${copy.labels.period}: ${period}`,
+    `${copy.labels.duration}: ${stay}`,
+    `${copy.labels.accommodation}: ${args.roomCopy}`,
+    '',
+    `${copy.cta}: ${rebookUrl}`,
+    '',
+    copy.closing,
+  ].join('\n');
+
+  return { subject: copy.subject, text, html };
 }
 
 function reservationEmailHtml(input: {

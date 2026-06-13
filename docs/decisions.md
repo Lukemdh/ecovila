@@ -751,6 +751,60 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   change did. `.env.example` documents `RESEND_REPLY_TO`. Tests unchanged (25/25 Deno green);
   the email-payload test does not assert on reply_to.
 
+### ADR-039 — Confirmation & cancellation emails: premium card layout, fully localized, re-book CTA
+- **Date:** 2026-06-13.
+- **Context:** booking-confirmation and cancellation emails were raw `<!doctype><h1>+<table>`
+  bodies (`reservationEmailHtml`) with Romanian-only copy, raw ISO dates, unformatted prices,
+  and lowercase guest names — well below the hospitality bar the SMS already met. A ChatGPT
+  brief proposed a branded card layout; it was used as direction only (its `tel:+373060120220`
+  had a stray leading zero, its `#2f5f38` greens were guesses, and its tagline "Natură.
+  Relaxare. Voi." was off-brand).
+- **Decision:**
+  - New shared, table-based, inline-styled premium renderer `renderReservationEmail` plus
+    `buildConfirmationEmail` / `buildCancellationEmail` in `_shared/notifications.ts`, exported
+    so the real cancel path (`reservation-cancel/index.ts`, which owns a *separate inline*
+    `composeCancellationConfirmation` — same duplication shape as ADR-037) reuses them.
+  - Both emails are localized ro/ru/en off `guest_language` (subjects, headings, labels,
+    arrival card, closing, and CTAs), matching the SMS approach. Dates render human-readable
+    (`20 iunie 2026`, `20 июня 2026`, `20 June 2026`), nights use correct plurals (incl. the
+    Russian 1/2-4/5+ rule), prices group thousands with a space (`3 600 MDL`), and guest names
+    are title-cased.
+  - Confirmation keeps a green ✓ badge, primary `Vezi rezervarea` button → `confirmare.html`,
+    secondary `Anulează rezervarea` text link, and an arrival-info card (access after 13:00,
+    check-in 13:00, check-out 10:00, phone `+373 60 120 220` → `tel:+37360120220`).
+  - Cancellation gets a cocoa ✕ badge and a primary **`Rezervează din nou` / `Забронировать
+    снова` / `Book again`** CTA → `${siteUrl}/rezervari.html`. Brand palette pulled from the
+    site (`--booking-green #5F7A3A`/`#4B6529`, paper `#F7F4EF`, cocoa `#8B7564`); logo is the
+    absolute `${siteUrl}/assets/logo.png`.
+  - Plain-text fallbacks regenerated per language (the ro confirmation text keeps the
+    `Anulare 20 zile+:` label the test asserts on). The legacy `reservationEmailHtml` stays
+    for the three unchanged reminder/expiry emails.
+  - **Card-payment confirmation unified (the primary online flow):** `maib-callback`'s own
+    inline `composePaymentConfirmation` (old `<!doctype><h1>+<table>` layout — the same
+    ADR-037 duplication trap) now delegates its email to `buildConfirmationEmail`, so
+    card-paying guests get the identical premium email as the staff/cash path. Its dead
+    `subjectLine`/`greeting`/`label`/`row`/`escapeHtml`/`escapeAttribute` helpers were removed.
+  - **Email footer trimmed:** the footer line is now just `EcoVila` (the
+    `str. Aerodromului 3, Orheiul Vechi` address was dropped from every email/language).
+  - **Cancellation SMS localized + reworded** (was Romanian-only inline copy in
+    `reservation-cancel`): the exported `cancellationConfirmationSms({checkIn, checkOut,
+    language})` is now the single source for both the notifications.ts and reservation-cancel
+    paths. Copy is `Rezervarea dvs este anulata: 20 Septembrie 2026 - 21 Septembrie 2026.
+    Speram sa ne mai vedem in curand!` (ro, GSM-7, 1 segment / ~103 chars), localized to ru
+    (`Ваша бронь отменена: … Надеемся снова увидеть вас!` — UCS-2, 2 segments / ~85 chars,
+    within the 140-char budget the owner approved) and en (1 segment). Full-letter capitalized
+    months per ADR-036; `reservation-cancel`'s duplicate `formatSmsPeriod`/`formatSmsDate`/
+    `smsMonthName` removed.
+- **Why:** confirmations and cancellations are the two guest-facing transactional emails;
+  premium, on-brand, localized rendering matches the SMS quality and the all-inclusive
+  positioning. Sharing one renderer/SMS helper avoids the stale-duplicate trap ADR-037
+  documented — and the card flow is what most guests actually hit.
+- **Consequence:** deployed `maib-callback`, `confirm-reservation-payment`, and
+  `reservation-cancel` via `supabase functions deploy` (project `mckchrviaawdxtsfytut`,
+  versions 11 / 19 / 8, all ACTIVE 2026-06-13). All three import the new builders/SMS helper
+  via `_shared/notifications.ts`. The cancellation-SMS test now covers ro/ru/en with segment
+  budgets; 48/48 Deno tests green.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
