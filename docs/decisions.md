@@ -688,6 +688,44 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   The static front-end still needs a TopHost upload (`npm run prepare:tophost`) to go live;
   the backend (DB + functions) is already deployed.
 
+### ADR-036 — Booking-confirmation SMS: parenthesized stay window, full-letter months, RU as 2 segments
+- **Date:** 2026-06-13.
+- **Context:** owner supplied a target layout for the confirmation SMS — the check-in/out
+  hours should sit in parentheses next to each date (`27 Septembrie 2026 (13.00) - 28
+  Septembrie 2026 (10.00)`) rather than as trailing `, 13.00`/`, 10.00`. The Romanian
+  message was the reference; English shared the same long structure, and Russian had been
+  deliberately squeezed into one UCS-2 segment using abbreviated months (`сен`).
+- **Decision:** all three languages in `bookingConfirmationSms()`
+  (`supabase/functions/_shared/notifications.ts`) now use the `{date} (13.00) - {date}
+  (10.00)` layout with **full-letter month names**. Russian was allowed to grow to **two
+  SMS segments** so it can carry the full sentence (`Ваша бронь подтверждена: … Доступ на
+  территорию: после 13.00. Ждём вас!`, ~121 UCS-2 chars), dropping the abbreviated-month
+  path for confirmations. RO/EN stay within a single GSM-7 segment (≤135 chars). The
+  abbreviated-month helper is retained because the **cancellation** SMS still uses it.
+- **Why:** owner-requested copy/format change for clarity and brand voice.
+- **Consequence:** test assertions in `reservations.test.ts` were rebased to the new
+  strings (RU `maxLength` raised to 140). Four importers of the shared module
+  (`confirm-reservation-payment`, `send-reminders`, `expire-cash-reservations`,
+  `reservation-cancel`) were redeployed via the CLI.
+
+### ADR-037 — Card-payment confirmation SMS was a stale inline duplicate
+- **Date:** 2026-06-13.
+- **Context:** after ADR-036 a real card booking still produced the **old** SMS. Root
+  cause: `maib-callback/index.ts` (the maib payment callback, the path card-payers take —
+  *not* `confirm-reservation-payment`) carried its **own** `confirmationSms()` copy with the
+  pre-ADR-036 comma layout, and it injected **raw ISO dates** (`2026-09-27`) because it
+  never called the shared date formatter.
+- **Decision:** delete the inline `confirmationSms()` and call the now-exported canonical
+  `bookingConfirmationSms()` from `_shared/notifications.ts`, so the cash and card paths
+  share one template and date formatter.
+- **Why:** a single source of truth prevents the two confirmation paths from drifting; the
+  duplicate is exactly what made ADR-036 look like it had no effect.
+- **Consequence:** `bookingConfirmationSms` is now `export`ed (no behaviour change for the
+  four functions already redeployed under ADR-036). `maib-callback` was redeployed via the
+  CLI. A genuine end-to-end test still requires a real card booking on ecovila.md (or a
+  staff-authenticated `send-sms` call) — the SMS provider token and staff JWT are not
+  available outside the deployed environment.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
