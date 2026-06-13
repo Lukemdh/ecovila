@@ -223,8 +223,8 @@ describe('EcoVila Step 4 booking page', () => {
     );
     assert.match(
       js,
-      /card\.querySelector\('\[data-card-reserve\]'\)\.addEventListener\('click',\s*\(\)\s*=>\s*selectType\(type\)\)/,
-      'card select buttons should select an accommodation type',
+      /data-card-reserve[\s\S]+?if \(state\.selectedType === type\) \{\s*continueToCheckout\(\);\s*\} else \{\s*selectType\(type\);/,
+      'the card primary button should select a type, then continue to checkout once selected',
     );
     assert.match(
       css,

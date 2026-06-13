@@ -247,7 +247,7 @@
     return getStayNights() > 0;
   }
 
-  function calculateQuote(type, checkIn, checkOut, units) {
+  function calculateQuote(type, checkIn, checkOut, units, forceDayType) {
     try {
       return pricing.calculateStayPrice({
         roomType: type,
@@ -256,6 +256,7 @@
         checkIn,
         checkOut,
         units,
+        forceDayType,
         pricingTiers: state.pricingTiers,
         holidays: state.holidays,
       });
@@ -384,7 +385,10 @@
       type,
       party,
     });
-    const quote = earliest ? calculateQuote(type, earliest.checkIn, earliest.checkOut, neededUnits) : null;
+    // Before any dates are chosen the "De la" teaser always quotes a weekday
+    // rate, so the headline price never jumps because the earliest opening
+    // happens to land on a premium night.
+    const quote = earliest ? calculateQuote(type, earliest.checkIn, earliest.checkOut, neededUnits, 'weekday') : null;
 
     return {
       mode: 'preview',
@@ -419,7 +423,6 @@
     renderCalendar();
     renderStaySummary();
     renderCards();
-    renderContinueButton();
     renderStatus();
   }
 
@@ -641,7 +644,16 @@
         soldoutButton.hidden = false;
       }
 
-      reserveButton.textContent = isSelected ? t('booking.selected') : t('booking.reserve');
+      // Selecting a card turns its primary button into the checkout CTA, so the
+      // separate continue bar is no longer needed.
+      if (isSelected) {
+        reserveButton.textContent = t('booking.continue');
+        if (!reserveButton.hidden) {
+          reserveButton.disabled = Boolean(getPartyError());
+        }
+      } else {
+        reserveButton.textContent = t('booking.reserve');
+      }
       roomButton.hidden = state.selectedType !== type || isUnavailableForParty;
       if (isSoldOut) {
         roomButton.hidden = true;
@@ -731,26 +743,7 @@
 
     state.selectedType = type;
     renderCards();
-    renderContinueButton();
     renderCalendar();
-  }
-
-  function renderContinueButton() {
-    const button = document.querySelector('[data-continue-checkout]');
-    if (!button) {
-      return;
-    }
-
-    const canContinue = Boolean(
-      state.selectedType &&
-      hasSelectedDates() &&
-      !getPartyError() &&
-      !state.loading &&
-      !state.loadError &&
-      state.pricingTiers.length,
-    );
-    button.hidden = !canContinue;
-    button.textContent = t('booking.continue');
   }
 
   function continueToCheckout() {
@@ -1214,14 +1207,15 @@
         openDetails(type);
       });
       card.querySelector('[data-card-room]').addEventListener('click', () => openRoomPanel(type));
-      card.querySelector('[data-card-reserve]').addEventListener('click', () => selectType(type));
+      card.querySelector('[data-card-reserve]').addEventListener('click', () => {
+        if (state.selectedType === type) {
+          continueToCheckout();
+        } else {
+          selectType(type);
+        }
+      });
       card.querySelector('[data-card-soldout]').addEventListener('click', () => openSoldoutModal(type));
     });
-
-    const continueButton = document.querySelector('[data-continue-checkout]');
-    if (continueButton) {
-      continueButton.addEventListener('click', continueToCheckout);
-    }
 
     document.querySelector('[data-reservation-lookup-open]')?.addEventListener('click', openReservationLookup);
     document.querySelector('[data-lookup-start]')?.addEventListener('click', startReservationLookup);

@@ -126,12 +126,12 @@ describe('EcoVila Step 3 pricing core', () => {
       freeKids: 0,
       chargeableKids: 2,
       teensAsAdults: 0,
-      billableAdults: 3,
-      billableKids: 1,
-      kidsChargedAsAdults: 1,
+      billableAdults: 4,
+      billableKids: 0,
+      kidsChargedAsAdults: 2,
       emptyAdultSlots: 0,
       units: 1,
-      minimumAdults: 3,
+      minimumAdults: 4,
     });
 
     assert.deepEqual(pricing.calculateBillableGuests('large', { adults: 1, kidsAges: [2, 5, 9, 10] }), {
@@ -141,12 +141,12 @@ describe('EcoVila Step 3 pricing core', () => {
       freeKids: 1,
       chargeableKids: 3,
       teensAsAdults: 0,
-      billableAdults: 3,
-      billableKids: 1,
-      kidsChargedAsAdults: 2,
+      billableAdults: 4,
+      billableKids: 0,
+      kidsChargedAsAdults: 3,
       emptyAdultSlots: 0,
       units: 1,
-      minimumAdults: 3,
+      minimumAdults: 4,
     });
   });
 
@@ -178,12 +178,12 @@ describe('EcoVila Step 3 pricing core', () => {
       freeKids: 1,
       chargeableKids: 1,
       teensAsAdults: 1,
-      billableAdults: 3,
-      billableKids: 1,
-      kidsChargedAsAdults: 1,
+      billableAdults: 4,
+      billableKids: 0,
+      kidsChargedAsAdults: 2,
       emptyAdultSlots: 0,
       units: 1,
-      minimumAdults: 3,
+      minimumAdults: 4,
     });
 
     const quote = pricing.calculateStayPrice({
@@ -197,7 +197,7 @@ describe('EcoVila Step 3 pricing core', () => {
       createdOn: '2026-05-07',
     });
 
-    assert.equal(quote.total, 4200);
+    assert.equal(quote.total, 4400);
   });
 
   it('uses total nights for the tier and the next morning for weekend or holiday rates', () => {
@@ -224,11 +224,40 @@ describe('EcoVila Step 3 pricing core', () => {
         subtotal: night.subtotal,
       })),
       [
-        { date: '2026-05-13', dayType: 'holiday', adultPrice: 1100, kidPrice: 800, subtotal: 4100 },
-        { date: '2026-05-14', dayType: 'weekday', adultPrice: 900, kidPrice: 700, subtotal: 3400 },
-        { date: '2026-05-15', dayType: 'holiday', adultPrice: 1100, kidPrice: 800, subtotal: 4100 },
+        // 05-13 wakes into the 05-14 manual holiday; 05-15 is the Friday-to-Saturday
+        // night, which now bills as a weekday. A large party of 2+[6,10] bills as 4 adults.
+        { date: '2026-05-13', dayType: 'holiday', adultPrice: 1100, kidPrice: 800, subtotal: 4400 },
+        { date: '2026-05-14', dayType: 'weekday', adultPrice: 900, kidPrice: 700, subtotal: 3600 },
+        { date: '2026-05-15', dayType: 'weekday', adultPrice: 900, kidPrice: 700, subtotal: 3600 },
       ],
     );
+  });
+
+  it('bills the Friday-to-Saturday night as a weekday and the Saturday-to-Sunday night as premium', () => {
+    // 2026-05-15 is a Friday and 2026-05-16 is a Saturday.
+    const friday = pricing.calculateStayPrice({
+      roomType: 'small',
+      adults: 2,
+      kidsAges: [],
+      checkIn: '2026-05-15',
+      checkOut: '2026-05-16',
+      pricingTiers,
+      holidays: [],
+      createdOn: '2026-05-07',
+    });
+    assert.deepEqual(friday.nightlyBreakdown.map((night) => night.dayType), ['weekday']);
+
+    const saturday = pricing.calculateStayPrice({
+      roomType: 'small',
+      adults: 2,
+      kidsAges: [],
+      checkIn: '2026-05-16',
+      checkOut: '2026-05-17',
+      pricingTiers,
+      holidays: [],
+      createdOn: '2026-05-07',
+    });
+    assert.deepEqual(saturday.nightlyBreakdown.map((night) => night.dayType), ['holiday']);
   });
 
   it('prices the night before a manual holiday as premium', () => {

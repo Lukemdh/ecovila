@@ -1879,44 +1879,6 @@ body.page-booking .site-header {
   }
 }
 
-.booking-continue-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 28px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(51, 47, 44, 0.08);
-}
-
-.booking-continue-button {
-  min-width: 220px;
-  min-height: 60px;
-  border-radius: 8px;
-  background: var(--booking-green);
-  border-color: var(--booking-green);
-  font-family: var(--heading-font);
-  font-size: 1.36rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  animation: continueSlideUp 340ms ease both;
-}
-
-.booking-continue-button:hover {
-  background: var(--booking-green-dark);
-  border-color: var(--booking-green-dark);
-}
-
-@keyframes continueSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .booking-modal__scrim,
 .booking-modal__backdrop {

@@ -574,6 +574,46 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-033 — Large villas bill a 4-adult floor, Friday→Saturday is a weekday, and the card is the continue CTA
+- **Date:** 2026-06-13.
+- **Context:** three booking-rule changes requested by the owner. (1) The large
+  ("Căsuță Mare") villa was priced from a 3-adult minimum; it should bill from **4 adults**.
+  (2) The premium ("weekend") rate applied to both the Friday→Saturday and Saturday→Sunday
+  nights (`DEFAULT_PREMIUM_NEXT_DAYS = [6, 0]`); the Friday→Saturday night should bill as a
+  normal weekday. (3) On `rezervari.html` the "De la" teaser could quote a premium night
+  whenever the earliest opening landed on a weekend, and a separate bottom-right "Continuă"
+  bar sat below the cards.
+- **Decision:**
+  1. **4-adult floor for large villas** — set `ROOM_TYPES.large.minimumAdults = 4` in
+     `js/pricing.js`. The existing `calculateBillableGuests` child-promotion logic then
+     fills empty adult slots with the oldest children before charging kid rates, so a party
+     of 1–3 adults bills as 4 adults; 3 adults + 1 child and 2 adults + 2 children bill as
+     4 adults; 3 adults + 2 children bill as 4 adults + 1 child. The CRM staff total
+     (`admin/js/crm-sidebar.js`) reads `minimumAdults` from `ROOM_TYPES`, so a mixed
+     small+large group now applies a combined 6-adult floor automatically.
+  2. **Friday→Saturday is a weekday** — `DEFAULT_PREMIUM_NEXT_DAYS = [0]`, so a night is
+     premium only when the next morning is a Sunday (the Saturday→Sunday night). Manual
+     holidays still override regardless of weekday.
+  3. **Weekday "De la" + per-card continue** — `calculateStayPrice` gained a `forceDayType`
+     option; `js/booking.js` passes `'weekday'` for the pre-dates teaser so the headline
+     price never reflects a premium night. Selecting a card flips its primary button to
+     **"Continuă →"** (which routes to checkout); the standalone `.booking-continue-bar`
+     and its CSS/animation were removed so no blank space is left below the cards.
+- **Why:** the 4-adult floor and the Friday weekday rate are pricing-policy calls by the
+  owner. Forcing the teaser to a weekday rate keeps the "from" price stable and honest
+  (it can only rise with dates, never appear to drop). Folding continue into the card button
+  removes a redundant, easy-to-miss control and a layout seam.
+- **Consequence:** the server-side pricing guard recomputes totals from the byte-identical
+  `supabase/functions/_shared/pricing.js`, so `js/pricing.js` was re-copied there and the
+  `create-reservation` Edge Function **redeployed** (project `mckchrviaawdxtsfytut`) in the
+  same change — client and server must agree or quotes 409. The static site must be uploaded
+  to TopHost (`npm run prepare:tophost`) to close the window where the live front-end still
+  quotes the old rules against the new guard. Tests in `tests/booking-core.test.mjs`,
+  `tests/booking-page.test.mjs`, and `tests/admin-crm.test.mjs` were updated to the new
+  floors/day-types; the node baseline of 11 maintenance-placeholder failures is unchanged.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

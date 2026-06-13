@@ -12,7 +12,9 @@
   const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
   const HOLIDAY_KEY_PATTERN = /^(\d{2})-(\d{2})$/;
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const DEFAULT_PREMIUM_NEXT_DAYS = [6, 0];
+  // A night is premium only when the next morning is a Sunday — i.e. the
+  // Saturday-to-Sunday night. The Friday-to-Saturday night bills as a weekday.
+  const DEFAULT_PREMIUM_NEXT_DAYS = [0];
   const CHILD_MIN_AGE = 1;
   const CHILD_MAX_AGE = 17;
   const FREE_CHILD_MAX_AGE = 3;
@@ -33,7 +35,7 @@
       label: 'Căsuță Mare',
       maxAdults: 4,
       maxKids: 2,
-      minimumAdults: 3,
+      minimumAdults: 4,
       roomNumbers: Object.freeze([9, 10, 11, 12, 13, 14, 15]),
       assignmentDirection: 'ascending',
     }),
@@ -359,7 +361,9 @@
     const holidaySet = toHolidaySet(input.holidays || []);
 
     const nightlyBreakdown = nightsList.map((date) => {
-      const dayType = getDayType(date, holidaySet, {
+      // forceDayType lets callers quote a representative rate (e.g. the weekday
+      // "from" price shown before any dates are picked) independent of the date.
+      const dayType = input.forceDayType || getDayType(date, holidaySet, {
         premiumNextDays: input.premiumNextDays,
         weekendDays: input.weekendDays,
       });

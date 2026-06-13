@@ -991,8 +991,8 @@ describe('EcoVila Step 9 CRM', () => {
         holidays: [],
         createdOn: '2026-05-17',
       }).total,
-      6400,
-      'mixed-room pricing should apply the combined 5-adult room floor once to the one guest group',
+      6600,
+      'mixed-room pricing should apply the combined 6-adult room floor once to the one guest group',
     );
   });
 
