@@ -1,0 +1,230 @@
+/* ─────────────────────────────────────────────
+   EcoVila — Reservation management console
+   gestionare.html
+   Builds on main.css / checkout.css / confirmation.css
+   ───────────────────────────────────────────── */
+
+.gm-shell {
+  width: min(880px, calc(100vw - 48px));
+  margin: 0 auto;
+}
+
+/* ── Hero ── */
+.gm-hero {
+  margin-bottom: 30px;
+}
+
+.gm-hero__eyebrow {
+  margin: 0 0 12px;
+  color: var(--cocoa);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.gm-hero h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--heading-font);
+  font-size: clamp(2.8rem, 5.2vw, 4.6rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.gm-hero__lead {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+/* ── Console stack ── */
+.gm-console {
+  display: grid;
+  gap: 22px;
+}
+
+/* Round the reused status panels (checkout co-card has sharp corners) so the
+   whole console reads as one consistent set of cards. */
+.gm-console .co-card {
+  border-radius: 16px;
+}
+
+/* ── Generic section card ── */
+.gm-card {
+  padding: 32px;
+  background: var(--white);
+  border: 1px solid rgba(51, 47, 44, 0.12);
+  box-shadow: 0 20px 60px rgba(51, 38, 31, 0.07);
+  border-radius: 16px;
+}
+
+.gm-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.gm-card__title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--heading-font);
+  font-size: clamp(1.7rem, 2.6vw, 2.3rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.gm-card__tag {
+  flex-shrink: 0;
+  color: var(--cocoa);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ── Stay booking card — the hero of the console ── */
+.gm-stay {
+  background:
+    linear-gradient(135deg, rgba(139, 117, 100, 0.09), rgba(247, 237, 224, 0.42));
+  border-color: rgba(139, 117, 100, 0.24);
+}
+
+.gm-stay__eyebrow {
+  margin: 0 0 10px;
+  color: var(--cocoa);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.gm-stay__dates {
+  margin: 0 0 26px;
+  color: var(--espresso);
+  font-family: var(--heading-font);
+  font-size: clamp(2rem, 4.6vw, 3.1rem);
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.gm-stay__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.gm-stay__tile {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 16px 18px;
+  background: var(--white);
+  border: 1px solid rgba(51, 47, 44, 0.1);
+  border-radius: 12px;
+}
+
+.gm-stay__tile-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cocoa);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.gm-stay__tile-label svg {
+  flex-shrink: 0;
+  color: var(--cocoa);
+}
+
+.gm-stay__tile-value {
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.gm-stay__checkin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.gm-stay__checkin svg {
+  flex-shrink: 0;
+  color: var(--cocoa);
+}
+
+/* ── Included facilities ── */
+.gm-included__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-included__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.gm-included__item svg {
+  flex: 0 0 20px;
+  color: #5C7A52;
+}
+
+/* ── Price section ── */
+.gm-price .co-breakdown {
+  margin-top: 0;
+}
+
+.gm-price .co-total {
+  margin-top: 24px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  .gm-shell {
+    width: 100%;
+    max-width: 100vw;
+    padding: 0 14px;
+  }
+
+  .gm-hero h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .gm-card {
+    padding: 24px 20px;
+  }
+
+  .gm-stay__meta {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .gm-included__list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .gm-stay__meta {
+    grid-template-columns: 1fr;
+  }
+}

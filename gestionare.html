@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/checkout.css">
     <link rel="stylesheet" href="css/confirmation.css">
+    <link rel="stylesheet" href="css/gestionare.css">
     <meta name="robots" content="noindex">
   </head>
   <body>
@@ -43,10 +44,11 @@
     </header>
 
     <main class="checkout-page" id="gestionare-page" data-gestionare-app>
-      <div class="checkout-shell">
-        <div class="checkout-hero">
+      <div class="gm-shell">
+        <div class="gm-hero">
+          <p class="gm-hero__eyebrow" data-i18n="confirmare.manageHint">Rezervarea ta</p>
           <h1 data-i18n="gestionare.title">Gestionează rezervarea</h1>
-          <p data-confirmare-lead data-i18n="confirmare.loadingLead">
+          <p class="gm-hero__lead" data-confirmare-lead data-i18n="confirmare.loadingLead">
             Se verifică detaliile rezervării...
           </p>
         </div>
@@ -70,76 +72,52 @@
           </a>
         </section>
 
-        <!-- Main content — two-column grid -->
-        <div class="checkout-grid" data-confirmare-content hidden>
+        <!-- Main content — single-column management console -->
+        <div class="gm-console" data-confirmare-content hidden>
 
-          <!-- LEFT: Reservation summary (read-only) -->
-          <section class="co-card co-summary" aria-labelledby="gestionare-summary-title">
-            <h2 id="gestionare-summary-title" class="co-card__title" data-i18n="checkout.summaryTitle">
-              Sumar rezervare
-            </h2>
+          <!-- Stay overview — the booking at a glance -->
+          <section class="gm-card gm-stay" aria-labelledby="gm-stay-title">
+            <p class="gm-stay__eyebrow" id="gm-stay-title" data-i18n="confirmare.yourStay">Sejurul tău</p>
+            <p class="gm-stay__dates" data-summary-dates>--</p>
 
-            <dl class="co-summary__list">
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  </span>
-                  <span data-i18n="checkout.dates">Perioada</span>
-                </dt>
-                <dd data-summary-dates>--</dd>
-              </div>
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                  </span>
+            <div class="gm-stay__meta">
+              <div class="gm-stay__tile">
+                <span class="gm-stay__tile-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                   <span data-i18n="checkout.nights">Nopți</span>
-                </dt>
-                <dd data-summary-nights>--</dd>
+                </span>
+                <span class="gm-stay__tile-value" data-summary-nights>--</span>
               </div>
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                  </span>
+              <div class="gm-stay__tile">
+                <span class="gm-stay__tile-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                   <span data-i18n="checkout.guests">Oaspeți</span>
-                </dt>
-                <dd data-summary-guests>--</dd>
+                </span>
+                <span class="gm-stay__tile-value" data-summary-guests>--</span>
               </div>
-              <div class="co-summary__row">
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                  </span>
+              <div class="gm-stay__tile">
+                <span class="gm-stay__tile-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                   <span data-i18n="checkout.accommodation">Cazare</span>
-                </dt>
-                <dd data-summary-accommodation>--</dd>
+                </span>
+                <span class="gm-stay__tile-value" data-summary-accommodation>--</span>
               </div>
-              <div class="co-summary__row" data-summary-rooms-row hidden>
-                <dt>
-                  <span class="co-summary__icon" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-                  </span>
+              <div class="gm-stay__tile" data-summary-rooms-row hidden>
+                <span class="gm-stay__tile-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
                   <span data-i18n="checkout.rooms">Număr</span>
-                </dt>
-                <dd data-summary-rooms>--</dd>
+                </span>
+                <span class="gm-stay__tile-value" data-summary-rooms>--</span>
               </div>
-            </dl>
-
-            <div class="co-breakdown">
-              <h3 data-i18n="checkout.breakdownTitle">Calcul preț</h3>
-              <ul data-summary-breakdown></ul>
             </div>
 
-            <div class="co-total">
-              <span data-i18n="checkout.total">Total</span>
-              <strong data-summary-total>--</strong>
-            </div>
+            <p class="gm-stay__checkin">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span data-i18n="confirmare.checkinTime">Check-in de la ora 13:00.</span>
+            </p>
           </section>
 
-          <!-- RIGHT: stacked status / management panels -->
-          <div class="cf-panels">
+          <!-- Status / management panels -->
 
           <!-- Cash payment panel -->
           <section class="co-card" aria-labelledby="cf-cash-title" data-cash-panel hidden>
@@ -350,10 +328,35 @@
             <p class="booking-error" data-managed-action-error hidden></p>
           </section>
 
-          </div><!-- /.cf-panels -->
+          <!-- What's included — all-inclusive package -->
+          <section class="gm-card gm-included" aria-labelledby="gm-included-title">
+            <div class="gm-card__head">
+              <h2 class="gm-card__title" id="gm-included-title" data-i18n="gestionare.included">
+                Inclus în sejur
+              </h2>
+              <span class="gm-card__tag" data-i18n="nav.restaurant">All-inclusive</span>
+            </div>
+            <ul class="gm-included__list" data-included-list></ul>
+          </section>
 
-        </div><!-- /.checkout-grid -->
-      </div><!-- /.checkout-shell -->
+          <!-- Price -->
+          <section class="gm-card gm-price" aria-labelledby="gm-price-title">
+            <div class="gm-card__head">
+              <h2 class="gm-card__title" id="gm-price-title" data-i18n="checkout.breakdownTitle">
+                Calcul preț
+              </h2>
+            </div>
+            <div class="co-breakdown">
+              <ul data-summary-breakdown></ul>
+            </div>
+            <div class="co-total">
+              <span data-i18n="checkout.total">Total</span>
+              <strong data-summary-total>--</strong>
+            </div>
+          </section>
+
+        </div><!-- /.gm-console -->
+      </div><!-- /.gm-shell -->
 
       <!-- Expired / cancelled overlay -->
       <div class="ev-overlay" data-expired-overlay hidden tabindex="-1" role="alertdialog" aria-labelledby="expired-title">

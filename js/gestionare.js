@@ -304,6 +304,27 @@
     });
   }
 
+  // ── Included facilities (all-inclusive list) ─────────────────────────────────
+
+  function renderIncluded() {
+    const container = el('[data-included-list]');
+    if (!container) return;
+
+    const all = root.EcoVilaTranslations || {};
+    const lang = getLanguage();
+    const items = all[lang]?.['accommodation.shared.facilities'] ||
+      all.ro?.['accommodation.shared.facilities'] || [];
+
+    container.innerHTML = '';
+    items.forEach((label) => {
+      const li = root.document.createElement('li');
+      li.className = 'gm-included__item';
+      li.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span></span>';
+      li.querySelector('span').textContent = label;
+      container.appendChild(li);
+    });
+  }
+
   function roomLabel(reservation) {
     const room = Array.isArray(reservation?.rooms) ? reservation.rooms[0] : reservation?.rooms;
     const type = room?.type || 'hotel';
@@ -393,6 +414,7 @@
     _managedContext = { details, reservationId, manageToken };
 
     renderManagedSummary(summary, details.reservations || []);
+    renderIncluded();
     const serverStatus = managedServerStatus(summary, details.reservations || []);
     showContentState(summary.paymentType || 'card', serverStatus);
     trackBrowserPurchaseIfPaid(summary, details.reservations || []);

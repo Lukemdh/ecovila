@@ -540,6 +540,38 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   gateway immediately, so no countdown is shown); the substance is server-side. Ships as a
   single Edge Function: `expire-cash-reservations`.
 
+### ADR-032 — `gestionare.html` is a reservation console, not a reskinned checkout
+- **Date:** 2026-06-13.
+- **Context:** after ADR-027 split management onto `gestionare.html`, the page borrowed the
+  checkout layout wholesale — the two-column `checkout-grid` with a read-only `co-summary`
+  on the left and the status/action panels on the right. It worked but read like a payment
+  form, not a place to *manage* a stay: the booking facts were buried in a labelled list,
+  there was no "what you're getting" reassurance, and the visual hierarchy gave the price
+  summary equal weight to the actions.
+- **Decision:** rebuild the page body as a single-column **management console** while
+  keeping `js/gestionare.js` and its entire data contract untouched. Top to bottom:
+  1. a **stay-overview hero card** (`.gm-stay`) — the date range as a large serif headline
+     with a "Sejurul tău" eyebrow, a tile grid for nights/guests/accommodation/room
+     numbers, and the 13:00 check-in line;
+  2. the existing **status/action panels** (cash-hold timer, card confirmation, online
+     cancel/refund), unchanged in behaviour, merely rounded to match the console;
+  3. **"Inclus în sejur"** — a new all-inclusive amenities grid rendered from the existing
+     `accommodation.shared.facilities` translation array via a new `renderIncluded()` in
+     `js/gestionare.js` (i18n-aware, re-rendered on language change inside the existing
+     `renderManagedReservation` path);
+  4. the **price** breakdown + total.
+  Styling lives in a new `css/gestionare.css`; one new translation key
+  `gestionare.included` is added in RO/RU/EN. Every `data-*` hook and `data-i18n` key the
+  controller reads is preserved exactly once, so no JS state-handling changed.
+- **Why:** the page's job is to make a guest feel "everything I need to manage this booking
+  is right here, and I can see what's included." Leading with the stay facts and surfacing
+  the all-inclusive package does that; descriptive prose was deliberately avoided because
+  the section titles carry the meaning (only functionally-load-bearing copy — refund
+  policy, hold-expiry warning, office hours — was kept).
+- **Consequence:** purely presentational. The reused `.co-card` panels are rounded only
+  within `.gm-console` scope, so `confirmare.html`/`anulare.html` are unaffected. No
+  migration, no Edge Function, no change to the cash/card/refund flows.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
