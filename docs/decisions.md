@@ -726,6 +726,31 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   staff-authenticated `send-sms` call) — the SMS provider token and staff JWT are not
   available outside the deployed environment.
 
+### ADR-038 — Automated email sends from noreply@, replies routed to rezervari@ via Reply-To
+- **Date:** 2026-06-13.
+- **Context:** the `ecovila.md` domain was being verified on Resend so transactional mail
+  (booking confirmations, cash-expiry reminders, cancellations) sends authenticated. With
+  25 villas the owner did not want to lose a hand-written reply in a flood of automated
+  mail, so automated mail should carry a distinct `noreply@` identity while guest replies
+  still land in the monitored `rezervari@ecovila.md` inbox.
+- **Decision:**
+  - `RESEND_FROM_EMAIL` set to `noreply@ecovila.md` (rendered as `EcoVila <noreply@…>` by
+    `sendEmail`). Any `@ecovila.md` address works once the domain is verified — Resend
+    verifies the domain, not the mailbox.
+  - `sendEmail` (`_shared/providers.ts`) now adds a `reply_to` field when the new optional
+    `RESEND_REPLY_TO` secret is set; it is set to `rezervari@ecovila.md`. Reply-To is used
+    instead of relying on inbound forwarding because it routes replies directly from the
+    guest's mail client regardless of MX/forwarder state.
+  - A cPanel forwarder `noreply@ecovila.md → rezervari@ecovila.md` is configured as a
+    belt-and-suspenders for mail manually addressed to noreply@.
+- **Why:** keeps the sending identity clearly automated without orphaning replies; Reply-To
+  is more robust than inbound forwarding and needs no inbound mail plumbing.
+- **Consequence:** six email-sending functions were redeployed (`confirm-reservation-payment`,
+  `send-reminders`, `expire-cash-reservations`, `reservation-cancel`, `maib-callback`,
+  `send-email`). Secret value changes alone don't need a redeploy, but the `reply_to` code
+  change did. `.env.example` documents `RESEND_REPLY_TO`. Tests unchanged (25/25 Deno green);
+  the email-payload test does not assert on reply_to.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

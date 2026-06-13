@@ -41,6 +41,7 @@ export function sendEmail(payload: EmailPayload, options: ProviderOptions = {}) 
   const apiKey = requiredEnv('RESEND_API_KEY');
   const fromEmail = requiredEnv('RESEND_FROM_EMAIL');
   const from = fromEmail.includes('<') ? fromEmail : `EcoVila <${fromEmail}>`;
+  const replyTo = optionalEnv('RESEND_REPLY_TO');
 
   return sendProviderRequest(fetcher, endpoint, {
     method: 'POST',
@@ -54,6 +55,7 @@ export function sendEmail(payload: EmailPayload, options: ProviderOptions = {}) 
       subject: payload.subject,
       html: payload.html,
       text: payload.text,
+      ...(replyTo ? { reply_to: replyTo } : {}),
     }),
   });
 }
