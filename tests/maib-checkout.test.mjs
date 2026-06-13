@@ -296,6 +296,31 @@ describe('EcoVila Maib Checkout integration', () => {
     );
   });
 
+  it('spares a card hold whose guest started a payment attempt within the grace window', () => {
+    const expiry = read('supabase/functions/expire-cash-reservations/index.ts');
+
+    assert.match(
+      expiry,
+      /ATTEMPT_GRACE_MINUTES\s*=\s*1/,
+      'in-flight card holds should get a one-minute grace past their most recent attempt',
+    );
+    assert.match(
+      expiry,
+      /findGroupsWithRecentPaymentAttempt/,
+      'the cron should look up booking groups with a fresh checkout session',
+    );
+    assert.match(
+      expiry,
+      /\.in\('status', \['created', 'pending'\]\)\s*\.gt\('created_at', threshold\)/,
+      'recency should be measured from the latest active maib_payments attempt',
+    );
+    assert.match(
+      expiry,
+      /protectedGroups\.has\(reservation\.booking_group_id\)/,
+      'reservations in a protected booking group should be excluded from cancellation',
+    );
+  });
+
   it('reinstates expired card holds when the paid callback loses the race against the cron', () => {
     const callback = read('supabase/functions/maib-callback/index.ts');
 

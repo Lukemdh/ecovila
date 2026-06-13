@@ -15,8 +15,17 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   eq(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
+  gt(column: string, value: unknown): QueryBuilder<T>;
   lt(column: string, value: unknown): QueryBuilder<T>;
 };
+
+// A card hold whose most recent payment attempt began within this window is not
+// abandoned — the guest may be mid-payment on the gateway and the capture can
+// land a moment after the five-minute hold elapses. Because maib-create-payment
+// returns 410 for any attempt after the hold, no attempt timestamp can ever be
+// newer than the hold deadline, so this grace is bounded (max ≈ hold + 1min) and
+// cannot be chained. See ADR-031.
+const ATTEMPT_GRACE_MINUTES = 1;
 
 // Every cancellation below re-asserts `payment_status = 'pending'` inside the
 // UPDATE itself: a payment confirmed between this cron's SELECT and UPDATE
@@ -57,6 +66,15 @@ type ExpirableReservationRow = NotificationReservation & {
 
 type ReservationIdRow = {
   id: string;
+};
+
+type CardHoldRow = {
+  id: string;
+  booking_group_id: string;
+};
+
+type PaymentGroupRow = {
+  booking_group_id: string;
 };
 
 type MaibSessionExpiryResult = {
@@ -153,9 +171,25 @@ async function expireStaleMaibSessions(
   };
 }
 
+async function findGroupsWithRecentPaymentAttempt(client: SupabaseClient, now: string) {
+  const threshold = new Date(
+    new Date(now).getTime() - ATTEMPT_GRACE_MINUTES * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await table<PaymentGroupRow[]>(client, 'maib_payments')
+    .select('booking_group_id')
+    .in('status', ['created', 'pending'])
+    .gt('created_at', threshold);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return new Set((data || []).map((payment) => payment.booking_group_id));
+}
+
 async function expireInFlightMaibSessions(client: SupabaseClient, now: string) {
-  const { data, error: selectError } = await table<ReservationIdRow[]>(client, 'reservations')
-    .select('id')
+  const { data, error: selectError } = await table<CardHoldRow[]>(client, 'reservations')
+    .select('id, booking_group_id')
     .eq('payment_type', 'card')
     .eq('payment_status', 'pending')
     .eq('payment_in_progress', true)
@@ -166,17 +200,25 @@ async function expireInFlightMaibSessions(client: SupabaseClient, now: string) {
     throw new Error(selectError.message);
   }
 
-  const ids = await cancelPendingReservations(
-    client,
-    (data || []).map((reservation) => reservation.id),
-    {
-      payment_status: 'cancelled',
-      payment_in_progress: false,
-      payment_session_expires_at: null,
-      cancelled_at: now,
-      cancellation_reason: 'maib_session_expired',
-    },
-  );
+  const candidates = data || [];
+  if (!candidates.length) {
+    return [];
+  }
+
+  // Spare any booking group whose guest opened a fresh checkout within the grace
+  // window — their in-flight payment gets that extra minute to land.
+  const protectedGroups = await findGroupsWithRecentPaymentAttempt(client, now);
+  const expirableIds = candidates
+    .filter((reservation) => !protectedGroups.has(reservation.booking_group_id))
+    .map((reservation) => reservation.id);
+
+  const ids = await cancelPendingReservations(client, expirableIds, {
+    payment_status: 'cancelled',
+    payment_in_progress: false,
+    payment_session_expires_at: null,
+    cancelled_at: now,
+    cancellation_reason: 'maib_session_expired',
+  });
 
   if (!ids.length) {
     return [];

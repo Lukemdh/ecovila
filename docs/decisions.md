@@ -512,6 +512,34 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Consequence:** ships as Edge Functions (`maib-callback`,
   `expire-cash-reservations`, `confirm-reservation-payment`) plus static `js/checkout.js`.
 
+### ADR-031 — An in-flight payment attempt earns a one-minute grace before the cron frees the room
+- **Date:** 2026-06-12.
+- **Context:** ADR-029's hold is 5 minutes from the first attempt and the per-minute
+  cron cancels the moment `payment_session_expires_at` passes. But a guest who clicks
+  "Continuă plata" near the deadline is sent straight to the MAIB gateway, where card
+  entry + 3-D Secure can take longer than the seconds left on the hold. The cron then
+  cancels the room mid-payment; if the capture lands afterwards, ADR-030 reinstates it
+  only when the room is still free, otherwise the guest is charged with no booking
+  (`requiresManualReview`). The frontend retry button cannot prevent this — it navigates
+  away to the gateway the instant the checkout session is created, so any button-level
+  timer is invisible. The race is the cron's, so the grace has to be the cron's.
+- **Decision:** `expire-cash-reservations` will not cancel an in-flight card hold whose
+  booking group has a `created`/`pending` `maib_payments` row created within
+  `ATTEMPT_GRACE_MINUTES` (1). It derives "recent attempt" from the existing
+  `maib_payments.created_at` — **no new column, no migration** (keeps clear of the live
+  DB migration drift). The grace is **bounded and un-chainable**: `maib-create-payment`
+  already returns `410` for any attempt after the 5-minute hold, so no attempt timestamp
+  can ever be newer than the hold deadline; the absolute maximum a room stays held is
+  therefore ≈ hold + 1 minute (~6 minutes), after which the last attempt ages out of the
+  window and the next cron tick frees it.
+- **Why:** a guest actively on the gateway is not an abandoned room. The grace closes
+  almost all of the window in which a captured payment can outrace the cron, and ADR-030's
+  reinstate covers whatever slips past — together they drive the charged-but-no-room case
+  toward zero while still self-releasing abandoned holds on a predictable timer.
+- **Consequence:** the retry button keeps its existing on-click disable (it leaves for the
+  gateway immediately, so no countdown is shown); the substance is server-side. Ships as a
+  single Edge Function: `expire-cash-reservations`.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
