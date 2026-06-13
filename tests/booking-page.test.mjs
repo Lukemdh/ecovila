@@ -155,22 +155,6 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(css, /\.calendar__apply\s*{[^}]*background:\s*var\(--booking-green\)/s, 'calendar apply action should use the green CTA treatment');
   });
 
-  it('keeps the accommodation availability lead left aligned and separate from the stay summary', () => {
-    const html = read('rezervari.html');
-    const css = read('css/booking.css');
-
-    assert.match(
-      html,
-      /class="[^"]*booking-accommodation-lead[^"]*"[^>]*data-i18n="booking\.accommodationLead"/,
-      'the accommodation lead should have its own alignment hook',
-    );
-    assert.match(
-      css,
-      /\.booking-panel__heading p\.booking-accommodation-lead\s*{[^}]*justify-self:\s*start[^}]*text-align:\s*left/s,
-      'the accommodation lead should align left on desktop',
-    );
-  });
-
   it('uses a card title multiplier for multi-unit stays instead of availability count copy', () => {
     const js = read('js/booking.js');
 

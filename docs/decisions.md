@@ -437,8 +437,8 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 - **Consequence:** after adding a migration, verify it exists on live
   (`supabase migration list --linked`) instead of assuming some other channel applied
   it; Edge Functions deploy separately from DB migrations and must ship together with
-  schema they depend on. Note the live MAIB credentials still point at the sandbox
-  (`checkout-sandbox.maib.md`) and must be switched before accepting real payments.
+  schema they depend on. (Update: the live MAIB cutover to production
+  (`api.maibmerchants.md`) was completed 2026-06-13 — see ADR-041.)
 
 ### ADR-029 — Card holds expire 5 minutes after the first payment attempt and stay retryable until then
 - **Date:** 2026-06-12.
@@ -840,6 +840,42 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `data-upcoming-prices` stub), `admin/js/crm-pricing.js`, and `css/crm.css` updated. Five new
   Node contract tests in `tests/admin-crm.test.mjs` (timeframe split, identical-price collapse,
   date helpers, markup contract); full Node suite green (58 tests in `admin-crm.test.mjs`).
+
+### ADR-041 — Production launch: MAIB live cutover + homepage swap off the maintenance placeholder
+- **Date:** 2026-06-13.
+- **Context:** the owner received production MAIB credentials. Until now `MAIB_BASE_URL`
+  + credentials pointed at the sandbox (ADR-028), and the root `index.html` was the
+  noindex "în lucru" maintenance placeholder (commit `2fd661c`) while the real landing
+  was staged on `site.html`.
+- **Decision — MAIB:** the production credentials were set as Supabase Edge Function
+  secrets by the owner (not committed). `MAIB_BASE_URL` was set to
+  **`https://api.maibmerchants.md`** — the maib e-Commerce Checkout API production host
+  (our `_shared/maib.ts` appends `/v2/auth/token`, `/v2/checkouts`,
+  `/v2/payments/{id}/refund`; sandbox host is `sandbox.maibmerchants.md`, confirmed
+  against the official `maib-ecomm` SDK). `maib-create-payment`, `maib-callback`, and
+  `maib-refund` were redeployed so they cold-start on the new secret. Host/path validated
+  with an unauthenticated probe returning a structured maib `401` (`Invalid credentials`),
+  the exact error shape `formatMaibError` parses. The live end-to-end card payment +
+  refund remains the owner's smoke test (only the owner holds the credentials).
+- **Decision — homepage:** the maintenance placeholder was removed by promoting the full
+  Romanian landing to `index.html` (absolute `/js/…` + `/rezervari.html` links, canonical
+  `https://ecovila.md/`, indexable). `site.html` was restored to its last-good relative-link
+  form (commit `8427717`) — `2fd661c` had accidentally overwritten it with the absolute
+  index copy, which is why the landing/SEO/legal/consent/wiring suites stayed red. The
+  `maintenance-page.test.mjs` "approved launch homepage" contract now passes for both files
+  (root absolute; `site.html` relative + `^site\.html$ → /` 301).
+- **Decision — stale-test/cleanup:** the managed-cancellation SMS test was rewritten to the
+  ADR-039 contract (copy now lives in `_shared/notifications.ts` `cancellationConfirmationSms`,
+  not inline in `reservation-cancel`). The obsolete `booking-accommodation-lead` test (the
+  element was removed in ADR-033 when availability moved to per-card `data-card-availability`)
+  was deleted along with its orphaned `css/booking.css` rule. `deno.json` now excludes
+  `_shared/pricing.js` and `tests/pricingGuard.test.ts` from `deno fmt` — the former MUST stay
+  byte-identical to `js/pricing.js` (ADR pricing guard), so excluding it from fmt protects that
+  invariant from a future `deno fmt` silently breaking server-side pricing.
+- **Consequence:** full suite green (216 Node + 48 Deno), typecheck/lint/fmt clean,
+  `js/pricing.js` ≡ `_shared/pricing.js` verified. The static bundle still needs the manual
+  TopHost upload (`npm run prepare:tophost` → `dist/tophost/`); the live site was last
+  uploaded before this swap, so until the owner uploads, prod `/` still shows the old state.
 
 ---
 

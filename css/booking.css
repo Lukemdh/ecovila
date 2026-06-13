@@ -121,11 +121,6 @@ body.page-booking .site-header {
   text-align: right;
 }
 
-.booking-panel__heading p.booking-accommodation-lead {
-  justify-self: start;
-  text-align: left;
-}
-
 .booking-selector-grid {
   display: grid;
   grid-template-columns: minmax(300px, 0.42fr) minmax(520px, 1fr);

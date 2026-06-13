@@ -212,16 +212,19 @@ describe('EcoVila reservation lookup and refunds', () => {
 
   it('sends the requested short SMS copy from managed cancellation', () => {
     const cancelFunction = read('supabase/functions/reservation-cancel/index.ts');
+    const notifications = read('supabase/functions/_shared/notifications.ts');
 
+    // ADR-039 relocated the cancellation SMS copy into the shared
+    // cancellationConfirmationSms helper; reservation-cancel now calls it.
     assert.match(
       cancelFunction,
-      /Rezervarea dvs \$\{period\} este anulata/,
-      'managed cancellation SMS should include only the reservation dates in the requested copy',
+      /message:\s*cancellationConfirmationSms\(/,
+      'managed cancellation should send the shared cancellation SMS via cancellationConfirmationSms',
     );
-    assert.doesNotMatch(
-      cancelFunction,
-      /message:\s*`EcoVila: Rezervarea dvs\./,
-      'managed cancellation SMS should not keep the longer prefixed room-copy variant',
+    assert.match(
+      notifications,
+      /Rezervarea dvs este anulata: \$\{checkIn\} - \$\{checkOut\}\. Speram sa ne mai vedem in curand!/,
+      'cancellation SMS should use the reworded date-only copy (ADR-039)',
     );
   });
 });

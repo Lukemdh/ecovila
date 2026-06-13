@@ -8,7 +8,11 @@
   },
   "fmt": {
     "lineWidth": 100,
-    "singleQuote": true
+    "singleQuote": true,
+    "exclude": [
+      "_shared/pricing.js",
+      "tests/pricingGuard.test.ts"
+    ]
   },
   "tasks": {
     "test": "deno test --allow-env --allow-net tests"
