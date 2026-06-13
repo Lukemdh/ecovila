@@ -12,6 +12,7 @@ import {
 } from '../_shared/maib.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
+import { bookingConfirmationSms } from '../_shared/notifications.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { dispatchPurchaseTrackingOnce } from '../_shared/tracking.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
@@ -683,7 +684,11 @@ function composePaymentConfirmation(
   const cancelLink = `${siteUrl}/anulare.html?token=${encodeURIComponent(cancellationToken)}`;
   const name = `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`.trim();
   const stay = `${reservation.check_in} - ${reservation.check_out}`;
-  const sms = confirmationSms(language, reservation.check_in, reservation.check_out);
+  const sms = bookingConfirmationSms({
+    language,
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+  });
   const subject = subjectLine(language);
   const text = [
     greeting(language, name),
@@ -774,18 +779,6 @@ function roomLabel(reservation: PaymentReservationRow, language: string) {
   if (language === 'ru') return `Домик #${reservation.room_number}`;
   if (language === 'en') return `Villa #${reservation.room_number}`;
   return `Căsuța #${reservation.room_number}`;
-}
-
-function confirmationSms(language: string, checkIn: string, checkOut: string) {
-  if (language === 'ru') {
-    return `Бронь: ${checkIn}, 13.00 - ${checkOut}, 10.00. Вход с 13.00.`;
-  }
-
-  if (language === 'en') {
-    return `Your reservation is confirmed: ${checkIn}, 13.00 - ${checkOut}, 10.00. Access to the property: after 13.00. See you soon!`;
-  }
-
-  return `Rezervarea dvs este confirmata: ${checkIn}, 13.00 - ${checkOut}, 10.00. Acces pe teritoriu: dupa 13.00. Va asteptam!`;
 }
 
 function row(labelText: string, value: string) {

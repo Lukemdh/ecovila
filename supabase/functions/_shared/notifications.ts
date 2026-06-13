@@ -614,7 +614,7 @@ function roomLabel(reservation: NotificationReservation, language = 'ro') {
   return `Căsuța #${reservation.room_number}`;
 }
 
-function bookingConfirmationSms(input: {
+export function bookingConfirmationSms(input: {
   language: string;
   checkIn: string;
   checkOut: string;
