@@ -535,6 +535,15 @@
   transform: none;
 }
 
+/* ── Reassurance note ── */
+.co-policy-note {
+  margin: 12px 0 0;
+  text-align: center;
+  color: var(--muted, #6b6b63);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 /* ─────────────────────────────────────────────
    RESPONSIVE
    ───────────────────────────────────────────── */

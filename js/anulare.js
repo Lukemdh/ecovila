@@ -287,7 +287,7 @@
     }
 
     const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
-    const insideAdvanceWindow = daysUntilCheckIn >= 7;
+    const insideAdvanceWindow = daysUntilCheckIn >= 20;
     const ageMs = now.getTime() - createdAtValue;
     const insideCreationGrace = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 60 * 1000;
 

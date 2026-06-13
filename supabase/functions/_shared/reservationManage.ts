@@ -4,6 +4,7 @@ export const LOOKUP_CODE_TTL_MINUTES = 10;
 export const MANAGE_TOKEN_TTL_MINUTES = 30;
 export const LOOKUP_MAX_ATTEMPTS = 5;
 export const REFUND_GRACE_MS = 2 * 60 * 60 * 1000;
+export const REFUND_ADVANCE_DAYS = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BUSINESS_TIME_ZONE = 'Europe/Chisinau';
 
@@ -135,7 +136,7 @@ export function isRefundEligible(input: RefundEligibilityInput) {
   }
 
   const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
-  const insideAdvanceWindow = daysUntilCheckIn >= 7;
+  const insideAdvanceWindow = daysUntilCheckIn >= REFUND_ADVANCE_DAYS;
   const ageMs = now.getTime() - createdAtValue;
   const insideCreationGrace = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < REFUND_GRACE_MS;
 
@@ -152,7 +153,7 @@ export function refundEligibilityReason(input: RefundEligibilityInput) {
   const checkInValue = dateValue(input.checkIn);
   const daysUntilCheckIn = (checkInValue - todayValue) / DAY_MS;
 
-  if (daysUntilCheckIn >= 7) {
+  if (daysUntilCheckIn >= REFUND_ADVANCE_DAYS) {
     return 'arrival_window';
   }
 

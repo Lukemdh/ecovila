@@ -119,7 +119,7 @@ Deno.serve(async (request) => {
     if (!pendingCash && !refundable) {
       throw new HttpError(
         409,
-        'Online cancellation is available only at least 7 days before arrival or within 2 hours of booking.',
+        'Online cancellation is available only at least 20 days before arrival or within 2 hours of booking.',
       );
     }
 

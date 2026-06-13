@@ -91,7 +91,7 @@ export function composeBookingConfirmation(
         `Perioada: ${reservation.check_in} - ${reservation.check_out}.`,
         `Total: ${total}.`,
         `Confirmare: ${confirmationLink}`,
-        `Anulare 7 zile+: ${cancellationLink}`,
+        `Anulare 20 zile+: ${cancellationLink}`,
       ].join('\n'),
       html: reservationEmailHtml({
         title: 'Rezervarea dvs. EcoVila este confirmată',

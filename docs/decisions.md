@@ -63,9 +63,10 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   tests deliberately, and keep `docs/` consistent (the Definition of Done).
 
 ### ADR-008 — Guest online cancellation window vs. staff refund authority
-- **Date:** 2026-05-31.
+- **Date:** 2026-05-31. **Amended 2026-06-13 by ADR-035** (advance window 7 → 20 days).
 - **Decision:** guest-facing online cancellation is available only when there are at
-  least 7 calendar days before arrival, or when the reservation was created less than 2
+  least 7 calendar days before arrival (**now 20 — see ADR-035**), or when the
+  reservation was created less than 2
   hours ago. Cash-paid reservations are not cancelled or reimbursed online; they direct
   guests to the EcoVila office. Diana-initiated CRM cancellation of paid Maib bookings
   may refund through the staff-only `maib-refund` function regardless of the public guest
@@ -650,6 +651,42 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   pricing-guard impact; the static site still needs a TopHost upload
   (`npm run prepare:tophost`) to go live. The node baseline of 11 maintenance-placeholder
   failures is unchanged.
+
+### ADR-035 — Online cancellation advance window raised from 7 to 20 calendar days
+- **Date:** 2026-06-13.
+- **Context:** owner asked to lengthen the minimum free-cancellation lead time site-wide.
+  ADR-008 set the guest online-cancellation advance window at **7** calendar days (with a
+  2-hour post-booking grace). The number was hard-coded in three independent layers (client
+  JS, the Edge Function shared module, and the `cancel_reservation_by_token` RPC) plus
+  copy in three languages.
+- **Decision:** the advance window is now **20** calendar days. The 2-hour creation-grace
+  window and the cash-office rule (ADR-008) are unchanged.
+  - **Server (source of truth):** `supabase/functions/_shared/reservationManage.ts` now
+    exports `REFUND_ADVANCE_DAYS = 20` and uses it in `isRefundEligible` /
+    `refundEligibilityReason`; `reservation-cancel/index.ts` mirrors the wording. A new
+    migration `20260613090000_cancellation_advance_window_20_days.sql` redefines
+    `cancel_reservation_by_token` with `v_days_until_arrival >= 20`. Per ADR-028 the prior
+    applied migration (`20260531083527`) was left untouched and superseded by a new one.
+  - **Client mirror:** `js/anulare.js` (`>= 20`) and all refund-policy copy in
+    `js/translations.js` (RO/RU/EN), `anulare.html`, `termeni-conditii.html`,
+    `gestionare.html`, and the confirmation email line in `_shared/notifications.ts`
+    (`Anulare 20 zile+`).
+  - **New checkout reassurance note:** `checkout.html` gained a subtle, muted, centered
+    line under the submit button (`checkout.cancellationNote`, class `.co-policy-note`)
+    phrased as a *benefit* — "Flexible plans: free online cancellation if at least 20 days
+    remain before your arrival date" — so the longer window reads as flexibility rather
+    than a restriction.
+- **Why:** business policy change requested by the owner; surfacing it positively at
+  checkout sets expectations up front without depressing conversion.
+- **Consequence:** only two Edge Functions actually exercise the changed behaviour —
+  `reservation-cancel` (eligibility guard) and `confirm-reservation-payment` (the
+  confirmation email) — and both were redeployed via the CLI; the migration was pushed with
+  `supabase db push`. Other importers of the shared module use unrelated exports and were
+  left as-is. Tests were rebased to 20-day fixtures (`reservation-manage.test.ts`,
+  `reservations.test.ts`, `anulare.test.mjs`, `legal-pages.test.mjs`); the Deno suite is
+  48/48 green and the node baseline of 11 maintenance-placeholder failures is unchanged.
+  The static front-end still needs a TopHost upload (`npm run prepare:tophost`) to go live;
+  the backend (DB + functions) is already deployed.
 
 ---
 

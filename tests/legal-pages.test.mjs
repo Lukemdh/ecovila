@@ -62,7 +62,7 @@ describe('EcoVila Step 8 legal pages', () => {
     assert.match(article, /privacy@ecovila\.md/);
   });
 
-  it('renders the Romanian terms article with the supplied 7-day or 2-hour refund wording', () => {
+  it('renders the Romanian terms article with the supplied 20-day or 2-hour refund wording', () => {
     const html = read('termeni-conditii.html');
     const article = articleMarkup(html);
 
@@ -70,7 +70,7 @@ describe('EcoVila Step 8 legal pages', () => {
     assert.match(article, /Textul juridic este afișat în limba română\./);
     assert.match(article, /Check-in și check-out/);
     assert.match(article, /Reguli pentru piscină și SPA/);
-    assert.match(article, /cel puțin 7 zile calendaristice/);
+    assert.match(article, /cel puțin 20 zile calendaristice/);
     assert.match(article, /mai puțin de 2 ore/);
     assert.match(article, /cash doar la oficiul EcoVila/);
   });

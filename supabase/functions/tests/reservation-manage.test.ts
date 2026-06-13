@@ -1,17 +1,17 @@
-Deno.test('reservation refund eligibility requires at least 7 days or the 2-hour grace window', async () => {
+Deno.test('reservation refund eligibility requires at least 20 days or the 2-hour grace window', async () => {
   const { isRefundEligible } = await import('../_shared/reservationManage.ts');
 
   const now = new Date('2026-05-27T12:00:00.000Z');
 
-  if (!isRefundEligible({ checkIn: '2026-06-03', createdAt: '2026-05-20T12:00:00.000Z', now })) {
-    throw new Error('exactly seven days before check-in should remain refundable');
+  if (!isRefundEligible({ checkIn: '2026-06-16', createdAt: '2026-05-01T12:00:00.000Z', now })) {
+    throw new Error('exactly twenty days before check-in should remain refundable');
   }
 
   if (!isRefundEligible({ checkIn: '2026-06-10', createdAt: '2026-05-27T10:30:00.000Z', now })) {
     throw new Error('bookings created less than two hours ago should be refundable');
   }
 
-  if (isRefundEligible({ checkIn: '2026-06-02', createdAt: '2026-05-27T09:59:59.000Z', now })) {
+  if (isRefundEligible({ checkIn: '2026-06-15', createdAt: '2026-05-27T09:59:59.000Z', now })) {
     throw new Error('outside both refund windows should not be refundable');
   }
 });
