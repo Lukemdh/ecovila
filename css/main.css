@@ -487,12 +487,13 @@ h3 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 28px;
   padding: 50px 44px;
   text-align: center;
 }
 
-#restaurant .image-hero__content p:last-child {
+#restaurant .image-hero__content p {
   margin: 0;
 }
 
