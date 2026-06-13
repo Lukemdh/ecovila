@@ -53,7 +53,9 @@ The product has two surfaces:
   month navigation), `finance` (revenue reporting, with a one-day `Încasări` view that
   also lists villas booked/created that day), `daily` (reception), `towels`, `photos`
   (draft/publish to the public galleries), `pricing` (tiers + holidays with effective
-  dates).
+  dates, plus a read-only **Program** sub-view listing each price timeframe — `DD.MM.YYYY
+  – DD.MM.YYYY` ranges derived from `effective_from` boundaries — so staff can see when a
+  scheduled change overwrites the current tariff; ADR-040).
 
 ## Domain concepts / glossary
 

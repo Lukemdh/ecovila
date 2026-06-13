@@ -2250,6 +2250,99 @@ describe('EcoVila Step 9 CRM', () => {
     ]);
   });
 
+  it('builds a price schedule split into effective-date timeframes', () => {
+    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
+    const make = (effective_from, created_at, table) => table.map(([nights_tier, day_type, adult_price, kid_price]) => ({
+      nights_tier,
+      day_type,
+      adult_price,
+      kid_price,
+      effective_from,
+      created_at,
+    }));
+    const summer = make('2026-06-01', '2026-05-01T09:00:00.000Z', [
+      [1, 'weekday', 1100, 900],
+      [1, 'holiday', 1300, 1000],
+      [2, 'weekday', 1000, 800],
+      [2, 'holiday', 1200, 900],
+      [3, 'weekday', 900, 700],
+      [3, 'holiday', 1100, 800],
+    ]);
+    const autumn = make('2026-10-01', '2026-05-01T10:00:00.000Z', [
+      [1, 'weekday', 1300, 600],
+      [1, 'holiday', 1550, 600],
+      [2, 'weekday', 1100, 600],
+      [2, 'holiday', 1550, 600],
+      [3, 'weekday', 1100, 600],
+      [3, 'holiday', 1550, 600],
+    ]);
+
+    const schedule = pricing.pricingSchedule(summer.concat(autumn));
+    assert.equal(schedule.length, 2);
+    assert.equal(schedule[0].from, '2026-06-01');
+    assert.equal(schedule[0].until, '2026-09-30');
+    assert.equal(schedule[1].from, '2026-10-01');
+    assert.equal(schedule[1].until, null);
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(
+        schedule[0].prices.map((row) => [row.nights_tier, row.day_type, row.adult_price, row.kid_price]),
+      )),
+      [
+        [1, 'weekday', 1100, 900],
+        [1, 'holiday', 1300, 1000],
+        [2, 'weekday', 1000, 800],
+        [2, 'holiday', 1200, 900],
+        [3, 'weekday', 900, 700],
+        [3, 'holiday', 1100, 800],
+      ],
+    );
+    assert.equal(schedule[1].prices[0].adult_price, 1300);
+  });
+
+  it('collapses consecutive timeframes with identical prices', () => {
+    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
+    const table = [
+      [1, 'weekday', 1100, 900],
+      [1, 'holiday', 1300, 1000],
+      [2, 'weekday', 1000, 800],
+      [2, 'holiday', 1200, 900],
+      [3, 'weekday', 900, 700],
+      [3, 'holiday', 1100, 800],
+    ];
+    const rows = ['2026-06-01', '2026-08-01'].flatMap((effective_from) => table.map(
+      ([nights_tier, day_type, adult_price, kid_price]) => ({
+        nights_tier,
+        day_type,
+        adult_price,
+        kid_price,
+        effective_from,
+        created_at: `${effective_from}T09:00:00.000Z`,
+      }),
+    ));
+
+    const schedule = pricing.pricingSchedule(rows);
+    assert.equal(schedule.length, 1);
+    assert.equal(schedule[0].from, '2026-06-01');
+    assert.equal(schedule[0].until, null);
+  });
+
+  it('formats schedule helpers as day.month.year and previous day', () => {
+    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
+    assert.equal(pricing.formatScheduleDate('2026-10-01'), '01.10.2026');
+    assert.equal(pricing.dayBeforeISO('2026-10-01'), '2026-09-30');
+    assert.equal(pricing.dayBeforeISO('2026-03-01'), '2026-02-28');
+  });
+
+  it('exposes a price-schedule view toggle and container in the CRM', () => {
+    const dashboard = read('admin/dashboard.html');
+    assert.match(dashboard, /data-price-view="edit"/);
+    assert.match(dashboard, /data-price-view="schedule"/);
+    assert.match(dashboard, /data-price-view-panel="edit"/);
+    assert.match(dashboard, /data-price-view-panel="schedule"/);
+    assert.match(dashboard, /data-price-schedule/);
+    assert.doesNotMatch(dashboard, /data-upcoming-prices/);
+  });
+
   it('keeps newest same-date pricing rows active after repeated saves', () => {
     const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
     const oldRows = [

@@ -807,6 +807,42 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-040 — CRM Prețuri gains a read-only "Program" sub-view showing price timeframes
+- **Date:** 2026-06-13.
+- **Context:** `pricing_tiers` rows carry only an `effective_from`; each save snapshots all six
+  tier/day-type rows at one date and the newest row effective on/before a booking's creation
+  date wins (see project-overview "Pricing effective dates"). Staff could edit and see the
+  *currently active* tariffs (`activePricingRows` = newest set with `effective_from <= today`)
+  but had no way to see **when** a scheduled future change takes over from the current one, or
+  the date ranges any set of prices is in force. The dashboard markup even carried an unused
+  `data-upcoming-prices` stub for this.
+- **Decision:**
+  - The Prețuri panel now has a two-button segmented toggle (`data-price-view` → `edit` /
+    `schedule`) that swaps between the existing editor+holidays grid (`data-price-view-panel="edit"`)
+    and a new read-only **Program** view (`data-price-view-panel="schedule"`). "Tab" within a
+    panel, not a new top-level CRM tab — it lives "under" Prețuri as the owner asked.
+  - New pure helper `pricingSchedule(rows)` in `admin/js/crm-pricing.js`: it collects the
+    distinct `effective_from` dates as boundaries, resolves the active price set as-of each
+    boundary (shared `resolveActiveRows(rows, asOf)`, factored out of `activePricingRows`),
+    and emits ordered segments `{from, until, prices, isCurrent/isFuture/isPast}`. `until` is
+    the day before the next boundary (`dayBeforeISO`, UTC) and `null` (= "în continuare") for
+    the open-ended last segment. Consecutive segments with identical prices are collapsed.
+  - `renderPricingSchedule` lists each timeframe as a card titled `DD.MM.YYYY – DD.MM.YYYY`
+    (`formatScheduleDate`) with a read-only copy of the six-row price table; the current period
+    gets a green highlight + `Activ acum` badge, future periods a `Programat` badge.
+  - No schema, RPC, or data-layer change — it reuses `fetchPricingTiers` (which already selects
+    `effective_from, created_at`). Purely additive client rendering; existing reservations are
+    still never retro-repriced.
+- **Why:** the owner schedules seasonal price changes ahead of time and needs to see the exact
+  window each tariff is in force before the next change overwrites it. The active-prices table
+  alone hid the timeline.
+- **Consequence:** `admin/dashboard.html` (toggle + schedule container, removed the dead
+  `data-upcoming-prices` stub), `admin/js/crm-pricing.js`, and `css/crm.css` updated. Five new
+  Node contract tests in `tests/admin-crm.test.mjs` (timeframe split, identical-price collapse,
+  date helpers, markup contract); full Node suite green (58 tests in `admin-crm.test.mjs`).
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

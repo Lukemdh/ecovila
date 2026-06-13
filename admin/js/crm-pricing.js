@@ -128,6 +128,24 @@
     return localDate.toISOString().slice(0, 10);
   }
 
+  function dayBeforeISO(iso) {
+    const match = ISO_DATE_PATTERN.exec(String(iso || ''));
+    if (!match) {
+      return String(iso ?? '');
+    }
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    date.setUTCDate(date.getUTCDate() - 1);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function formatScheduleDate(iso) {
+    const match = ISO_DATE_PATTERN.exec(String(iso || ''));
+    if (!match) {
+      return String(iso ?? '');
+    }
+    return `${match[3]}.${match[2]}.${match[1]}`;
+  }
+
   function comparePricingRowsByRecency(left, right) {
     const effectiveCompare = String(right.effective_from || '').localeCompare(String(left.effective_from || ''));
     if (effectiveCompare !== 0) {
@@ -137,20 +155,62 @@
     return String(right.created_at || '').localeCompare(String(left.created_at || ''));
   }
 
-  function activePricingRows(rows) {
-    const today = todayISO();
+  function resolveActiveRows(rows, asOfISO) {
+    const list = Array.isArray(rows) ? rows : [];
     return Object.keys(LABELS).map((key) => {
       const [tier, dayType] = key.split('-');
-      return rows
-        .filter((row) => Number(row.nights_tier) === Number(tier) && row.day_type === dayType && row.effective_from <= today)
+      return list
+        .filter((row) => Number(row.nights_tier) === Number(tier) && row.day_type === dayType && row.effective_from <= asOfISO)
         .sort(comparePricingRowsByRecency)[0] || {
         nights_tier: Number(tier),
         day_type: dayType,
         adult_price: 0,
         kid_price: 0,
-        effective_from: today,
+        effective_from: asOfISO,
       };
     });
+  }
+
+  function activePricingRows(rows) {
+    return resolveActiveRows(rows, todayISO());
+  }
+
+  function samePriceSet(left, right) {
+    if (!left || !right || left.length !== right.length) {
+      return false;
+    }
+    return left.every((row, index) => (
+      Number(row.adult_price) === Number(right[index].adult_price) &&
+      Number(row.kid_price) === Number(right[index].kid_price)
+    ));
+  }
+
+  function pricingSchedule(rows) {
+    const valid = (Array.isArray(rows) ? rows : []).filter((row) => (
+      ISO_DATE_PATTERN.test(String(row?.effective_from || ''))
+    ));
+    const boundaries = Array.from(new Set(valid.map((row) => row.effective_from))).sort();
+
+    const segments = [];
+    boundaries.forEach((from) => {
+      const prices = resolveActiveRows(valid, from);
+      const previous = segments[segments.length - 1];
+      if (previous && samePriceSet(previous.prices, prices)) {
+        return;
+      }
+      segments.push({ from, until: null, prices });
+    });
+
+    const today = todayISO();
+    segments.forEach((segment, index) => {
+      const next = segments[index + 1];
+      segment.until = next ? dayBeforeISO(next.from) : null;
+      segment.isCurrent = segment.from <= today && (segment.until === null || segment.until >= today);
+      segment.isFuture = segment.from > today;
+      segment.isPast = segment.until !== null && segment.until < today;
+    });
+
+    return segments;
   }
 
   function renderPricingTable(rows) {
@@ -192,6 +252,73 @@
         </tbody>
       </table>
     `;
+  }
+
+  function renderPricingSchedule(rows) {
+    const container = qs('[data-price-schedule]');
+    if (!container) {
+      return;
+    }
+
+    const segments = pricingSchedule(rows);
+    if (!segments.length) {
+      container.innerHTML = '<p class="crm-empty">Nu există tarife salvate încă.</p>';
+      return;
+    }
+
+    container.innerHTML = segments.map((segment) => {
+      const range = segment.until
+        ? `${formatScheduleDate(segment.from)} – ${formatScheduleDate(segment.until)}`
+        : `${formatScheduleDate(segment.from)} – în continuare`;
+
+      let badge = '';
+      if (segment.isCurrent) {
+        badge = '<span class="crm-price-period__badge crm-price-period__badge--current">Activ acum</span>';
+      } else if (segment.isFuture) {
+        badge = '<span class="crm-price-period__badge crm-price-period__badge--future">Programat</span>';
+      }
+
+      const body = segment.prices.map((price) => {
+        const labels = LABELS[`${price.nights_tier}-${price.day_type}`];
+        const icon = ROW_ICONS[`${price.nights_tier}-${price.day_type}`];
+        return `
+          <tr>
+            <td>
+              <span class="crm-price-duration">
+                ${iconSvg(icon)}
+                <span>${labels[0]}</span>
+              </span>
+            </td>
+            <td><span class="crm-price-type">${labels[1]}</span></td>
+            <td class="crm-price-cell">${escapeHtml(price.adult_price)}</td>
+            <td class="crm-price-cell">${escapeHtml(price.kid_price)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const stateClass = segment.isCurrent ? ' is-current' : (segment.isPast ? ' is-past' : '');
+      return `
+        <article class="crm-price-period${stateClass}">
+          <header class="crm-price-period__header">
+            <span class="crm-price-period__range">${range}</span>
+            ${badge}
+          </header>
+          <div class="crm-price-table crm-price-table--readonly">
+            <table>
+              <thead>
+                <tr>
+                  <th>Durată</th>
+                  <th>Tip zi</th>
+                  <th>Adult (MDL)</th>
+                  <th>Copil (MDL)</th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        </article>
+      `;
+    }).join('');
   }
 
   function renderHolidays(holidays) {
@@ -285,6 +412,7 @@
     ]);
 
     renderPricingTable(activePricingRows(pricing_tiers));
+    renderPricingSchedule(pricing_tiers);
     renderHolidays(holidays);
     const dateInput = qs('[data-price-effective-from]');
     if (dateInput && !dateInput.value) {
@@ -299,7 +427,28 @@
     });
   }
 
+  function setupPriceViews() {
+    const buttons = Array.from(root.document.querySelectorAll('[data-price-view]'));
+    if (!buttons.length) {
+      return;
+    }
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const view = button.dataset.priceView;
+        buttons.forEach((other) => {
+          const active = other.dataset.priceView === view;
+          other.classList.toggle('is-active', active);
+          other.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        root.document.querySelectorAll('[data-price-view-panel]').forEach((panel) => {
+          panel.hidden = panel.dataset.priceViewPanel !== view;
+        });
+      });
+    });
+  }
+
   function init(context) {
+    setupPriceViews();
     qs('[data-save-prices]')?.addEventListener('click', () => {
       savePrices(context).catch((error) => context.setAlert(error?.message || 'Prețurile nu au putut fi salvate.'));
     });
@@ -312,6 +461,11 @@
 
   return {
     activePricingRows,
+    resolveActiveRows,
+    pricingSchedule,
+    renderPricingSchedule,
+    formatScheduleDate,
+    dayBeforeISO,
     collectPricingRows,
     init,
     loadPricing,

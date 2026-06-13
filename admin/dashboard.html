@@ -677,7 +677,12 @@
         <div class="crm-panel-header crm-panel-header--stacked">
           <h1 id="pricing-title">Prețuri</h1>
           <p class="crm-panel-subtitle">Gestionează tarifele pentru diferite tipuri de sejur și perioade.</p>
+          <div class="crm-price-views" role="tablist" aria-label="Vizualizare prețuri">
+            <button class="crm-price-view is-active" type="button" role="tab" aria-selected="true" data-price-view="edit">Tarife</button>
+            <button class="crm-price-view" type="button" role="tab" aria-selected="false" data-price-view="schedule">Program</button>
+          </div>
         </div>
+        <div data-price-view-panel="edit">
         <div class="crm-settings-grid crm-pricing-layout">
           <section class="crm-settings-section crm-pricing-card" aria-labelledby="price-table-title">
             <h2 id="price-table-title">Prețuri active</h2>
@@ -688,7 +693,6 @@
             </label>
             <button class="crm-button crm-button--primary crm-button--block" type="button" data-save-prices>Salvează prețuri</button>
             <p class="crm-note">Rezervările existente nu vor fi afectate de modificări de preț.</p>
-            <div data-upcoming-prices></div>
           </section>
           <section class="crm-settings-section crm-pricing-card crm-pricing-card--holidays" aria-labelledby="holidays-title">
             <div class="crm-holiday-panel">
@@ -733,6 +737,14 @@
                 </div>
               </form>
             </div>
+          </section>
+        </div>
+        </div>
+        <div data-price-view-panel="schedule" hidden>
+          <section class="crm-settings-section crm-pricing-card crm-price-schedule-card" aria-labelledby="price-schedule-title">
+            <h2 id="price-schedule-title">Program tarife</h2>
+            <p class="crm-note">Fiecare perioadă arată tarifele în vigoare până când o modificare programată le înlocuiește. Rezervările existente păstrează tariful de la momentul creării.</p>
+            <div class="crm-price-schedule" data-price-schedule></div>
           </section>
         </div>
       </section>

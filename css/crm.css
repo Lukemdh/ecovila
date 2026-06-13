@@ -1006,6 +1006,105 @@ h2 {
   margin: 0;
 }
 
+.crm-price-views {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 4px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.crm-price-view {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--crm-muted);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 7px 16px;
+}
+
+.crm-price-view:hover {
+  color: var(--crm-ink);
+}
+
+.crm-price-view.is-active {
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+.crm-price-schedule-card {
+  max-width: 720px;
+}
+
+.crm-price-schedule {
+  display: grid;
+  gap: 16px;
+}
+
+.crm-price-period {
+  border: 1px solid var(--crm-line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--crm-panel);
+}
+
+.crm-price-period.is-current {
+  border-color: var(--crm-moss);
+  box-shadow: 0 0 0 1px var(--crm-moss);
+}
+
+.crm-price-period.is-past {
+  opacity: 0.6;
+}
+
+.crm-price-period__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f1ead9;
+  border-bottom: 1px solid var(--crm-line);
+}
+
+.crm-price-period__range {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--crm-ink);
+}
+
+.crm-price-period__badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.crm-price-period__badge--current {
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+.crm-price-period__badge--future {
+  background: rgba(192, 142, 58, 0.18);
+  color: var(--crm-ochre);
+}
+
+.crm-price-period .crm-price-table {
+  border: 0;
+  border-radius: 0;
+}
+
+.crm-price-table--readonly .crm-price-cell {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .crm-button--block {
   width: 100%;
 }
