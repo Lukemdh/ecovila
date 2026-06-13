@@ -2326,6 +2326,28 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(schedule[0].until, null);
   });
 
+  it('drops fully elapsed price periods, keeping the active one and future ones', () => {
+    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
+    const mk = (effective_from, adultBase) => Array.from({ length: 6 }, (unused, index) => ({
+      nights_tier: (index >> 1) + 1,
+      day_type: index % 2 === 0 ? 'weekday' : 'holiday',
+      adult_price: adultBase + index,
+      kid_price: 500 + index,
+      effective_from,
+      created_at: `${effective_from}T09:00:00.000Z`,
+    }));
+    // elapsed (ends well before today) → active (in force now) → scheduled (future)
+    const rows = mk('2020-01-01', 700).concat(mk('2020-06-01', 800)).concat(mk('2099-01-01', 900));
+
+    const schedule = pricing.pricingSchedule(rows);
+    assert.equal(schedule.length, 2);
+    assert.equal(schedule[0].from, '2020-06-01');
+    assert.equal(schedule[0].isCurrent, true);
+    assert.equal(schedule[1].from, '2099-01-01');
+    assert.equal(schedule[1].isFuture, true);
+    assert.ok(!schedule.some((segment) => segment.from === '2020-01-01'));
+  });
+
   it('formats schedule helpers as day.month.year and previous day', () => {
     const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
     assert.equal(pricing.formatScheduleDate('2026-10-01'), '01.10.2026');

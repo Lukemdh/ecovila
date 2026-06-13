@@ -210,7 +210,9 @@
       segment.isPast = segment.until !== null && segment.until < today;
     });
 
-    return segments;
+    // Drop fully elapsed periods: once newer prices take effect the old ones are no
+    // longer useful. Keep the period currently in force plus any scheduled ahead.
+    return segments.filter((segment) => !segment.isPast);
   }
 
   function renderPricingTable(rows) {
@@ -296,9 +298,8 @@
         `;
       }).join('');
 
-      const stateClass = segment.isCurrent ? ' is-current' : (segment.isPast ? ' is-past' : '');
       return `
-        <article class="crm-price-period${stateClass}">
+        <article class="crm-price-period${segment.isCurrent ? ' is-current' : ''}">
           <header class="crm-price-period__header">
             <span class="crm-price-period__range">${range}</span>
             ${badge}

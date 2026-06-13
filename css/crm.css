@@ -1056,10 +1056,6 @@ h2 {
   box-shadow: 0 0 0 1px var(--crm-moss);
 }
 
-.crm-price-period.is-past {
-  opacity: 0.6;
-}
-
 .crm-price-period__header {
   display: flex;
   align-items: center;
@@ -1103,6 +1099,18 @@ h2 {
 .crm-price-table--readonly .crm-price-cell {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* The read-only schedule table has 4 data columns; the .crm-price-period
+   ancestor raises specificity above the editor's 42px action-column rule so
+   the price columns ("Adult"/"Copil") are not crushed. */
+.crm-price-period .crm-price-table--readonly th:nth-child(3),
+.crm-price-period .crm-price-table--readonly td:nth-child(3),
+.crm-price-period .crm-price-table--readonly th:last-child,
+.crm-price-period .crm-price-table--readonly td:last-child {
+  width: 120px;
+  padding-right: 14px;
+  text-align: left;
 }
 
 .crm-button--block {
