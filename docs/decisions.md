@@ -901,6 +901,41 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-043 — GA4 analytics on all public pages via the existing consent-gated tracking module
+- **Date:** 2026-06-16.
+- **Context:** the owner wants Google Analytics 4 (Measurement ID `G-QWJXK651PP`) on
+  every public page but not on the admin CRM. The site already ships a consent-aware
+  tracking module ([js/tracking.js](../js/tracking.js), `EcoVilaTracking`) that is loaded
+  on all 12 public pages (RO root pages + `ru/` + `en/`) together with
+  [js/tracking-config.js](../js/tracking-config.js); the admin pages
+  (`admin/index.html`, `admin/dashboard.html`) load neither, so they are already excluded
+  by construction. The module auto-loads `gtag.js` and fires `page_view` whenever
+  `googleMeasurementId` is set — the field was an empty placeholder waiting for the ID.
+  The cookie banner (ADR for consent v2) exposes distinct **analytics** and **marketing**
+  toggles, but the module gated the Google tag on **marketing**, which is wrong for an
+  analytics product: a visitor who accepts analytics-only cookies would not be measured.
+- **Decision:** (1) set `googleMeasurementId: 'G-QWJXK651PP'` in `tracking-config.js`
+  rather than hard-coding the raw `gtag` snippet into each page — this reuses the one
+  loader, avoids double-counting `page_view`, and keeps admin excluded for free.
+  (2) Gate the GA4 tag on the **analytics** consent category (new
+  `consentAllowsAnalytics()`), keep the Meta Pixel + server CAPI + Google Ads `conversion`
+  events on **marketing**, and split `trackPageView()` so each channel fires under its own
+  consent with its own dedupe set. (3) Send granular Google Consent Mode signals
+  (`analytics_storage` from the analytics toggle; `ad_storage`/`ad_user_data`/
+  `ad_personalization` from marketing) instead of granting everything.
+- **Why:** consent-gating an analytics tool to the analytics toggle is the legally correct
+  and user-expected behaviour for a Moldova/EU-facing site with a CMP; the raw unconditional
+  snippet would have bypassed the banner and duplicated the existing loader.
+- **Consequence:** [js/tracking-config.js](../js/tracking-config.js) and
+  [js/tracking.js](../js/tracking.js) updated; behaviour documented in
+  [docs/ANALYTICS.md](ANALYTICS.md). Verified in-browser: under analytics-only consent
+  `gtag.js?id=G-QWJXK651PP` loads and a `page_view` hit reaches GA4
+  (`/g/collect … en=page_view`, Consent Mode `gcs=G101`, `npa=1`), while the Meta Pixel
+  stays off. All 218 node tests pass. Re-run `npm run prepare:tophost` so the bundle ships
+  the new ID, and confirm realtime traffic in the GA4 property after upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

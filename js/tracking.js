@@ -13,7 +13,8 @@
   const FBC_COOKIE = '_fbc';
   const FBP_COOKIE = '_fbp';
   const loadedScripts = new Set();
-  const trackedPageViews = new Set();
+  const trackedMetaPageViews = new Set();
+  const trackedGooglePageViews = new Set();
   let pixelReady = false;
   let googleReady = false;
 
@@ -25,6 +26,14 @@
     const consent = root.EcoVilaConsent?.get?.();
 
     return Boolean(consent?.marketing);
+  }
+
+  // GA4 is an analytics product, so it follows the "analytics" cookie toggle
+  // rather than "marketing" (which gates the Meta Pixel and Google Ads).
+  function consentAllowsAnalytics() {
+    const consent = root.EcoVilaConsent?.get?.();
+
+    return Boolean(consent?.analytics);
   }
 
   function safeCurrentUrl() {
@@ -152,9 +161,11 @@
   function ensureGoogleTag() {
     const measurementId = String(config().googleMeasurementId || config().googleAdsConversionId || '').trim();
 
-    if (!measurementId || !consentAllowsTracking() || googleReady) {
+    if (!measurementId || !consentAllowsAnalytics() || googleReady) {
       return Promise.resolve(googleReady);
     }
+
+    const consent = root.EcoVilaConsent?.get?.() || {};
 
     root.dataLayer = root.dataLayer || [];
     root.gtag = root.gtag || function gtagShim() {
@@ -162,10 +173,10 @@
     };
     root.gtag('js', new Date());
     root.gtag('consent', 'update', {
-      ad_storage: 'granted',
-      analytics_storage: 'granted',
-      ad_user_data: 'granted',
-      ad_personalization: 'granted',
+      analytics_storage: consent.analytics ? 'granted' : 'denied',
+      ad_storage: consent.marketing ? 'granted' : 'denied',
+      ad_user_data: consent.marketing ? 'granted' : 'denied',
+      ad_personalization: consent.marketing ? 'granted' : 'denied',
     });
     root.gtag('config', measurementId);
     googleReady = true;
@@ -217,20 +228,25 @@
   }
 
   function trackPageView() {
-    if (!consentAllowsTracking()) {
+    if (!consentAllowsAnalytics() && !consentAllowsTracking()) {
       return;
     }
 
     const url = safeCurrentUrl();
-    if (trackedPageViews.has(url)) {
-      return;
+    const eventId = getOrCreateEventId(`PageView:${url}`);
+
+    // GA4 page_view — fires under "analytics" consent.
+    if (consentAllowsAnalytics() && !trackedGooglePageViews.has(url)) {
+      trackedGooglePageViews.add(url);
+      trackBrowserGoogle('page_view', { page_location: url, event_id: eventId });
     }
 
-    trackedPageViews.add(url);
-    const eventId = getOrCreateEventId(`PageView:${url}`);
-    trackBrowserMeta('PageView', {}, eventId);
-    trackBrowserGoogle('page_view', { page_location: url, event_id: eventId });
-    invokeServerEvent('PageView', { eventId, eventSourceUrl: url });
+    // Meta Pixel + server-side CAPI — fire under "marketing" consent.
+    if (consentAllowsTracking() && !trackedMetaPageViews.has(url)) {
+      trackedMetaPageViews.add(url);
+      trackBrowserMeta('PageView', {}, eventId);
+      invokeServerEvent('PageView', { eventId, eventSourceUrl: url });
+    }
   }
 
   function trackInitiateCheckout(input) {
@@ -253,22 +269,20 @@
 
     trackBrowserMeta('Purchase', { value, currency }, eventId);
     trackBrowserGoogle('purchase', { value, currency, transaction_id: eventId, event_id: eventId });
-    if (sendTo) {
+    if (sendTo && consentAllowsTracking()) {
       trackBrowserGoogle('conversion', { send_to: sendTo, value, currency, transaction_id: eventId });
     }
   }
 
   function initialize() {
     captureFbcFromUrl();
+    // trackPageView() guards each channel on its own consent category, so we
+    // can call it on every consent change and on load.
     root.addEventListener?.('ecovila:consentchange', () => {
-      if (consentAllowsTracking()) {
-        trackPageView();
-      }
+      trackPageView();
     });
     root.document?.addEventListener('DOMContentLoaded', () => {
-      if (consentAllowsTracking()) {
-        trackPageView();
-      }
+      trackPageView();
     });
   }
 
