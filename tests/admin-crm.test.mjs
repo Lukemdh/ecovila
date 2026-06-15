@@ -223,6 +223,16 @@ describe('EcoVila Step 9 CRM', () => {
     );
   });
 
+  it('keeps the admin CRM out of search indexes with a noindex robots meta', () => {
+    for (const page of ['admin/index.html', 'admin/dashboard.html']) {
+      assert.match(
+        read(page),
+        /<meta\s+name="robots"\s+content="noindex[^"]*">/i,
+        `${page} must carry a noindex robots meta so the CRM never appears in search results`,
+      );
+    }
+  });
+
   it('adds the owner finance tab with reporting controls and metric hooks', () => {
     const dashboard = read('admin/dashboard.html');
     const app = read('admin/js/crm-app.js');

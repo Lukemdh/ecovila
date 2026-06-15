@@ -877,6 +877,28 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   TopHost upload (`npm run prepare:tophost` → `dist/tophost/`); the live site was last
   uploaded before this swap, so until the owner uploads, prod `/` still shows the old state.
 
+### ADR-042 — Keep the admin CRM out of search indexes (`noindex` on admin pages)
+- **Date:** 2026-06-15.
+- **Context:** a pre-launch review found the CRM pages indexable. `robots.txt` disallows
+  `/admin/` only under the wildcard `User-agent: *` group; the explicit per-bot groups
+  (`Googlebot`, `Bingbot`, `YandexBot`, …) repeat just `Allow: /`. Per the robots.txt
+  precedence rule a crawler obeys only its most specific matching group, so those named
+  bots never see the `/admin/` disallow and were free to crawl — and, with no page-level
+  directive, index — `admin/index.html` (the CRM login) and `admin/dashboard.html`. Not a
+  data-exposure risk (CRM data is RLS-protected and unreadable by `anon`), but the login
+  page could surface in search results.
+- **Decision:** add `<meta name="robots" content="noindex, nofollow">` to the `<head>` of
+  both admin pages (right after the viewport meta). A page-level `noindex` is the robust
+  fix here because the named bots *do* crawl `/admin/` and will therefore read and obey it;
+  it keeps working regardless of which `robots.txt` group a crawler picks. `robots.txt`
+  was left unchanged.
+- **Why:** the CRM is staff-only and should never appear in public search; `noindex` is the
+  authoritative signal and closes the per-bot-group gap without restructuring `robots.txt`.
+- **Consequence:** [admin/index.html](../admin/index.html) and
+  [admin/dashboard.html](../admin/dashboard.html) updated; a new contract test in
+  `tests/admin-crm.test.mjs` ("keeps the admin CRM out of search indexes") asserts the
+  `noindex` meta on both pages. Re-run `npm run prepare:tophost` so the bundle ships it.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
