@@ -4,6 +4,38 @@
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
 
+  // The active tab is mirrored to the URL hash (#finance, #daily, ...) so a page
+  // refresh restores the view the user was on instead of snapping back to the
+  // dashboard/calendar. The dashboard is the default and stays on a clean URL.
+  const TAB_NAMES = ['dashboard', 'finance', 'daily', 'towels', 'photos', 'pricing'];
+  let hashNavigationWired = false;
+
+  function resolveTabFromHash() {
+    const hash = String(root.location?.hash || '').replace(/^#/, '');
+    return TAB_NAMES.includes(hash) ? hash : null;
+  }
+
+  function syncTabHash(name) {
+    if (!TAB_NAMES.includes(name) || !root.history?.replaceState || !root.location) {
+      return;
+    }
+
+    const location = root.location;
+    // replaceState (not `location.hash =`) keeps tab switches out of the browser
+    // history, so Back leaves the CRM rather than cycling through tabs, and it
+    // never fires a `hashchange` (avoids re-entering the listener below).
+    if (name === 'dashboard') {
+      if (location.hash) {
+        root.history.replaceState(null, '', `${location.pathname}${location.search}`);
+      }
+      return;
+    }
+
+    if (location.hash !== `#${name}`) {
+      root.history.replaceState(null, '', `#${name}`);
+    }
+  }
+
   function qs(selector, scope) {
     return (scope || root.document).querySelector(selector);
   }
@@ -40,6 +72,8 @@
     if (name === 'towels') {
       root.EcoVilaCrmTowels?.showToday?.();
     }
+
+    syncTabHash(name);
   }
 
   function wireTabs() {
@@ -50,6 +84,21 @@
 
       button.dataset.crmTabWired = 'true';
       button.addEventListener('click', () => setActiveTab(button.dataset.tab));
+    });
+  }
+
+  function wireHashNavigation() {
+    if (hashNavigationWired || typeof root.addEventListener !== 'function') {
+      return;
+    }
+
+    hashNavigationWired = true;
+    // Follow direct #tab links / manual hash edits that arrive after load.
+    root.addEventListener('hashchange', () => {
+      const tab = resolveTabFromHash();
+      if (tab && tab !== qs('[data-tab].is-active')?.dataset.tab) {
+        setActiveTab(tab);
+      }
     });
   }
 
@@ -74,7 +123,8 @@
 
     app.hidden = false;
     wireTabs();
-    setActiveTab(qs('[data-tab].is-active')?.dataset.tab || 'dashboard');
+    wireHashNavigation();
+    setActiveTab(resolveTabFromHash() || qs('[data-tab].is-active')?.dataset.tab || 'dashboard');
 
     try {
       const auth = root.EcoVilaCrmAuth;
@@ -103,7 +153,7 @@
       root.EcoVilaCrmTowels?.init?.(context);
       root.EcoVilaCrmPhotos?.init?.(context);
       root.EcoVilaCrmPricing?.init?.(context);
-      setActiveTab('dashboard');
+      setActiveTab(resolveTabFromHash() || 'dashboard');
     } catch (error) {
       app.hidden = false;
       setAlert(error?.message || 'CRM nu poate porni. Verifică configurarea Supabase.');

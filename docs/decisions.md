@@ -1100,6 +1100,51 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-048 — Admin CRM persists the active tab in the URL hash so a refresh stays on the same view
+- **Date:** 2026-06-16.
+- **Context:** the admin CRM ([admin/dashboard.html](../admin/dashboard.html)) is a single-page
+  tabbed shell (Dashboard / Finance / Situația zilnică / Ștergare / Poze / Prețuri) whose active tab
+  was pure in-memory DOM state. [admin/js/crm-app.js](../admin/js/crm-app.js)'s `init()` ended with an
+  **unconditional** `setActiveTab('dashboard')`, so any page refresh (or returning to a still-open tab)
+  snapped back to the Dashboard/calendar regardless of which view the user was on — losing their place.
+- **Decision:** drive the active tab from the URL hash, entirely within
+  [admin/js/crm-app.js](../admin/js/crm-app.js). A `TAB_NAMES` whitelist gates everything.
+  `resolveTabFromHash()` reads + validates `location.hash`; `syncTabHash(name)` mirrors the active tab
+  back to the hash via `history.replaceState` (deliberately **not** `location.hash =`) — replaceState
+  keeps tab switches out of the browser history (so Back **leaves** the CRM rather than cycling through
+  tabs) and never fires `hashchange` (so the listener below can't re-enter). The default Dashboard tab
+  is kept on a **clean URL**: its hash is stripped rather than written, so a fresh visit isn't rewritten
+  to `…#dashboard`. `setActiveTab` now calls `syncTabHash`; `init()` resolves the initial tab from the
+  hash (falling back to the DOM `is-active` tab, then `'dashboard'`) in **both** places it activates a
+  tab — pre-auth (so the tab still restores if Supabase/auth fails locally, preserving the existing
+  "tabs usable in no-config dashboard" behavior) and post-module-init (so the restored tab's
+  data-loading side effect — `EcoVilaCrmFinance.showCurrentMonth` / `EcoVilaCrmDaily`+`EcoVilaCrmTowels`
+  `.showToday` — runs *after* the owning module is initialized). Those side effects are already guarded
+  by `activeFinance`/`activeDaily`/`activeTowels`, so the earlier pre-auth restore is a safe no-op for
+  them. A single guarded `wireHashNavigation()` adds one `hashchange` listener so direct `#tab` links or
+  a manual hash edit mid-session also switch tabs.
+- **Why:** hash persistence makes a refresh land on the same view and makes the deeper tabs
+  bookmarkable/shareable, with no extra storage and the smallest possible change (one file, no
+  HTML/CSS). `replaceState` is the right primitive because the tab is view state, not a navigation
+  step — pushing history entries would hijack the Back button. Keeping Dashboard hash-free avoids an
+  ugly `#dashboard` appended to every clean load while still being correct on refresh (no hash ⇒
+  Dashboard). Restoring deeper in-tab state (e.g. the exact finance month or daily day) was deliberately
+  **out of scope** — restoring the tab re-runs each tab's normal default load (current month / today),
+  which is the established behavior of `setActiveTab`.
+- **Consequence:** only [admin/js/crm-app.js](../admin/js/crm-app.js) changed; no markup, CSS, or test
+  changes were required (the existing crm-app text-assertions — `wireTabs();` before
+  `auth.requireSession`, and the `EcoVilaCrmFinance` init/`showCurrentMonth` hooks — still hold, and all
+  221 node tests pass). Verified in-browser via the no-cache dev server (ADR-044) with a throwaway
+  harness that loads the **real** `crm-app.js` against the real tab markup with `requireSession` stubbed
+  to `null` (the dashboard otherwise redirects to the login page without a Supabase session): fresh load
+  → clean URL + Dashboard; Finance/Pricing clicks → `#finance` / `#pricing` with the panel switching;
+  Dashboard click strips the hash back to a clean URL; a direct load of `…#daily` (the refresh case)
+  restores the Daily tab; an invalid `#bogus` falls back to Dashboard and cleans the hash; an in-session
+  `#towels` change fires the listener and switches tabs — all with no console errors. Re-run
+  `npm run prepare:tophost` before the next TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
