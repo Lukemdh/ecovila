@@ -267,7 +267,7 @@ describe('EcoVila Step 9 CRM', () => {
     }
 
     assert.match(app, /EcoVilaCrmFinance\?\.init\?\.\(context\)/);
-    assert.match(app, /EcoVilaCrmFinance\?\.showCurrentMonth\?\.\(\)/);
+    assert.match(app, /EcoVilaCrmFinance\?\.showToday\?\.\(\)/);
     assert.match(helpers, /function fetchFinanceReservations/);
     assert.match(helpers, /function fetchFinanceBookedReservations/);
     assert.match(helpers, /created_at/);
@@ -609,6 +609,51 @@ describe('EcoVila Step 9 CRM', () => {
       }),
       'single-day Apply in incasari mode should load reservations booked during that day',
     );
+  });
+
+  it('defaults the finance tab to today as a single-day range on load', async () => {
+    const calls = [];
+    const { document } = createFinanceDocument();
+    const client = {
+      channel() {
+        return {
+          on() {
+            return this;
+          },
+          subscribe() {
+            return this;
+          },
+        };
+      },
+    };
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      document,
+      EcoVilaCrmCalendar: {
+        todayISO: () => '2026-06-16',
+      },
+      EcoVilaSupabase: {
+        async fetchFinanceReservations(_client, options) {
+          calls.push(options);
+          return [];
+        },
+        async fetchFinanceBookedReservations() {
+          return [];
+        },
+      },
+    });
+
+    finance.init({
+      client,
+      formatDate: (value) => value,
+      formatMDL: (value) => `${value} MDL`,
+      setAlert() {},
+    });
+    await Promise.resolve();
+
+    assert.ok(calls.length >= 1, 'finance init should load data immediately');
+    assert.equal(calls[0].rangeStart, '2026-06-16', 'default range should start today');
+    assert.equal(calls[0].rangeEnd, '2026-06-17', 'default range should be a single day');
+    assert.equal(calls[0].mode, 'nights');
   });
 
   it('accepts staff usernames as CRM login aliases', () => {

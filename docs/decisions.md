@@ -1145,6 +1145,47 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-049 — CRM Finance tab opens on TODAY (single-day range) instead of the current month
+- **Date:** 2026-06-16.
+- **Context:** the Finance tab ([admin/js/crm-finance.js](../admin/js/crm-finance.js)) opened to the
+  **current full month** — its `init()` seeded `[firstOfMonth(today), nextMonth)` and
+  `setActiveTab('finance')` ([admin/js/crm-app.js](../admin/js/crm-app.js)) called `showCurrentMonth()`,
+  which re-applied that month range. The owner wanted the tab to land on **today** by default so the
+  current day's figures are the first thing visible (the Daily/Ștergare tabs already open on today via
+  their own `showToday`).
+- **Decision:** rename `showCurrentMonth` → `showToday` and set the default range to the single day
+  `[today, addDays(today, 1))`; `init()`'s seed state was changed to the same single-day range (mode
+  unchanged — still `nights` / "Nopți în perioadă"), and `setActiveTab('finance')` now calls
+  `showToday()`. This reuses the **exact** single-day range the manual calendar pick already produces
+  (ADR-046's booked-day path), so everything downstream behaves as the already-tested single-day case:
+  the range label renders `DD lun. YYYY - DD lun. YYYY`, the length-aware `shiftRange` makes Înapoi/
+  Înainte step by **one day** (not one month) from a single-day range, and the "Rezervări create în ziua
+  selectată" list stays hidden in the default `nights` view (it requires Încasări + a one-day range).
+  The static Finance subtitle dropped the now-misleading word "lunar" (→ "Raport pentru venituri,
+  încasări și performanță.").
+- **Why:** today's numbers are what the owner scans for; defaulting to the whole month buried them and
+  made the tab inconsistent with Daily/Ștergare. Renaming the function (rather than keeping the
+  misleading `showCurrentMonth` name for code that now shows a day) keeps the API honest and matches the
+  `showToday` naming the other two daily tabs use. Reusing the existing single-day plumbing means no new
+  range/label/navigation code and no new edge cases. Changing the default **mode**, or persisting a
+  previously-chosen Finance range across visits, were deliberately left out of scope — the owner can
+  still widen to a month or any span via the calendar, and Înainte/Înapoi.
+- **Consequence:** [admin/js/crm-finance.js](../admin/js/crm-finance.js) (`showToday` + single-day
+  `init` seed), [admin/js/crm-app.js](../admin/js/crm-app.js) (Finance tab side-effect),
+  [admin/dashboard.html](../admin/dashboard.html) (subtitle), and
+  [tests/admin-crm.test.mjs](../tests/admin-crm.test.mjs) updated — the crm-app hook assertion now
+  expects `showToday`, plus a new test asserting `init()` immediately loads `[2026-06-16, 2026-06-17)`
+  in `nights` mode. 222 node tests pass. (ADR-048's prose still references the old `showCurrentMonth`
+  name, which was accurate when written; this ADR supersedes it.) Verified in-browser via the no-cache
+  dev server (ADR-044) with a throwaway harness loading the real `crm-finance.js` + `css/crm.css` with
+  `todayISO`/Supabase stubbed: the Finance panel opens on "16 iun. 2026 - 16 iun. 2026" in Nopți mode,
+  the summary computes today's figures (one overlapping night of a 3-night stay → 2.000 MDL
+  commercial/online, 1 occupied night, 1 paid booking, 2.000 MDL Căsuță mică), and Înainte/Înapoi step
+  to 17 iun. / 15 iun. — no console errors. Re-run `npm run prepare:tophost` before the next TopHost
+  upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

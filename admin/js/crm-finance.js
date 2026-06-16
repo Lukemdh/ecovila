@@ -560,14 +560,14 @@
     syncControls(context, state);
   }
 
-  function showCurrentMonth() {
+  function showToday() {
     if (!activeFinance) {
       return null;
     }
 
     const { context, state } = activeFinance;
-    const monthStart = firstOfMonth(todayISO());
-    setRange(context, state, monthStart, addMonths(monthStart, 1));
+    const today = todayISO();
+    setRange(context, state, today, addDays(today, 1));
     return loadFinance(context, state).catch((error) => {
       context.setAlert(error?.message || 'Finanțele nu s-au putut încărca.');
     });
@@ -637,14 +637,15 @@
 
   function init(context) {
     const today = todayISO();
-    const monthStart = firstOfMonth(today);
     const state = {
       mode: MODE_NIGHTS,
-      rangeStart: monthStart,
-      rangeEnd: addMonths(monthStart, 1),
-      draftStart: monthStart,
-      draftEnd: addDays(addMonths(monthStart, 1), -1),
-      currentMonth: monthStart,
+      // Default to a single-day "today" range (parity with the Daily/Ștergare
+      // tabs); the owner can widen it to a month or any span via the calendar.
+      rangeStart: today,
+      rangeEnd: addDays(today, 1),
+      draftStart: today,
+      draftEnd: today,
+      currentMonth: firstOfMonth(today),
       calendarOpen: false,
       rows: [],
       bookedDayRows: [],
@@ -724,7 +725,7 @@
     isClickInsideFinanceRangePicker,
     loadFinance,
     normalizeBookedDayRows,
-    showCurrentMonth,
+    showToday,
     summarizeFinanceRows,
   };
 });
