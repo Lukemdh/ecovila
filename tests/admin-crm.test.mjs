@@ -653,7 +653,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.ok(calls.length >= 1, 'finance init should load data immediately');
     assert.equal(calls[0].rangeStart, '2026-06-16', 'default range should start today');
     assert.equal(calls[0].rangeEnd, '2026-06-17', 'default range should be a single day');
-    assert.equal(calls[0].mode, 'nights');
+    assert.equal(calls[0].mode, 'paid', 'default mode should be Încasări so the booked-day list shows');
   });
 
   it('accepts staff usernames as CRM login aliases', () => {

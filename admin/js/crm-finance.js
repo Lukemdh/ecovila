@@ -638,9 +638,11 @@
   function init(context) {
     const today = todayISO();
     const state = {
-      mode: MODE_NIGHTS,
-      // Default to a single-day "today" range (parity with the Daily/Ștergare
-      // tabs); the owner can widen it to a month or any span via the calendar.
+      // Default to today's Încasări (paid) view: a single-day range (parity with
+      // the Daily/Ștergare tabs) in "paid" mode, which also surfaces the
+      // "Rezervări create în ziua selectată" list. The owner can switch to Nopți
+      // or widen the range to a month/any span via the calendar.
+      mode: MODE_PAID,
       rangeStart: today,
       rangeEnd: addDays(today, 1),
       draftStart: today,

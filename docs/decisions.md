@@ -1186,6 +1186,41 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-050 — Finance "today" default opens in Încasări (paid) mode so the booked-day list shows
+- **Date:** 2026-06-16.
+- **Context:** follow-up to ADR-049, which made the Finance tab open on today but kept the default
+  reporting mode as `nights` ("Nopți în perioadă"). In that mode the "Rezervări create în ziua
+  selectată" list stays hidden — it only renders for `paid` mode on a one-day range
+  (`renderBookedDayRows` / `loadFinance` in [admin/js/crm-finance.js](../admin/js/crm-finance.js)). The
+  owner confirmed they want the daily default to be the **Încasări** view, surfacing both today's
+  collections and the list of reservations created today.
+- **Decision:** change `init()`'s seed `mode` from `MODE_NIGHTS` to `MODE_PAID` in
+  [admin/js/crm-finance.js](../admin/js/crm-finance.js). Combined with the single-day "today" range from
+  ADR-049, this makes `loadFinance` fetch the booked-day rows (`shouldLoadBookedDay = paid && one-day`)
+  and `renderBookedDayRows` un-hide the section on first paint. `showToday()` still only resets the
+  *range* (not the mode), so a within-session switch to "Nopți" is respected until the page reloads —
+  "default" means the starting state, not a forced reset on every tab re-entry. The static mode toggle
+  in [admin/dashboard.html](../admin/dashboard.html) had its `is-active` / `aria-pressed="true"` moved
+  from the Nopți button to the Încasări button so the pre-JS markup matches the JS default (no flash);
+  `syncControls` would override it on load regardless.
+- **Why:** Încasări + today is the single most useful daily snapshot for the owner — money actually
+  collected today plus the reservations booked today (grouped per reservation via ADR-046) — and it was
+  the explicit ask. Keeping `showToday` range-only preserves the sticky-mode behavior already in place
+  for the rest of the session.
+- **Consequence:** [admin/js/crm-finance.js](../admin/js/crm-finance.js) (seed mode),
+  [admin/dashboard.html](../admin/dashboard.html) (active toggle), and
+  [tests/admin-crm.test.mjs](../tests/admin-crm.test.mjs) (today-default test now asserts
+  `mode === 'paid'`) updated; 222 node tests pass. Verified in-browser via the no-cache dev server with
+  a throwaway harness loading the real `crm-finance.js` + `css/crm.css` (today/Supabase stubbed, the
+  booked-day fetch returning one single-villa booking + one two-villa group created today): the Finance
+  panel opens on "16 iun. 2026 - 16 iun. 2026" with **Încasări** active, the paid-mode summary shows
+  3.800 MDL commercial/online · 1 paid booking, and the "Rezervări create în ziua selectată" section is
+  visible with count 2 — a single card (Vila #3 · 3.800 MDL · online plătit) and a grouped card
+  (2 vile · 10.867 MDL · din oficiu) — no console errors. Re-run `npm run prepare:tophost` before the
+  next TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
