@@ -200,6 +200,22 @@
     return result.data || {};
   }
 
+  async function fetchMiaPaymentStatus(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('maib-mia-status', {
+      body: { bookingGroupId: input?.bookingGroupId || '' },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
   async function refundMaibPaymentRequest(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -803,6 +819,7 @@
     cancelReservationByToken,
     confirmReservationPayment,
     createMaibPaymentRequest,
+    fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
     createReservationRequest,
     startReservationLookup,

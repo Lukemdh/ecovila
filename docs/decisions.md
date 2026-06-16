@@ -1219,6 +1219,44 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   (2 vile · 10.867 MDL · din oficiu) — no console errors. Re-run `npm run prepare:tophost` before the
   next TopHost upload.
 
+### ADR-051 — MIA QR direct payment for +373 guests (own QR page, no signature key)
+- **Date:** 2026-06-17.
+- **Decision:** `+373` guests now pay via a dedicated, MIA-only QR page on our own domain
+  (`plata-mia.html`) instead of the maib multi-option hosted checkout. On checkout,
+  `maib-create-payment` (MIA rail) creates a **dynamic, fixed-amount, 5-minute QR** via
+  `POST /v2/mia/qr` (`createMaibMiaQr` in `_shared/maib.ts`) and returns its `url`; the page
+  renders the QR (vendored `js/vendor/qrcode.js`) plus a "pay from phone" deeplink and polls
+  `maib-mia-status` until paid, then redirects to `confirmare.html`. Card guests are unchanged.
+  This implements the MIA leg that ADR-004 chose but deferred.
+- **How / trust model:** payment is confirmed by **re-reading MAIB's authoritative state**
+  (`GET /v2/mia/payments?orderId=…` with our OAuth token), never by trusting the callback —
+  so the MIA **signature key is not required**. The public `maib-mia-callback`
+  (`verify_jwt=false`) only names the order to re-check; `maib-mia-status` (`verify_jwt=true`)
+  is the browser poll. Both funnel through `_shared/miaReconcile.ts` → `_shared/bookingSettlement.ts`,
+  a settlement core **extracted from the card callback** so both rails confirm bookings
+  identically (mark paid, reinstate cron-released holds, notify + track once, amount-mismatch
+  guard). No DB migration: for MIA rows `pay_id`=qrId, `provider_payment_id`=executed payId
+  (so the existing refund flow works), `checkout_url`=QR url.
+- **Why:** MIA is the only rail offered to Moldovan guests, so a single pre-selected option is
+  clearer than the maib chooser; MIA commission ≈ 0.7% (vs card) ; and the existing
+  `MAIB_CLIENT_ID/SECRET` are already entitled to the MIA QR API (probe-verified 2026-06-17),
+  with `terminalId` defaulted by the account.
+- **Security:** no high-confidence vulns (reviewed 2026-06-17). A forged callback cannot
+  confirm an unpaid booking (re-verified against MAIB); amounts are server-authoritative;
+  settlement is idempotent; `maib-mia-status` is keyed by the unguessable `bookingGroupId`
+  UUID and returns **no guest PII** (PII stays behind the manage token). MIA QR creation sends
+  no payer PII to MAIB. Vendored `qrcode.js` verified byte-identical to npm
+  `qrcode-generator@1.4.4` (provenance + SHA-256 in `js/vendor/README.md`).
+- **Consequence — deploy ordering is mandatory:** the frontend (TopHost, manual upload;
+  `plata-mia.html` added to the `prepare:tophost` allowlist) **must go live before** the four
+  edge functions (`maib-create-payment`, `maib-callback`, `maib-mia-callback`, `maib-mia-status`),
+  or `+373` checkout breaks. A `payUrl` → `plata-mia.html` fallback in the MIA response protects
+  browsers running cached pre-MIA `checkout.js`. No new env var (the MIA callback URL derives
+  from `SUPABASE_URL`). Built + verified (225 node + 53 deno tests pass); committed on branch
+  `mia`, not yet deployed.
+- **Optional later hardening:** rate-limit / early-reject the unauthenticated `maib-mia-callback`;
+  a cron that re-checks pending MIA payments before the expiry cron cancels them.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

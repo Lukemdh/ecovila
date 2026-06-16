@@ -166,3 +166,159 @@ Deno.test('getMaibCallbackAmount reads the captured amount from known payload fi
   assertEquals(getMaibCallbackAmount({ amount: 'not-a-number' }), null);
   assertEquals(getMaibCallbackAmount({}), null);
 });
+
+Deno.test('buildMaibMiaQrPayload builds a dynamic fixed-amount MIA QR request', async () => {
+  const { buildMaibMiaQrPayload } = await import('../_shared/maib.ts');
+
+  assertEquals(
+    buildMaibMiaQrPayload({
+      amount: 3100,
+      orderId: '00000000-0000-4000-8000-000000000001',
+      description: 'EcoVila reservation 00000000-0000-4000-8000-000000000001',
+      callbackUrl: 'https://project.supabase.co/functions/v1/maib-mia-callback',
+      expiresAt: '2026-06-17T10:05:00.000Z',
+    }),
+    {
+      type: 'Dynamic',
+      amountType: 'Fixed',
+      amount: 3100,
+      currency: 'MDL',
+      orderId: '00000000-0000-4000-8000-000000000001',
+      description: 'EcoVila reservation 00000000-0000-4000-8000-000000000001',
+      callbackUrl: 'https://project.supabase.co/functions/v1/maib-mia-callback',
+      expiresAt: '2026-06-17T10:05:00.000Z',
+    },
+  );
+});
+
+Deno.test('normalizeMaibMiaPaymentStatus maps MIA payment states', async () => {
+  const { normalizeMaibMiaPaymentStatus, isMaibMiaPaymentExecuted } = await import(
+    '../_shared/maib.ts'
+  );
+
+  assertEquals(normalizeMaibMiaPaymentStatus({ status: 'Executed' }), 'paid');
+  assertEquals(normalizeMaibMiaPaymentStatus({ status: 'Declined' }), 'failed');
+  assertEquals(normalizeMaibMiaPaymentStatus({ status: 'Cancelled' }), 'cancelled');
+  assertEquals(normalizeMaibMiaPaymentStatus({ status: 'Pending' }), 'pending');
+  assertEquals(normalizeMaibMiaPaymentStatus({}), 'pending');
+  assertEquals(isMaibMiaPaymentExecuted({ status: 'Executed' }), true);
+  assertEquals(isMaibMiaPaymentExecuted({ status: 'Pending' }), false);
+});
+
+Deno.test('getMaibMiaCallback* helpers read flat and nested ids', async () => {
+  const { getMaibMiaCallbackOrderId, getMaibMiaCallbackQrId } = await import('../_shared/maib.ts');
+
+  assertEquals(getMaibMiaCallbackOrderId({ orderId: 'order-1' }), 'order-1');
+  assertEquals(getMaibMiaCallbackOrderId({ result: { orderId: 'order-2' } }), 'order-2');
+  assertEquals(getMaibMiaCallbackOrderId({}), '');
+  assertEquals(getMaibMiaCallbackQrId({ qrId: 'qr-1' }), 'qr-1');
+  assertEquals(getMaibMiaCallbackQrId({ result: { qrId: 'qr-2' } }), 'qr-2');
+});
+
+Deno.test('createMaibMiaQr posts a dynamic QR body and parses the result', async () => {
+  const { createMaibMiaQr } = await import('../_shared/maib.ts');
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const fetcher = ((url: string | URL, init?: RequestInit) => {
+    const href = String(url);
+    calls.push({ url: href, body: init?.body ? JSON.parse(String(init.body)) : null });
+
+    if (href.endsWith('/v2/auth/token')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ ok: true, result: { accessToken: 'tok', tokenType: 'Bearer' } }),
+          { status: 200 },
+        ),
+      );
+    }
+
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            qrId: 'qr-1',
+            orderId: 'group-1',
+            url: 'https://mia-qr.bnm.md/1/m/BNM/AGR',
+            expiresAt: '2026-06-17T10:05:00.000Z',
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  const result = await createMaibMiaQr(
+    {
+      amount: 3100,
+      orderId: 'group-1',
+      description: 'EcoVila reservation group-1',
+      callbackUrl: 'https://x/functions/v1/maib-mia-callback',
+      expiresAt: '2026-06-17T10:05:00.000Z',
+    },
+    { fetcher, baseUrl: 'https://api.test', clientId: 'id', clientSecret: 'secret' },
+  );
+
+  assertEquals(result.qrId, 'qr-1');
+  assertEquals(result.url, 'https://mia-qr.bnm.md/1/m/BNM/AGR');
+
+  const qrCall = calls.find((call) => call.url.endsWith('/v2/mia/qr'));
+  assertEquals((qrCall?.body as Record<string, unknown>)?.type, 'Dynamic');
+  assertEquals((qrCall?.body as Record<string, unknown>)?.amountType, 'Fixed');
+  assertEquals((qrCall?.body as Record<string, unknown>)?.orderId, 'group-1');
+});
+
+Deno.test('getMaibMiaPaymentByOrderId prefers the executed payment attempt', async () => {
+  const { getMaibMiaPaymentByOrderId } = await import('../_shared/maib.ts');
+  const fetcher = ((url: string | URL) => {
+    const href = String(url);
+    if (href.endsWith('/v2/auth/token')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ ok: true, result: { accessToken: 'tok', tokenType: 'Bearer' } }),
+          { status: 200 },
+        ),
+      );
+    }
+
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            totalCount: 2,
+            items: [
+              {
+                payId: 'p-pending',
+                status: 'Pending',
+                amount: 3100,
+                currency: 'MDL',
+                orderId: 'g',
+                qrId: 'qr',
+              },
+              {
+                payId: 'p-exec',
+                status: 'Executed',
+                amount: 3100,
+                currency: 'MDL',
+                orderId: 'g',
+                qrId: 'qr',
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  const payment = await getMaibMiaPaymentByOrderId('g', {
+    fetcher,
+    baseUrl: 'https://api.test',
+    clientId: 'id',
+    clientSecret: 'secret',
+  });
+
+  assertEquals(payment?.payId, 'p-exec');
+  assertEquals(payment?.status, 'Executed');
+  assertEquals(payment?.amount, 3100);
+});

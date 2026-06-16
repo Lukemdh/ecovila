@@ -226,6 +226,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     const createReservation = read('supabase/functions/create-reservation/index.ts');
     const confirmReservationPayment = read('supabase/functions/confirm-reservation-payment/index.ts');
     const maibCallback = read('supabase/functions/maib-callback/index.ts');
+    const bookingSettlement = read('supabase/functions/_shared/bookingSettlement.ts');
 
     assert.match(notifications, /reserveNotificationEvent/);
     assert.match(notifications, /markNotificationEventSent/);
@@ -256,12 +257,12 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'staff payment confirmation should enforce the Diana role inside the service-role function',
     );
     assert.match(
-      maibCallback,
+      bookingSettlement,
       /dispatchPaymentConfirmationOnce/,
       'Maib confirmation should reserve notification events before sending',
     );
     assert.match(
-      maibCallback,
+      bookingSettlement,
       /delivery_status:\s*'reserved'/,
       'Maib confirmation should reserve notification events before sending',
     );
@@ -271,7 +272,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'reservation creation should not dispatch notifications',
     );
     assert.doesNotMatch(
-      maibCallback,
+      bookingSettlement,
       /dispatchAndRecordNotification/,
       'Maib confirmation should not send before reserving idempotency rows',
     );
@@ -294,7 +295,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
 
   it('stamps paid_at when cash or online reservations become paid', () => {
     const confirmReservationPayment = read('supabase/functions/confirm-reservation-payment/index.ts');
-    const maibCallback = read('supabase/functions/maib-callback/index.ts');
+    const bookingSettlement = read('supabase/functions/_shared/bookingSettlement.ts');
 
     assert.match(confirmReservationPayment, /const now = new Date\(\)\.toISOString\(\)/);
     assert.match(
@@ -303,7 +304,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'staff cash confirmation should record the actual paid_at moment',
     );
     assert.match(
-      maibCallback,
+      bookingSettlement,
       /payment_status:\s*'paid'[\s\S]*payment_in_progress:\s*false[\s\S]*paid_at:\s*now/s,
       'Maib approved callbacks should record the actual paid_at moment',
     );

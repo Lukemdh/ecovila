@@ -432,6 +432,18 @@
       .filter(Boolean);
   }
 
+  function buildMiaPaymentUrl(primaryId, bookingGroupId, manageToken) {
+    const query = new URLSearchParams();
+    query.set('id', primaryId);
+    query.set('group', bookingGroupId);
+
+    if (manageToken) {
+      query.set('manage', manageToken);
+    }
+
+    return `plata-mia.html?${query.toString()}`;
+  }
+
   function buildConfirmationUrl(primaryId, manageToken, params, page) {
     const query = new URLSearchParams();
     query.set('id', primaryId);
@@ -466,6 +478,17 @@
         paymentRail: getPaymentRail(normalizedGuestPhone),
         trackingEventId: payloads[0]?.tracking_event_id || '',
       }).then((result) => {
+        // A MIA guest gets our own QR page instead of the maib checkout, so the
+        // only option is the pre-selected MIA instant payment.
+        if (result?.rail === 'mia' || result?.qrUrl) {
+          root.location.href = buildMiaPaymentUrl(
+            primaryId,
+            createResult?.bookingGroupId || primaryId,
+            manageToken,
+          );
+          return;
+        }
+
         if (result?.payUrl) {
           root.location.href = result.payUrl;
           return;
@@ -743,6 +766,7 @@
     getOrCreateTrackingEventId,
     getReservationIdsForPayment,
     buildConfirmationUrl,
+    buildMiaPaymentUrl,
     hasSelectedRoomNumber,
     initCheckout,
     normalizeInternationalPhone,

@@ -435,6 +435,11 @@
       const client = supabaseHelpers.getSupabaseClient();
       const result = await supabaseHelpers.createMaibPaymentRequest(client, _retryContext);
 
+      if (result?.rail === 'mia' || result?.qrUrl) {
+        root.location.href = miaPaymentUrl(_retryContext);
+        return;
+      }
+
       if (result?.payUrl) {
         root.location.href = result.payUrl;
         return;
@@ -461,6 +466,16 @@
     params.set('id', reservationId);
     params.set('manage', manageToken);
     return `gestionare.html?${params.toString()}`;
+  }
+
+  function miaPaymentUrl(retryContext) {
+    const params = new URLSearchParams();
+    params.set('id', retryContext.primaryReservationId);
+    params.set('group', retryContext.bookingGroupId);
+    if (retryContext.manageToken) {
+      params.set('manage', retryContext.manageToken);
+    }
+    return `plata-mia.html?${params.toString()}`;
   }
 
   // ── Card status polling ─────────────────────────────────────────────────────

@@ -2,8 +2,11 @@ import { getCorsHeaders, handleCors } from '../_shared/cors.ts';
 import { getSiteUrl } from '../_shared/env.ts';
 import { assertMethod, HttpError, readJson } from '../_shared/http.ts';
 import {
+  cancelMaibMiaQr,
   createMaibCheckout,
+  createMaibMiaQr,
   getMaibCallbackUrl,
+  getMaibMiaCallbackUrl,
   MAIB_PAYMENT_SESSION_MINUTES,
 } from '../_shared/maib.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
@@ -85,17 +88,29 @@ Deno.serve(async (request) => {
       (total, reservation) => total + Number(reservation.total_price || 0),
       0,
     );
+    const responseContext: MiaResponseContext = {
+      siteUrl: getSiteUrl(),
+      primaryReservationId,
+      bookingGroupId,
+      manageToken: String(body?.manageToken || '').trim(),
+    };
     const existingPayment = await findReusablePayment(client, bookingGroupId);
 
     if (existingPayment?.checkout_url) {
-      // Only hand back a previous checkout session when it was created for the
-      // exact amount owed now; otherwise the guest would pay a stale total.
+      // Only hand back a previous session when it was created for the exact
+      // amount owed now; otherwise the guest would pay a stale total.
       if (Number(existingPayment.amount) === amount) {
-        return json(request, {
-          payUrl: existingPayment.checkout_url,
-          payId: existingPayment.pay_id,
-          reused: true,
-        });
+        return json(request, reusedResponse(paymentRail, existingPayment, responseContext));
+      }
+
+      // A MIA QR for a stale amount is independently payable, so cancel it at
+      // MAIB before minting a fresh one; the card checkout is harmless to leave.
+      if (paymentRail === 'mia') {
+        try {
+          await cancelMaibMiaQr(existingPayment.pay_id, 'amount_changed');
+        } catch (error) {
+          console.error('Could not cancel stale MIA QR', error);
+        }
       }
 
       await expireStalePayment(client, existingPayment.pay_id);
@@ -107,35 +122,28 @@ Deno.serve(async (request) => {
     // failed charge or a closed gateway) never extend the five-minute window.
     const expiresAt = resolvePaymentDeadline(reservations, now);
     const firstReservation = reservations[0];
-    const siteUrl = getSiteUrl();
-    const manageToken = String(body?.manageToken || '').trim();
-    const successUrl = confirmationUrl(siteUrl, primaryReservationId, manageToken, 'success');
-    const failUrl = confirmationUrl(siteUrl, primaryReservationId, manageToken, 'failed');
-    const checkout = await createMaibCheckout({
-      amount,
-      bookingGroupId,
-      description: `EcoVila reservation ${bookingGroupId}`,
-      guestEmail: firstReservation.guest_email,
-      guestName: `${firstReservation.guest_first_name} ${firstReservation.guest_last_name}`,
-      guestPhone: firstReservation.guest_phone,
-      language: firstReservation.guest_language || undefined,
-      createdAt: now.toISOString(),
-      callbackUrl: getMaibCallbackUrl(),
-      successUrl,
-      failUrl,
-      ip: getClientIp(request),
-      userAgent: request.headers.get('user-agent') || '',
-    });
+
+    const session = paymentRail === 'mia'
+      ? await createMiaSession(bookingGroupId, amount, expiresAt)
+      : await createCardSession({
+        request,
+        manageToken: responseContext.manageToken,
+        amount,
+        bookingGroupId,
+        primaryReservationId,
+        reservation: firstReservation,
+        createdAt: now.toISOString(),
+      });
 
     await insertPaymentSession(client, {
-      payId: checkout.payId,
+      payId: session.payId,
       bookingGroupId,
       primaryReservationId,
       reservationIds: reservations.map((reservation) => reservation.id),
       amount,
       paymentRail,
-      checkoutUrl: checkout.payUrl,
-      raw: checkout.raw,
+      checkoutUrl: session.url,
+      raw: session.raw,
       expiresAt,
     });
     await markReservationsInProgress(
@@ -144,7 +152,7 @@ Deno.serve(async (request) => {
       expiresAt,
     );
 
-    return json(request, { payUrl: checkout.payUrl, payId: checkout.payId });
+    return json(request, createdResponse(paymentRail, session, expiresAt, responseContext));
   } catch (error) {
     console.error('Maib create payment failed', {
       message: error instanceof Error ? error.message : 'Unexpected server error.',
@@ -158,6 +166,120 @@ Deno.serve(async (request) => {
     );
   }
 });
+
+type PaymentSession = { payId: string; url: string; raw: Record<string, unknown> };
+
+async function createMiaSession(
+  bookingGroupId: string,
+  amount: number,
+  expiresAt: string,
+): Promise<PaymentSession> {
+  const qr = await createMaibMiaQr({
+    amount,
+    orderId: bookingGroupId,
+    description: `EcoVila reservation ${bookingGroupId}`,
+    callbackUrl: getMaibMiaCallbackUrl(),
+    expiresAt,
+  });
+
+  return { payId: qr.qrId, url: qr.url, raw: qr.raw };
+}
+
+async function createCardSession(input: {
+  request: Request;
+  manageToken: string;
+  amount: number;
+  bookingGroupId: string;
+  primaryReservationId: string;
+  reservation: PayableReservationRow;
+  createdAt: string;
+}): Promise<PaymentSession> {
+  const siteUrl = getSiteUrl();
+  const successUrl = confirmationUrl(
+    siteUrl,
+    input.primaryReservationId,
+    input.manageToken,
+    'success',
+  );
+  const failUrl = confirmationUrl(siteUrl, input.primaryReservationId, input.manageToken, 'failed');
+  const checkout = await createMaibCheckout({
+    amount: input.amount,
+    bookingGroupId: input.bookingGroupId,
+    description: `EcoVila reservation ${input.bookingGroupId}`,
+    guestEmail: input.reservation.guest_email,
+    guestName: `${input.reservation.guest_first_name} ${input.reservation.guest_last_name}`,
+    guestPhone: input.reservation.guest_phone,
+    language: input.reservation.guest_language || undefined,
+    createdAt: input.createdAt,
+    callbackUrl: getMaibCallbackUrl(),
+    successUrl,
+    failUrl,
+    ip: getClientIp(input.request),
+    userAgent: input.request.headers.get('user-agent') || '',
+  });
+
+  return { payId: checkout.payId, url: checkout.payUrl, raw: checkout.raw };
+}
+
+type MiaResponseContext = {
+  siteUrl: string;
+  primaryReservationId: string;
+  bookingGroupId: string;
+  manageToken: string;
+};
+
+// The MIA QR lives on our own page. `payUrl` points there too so any browser
+// still running a cached, pre-MIA checkout.js (which only knows `payUrl`) is
+// carried to the QR page instead of being stranded after this deploy.
+function miaPageUrl(ctx: MiaResponseContext) {
+  const params = new URLSearchParams();
+  params.set('id', ctx.primaryReservationId);
+  params.set('group', ctx.bookingGroupId);
+
+  if (ctx.manageToken) {
+    params.set('manage', ctx.manageToken);
+  }
+
+  return `${ctx.siteUrl}/plata-mia.html?${params.toString()}`;
+}
+
+function reusedResponse(
+  paymentRail: PaymentRail,
+  existing: ReusablePaymentRow,
+  ctx: MiaResponseContext,
+) {
+  if (paymentRail === 'mia') {
+    return {
+      rail: 'mia',
+      qrUrl: existing.checkout_url,
+      qrId: existing.pay_id,
+      expiresAt: existing.expires_at,
+      payUrl: miaPageUrl(ctx),
+      reused: true,
+    };
+  }
+
+  return { payUrl: existing.checkout_url, payId: existing.pay_id, reused: true };
+}
+
+function createdResponse(
+  paymentRail: PaymentRail,
+  session: PaymentSession,
+  expiresAt: string,
+  ctx: MiaResponseContext,
+) {
+  if (paymentRail === 'mia') {
+    return {
+      rail: 'mia',
+      qrUrl: session.url,
+      qrId: session.payId,
+      expiresAt,
+      payUrl: miaPageUrl(ctx),
+    };
+  }
+
+  return { payUrl: session.url, payId: session.payId };
+}
 
 async function findPayableReservations(
   client: SupabaseClient,

@@ -113,6 +113,212 @@ export async function refundMaibPayment(
   return body;
 }
 
+// ── MIA QR (instant payments) ──────────────────────────────────────────────
+// docs.maibmerchants.md/mia-qr-api. The MIA QR API shares the host and OAuth
+// token of the card Checkout API, so no extra credentials are needed. For a
+// +373 guest we mint a single dynamic, fixed-amount QR per booking; the guest
+// pays by scanning it or tapping the deeplink. Payment is confirmed by an
+// authenticated GET against /v2/mia/payments (status "Executed"), so the
+// callback signature key is never required — a forged callback cannot settle a
+// booking because we always re-read the source of truth.
+
+export type MaibMiaQrInput = {
+  amount: number;
+  orderId: string;
+  description: string;
+  callbackUrl: string;
+  expiresAt: string;
+};
+
+export type MaibMiaQrResult = {
+  qrId: string;
+  url: string;
+  orderId: string;
+  expiresAt: string;
+  raw: Record<string, unknown>;
+};
+
+export type MaibMiaPayment = {
+  payId: string;
+  qrId: string;
+  orderId: string;
+  status: string;
+  amount: number | null;
+  currency: string;
+  raw: Record<string, unknown>;
+};
+
+export function buildMaibMiaQrPayload(input: MaibMiaQrInput) {
+  const amount = normalizeAmount(input.amount);
+  const description = trim(input.description).slice(0, 250) ||
+    `EcoVila booking ${trim(input.orderId)}`;
+
+  return {
+    type: 'Dynamic',
+    amountType: 'Fixed',
+    amount,
+    currency: 'MDL',
+    orderId: trim(input.orderId),
+    description,
+    callbackUrl: input.callbackUrl,
+    expiresAt: input.expiresAt,
+  };
+}
+
+export async function createMaibMiaQr(
+  input: MaibMiaQrInput,
+  options: MaibFetchOptions = {},
+): Promise<MaibMiaQrResult> {
+  const fetcher = options.fetcher || fetch;
+  const baseUrl = (options.baseUrl || getMaibBaseUrl()).replace(/\/+$/, '');
+  const token = await getMaibAccessToken({ ...options, fetcher, baseUrl });
+  const payload = buildMaibMiaQrPayload(input);
+  const response = await fetcher(`${baseUrl}/v2/mia/qr`, {
+    method: 'POST',
+    headers: {
+      Authorization: `${token.tokenType} ${token.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok || body?.ok === false) {
+    throw new Error(formatMaibError(body, 'Maib MIA QR could not be created.'));
+  }
+
+  const result = isRecord(body?.result) ? body.result : {};
+  const qrId = trim(result.qrId);
+  const url = trim(result.url);
+
+  if (!qrId || !url) {
+    throw new Error('Maib MIA QR response did not include qrId and url.');
+  }
+
+  return {
+    qrId,
+    url,
+    orderId: trim(result.orderId) || trim(input.orderId),
+    expiresAt: trim(result.expiresAt) || input.expiresAt,
+    raw: body,
+  };
+}
+
+export async function getMaibMiaPaymentByOrderId(
+  orderId: string,
+  options: MaibFetchOptions = {},
+): Promise<MaibMiaPayment | null> {
+  const fetcher = options.fetcher || fetch;
+  const baseUrl = (options.baseUrl || getMaibBaseUrl()).replace(/\/+$/, '');
+  const token = await getMaibAccessToken({ ...options, fetcher, baseUrl });
+  const response = await fetcher(
+    `${baseUrl}/v2/mia/payments?orderId=${encodeURIComponent(trim(orderId))}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `${token.tokenType} ${token.accessToken}` },
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok || body?.ok === false) {
+    throw new Error(formatMaibError(body, 'Maib MIA payments could not be read.'));
+  }
+
+  const result = isRecord(body?.result) ? body.result : {};
+  const rawItems: unknown[] = Array.isArray(result.items) ? result.items as unknown[] : [];
+  const items = rawItems.filter(isRecord);
+  if (!items.length) {
+    return null;
+  }
+
+  // Prefer a settled payment when several attempts exist for one order.
+  const executed = items.find((item) => isMaibMiaPaymentExecuted(item));
+  return toMiaPayment(executed || items[0]);
+}
+
+export async function cancelMaibMiaQr(
+  qrId: string,
+  reason: string,
+  options: MaibFetchOptions = {},
+) {
+  const fetcher = options.fetcher || fetch;
+  const baseUrl = (options.baseUrl || getMaibBaseUrl()).replace(/\/+$/, '');
+  const token = await getMaibAccessToken({ ...options, fetcher, baseUrl });
+  const response = await fetcher(
+    `${baseUrl}/v2/mia/qr/${encodeURIComponent(trim(qrId))}/cancel`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `${token.tokenType} ${token.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason: trim(reason) || 'cancelled' }),
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok || body?.ok === false) {
+    throw new Error(formatMaibError(body, 'Maib MIA QR could not be cancelled.'));
+  }
+
+  return body;
+}
+
+export function normalizeMaibMiaPaymentStatus(
+  payment: Record<string, unknown>,
+): MaibCallbackStatus {
+  const status = trim(payment.status).toLowerCase();
+
+  if (status === 'executed') {
+    return 'paid';
+  }
+  if (status === 'cancelled' || status === 'canceled') {
+    return 'cancelled';
+  }
+  if (status === 'declined' || status === 'failed' || status === 'rejected') {
+    return 'failed';
+  }
+
+  return 'pending';
+}
+
+export function isMaibMiaPaymentExecuted(payment: Record<string, unknown>) {
+  return normalizeMaibMiaPaymentStatus(payment) === 'paid';
+}
+
+export function getMaibMiaCallbackOrderId(payload: Record<string, unknown>) {
+  const result = isRecord(payload.result) ? payload.result : {};
+  return trim(payload.orderId) || trim(result.orderId);
+}
+
+export function getMaibMiaCallbackQrId(payload: Record<string, unknown>) {
+  const result = isRecord(payload.result) ? payload.result : {};
+  return trim(payload.qrId) || trim(result.qrId);
+}
+
+export function getMaibMiaCallbackUrl() {
+  const configured = optionalEnv('MAIB_MIA_CALLBACK_URL');
+  if (configured) {
+    return configured;
+  }
+
+  return `${requiredEnv('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1/maib-mia-callback`;
+}
+
+function toMiaPayment(item: Record<string, unknown>): MaibMiaPayment {
+  const rawAmount = Number(item.amount);
+
+  return {
+    payId: trim(item.payId),
+    qrId: trim(item.qrId),
+    orderId: trim(item.orderId),
+    status: trim(item.status),
+    amount: Number.isFinite(rawAmount) ? rawAmount : null,
+    currency: trim(item.currency) || 'MDL',
+    raw: item,
+  };
+}
+
 export async function getMaibAccessToken(options: MaibFetchOptions = {}) {
   const fetcher = options.fetcher || fetch;
   const baseUrl = (options.baseUrl || getMaibBaseUrl()).replace(/\/+$/, '');

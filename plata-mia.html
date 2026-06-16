@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila | Plată MIA</title>
+    <meta name="description" content="Achită rezervarea EcoVila instant prin MIA.">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/booking.css">
+    <link rel="stylesheet" href="css/checkout.css">
+    <link rel="stylesheet" href="css/confirmation.css">
+    <link rel="stylesheet" href="css/mia.css">
+    <meta name="robots" content="noindex">
+  </head>
+  <body>
+    <a class="skip-link" href="#mia-page" data-i18n="access.skip">Sari la conținut</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="index.html#top" aria-label="EcoVila">
+        <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
+      </a>
+
+      <div class="header-actions">
+        <div class="language-dropdown header-bar-control">
+          <label class="visually-hidden" for="language-select">Language</label>
+          <select class="language-select" id="language-select" data-lang-select aria-label="Language">
+            <option value="ro">RO</option>
+            <option value="ru">RU</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="checkout-page" id="mia-page" data-mia-app>
+      <div class="checkout-shell">
+
+        <!-- Loading / redirecting -->
+        <section class="cb-status-card" data-mia-loading>
+          <span class="an-spinner" aria-hidden="true"></span>
+          <h2 data-i18n="mia.loadingTitle">Se pregătește plata</h2>
+          <p data-i18n="mia.loadingText">Generăm codul QR pentru plata instant prin MIA…</p>
+        </section>
+
+        <!-- Error -->
+        <section class="checkout-empty-state" data-mia-error hidden>
+          <div>
+            <h2 data-i18n="mia.errorTitle">Plata nu a putut fi inițiată</h2>
+            <p data-i18n="mia.errorText">Nu am găsit o plată activă pentru această rezervare. Încearcă să rezervi din nou.</p>
+          </div>
+          <a class="editorial-button editorial-button--filled" href="rezervari.html" data-i18n="confirmare.backToBooking">Rezervați din nou</a>
+        </section>
+
+        <!-- MIA QR payment card -->
+        <section class="cb-status-card mia-card" data-mia-pay hidden>
+          <div class="mia-card__brand">
+            <strong style="font-family: var(--heading-font); font-size: 1.4rem; letter-spacing: 0.12em; color: var(--espresso);">MIA</strong>
+            <span class="mia-card__brand-sep" aria-hidden="true"></span>
+            <img src="/assets/maib.png" alt="maib">
+          </div>
+
+          <h2 data-i18n="mia.payTitle">Scanează codul QR pentru a plăti</h2>
+          <p data-i18n="mia.payText">Deschide aplicația băncii tale și scanează codul. Plata se confirmă instant.</p>
+
+          <div class="mia-qr" data-mia-qr>
+            <span class="an-spinner mia-qr__spinner" aria-hidden="true"></span>
+          </div>
+
+          <div class="mia-divider" data-i18n="mia.or">sau</div>
+
+          <a class="editorial-button editorial-button--filled mia-pay-link" data-mia-pay-link href="#" target="_blank" rel="noopener" data-i18n="mia.payButton">Achită din telefon</a>
+
+          <div class="mia-amount">
+            <span class="mia-amount__label" data-i18n="mia.amountLabel">Sumă de plată</span>
+            <span class="mia-amount__value" data-mia-amount>--</span>
+          </div>
+
+          <div class="mia-countdown" data-mia-countdown hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span data-mia-countdown-value>--:--</span>
+          </div>
+
+          <p class="mia-hint" data-i18n="mia.hint">Nu închide această pagină — vei fi direcționat automat după confirmarea plății.</p>
+        </section>
+
+        <!-- Expired -->
+        <section class="cb-status-card cb-status-card--failed" data-mia-expired hidden>
+          <div class="an-status-icon an-status-icon--warning" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <h2 data-i18n="mia.expiredTitle">Timpul de plată a expirat</h2>
+          <p data-i18n="mia.expiredText">Rezervarea nu a fost confirmată deoarece plata nu a fost finalizată la timp. Poți încerca din nou oricând.</p>
+          <a class="editorial-button editorial-button--filled" href="rezervari.html" data-i18n="confirmare.backToBooking">Rezervați din nou</a>
+        </section>
+
+      </div>
+    </main>
+
+    <footer class="site-footer" id="footer">
+      <div class="section-inner site-footer__grid">
+        <div class="site-footer__brand">
+          <img src="/assets/logoNT.png" alt="EcoVila" class="site-footer__logo">
+          <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi.</p>
+          <div class="site-footer__payments">
+            <span class="site-footer__payment"><img src="/assets/maib.png" alt="maib" loading="lazy" decoding="async"></span>
+            <span class="site-footer__payment"><img src="/assets/mastercard.png" alt="Mastercard" loading="lazy" decoding="async"></span>
+            <span class="site-footer__payment"><img src="/assets/visa.png" alt="Visa" loading="lazy" decoding="async"></span>
+          </div>
+        </div>
+        <dl class="site-footer__legal">
+          <div>
+            <dt data-i18n="footer.phoneLabel">Telefon</dt>
+            <dd>+37360120220</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
+          </div>
+        </dl>
+        <div class="site-footer__links">
+          <h2 data-i18n="footer.useful">Utile</h2>
+          <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
+          <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
+          <span data-i18n="footer.copy">© 2026 EcoVila</span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="js/vendor/qrcode.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/translations.js"></script>
+    <script src="js/pricing.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/plata-mia.js"></script>
+  </body>
+</html>

@@ -322,11 +322,13 @@ describe('EcoVila Maib Checkout integration', () => {
   });
 
   it('reinstates expired card holds when the paid callback loses the race against the cron', () => {
-    const callback = read('supabase/functions/maib-callback/index.ts');
+    // The settlement core (mark paid + reinstate + notify + track) is shared by
+    // the card callback and the MIA confirmation path.
+    const callback = read('supabase/functions/_shared/bookingSettlement.ts');
 
     assert.match(
       callback,
-      /reinstateExpiredCardReservations/,
+      /reinstateExpiredOnlineReservations/,
       'a paid callback should try to restore holds the cron already released',
     );
     assert.match(
@@ -348,6 +350,114 @@ describe('EcoVila Maib Checkout integration', () => {
       callback,
       /\.eq\('payment_status', 'pending'\)\s*\.is\('cancelled_at', null\)\s*\.select\('id'\)/,
       'the paid UPDATE should report which reservations actually flipped before notifying',
+    );
+  });
+});
+
+describe('EcoVila MIA QR direct payment', () => {
+  it('sends a MIA guest to the dedicated QR page instead of the maib checkout', async () => {
+    const checkout = require('../js/checkout.js');
+    const supabaseHelpers = require('../js/supabase.js');
+    const calls = [];
+    const location = { href: '' };
+    const previousLocation = globalThis.location;
+    const previousGetClient = supabaseHelpers.getSupabaseClient;
+    const previousCreatePayment = supabaseHelpers.createMaibPaymentRequest;
+
+    globalThis.location = location;
+    supabaseHelpers.getSupabaseClient = () => ({ marker: 'client' });
+    supabaseHelpers.createMaibPaymentRequest = (client, context) => {
+      calls.push(context);
+      return Promise.resolve({ rail: 'mia', qrUrl: 'https://mia-qr.bnm.md/x', qrId: 'qr-1' });
+    };
+
+    try {
+      await checkout.redirectAfterReservation(
+        'reservation-a',
+        'card',
+        [{ id: 'reservation-a' }],
+        { totalPrice: 3100 },
+        {
+          bookingGroupId: '00000000-0000-4000-8000-000000000001',
+          reservationIds: ['reservation-a'],
+          manageToken: 'manage-token-a',
+        },
+        '+37360123456',
+      );
+
+      assert.equal(
+        location.href,
+        'plata-mia.html?id=reservation-a&group=00000000-0000-4000-8000-000000000001&manage=manage-token-a',
+        'a +373 (MIA) guest should land on the MIA QR page, not a maib checkout url',
+      );
+      assert.equal(calls[0].paymentRail, 'mia', 'the payment request should select the MIA rail');
+    } finally {
+      globalThis.location = previousLocation;
+      supabaseHelpers.getSupabaseClient = previousGetClient;
+      supabaseHelpers.createMaibPaymentRequest = previousCreatePayment;
+    }
+  });
+
+  it('builds the MIA payment url with the booking group and manage token', () => {
+    const checkout = require('../js/checkout.js');
+    assert.equal(
+      checkout.buildMiaPaymentUrl('reservation-a', 'group-a', 'manage-token-a'),
+      'plata-mia.html?id=reservation-a&group=group-a&manage=manage-token-a',
+    );
+  });
+
+  it('wires the MIA QR page, status poll and backend rail end to end', () => {
+    assert.ok(exists('plata-mia.html'), 'the MIA QR page should exist');
+    assert.ok(exists('js/plata-mia.js'), 'the MIA QR page controller should exist');
+    assert.ok(exists('js/vendor/qrcode.js'), 'a vendored QR generator should be bundled');
+
+    const page = read('plata-mia.html');
+    assert.match(page, /js\/vendor\/qrcode\.js/, 'the page should load the QR library');
+    assert.match(page, /js\/plata-mia\.js/, 'the page should load its controller');
+    assert.match(page, /data-mia-qr/, 'the page should have a QR mount point');
+
+    const controller = read('js/plata-mia.js');
+    assert.match(controller, /fetchMiaPaymentStatus/, 'the page should poll the MIA status endpoint');
+    assert.match(controller, /confirmare\.html/, 'a paid MIA guest should be sent to the confirmation page');
+
+    const helpers = read('js/supabase.js');
+    assert.match(helpers, /maib-mia-status/, 'the client should call the MIA status function');
+
+    const config = read('supabase/config.toml');
+    assert.match(
+      config,
+      /\[functions\.maib-mia-callback\][\s\S]*?verify_jwt = false/i,
+      'the MIA callback is hit by MAIB and must skip Supabase JWT verification',
+    );
+    assert.match(
+      config,
+      /\[functions\.maib-mia-status\][\s\S]*?verify_jwt = true/i,
+      'the browser status poll must require the Supabase anon JWT',
+    );
+
+    for (const name of ['maib-mia-callback', 'maib-mia-status']) {
+      const file = `supabase/functions/${name}/index.ts`;
+      assert.ok(exists(file), `${file} should exist`);
+      assert.match(read(file), /Deno\.serve\(/, `${file} should register a Deno.serve handler`);
+    }
+
+    const maib = read('supabase/functions/_shared/maib.ts');
+    assert.match(maib, /createMaibMiaQr/, 'the shared client should expose a MIA QR creator');
+    assert.match(maib, /\/v2\/mia\/qr/, 'MIA QR creation should target the v2 MIA endpoint');
+    assert.match(maib, /\/v2\/mia\/payments/, 'MIA confirmation should read the v2 MIA payments endpoint');
+
+    const create = read('supabase/functions/maib-create-payment/index.ts');
+    assert.match(
+      create,
+      /paymentRail === 'mia'[\s\S]*createMiaSession/,
+      'create-payment should branch the MIA rail to a QR session',
+    );
+
+    const reconcile = read('supabase/functions/_shared/miaReconcile.ts');
+    assert.match(
+      reconcile,
+      /getMaibMiaPaymentByOrderId/,
+      'MIA reconciliation should re-verify payment against MAIB rather than trust the callback',
     );
   });
 });

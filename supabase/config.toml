@@ -27,6 +27,12 @@ verify_jwt = false
 [functions.maib-refund]
 verify_jwt = true
 
+[functions.maib-mia-callback]
+verify_jwt = false
+
+[functions.maib-mia-status]
+verify_jwt = true
+
 [functions.track-event]
 verify_jwt = true
 
