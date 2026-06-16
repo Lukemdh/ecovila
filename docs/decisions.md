@@ -1062,6 +1062,44 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-047 — Dashboard calendar colour-codes scattered (non-adjacent) multi-villa bookings
+- **Date:** 2026-06-16.
+- **Context:** `buildReservationBlocks` ([admin/js/crm-calendar.js](../admin/js/crm-calendar.js))
+  merges a booking group's **contiguous** villas into one spanning box, so a booking on rooms
+  3–5 reads clearly as a single reservation. But a group on **non-adjacent** villas (e.g. 3, 6, 8)
+  splits into separate one-cell blocks that look like independent bookings — there is no visual cue
+  tying them together, and the same is true for a group whose villas have split date ranges.
+- **Decision:** add a booking-group accent-colour layer in [admin/js/crm-dashboard.js](../admin/js/crm-dashboard.js).
+  New `assignGroupColors(blocks)` buckets the rendered blocks by `booking_group_id` and colours only
+  groups that render as **2+ blocks** (single-villa bookings and contiguous "big box" groups keep
+  their normal status fill — colour is strictly the fallback for "cannot unify by spanning"). Colour
+  choice is a greedy interval-colouring sorted by stay start: each group takes the colour least used
+  by groups whose stay **overlaps in time**, which keeps every group distinct *within a day* while
+  letting colours repeat freely across non-overlapping days. With ≤5 simultaneously-overlapping
+  groups this is always collision-free; beyond 5 it degrades to the least-used colour instead of
+  failing. `reservationCard(context, block, groupColorClass)` applies the group colour over the
+  status fill, **except cancelled cards**, which stay grey (cancelled is operationally important and
+  only shown via the show-cancelled toggle). Five new unused palette vars
+  (`--crm-group-1..5`: orange / teal / blue / magenta / brown) in [css/crm.css](../css/crm.css),
+  chosen to be mutually distinct and distinct from the existing paid-card/paid-cash/pending/cancelled
+  colours; white text on all five. The group rules are ordered after the status fills so the accent
+  overrides paid/pending backgrounds (cancelled keeps precedence because the class is simply not
+  applied to cancelled cards).
+- **Why:** colour is the natural analogue of the spanning box for the case where spanning is
+  impossible — same colour within a day means same reservation. The per-day-distinct / cross-day-reuse
+  rule keeps a busy day legible without needing an unbounded palette. Cash holds still show their
+  in-card countdown and cancelled stays stay grey, so no operational state is lost by recolouring.
+- **Consequence:** [admin/js/crm-dashboard.js](../admin/js/crm-dashboard.js),
+  [css/crm.css](../css/crm.css), and [tests/admin-crm.test.mjs](../tests/admin-crm.test.mjs) updated
+  (two new tests: scattered villas 3/6/8 share one colour while a single-villa booking gets none; and
+  overlapping groups stay distinct while a non-overlapping group reuses a colour). Verified in-browser
+  with a harness loading the real modules + `css/crm.css`: three overlapping non-adjacent bookings
+  rendered orange / teal / blue (distinct same-day), a contiguous 6–8 booking stayed one green box,
+  and a later non-overlapping booking reused orange — white text legible throughout, no console
+  errors. Re-run `npm run prepare:tophost` before the next TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

@@ -16,6 +16,11 @@
   --crm-paid-cash: #7560a8;
   --crm-paid-card: #4f8b5b;
   --crm-cancelled: #a8a8a0;
+  --crm-group-1: #c2562b;
+  --crm-group-2: #2c7f86;
+  --crm-group-3: #3f5aa6;
+  --crm-group-4: #a8467b;
+  --crm-group-5: #82542f;
   --crm-day-column-width: 136px;
   --crm-room-column-width: 88px;
   --crm-calendar-room-row-height: 52px;
@@ -871,6 +876,34 @@ h2 {
 
 .crm-reservation-card--cancelled {
   background: var(--crm-cancelled);
+}
+
+/* Booking-group accents: tie together a reservation whose villas are not adjacent
+   (so it cannot be shown as one spanning box). Same colour within a day = same booking.
+   Placed after the status fills so the group colour overrides paid/pending backgrounds. */
+.crm-reservation-card--group-1 {
+  background: var(--crm-group-1);
+  color: #fff;
+}
+
+.crm-reservation-card--group-2 {
+  background: var(--crm-group-2);
+  color: #fff;
+}
+
+.crm-reservation-card--group-3 {
+  background: var(--crm-group-3);
+  color: #fff;
+}
+
+.crm-reservation-card--group-4 {
+  background: var(--crm-group-4);
+  color: #fff;
+}
+
+.crm-reservation-card--group-5 {
+  background: var(--crm-group-5);
+  color: #fff;
 }
 
 .crm-dialog {

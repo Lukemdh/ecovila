@@ -224,18 +224,97 @@
     return root.EcoVilaCrmCalendar.getCardClass(block.primary);
   }
 
-  function reservationCard(context, block) {
+  const GROUP_COLOR_COUNT = 5;
+
+  function blockStayStart(block) {
+    return block.primary?.check_in || block.startDate || '';
+  }
+
+  function blockStayEnd(block) {
+    return block.primary?.check_out || block.endDate || '';
+  }
+
+  function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+    // Half-open [start, end): two stays share a day only if they truly overlap.
+    return aStart < bEnd && bStart < aEnd;
+  }
+
+  // A booking that occupies non-adjacent villas (or split date ranges) renders as
+  // several separate blocks instead of one spanning box. Give every such multi-block
+  // group a shared accent colour so the scattered cards read as one reservation.
+  // Colours may repeat across days, but greedy interval colouring keeps overlapping
+  // groups distinct (5 colours cover any realistic same-day overlap; beyond that it
+  // degrades gracefully to the least-used colour).
+  function assignGroupColors(blocks) {
+    const groups = new Map();
+
+    (blocks || []).forEach((block) => {
+      const key = block.bookingGroupId;
+      if (!key) {
+        return;
+      }
+      if (!groups.has(key)) {
+        groups.set(key, { key, count: 0, start: '', end: '' });
+      }
+      const entry = groups.get(key);
+      entry.count += 1;
+      const start = blockStayStart(block);
+      const end = blockStayEnd(block);
+      if (start && (!entry.start || start < entry.start)) {
+        entry.start = start;
+      }
+      if (end && (!entry.end || end > entry.end)) {
+        entry.end = end;
+      }
+    });
+
+    const multiBlockGroups = Array.from(groups.values())
+      .filter((entry) => entry.count >= 2)
+      .sort((left, right) => {
+        return String(left.start).localeCompare(String(right.start))
+          || String(left.key).localeCompare(String(right.key));
+      });
+
+    const colorByGroup = new Map();
+    const assigned = [];
+
+    multiBlockGroups.forEach((entry) => {
+      const counts = new Array(GROUP_COLOR_COUNT).fill(0);
+      assigned.forEach((prev) => {
+        if (rangesOverlap(entry.start, entry.end, prev.start, prev.end)) {
+          counts[prev.color] += 1;
+        }
+      });
+
+      let color = 0;
+      for (let index = 1; index < GROUP_COLOR_COUNT; index += 1) {
+        if (counts[index] < counts[color]) {
+          color = index;
+        }
+      }
+
+      colorByGroup.set(entry.key, color);
+      assigned.push({ start: entry.start, end: entry.end, color });
+    });
+
+    return colorByGroup;
+  }
+
+  function reservationCard(context, block, groupColorClass) {
     const reservation = block.primary;
     const total = block.reservations.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
     const totalLabel = context.formatMDL(total);
     const phone = escapeHtml(root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone));
     const expiresAt = escapeHtml(reservation.cash_expires_at || '');
+    const statusClass = groupCardClass(block);
     const card = root.document.createElement('article');
     card.className = [
       'crm-reservation-card',
       'crm-reservation-card--block',
       block.rowSpan > 1 ? 'crm-reservation-card--multi-row' : '',
-      groupCardClass(block),
+      statusClass,
+      // Cancelled stays grey; otherwise the booking-group accent wins over the status fill.
+      statusClass === 'crm-reservation-card--cancelled' ? '' : (groupColorClass || ''),
     ].filter(Boolean).join(' ');
     card.style.gridColumn = `${block.columnStart} / span ${block.columnSpan}`;
     card.style.gridRow = `${block.rowStart} / span ${block.rowSpan}`;
@@ -309,13 +388,17 @@
       });
     });
 
-    root.EcoVilaCrmCalendar
-      .buildReservationBlocks(state.reservations, state.rooms, dates, {
-        showCancelled: qs('[data-show-cancelled]')?.checked,
-      })
-      .forEach((block) => {
-        grid.appendChild(reservationCard(context, block));
-      });
+    const blocks = root.EcoVilaCrmCalendar.buildReservationBlocks(state.reservations, state.rooms, dates, {
+      showCancelled: qs('[data-show-cancelled]')?.checked,
+    });
+    const groupColors = assignGroupColors(blocks);
+    blocks.forEach((block) => {
+      const colorIndex = groupColors.get(block.bookingGroupId);
+      const groupColorClass = Number.isInteger(colorIndex)
+        ? `crm-reservation-card--group-${colorIndex + 1}`
+        : '';
+      grid.appendChild(reservationCard(context, block, groupColorClass));
+    });
 
     updateCalendarMonthFromScroll(state);
     const jump = qs('[data-calendar-jump-date]');
@@ -667,6 +750,7 @@
   }
 
   return {
+    assignGroupColors,
     buildCalendarWindowDates,
     calendarMonthLabelForScroll,
     captureCalendarScroll,

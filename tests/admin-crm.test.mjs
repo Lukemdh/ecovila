@@ -987,6 +987,80 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(blocks[0].rowSpan, 3);
   });
 
+  it('colours scattered multi-block bookings so non-adjacent villas read as one reservation', () => {
+    const { EcoVilaCrmCalendar: calendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const { EcoVilaCrmDashboard: dashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      EcoVilaCrmCalendar: calendar,
+    });
+    const rooms = Array.from({ length: 8 }, (_, index) => ({
+      id: `room-${index + 1}`,
+      number: index + 1,
+      type: 'small',
+    }));
+    // One booking on non-adjacent villas 3, 6, 8 -> three separate blocks.
+    const scattered = [3, 6, 8].map((number) => ({
+      id: `scatter-${number}`,
+      booking_group_id: 'group-scatter',
+      room_id: `room-${number}`,
+      rooms: { id: `room-${number}`, number, type: 'small' },
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      payment_type: 'card',
+      payment_status: 'paid',
+    }));
+    // A plain single-villa booking that shares the same days.
+    const solo = {
+      id: 'solo-1',
+      booking_group_id: 'group-solo',
+      room_id: 'room-1',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      payment_type: 'card',
+      payment_status: 'paid',
+    };
+    const blocks = calendar.buildReservationBlocks(
+      [...scattered, solo],
+      rooms,
+      calendar.enumerateDates('2026-06-01', 30),
+    );
+    assert.equal(blocks.filter((block) => block.bookingGroupId === 'group-scatter').length, 3);
+
+    const colors = dashboard.assignGroupColors(blocks);
+    assert.equal(Number.isInteger(colors.get('group-scatter')), true, 'scattered booking gets an accent colour');
+    assert.equal(colors.has('group-solo'), false, 'a single-block booking keeps its status colour');
+  });
+
+  it('keeps overlapping groups on distinct colours but reuses colours across non-overlapping days', () => {
+    const { EcoVilaCrmDashboard: dashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      EcoVilaCrmCalendar: {},
+    });
+    const block = (groupId, checkIn, checkOut) => ({
+      bookingGroupId: groupId,
+      primary: { check_in: checkIn, check_out: checkOut },
+    });
+    // A, B, C overlap the same days; D is a week later (no overlap).
+    const colors = dashboard.assignGroupColors([
+      block('A', '2026-06-10', '2026-06-12'),
+      block('A', '2026-06-10', '2026-06-12'),
+      block('B', '2026-06-11', '2026-06-13'),
+      block('B', '2026-06-11', '2026-06-13'),
+      block('C', '2026-06-10', '2026-06-14'),
+      block('C', '2026-06-10', '2026-06-14'),
+      block('D', '2026-06-20', '2026-06-22'),
+      block('D', '2026-06-20', '2026-06-22'),
+    ]);
+
+    const a = colors.get('A');
+    const b = colors.get('B');
+    const c = colors.get('C');
+    const d = colors.get('D');
+    assert.notEqual(a, b, 'overlapping groups must differ');
+    assert.notEqual(a, c, 'overlapping groups must differ');
+    assert.notEqual(b, c, 'overlapping groups must differ');
+    assert.equal(d, a, 'a non-overlapping group reuses the first colour');
+  });
+
   it('groups pending cash rows by booking group and totals them once', () => {
     const { EcoVilaCrmCalendar: calendar } = loadAdminModule('admin/js/crm-calendar.js');
     const pending = calendar.groupPendingCashReservations([
