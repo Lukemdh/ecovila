@@ -377,7 +377,7 @@
 <div class="booking-modal" data-room-panel hidden>
       <div class="booking-modal__scrim" data-room-panel-close></div>
       <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="room-panel-title">
-        <button class="booking-modal__close" type="button" data-room-panel-close data-i18n="booking.close">Închide</button>
+        <button class="booking-modal__close" type="button" data-room-panel-close aria-label="Închide">×</button>
         <div class="booking-modal__content">
           <h2 id="room-panel-title" data-room-panel-title>Alege numărul</h2>
           <p data-room-panel-intro></p>
@@ -390,11 +390,27 @@
     <div class="booking-modal" data-soldout-modal hidden>
       <div class="booking-modal__scrim" data-soldout-close></div>
       <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="soldout-modal-title">
-        <button class="booking-modal__close" type="button" data-soldout-close data-i18n="booking.close">Închide</button>
+        <button class="booking-modal__close" type="button" data-soldout-close aria-label="Închide">×</button>
         <div class="booking-modal__content">
           <h2 id="soldout-modal-title" data-soldout-title>Date disponibile</h2>
           <p data-soldout-intro></p>
-          <div class="soldout-calendar" data-soldout-calendar></div>
+          <div class="calendar calendar--modal" data-soldout-calendar>
+            <div class="calendar__header">
+              <button class="calendar__nav" type="button" data-soldout-prev aria-label="Luna precedentă">‹</button>
+              <h2 data-soldout-month>—</h2>
+              <button class="calendar__nav" type="button" data-soldout-next aria-label="Luna următoare">›</button>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>L</span>
+              <span>Ma</span>
+              <span>Mi</span>
+              <span>J</span>
+              <span>V</span>
+              <span>S</span>
+              <span>D</span>
+            </div>
+            <div class="calendar-grid" data-soldout-grid></div>
+          </div>
         </div>
       </article>
     </div>

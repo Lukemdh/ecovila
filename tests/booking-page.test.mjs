@@ -176,21 +176,38 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(js, /target\.closest\('button, a, select, input, textarea'\)/, 'card clicks should ignore nested controls');
   });
 
-  it('selects accommodation from the details modal without redirecting to checkout', () => {
+  it('details modal CTA is two-state: select (no redirect) then continue to checkout', () => {
     const html = read('rezervari.html');
     const js = read('js/booking.js');
+    const mainJs = read('js/main.js');
 
     assert.match(
       html,
       /data-booking-modal-reserve[\s\S]+data-i18n="booking\.select"/,
       'details modal CTA should use Selectează copy',
     );
+    // First click selects the active type and flips the label to Continuă with the
+    // modal still open (no redirect); a second click runs reserveType -> checkout.
     assert.match(
       js,
-      /\[data-booking-modal-reserve\][\s\S]+selectType\(state\.activeModalType[\s\S]+closeAllModals\(\)/,
-      'details modal CTA should select the type and close the popup',
+      /\[data-booking-modal-reserve\][\s\S]+state\.activeModalType[\s\S]+selectType\(type\)[\s\S]+syncDetailsReserve\(type\)/,
+      'details modal CTA should select the active type and flip to Continuă without closing',
+    );
+    assert.match(
+      js,
+      /function syncDetailsReserve\([\s\S]+booking\.continue[\s\S]+booking\.select/,
+      'syncDetailsReserve should toggle the CTA between Continuă and Selectează',
     );
     assert.match(js, /checkout\.html/, 'checkout handoff should remain available for the booking flow');
+
+    // Root cause guard: main.js's landing-page accommodation modal must NOT bind on
+    // the booking page, or its reserve handler (-> rezervari.html) would reload the
+    // page and wipe the selection alongside booking.js's handler.
+    assert.match(
+      mainJs,
+      /function initializeAccommodationModal\(\)\s*\{[\s\S]*?classList\.contains\('page-booking'\)[\s\S]*?return;/,
+      'main.js should skip the accommodation modal on the booking page (body.page-booking)',
+    );
   });
 
   it('puts a direct reserve CTA on each accommodation card and demotes room choice to secondary text', () => {

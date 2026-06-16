@@ -936,6 +936,50 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-044 — Booking "Vreau așa căsuță" calendar parity, details-modal Select fix, and a no-cache dev server
+- **Date:** 2026-06-16.
+- **Context:** on [rezervari.html](../rezervari.html) the "Vreau așa căsuță" (sold-out /
+  "want this type") flow opened a `[data-soldout-modal]` whose calendar was a flat vertical
+  list of full-date chips ("15 iun.", "16 iun."…), visually unlike the main check-in/check-out
+  picker, which is a Monday-aligned month grid. Three follow-ups surfaced: (a) a selected date
+  in that modal rendered **white** instead of the picker's green, because the `--booking-green`
+  palette was scoped to `.booking-page` while the modals live at `body` level and could not
+  resolve the variable; (b) the modal close control was a literal brown "ÎNCHIDE" text button;
+  (c) clicking **Selectează** in the villa **details** modal reloaded the page instead of
+  selecting the villa.
+- **Decision:** (1) rebuild `renderSoldoutCalendar` ([js/booking.js](../js/booking.js)) as the
+  same 42-cell month grid as `renderCalendar`, with prev/next nav (`soldoutMonth` state, prev
+  disabled in the current month) and the picker's day-cell classes; the modal markup reuses the
+  `.calendar` structure with a new `.calendar--modal` modifier ([css/booking.css](../css/booking.css))
+  that renders it inline (static, no dropdown frame). (2) Move `--booking-green` /
+  `--booking-green-dark` / `--booking-soft` from `.booking-page` onto `body.page-booking` so the
+  body-level modals inherit them (fixes the white selected cell). (3) Convert the brown
+  `.booking-modal__close` text buttons to square "×" icon buttons, keeping the brown background.
+  (4) Make the details-modal reserve button two-state (`syncDetailsReserve`): first click selects
+  the type and flips the label to "Continuă" with the modal staying open, second click runs
+  `reserveType` → checkout. (5) **Root cause of the reset:** [js/main.js](../js/main.js)
+  `initializeAccommodationModal()` runs on every page and bound a *second* click handler to
+  `[data-booking-modal-reserve]` doing `window.location.href = 'rezervari.html'` — intended for the
+  landing-page preview modal (index/site), but it also fired on the booking page and reloaded it.
+  Gate that initializer to return early on `body.page-booking`, where booking.js owns the modal.
+  (6) Replace the local dev server `python -m http.server` with [scripts/dev-server.py](../scripts/dev-server.py),
+  which sends `Cache-Control: no-store`.
+- **Why:** a single consistent month-grid picker beats two different date UIs; CSS custom
+  properties must be in scope for the elements that consume them; and the duplicate landing-page
+  handler was silently hijacking the booking page. The reset only reproduced on a *real* click —
+  the navigation is async, so a synthetic `.click()` reads state before it fires, which is why it
+  was initially missed. The bare static server only sent `Last-Modified`, so browsers
+  heuristically cached JS/CSS and served stale code after every edit.
+- **Consequence:** [rezervari.html](../rezervari.html), [css/booking.css](../css/booking.css),
+  [js/booking.js](../js/booking.js), [js/main.js](../js/main.js) updated;
+  [scripts/dev-server.py](../scripts/dev-server.py) added (`.claude/launch.json`, gitignored,
+  points at it). Verified in-browser with real clicks via the Navigation API: the details-modal
+  Select now selects + flips to "Continuă" without navigating, and a second click with dates goes
+  to `checkout.html`; the soldout calendar matches the main picker with green selection and an "×"
+  close. Re-run `npm run prepare:tophost` before the next TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

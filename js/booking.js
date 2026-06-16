@@ -78,6 +78,7 @@
     activeRoomType: '',
     activeSoldoutType: '',
     soldoutCheckIn: '',
+    soldoutMonth: firstOfMonth(todayISO()),
     selectedRoomNumbers: {
       small: [],
       large: [],
@@ -791,12 +792,22 @@
     renderPlainList(modal.querySelector('[data-booking-modal-facilities]'), getTranslatedList('accommodation.shared.facilities'));
 
     modal.querySelector('[data-booking-modal-error]').hidden = true;
+    syncDetailsReserve(type);
   }
 
   function showDetailsError(message) {
     const error = document.querySelector('[data-booking-modal-error]');
     error.textContent = message;
     error.hidden = false;
+  }
+
+  // Mirrors the stay card's primary button inside the details modal: once the
+  // villa is selected the CTA flips to "Continuă" and a second click checks out.
+  function syncDetailsReserve(type) {
+    const button = document.querySelector('[data-booking-modal-reserve]');
+    const isSelected = state.selectedType === type;
+    button.textContent = isSelected ? t('booking.continue') : t('booking.select');
+    button.disabled = isSelected && Boolean(getPartyError());
   }
 
   function reserveType(type) {
@@ -917,6 +928,7 @@
   function openSoldoutModal(type) {
     state.activeSoldoutType = type;
     state.soldoutCheckIn = '';
+    state.soldoutMonth = firstOfMonth(todayISO());
     const modal = document.querySelector('[data-soldout-modal]');
     modal.querySelector('[data-soldout-title]').textContent = `${t('booking.futureAvailability')} · ${t(`accommodation.${type}.title`)}`;
     modal.querySelector('[data-soldout-intro]').textContent = t('booking.soldoutPickCheckIn');
@@ -959,18 +971,31 @@
   }
 
   function renderSoldoutCalendar(type) {
-    const container = document.querySelector('[data-soldout-calendar]');
+    const wrapper = document.querySelector('[data-soldout-calendar]');
+    const grid = wrapper.querySelector('[data-soldout-grid]');
+    const title = wrapper.querySelector('[data-soldout-month]');
+    const prevButton = wrapper.querySelector('[data-soldout-prev]');
     const intro = document.querySelector('[data-soldout-intro]');
-    let availableFound = false;
-    container.innerHTML = '';
+
     intro.textContent = state.soldoutCheckIn
       ? t('booking.soldoutPickCheckOut', { date: formatDate(state.soldoutCheckIn) })
       : t('booking.soldoutPickCheckIn');
 
-    for (let offset = 0; offset < 70; offset += 1) {
-      const date = pricing.addDays(todayISO(), offset);
+    title.textContent = formatMonth(state.soldoutMonth);
+    prevButton.disabled = state.soldoutMonth <= firstOfMonth(todayISO());
+    grid.innerHTML = '';
+
+    const monthStart = pricing.parseISODate(state.soldoutMonth);
+    const mondayOffset = (monthStart.getUTCDay() + 6) % 7;
+    const startDate = pricing.addDays(state.soldoutMonth, -mondayOffset);
+
+    for (let index = 0; index < 42; index += 1) {
+      const date = pricing.addDays(startDate, index);
+      const parsed = pricing.parseISODate(date);
+      const isOutsideMonth = parsed.getUTCMonth() !== monthStart.getUTCMonth();
+      const isPast = date < todayISO();
       const isPendingCheckIn = date === state.soldoutCheckIn;
-      const oneNightAvailable = isTypeRangeAvailable(type, date, pricing.addDays(date, 1));
+      const oneNightAvailable = !isPast && isTypeRangeAvailable(type, date, pricing.addDays(date, 1));
       const checkoutAvailable = Boolean(
         state.soldoutCheckIn &&
         date > state.soldoutCheckIn &&
@@ -979,23 +1004,25 @@
       const available = state.soldoutCheckIn
         ? (date <= state.soldoutCheckIn ? oneNightAvailable : checkoutAvailable)
         : oneNightAvailable;
+      const unavailable = !isPast && !available;
       const button = document.createElement('button');
+      const numberElement = document.createElement('span');
       button.type = 'button';
-      button.textContent = formatDate(date);
+      numberElement.className = 'calendar-day__number';
+      numberElement.textContent = String(parsed.getUTCDate());
+      button.appendChild(numberElement);
       button.dataset.date = date;
-      button.classList.toggle('is-available', available);
-      button.classList.toggle('is-unavailable', !available);
+      button.disabled = isPast || !available;
+      button.classList.toggle('is-muted', isOutsideMonth);
+      button.classList.toggle('is-unavailable', unavailable);
       button.classList.toggle('is-selected', isPendingCheckIn);
-      button.disabled = !available;
+      button.classList.toggle('is-range-start', isPendingCheckIn);
+      button.setAttribute(
+        'aria-label',
+        unavailable ? `${date}, ${t('booking.calendarUnavailable')}` : date,
+      );
       button.addEventListener('click', () => selectSoldoutDate(type, date));
-      availableFound = availableFound || available;
-      container.appendChild(button);
-    }
-
-    if (!availableFound) {
-      const empty = document.createElement('p');
-      empty.textContent = t('booking.noFutureAvailability');
-      container.appendChild(empty);
+      grid.appendChild(button);
     }
   }
 
@@ -1175,6 +1202,18 @@
       renderCalendar();
     });
 
+    document.querySelector('[data-soldout-prev]').addEventListener('click', () => {
+      const earliest = firstOfMonth(todayISO());
+      const candidate = addMonths(state.soldoutMonth, -1);
+      state.soldoutMonth = candidate < earliest ? earliest : candidate;
+      renderSoldoutCalendar(state.activeSoldoutType);
+    });
+
+    document.querySelector('[data-soldout-next]').addEventListener('click', () => {
+      state.soldoutMonth = addMonths(state.soldoutMonth, 1);
+      renderSoldoutCalendar(state.activeSoldoutType);
+    });
+
     document.querySelectorAll('[data-focus-calendar]').forEach((button) => {
       button.addEventListener('click', () => {
         openCalendar();
@@ -1231,8 +1270,20 @@
     });
 
     document.querySelector('[data-booking-modal-reserve]').addEventListener('click', () => {
-      selectType(state.activeModalType);
-      closeAllModals();
+      const type = state.activeModalType;
+
+      if (state.selectedType === type) {
+        reserveType(type);
+        return;
+      }
+
+      selectType(type);
+      if (state.selectedType !== type) {
+        showDetailsError(getPartyError() || t('booking.unavailableForParty'));
+        return;
+      }
+
+      syncDetailsReserve(type);
     });
 
     document.querySelector('[data-child-age-confirm]').addEventListener('click', confirmChildAges);

@@ -1285,15 +1285,20 @@ body.page-booking .site-header {
   top: 16px;
   right: 16px;
   z-index: 2;
-  min-height: 40px;
-  padding: 8px 14px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
   color: var(--white);
   cursor: pointer;
   background: rgba(18, 15, 13, 0.76);
   border: 1px solid rgba(255, 255, 255, 0.26);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  border-radius: 8px;
+  font-size: 1.6rem;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: none;
 }
 
 .booking-modal__close--icon {
@@ -1354,10 +1359,15 @@ body.page-booking .site-header {
   box-shadow: 0 18px 54px rgba(51, 38, 31, 0.08);
 }
 
-.booking-page {
+/* Booking palette lives on the body so the body-level modals (soldout calendar,
+   room picker, details) resolve var(--booking-green) too, not just .booking-page. */
+body.page-booking {
   --booking-green: #5F7A3A;
   --booking-green-dark: #4B6529;
   --booking-soft: #FBF8F3;
+}
+
+.booking-page {
   padding: 132px 0 72px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(247, 244, 239, 0.92) 380px),
@@ -1723,6 +1733,29 @@ body.page-booking .site-header {
 }
 
 .date-picker .calendar__header h2 {
+  font-family: var(--body-font);
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: none;
+}
+
+/* Soldout modal reuses the date-picker calendar, but rendered inline (not as a
+   dropdown), so it drops the absolute positioning, frame and shadow. */
+.calendar--modal {
+  position: static;
+  width: 100%;
+  margin-top: 18px;
+  padding: 0;
+  transform: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.calendar--modal .calendar__header h2 {
   font-family: var(--body-font);
   font-size: 1.18rem;
   font-weight: 700;

@@ -253,6 +253,15 @@
   }
 
   function initializeAccommodationModal() {
+    // On the booking page (rezervari.html) booking.js fully owns the details modal,
+    // including the [data-booking-modal-reserve] button (Select → Continue → checkout).
+    // main.js's landing-page version of this modal must not bind here, otherwise its
+    // reserve handler (window.location.href = 'rezervari.html') fires alongside
+    // booking.js's and reloads the page, wiping the selection.
+    if (document.body.classList.contains('page-booking')) {
+      return;
+    }
+
     document.querySelectorAll('[data-accommodation]').forEach((button) => {
       button.addEventListener('click', () => {
         openModal(button.dataset.accommodation, button);
