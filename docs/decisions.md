@@ -980,6 +980,43 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-045 — Checkout payment options: unified "Plată online" label + cash 30-minute confirmation modal
+- **Date:** 2026-06-16.
+- **Context:** the checkout payment picker ([checkout.html](../checkout.html)) showed one
+  online-payment button whose label switched between "Plată online prin MIA" (for `+373` numbers,
+  routed to the MIA rail) and "Plată cu cardul" (international, card rail) via
+  `getOnlinePaymentCopy` / `getPaymentRail` in [js/checkout.js](../js/checkout.js). Surfacing the
+  rail name to guests was needless implementation detail. Separately, the **cash** option only
+  showed a passive inline disclaimer *after* selection, so a guest could choose cash without
+  registering that the hold expires in 30 minutes — the most common no-show / expired-reservation
+  pitfall.
+- **Decision:** (1) Relabel both online-payment i18n keys (`checkout.payMia`, `checkout.payCard`)
+  to a single neutral "Plată online" / "Онлайн-оплата" / "Pay online" across all three languages
+  ([js/translations.js](../js/translations.js)); the rail-selection logic is left untouched, so the
+  correct processor (MIA vs card) is still chosen behind the scenes by phone prefix — only the
+  visible label changed. (2) Add a light-red confirmation modal that intercepts the **cash**
+  selection: clicking "Plată cash" now opens a `[data-cash-modal]` dialog
+  ([checkout.html](../checkout.html)) that reuses the existing `checkout.cashDisclaimer` wording
+  verbatim and requires "Am înțeles, continui" before cash is actually selected; "Anulează", the
+  scrim, or Esc cancel and leave the previously selected method in place. New keys
+  `checkout.cashModalTitle` / `cashModalCancel` / `cashModalConfirm` (RO/RU/EN). Styling lives in
+  [css/checkout.css](../css/checkout.css) (`.co-cash-modal*`): light-red panel `#FDECEA` with a
+  `#C0392B` accent border/icon, blurred scrim, `body.co-modal-open` scroll-lock, single-column
+  buttons under 480px, and a reduced-motion fallback.
+- **Why:** the rail name ("MIA" / "card") is an implementation detail guests do not need, and one
+  "Plată online" label reads cleaner while the backend still routes correctly. The cash hold needs
+  an explicit acknowledgement rather than a note that is easy to miss, which should cut expired and
+  abandoned cash reservations. The modal reuses the exact on-site disclaimer text so the 30-minute
+  rule has a single source of truth.
+- **Consequence:** [checkout.html](../checkout.html), [css/checkout.css](../css/checkout.css),
+  [js/checkout.js](../js/checkout.js), [js/translations.js](../js/translations.js) updated. Verified
+  in-browser (desktop + mobile): the online options render "Plată online"; selecting cash opens the
+  modal, Confirm selects cash and reveals the inline disclaimer, Cancel/Esc/scrim keep online
+  payment, and re-clicking cash when already selected does not re-prompt. Re-run
+  `npm run prepare:tophost` before the next TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

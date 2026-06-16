@@ -173,7 +173,7 @@
                   <button class="co-payment__option is-selected" type="button" data-payment-option="card" aria-pressed="true">
                     <span class="co-payment__radio"></span>
                     <div class="co-payment__body">
-                      <strong data-online-payment-title data-i18n="checkout.payMia">Plată online prin MIA</strong>
+                      <strong data-online-payment-title data-i18n="checkout.payMia">Plată online</strong>
                     </div>
                     <span class="co-payment__badge" aria-hidden="true">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
@@ -209,6 +209,22 @@
         </div>
       </div>
     </main>
+
+    <!-- Cash holds expire after 30 minutes, so guests must acknowledge that before picking cash. -->
+    <div class="co-cash-modal" data-cash-modal hidden role="dialog" aria-modal="true" aria-labelledby="cash-modal-title" aria-describedby="cash-modal-body">
+      <div class="co-cash-modal__scrim" data-cash-modal-cancel></div>
+      <div class="co-cash-modal__panel" role="document">
+        <span class="co-cash-modal__icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </span>
+        <h3 class="co-cash-modal__title" id="cash-modal-title" data-i18n="checkout.cashModalTitle">Atenție: rezervarea expiră în 30 de minute</h3>
+        <p class="co-cash-modal__body" id="cash-modal-body" data-i18n="checkout.cashDisclaimer">Rezervarea este valabilă 30 de minute și trebuie achitată la oficiu, str. Aerodromului 3. Dacă termenul expiră, rezervarea va fi anulată automat.</p>
+        <div class="co-cash-modal__actions">
+          <button class="co-cash-modal__btn co-cash-modal__btn--ghost" type="button" data-cash-modal-cancel data-i18n="checkout.cashModalCancel">Anulează</button>
+          <button class="co-cash-modal__btn co-cash-modal__btn--confirm" type="button" data-cash-modal-confirm data-i18n="checkout.cashModalConfirm">Am înțeles, continui</button>
+        </div>
+      </div>
+    </div>
 
     <footer class="site-footer" id="footer">
       <div class="section-inner site-footer__grid">

@@ -659,11 +659,56 @@
     const form = documentRef.querySelector('[data-checkout-form]');
     const phoneInput = documentRef.querySelector('[data-guest-phone]');
 
+    const cashModal = documentRef.querySelector('[data-cash-modal]');
+
+    function openCashModal() {
+      if (!cashModal) {
+        return;
+      }
+      cashModal.hidden = false;
+      documentRef.body?.classList.add('co-modal-open');
+      cashModal.querySelector('[data-cash-modal-confirm]')?.focus();
+    }
+
+    function closeCashModal() {
+      if (!cashModal) {
+        return;
+      }
+      cashModal.hidden = true;
+      documentRef.body?.classList.remove('co-modal-open');
+    }
+
+    function selectPayment(type) {
+      state.paymentType = type;
+      renderCheckout(state);
+    }
+
     documentRef.querySelectorAll('[data-payment-option]').forEach((button) => {
       button.addEventListener('click', () => {
-        state.paymentType = button.dataset.paymentOption || 'card';
-        renderCheckout(state);
+        const type = button.dataset.paymentOption || 'card';
+        // Cash holds expire in 30 minutes, so make guests acknowledge the rule
+        // before the option is actually selected.
+        if (type === 'cash' && state.paymentType !== 'cash' && cashModal) {
+          openCashModal();
+          return;
+        }
+        selectPayment(type);
       });
+    });
+
+    cashModal?.querySelectorAll('[data-cash-modal-cancel]').forEach((el) => {
+      el.addEventListener('click', closeCashModal);
+    });
+
+    cashModal?.querySelector('[data-cash-modal-confirm]')?.addEventListener('click', () => {
+      selectPayment('cash');
+      closeCashModal();
+    });
+
+    documentRef.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && cashModal && !cashModal.hidden) {
+        closeCashModal();
+      }
     });
 
     form?.addEventListener('submit', (event) => {

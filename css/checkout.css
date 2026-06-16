@@ -481,6 +481,159 @@
   line-height: 1.5;
 }
 
+/* ── Cash confirmation modal ── */
+.co-cash-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.co-cash-modal[hidden] {
+  display: none;
+}
+
+body.co-modal-open {
+  overflow: hidden;
+}
+
+.co-cash-modal__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(51, 38, 31, 0.45);
+  backdrop-filter: blur(4px);
+  animation: coCashScrimIn 200ms ease both;
+}
+
+.co-cash-modal__panel {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(440px, 100%);
+  padding: 32px 28px 26px;
+  text-align: center;
+  background: #FDECEA;
+  border: 1px solid rgba(192, 57, 43, 0.28);
+  border-top: 4px solid #C0392B;
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(123, 30, 20, 0.28);
+  animation: coCashPanelIn 280ms cubic-bezier(0.22, 0.68, 0, 1) both;
+}
+
+.co-cash-modal__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  color: #C0392B;
+  background: rgba(192, 57, 43, 0.12);
+  border-radius: 50%;
+}
+
+.co-cash-modal__title {
+  margin: 0;
+  color: #7B1E14;
+  font-family: var(--heading-font);
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.co-cash-modal__body {
+  margin: 0;
+  color: #6E2A22;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.co-cash-modal__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.co-cash-modal__btn {
+  min-height: 48px;
+  padding: 0 16px;
+  font-family: var(--body-font);
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    transform 160ms ease;
+}
+
+.co-cash-modal__btn--ghost {
+  color: #7B1E14;
+  background: transparent;
+  border: 1.5px solid rgba(192, 57, 43, 0.4);
+}
+
+.co-cash-modal__btn--ghost:hover {
+  background: rgba(192, 57, 43, 0.08);
+  border-color: rgba(192, 57, 43, 0.6);
+}
+
+.co-cash-modal__btn--confirm {
+  color: var(--white);
+  background: #C0392B;
+  border: 1.5px solid #C0392B;
+}
+
+.co-cash-modal__btn--confirm:hover {
+  background: #A93226;
+  border-color: #A93226;
+  transform: translateY(-1px);
+}
+
+.co-cash-modal__btn--confirm:active {
+  transform: translateY(0);
+}
+
+.co-cash-modal__btn:focus-visible {
+  outline: 3px solid rgba(192, 57, 43, 0.35);
+  outline-offset: 2px;
+}
+
+@keyframes coCashScrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes coCashPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 480px) {
+  .co-cash-modal__actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .co-cash-modal__scrim,
+  .co-cash-modal__panel {
+    animation: none;
+  }
+}
+
 /* ── Error ── */
 .booking-error {
   width: 100%;
