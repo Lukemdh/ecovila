@@ -1416,14 +1416,24 @@ h2 {
 }
 
 .crm-finance-booked-card {
-  align-items: center;
   background: rgba(247, 244, 239, 0.72);
   border: 1px solid rgba(68, 50, 38, 0.1);
   border-radius: 8px;
+  padding: 14px 16px;
+}
+
+/* Single-villa cards and the summary row of a grouped card share one column grid. */
+.crm-finance-booked-card:not(.crm-finance-booked-card--group),
+.crm-finance-booked-card__summary {
+  align-items: center;
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(88px, 0.7fr) minmax(0, 1fr) minmax(104px, 0.8fr);
-  padding: 14px 16px;
+}
+
+.crm-finance-booked-card--group {
+  display: grid;
+  gap: 12px;
 }
 
 .crm-finance-booked-card strong {
@@ -1442,6 +1452,33 @@ h2 {
   justify-self: end;
   text-align: right;
   text-transform: uppercase;
+}
+
+.crm-finance-booked-card__villas {
+  border-top: 1px dashed rgba(68, 50, 38, 0.16);
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 12px 0 0;
+}
+
+.crm-finance-booked-card__villas li {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1fr) minmax(104px, 0.8fr);
+}
+
+.crm-finance-booked-card__villas .crm-finance-booked-villa__name {
+  color: var(--crm-ink);
+  font-weight: 700;
+}
+
+.crm-finance-booked-card__villas .crm-finance-booked-villa__price {
+  color: var(--crm-ink);
+  justify-self: end;
+  text-align: right;
 }
 
 .crm-panel[data-panel="daily"] .crm-daily-grid {

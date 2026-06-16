@@ -234,6 +234,7 @@
         const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
         return {
           id: reservation.id,
+          bookingGroupId: reservation.booking_group_id || reservation.id || '',
           roomNumber: Number(reservation.rooms?.number || reservation.room_number || 0),
           roomType: reservation.rooms?.type || reservation.room_type || '',
           checkIn: reservation.check_in || '',
@@ -248,6 +249,53 @@
         };
       })
       .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
+  }
+
+  function groupBookedDayRows(rows) {
+    const groups = new Map();
+    const order = [];
+
+    (rows || []).forEach((row) => {
+      const key = row.bookingGroupId || `single:${row.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        order.push(key);
+      }
+      groups.get(key).push(row);
+    });
+
+    return order
+      .map((key) => {
+        const villas = groups
+          .get(key)
+          .slice()
+          .sort((left, right) => left.roomNumber - right.roomNumber);
+        const primary = villas[0];
+        return {
+          key,
+          villas,
+          // total_price is split across villas, so the booking total is the sum.
+          totalPrice: villas.reduce((sum, villa) => sum + Number(villa.totalPrice || 0), 0),
+          // adults/kids are stored as the whole-booking party on every villa row.
+          adults: primary.adults,
+          kids: primary.kids,
+          nights: primary.nights,
+          checkIn: primary.checkIn,
+          checkOut: primary.checkOut,
+          createdAt: primary.createdAt,
+          paymentType: primary.paymentType,
+          paymentStatus: primary.paymentStatus,
+        };
+      })
+      .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
+  }
+
+  function villaCountLabel(count) {
+    if (count === 1) {
+      return '1 vilă';
+    }
+
+    return `${count} vile`;
   }
 
   function formatCalendarMonth(date) {
@@ -366,6 +414,54 @@
     });
   }
 
+  function buildBookedSummary(context, data, titleText, metaText) {
+    const title = root.document.createElement('strong');
+    title.textContent = titleText;
+
+    const meta = root.document.createElement('span');
+    meta.textContent = metaText;
+
+    const stay = root.document.createElement('span');
+    stay.textContent = `${formatStayDate(context, data.checkIn)} - ${formatStayDate(context, data.checkOut)}`;
+
+    const total = root.document.createElement('span');
+    total.textContent = formatMDL(context, data.totalPrice);
+
+    const bookedAt = root.document.createElement('span');
+    bookedAt.textContent = `Rezervat: ${formatCreatedAt(data.createdAt)}`;
+
+    const status = root.document.createElement('span');
+    status.className = 'crm-finance-booked-status';
+    status.textContent = paymentLabel(data);
+
+    return [title, meta, stay, total, bookedAt, status];
+  }
+
+  function buildBookedVillaBreakdown(context, villas) {
+    const breakdown = root.document.createElement('ul');
+    breakdown.className = 'crm-finance-booked-card__villas';
+
+    villas.forEach((villa) => {
+      const item = root.document.createElement('li');
+
+      const name = root.document.createElement('span');
+      name.className = 'crm-finance-booked-villa__name';
+      name.textContent = villa.roomNumber ? `Vila #${villa.roomNumber}` : roomTypeLabel(villa.roomType);
+
+      const type = root.document.createElement('span');
+      type.textContent = roomTypeLabel(villa.roomType);
+
+      const price = root.document.createElement('span');
+      price.className = 'crm-finance-booked-villa__price';
+      price.textContent = formatMDL(context, villa.totalPrice);
+
+      item.append(name, type, price);
+      breakdown.appendChild(item);
+    });
+
+    return breakdown;
+  }
+
   function renderBookedDayRows(context, state) {
     const section = qs('[data-finance-booked-day]');
     const list = qs('[data-finance-booked-list]');
@@ -385,39 +481,40 @@
       return;
     }
 
-    const rows = normalizeBookedDayRows(state.bookedDayRows);
+    const groups = groupBookedDayRows(normalizeBookedDayRows(state.bookedDayRows));
     if (count) {
-      count.textContent = String(rows.length);
+      count.textContent = String(groups.length);
     }
-    empty.hidden = rows.length > 0;
+    empty.hidden = groups.length > 0;
     list.innerHTML = '';
 
-    rows.forEach((row) => {
+    groups.forEach((group) => {
       const card = root.document.createElement('article');
       card.className = 'crm-finance-booked-card';
 
-      const title = root.document.createElement('strong');
-      title.textContent = row.roomNumber
-        ? `Vila #${row.roomNumber}`
-        : roomTypeLabel(row.roomType);
+      if (group.villas.length === 1) {
+        const villa = group.villas[0];
+        const titleText = villa.roomNumber ? `Vila #${villa.roomNumber}` : roomTypeLabel(villa.roomType);
+        const metaText = `${roomTypeLabel(villa.roomType)} · ${partyLabel(group)} · ${nightsLabel(group)}`;
+        card.append(...buildBookedSummary(context, group, titleText, metaText));
+        list.appendChild(card);
+        return;
+      }
 
-      const meta = root.document.createElement('span');
-      meta.textContent = `${roomTypeLabel(row.roomType)} · ${partyLabel(row)} · ${nightsLabel(row)}`;
+      card.classList.add('crm-finance-booked-card--group');
 
-      const stay = root.document.createElement('span');
-      stay.textContent = `${formatStayDate(context, row.checkIn)} - ${formatStayDate(context, row.checkOut)}`;
+      const summary = root.document.createElement('div');
+      summary.className = 'crm-finance-booked-card__summary';
+      summary.append(
+        ...buildBookedSummary(
+          context,
+          group,
+          villaCountLabel(group.villas.length),
+          `${partyLabel(group)} · ${nightsLabel(group)}`,
+        ),
+      );
 
-      const total = root.document.createElement('span');
-      total.textContent = formatMDL(context, row.totalPrice);
-
-      const bookedAt = root.document.createElement('span');
-      bookedAt.textContent = `Rezervat: ${formatCreatedAt(row.createdAt)}`;
-
-      const status = root.document.createElement('span');
-      status.className = 'crm-finance-booked-status';
-      status.textContent = paymentLabel(row);
-
-      card.append(title, meta, stay, total, bookedAt, status);
+      card.append(summary, buildBookedVillaBreakdown(context, group.villas));
       list.appendChild(card);
     });
   }
@@ -622,6 +719,7 @@
     addDays,
     addMonths,
     firstOfMonth,
+    groupBookedDayRows,
     init,
     isClickInsideFinanceRangePicker,
     loadFinance,

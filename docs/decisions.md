@@ -1017,6 +1017,51 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
 
 ---
 
+### ADR-046 — CRM finance day-list groups villas by reservation; dashboard cards show booking total instead of guest name
+- **Date:** 2026-06-16.
+- **Context:** two owner-facing CRM views split multi-villa bookings into per-villa rows.
+  (a) The Finance tab's "Vile rezervate în ziua selectată" list
+  ([admin/js/crm-finance.js](../admin/js/crm-finance.js)) rendered one card per villa row, so a
+  single booking that reserved villas #7/#8/#17 showed as three separate cards with split prices —
+  it read as three reservations, and the count badge counted villas, not bookings.
+  (b) The main dashboard calendar ([admin/js/crm-dashboard.js](../admin/js/crm-dashboard.js)) titled
+  every reservation block with the guest name/surname, surfacing no financial figure.
+  Key data-model facts (from [js/checkout.js](../js/checkout.js)): for a multi-villa booking,
+  `total_price` is **split** across the villa rows (sum = booking total), while `adults`/`kids_ages`
+  store the **whole-booking party repeated on every row**, and `check_in`/`check_out`/nights are
+  identical across the group.
+- **Decision:** (1) Finance day-list — carry `booking_group_id` on normalized rows and add
+  `groupBookedDayRows()` that collapses rows by `booking_group_id` (falling back to `id`). It
+  **sums** `total_price` for the shared booking total but reads party/nights/dates **once** (not
+  summed) to respect the data model. `renderBookedDayRows` now renders one card per *reservation*:
+  single-villa bookings keep the original one-row grid (no regression); multi-villa bookings render
+  a summary row (`N vile · party · nights · stay · shared total · booked-at · status`) plus a
+  per-villa breakdown (villa #, room type, per-villa price) under a dashed divider. The count badge
+  now counts reservations; heading/empty copy changed from "Vile rezervate" to "Rezervări create".
+  Shared grid styles + `.crm-finance-booked-card--group` / `__summary` / `__villas` added to
+  [css/crm.css](../css/crm.css). (2) Dashboard calendar — `reservationCard(context, block)` now
+  titles each block with the booking total (`block.reservations` summed `total_price`, via
+  `context.formatMDL`) instead of the guest name; the adults·copii and phone lines are unchanged.
+- **Why:** a booking that reserves several villas is **one** reservation with one total; the old
+  per-villa split misrepresented both the reservation count and the money. Because the party is
+  stored per-booking (repeated) it must be read once, and because the price is split it must be
+  summed — getting this backwards would double-count guests or under-count revenue. On the calendar,
+  the amount paid is the figure the owner scans for; the guest is still identifiable by phone and via
+  the edit dialog.
+- **Consequence:** [admin/js/crm-finance.js](../admin/js/crm-finance.js),
+  [admin/js/crm-dashboard.js](../admin/js/crm-dashboard.js), [admin/dashboard.html](../admin/dashboard.html),
+  [css/crm.css](../css/crm.css), and [tests/admin-crm.test.mjs](../tests/admin-crm.test.mjs) updated
+  (new grouping test; normalize-shape test gains `bookingGroupId`; calendar-card XSS test asserts the
+  total renders and the name does not). Guest names are unchanged in the pending-cash sidebar, the
+  daily reception view, sidebar search results, and the edit-reservation dialog. Verified in-browser
+  with throwaway harnesses that load the real modules + `css/crm.css` against mock grouped data: the
+  Finance day-list collapses 7 villa rows into 4 reservations with summed totals (20.000 / 16.300 MDL)
+  and per-villa breakdowns; the calendar cards show booking totals (single and summed multi-villa,
+  e.g. rooms 11–13 → 15.000 MDL) with no guest names. Re-run `npm run prepare:tophost` before the next
+  TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

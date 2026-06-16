@@ -224,9 +224,10 @@
     return root.EcoVilaCrmCalendar.getCardClass(block.primary);
   }
 
-  function reservationCard(block) {
+  function reservationCard(context, block) {
     const reservation = block.primary;
-    const name = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume');
+    const total = block.reservations.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+    const totalLabel = context.formatMDL(total);
     const phone = escapeHtml(root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone));
     const expiresAt = escapeHtml(reservation.cash_expires_at || '');
     const card = root.document.createElement('article');
@@ -245,7 +246,7 @@
     card.dataset.roomIds = block.roomIds.join(',');
     card.dataset.roomExplicitlySelected = String(Boolean(reservation.room_explicitly_selected));
     card.innerHTML = `
-      <strong>${name}</strong>
+      <strong>${escapeHtml(totalLabel)}</strong>
       <span>${guestSummary(reservation)}</span>
       <span class="crm-reservation-card__phone">${phone}</span>
       ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${expiresAt}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
@@ -313,7 +314,7 @@
         showCancelled: qs('[data-show-cancelled]')?.checked,
       })
       .forEach((block) => {
-        grid.appendChild(reservationCard(block));
+        grid.appendChild(reservationCard(context, block));
       });
 
     updateCalendarMonthFromScroll(state);

@@ -454,6 +454,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.deepEqual(rows.map((row) => row.id), ['villa-9-created-day', 'villa-1-created-day']);
     assert.deepEqual(JSON.parse(JSON.stringify(rows[0])), {
       id: 'villa-9-created-day',
+      bookingGroupId: 'villa-9-created-day',
       roomNumber: 9,
       roomType: 'large',
       checkIn: '2026-06-29',
@@ -472,6 +473,75 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(rows[1].kids, 0);
     assert.equal(rows[1].totalPrice, 3500);
     assert.equal(rows[1].paymentStatus, 'pending');
+  });
+
+  it('groups one-day finance booked rows by booking with a shared total', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const rows = finance.normalizeBookedDayRows([
+      {
+        id: 'group-villa-8',
+        booking_group_id: 'multi-room',
+        room_id: 'room-8',
+        check_in: '2026-08-16',
+        check_out: '2026-08-18',
+        adults: 6,
+        kids_ages: [4],
+        total_price: 5433,
+        payment_type: 'office',
+        payment_status: 'paid',
+        cancelled_at: null,
+        created_at: '2026-06-16T16:55:00.000Z',
+        rooms: { number: 8, type: 'small' },
+      },
+      {
+        id: 'group-villa-7',
+        booking_group_id: 'multi-room',
+        room_id: 'room-7',
+        check_in: '2026-08-16',
+        check_out: '2026-08-18',
+        adults: 6,
+        kids_ages: [4],
+        total_price: 5434,
+        payment_type: 'office',
+        payment_status: 'paid',
+        cancelled_at: null,
+        created_at: '2026-06-16T16:55:00.000Z',
+        rooms: { number: 7, type: 'small' },
+      },
+      {
+        id: 'solo-villa-5',
+        booking_group_id: 'single-booking',
+        room_id: 'room-5',
+        check_in: '2026-08-10',
+        check_out: '2026-08-11',
+        adults: 2,
+        kids_ages: [],
+        total_price: 3000,
+        payment_type: 'office',
+        payment_status: 'paid',
+        cancelled_at: null,
+        created_at: '2026-06-16T11:06:00.000Z',
+        rooms: { number: 5, type: 'small' },
+      },
+    ]);
+
+    const groups = finance.groupBookedDayRows(rows);
+    assert.equal(groups.length, 2, 'two reservations should remain after grouping the multi-room booking');
+
+    const single = groups[0];
+    assert.equal(single.key, 'single-booking');
+    assert.equal(single.villas.length, 1);
+    assert.equal(single.totalPrice, 3000);
+
+    const multi = groups[1];
+    assert.equal(multi.key, 'multi-room');
+    assert.deepEqual([...multi.villas].map((villa) => villa.roomNumber), [7, 8]);
+    // total_price is split per villa, so the booking total is summed.
+    assert.equal(multi.totalPrice, 5433 + 5434);
+    // adults/kids are the whole-booking party, taken once (not summed across villas).
+    assert.equal(multi.adults, 6);
+    assert.equal(multi.kids, 1);
+    assert.equal(multi.nights, 2);
   });
 
   it('applies a single clicked day from the finance range calendar', async () => {
@@ -1351,7 +1421,9 @@ describe('EcoVila Step 9 CRM', () => {
     const calendarHtml = appended.map((item) => item.innerHTML).join('\n');
     assert.doesNotMatch(calendarHtml, /<img src=x onerror=alert\(1\)>/);
     assert.doesNotMatch(calendarHtml, /<svg onload=alert\(2\)>/);
-    assert.match(calendarHtml, /&lt;img src=x onerror=alert\(1\)&gt; Client/);
+    // The calendar card title now shows the booking total instead of the guest name.
+    assert.match(calendarHtml, /2400 MDL/);
+    assert.doesNotMatch(calendarHtml, /Client/);
     assert.match(calendarHtml, /&lt;svg onload=alert\(2\)&gt;/);
     assert.doesNotMatch(pendingList.innerHTML, /<img src=x onerror=alert\(1\)>/);
     assert.match(pendingList.innerHTML, /&lt;img src=x onerror=alert\(1\)&gt; Client/);
