@@ -475,6 +475,66 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(rows[1].paymentStatus, 'pending');
   });
 
+  it('keeps paid-then-cancelled booked rows but drops never-paid cancellations', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const rows = finance.normalizeBookedDayRows([
+      {
+        id: 'paid-then-refunded',
+        booking_group_id: 'g1',
+        check_in: '2026-06-28',
+        check_out: '2026-06-29',
+        adults: 2,
+        kids_ages: [],
+        total_price: 38,
+        payment_type: 'mia',
+        payment_status: 'cancelled',
+        cancelled_at: '2026-06-17T00:55:00.000Z',
+        paid_at: '2026-06-17T00:54:00.000Z',
+        created_at: '2026-06-17T00:53:00.000Z',
+        rooms: { number: 3, type: 'small' },
+      },
+      {
+        id: 'never-paid-expired',
+        booking_group_id: 'g2',
+        check_in: '2026-06-28',
+        check_out: '2026-06-29',
+        adults: 2,
+        kids_ages: [],
+        total_price: 3600,
+        payment_type: 'card',
+        payment_status: 'cancelled',
+        cancelled_at: '2026-06-17T00:51:00.000Z',
+        paid_at: null,
+        created_at: '2026-06-17T00:45:00.000Z',
+        rooms: { number: 4, type: 'small' },
+      },
+    ]);
+
+    assert.deepEqual(rows.map((row) => row.id), ['paid-then-refunded']);
+    assert.equal(rows[0].paymentStatus, 'cancelled');
+  });
+
+  it('labels cancelled booked rows as anulată and reads the booked day in Moldova time', () => {
+    const finance = read('admin/js/crm-finance.js');
+    const helpers = read('js/supabase.js');
+
+    assert.match(
+      finance,
+      /paymentStatus === 'cancelled'[\s\S]*?return 'anulată'/,
+      'cancelled booked rows should render as anulată, not online plătit',
+    );
+    assert.match(
+      helpers,
+      /Europe\/Chisinau/,
+      'the booked-day window should use the Moldova calendar day, not UTC midnight',
+    );
+    assert.match(
+      helpers,
+      /paid_at\.not\.is\.null/,
+      'paid-then-cancelled bookings should still be fetched for the booked-day list',
+    );
+  });
+
   it('groups one-day finance booked rows by booking with a shared total', () => {
     const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
     const rows = finance.normalizeBookedDayRows([

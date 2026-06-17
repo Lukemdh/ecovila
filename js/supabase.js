@@ -404,6 +404,53 @@
     return unwrapSupabaseResult(query);
   }
 
+  // "Today" in the CRM is the Moldova (Europe/Chisinau) calendar day, but
+  // created_at/paid_at are stored UTC. A bare `${date}T00:00:00Z` boundary is
+  // shifted 2-3h, so a booking made just after local midnight (its created_at is
+  // the previous UTC day) is missed. Convert the local day start to its UTC
+  // instant so early-morning bookings land in the right day.
+  function chisinauDayStartUtc(localDate) {
+    if (!localDate) {
+      return undefined;
+    }
+
+    const naiveUtc = new Date(`${localDate}T00:00:00Z`);
+    if (Number.isNaN(naiveUtc.getTime())) {
+      return undefined;
+    }
+
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Europe/Chisinau',
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+        .formatToParts(naiveUtc)
+        .reduce((acc, part) => {
+          acc[part.type] = part.value;
+          return acc;
+        }, {});
+      const wallAsUtc = Date.UTC(
+        Number(parts.year),
+        Number(parts.month) - 1,
+        Number(parts.day),
+        Number(parts.hour === '24' ? 0 : parts.hour),
+        Number(parts.minute),
+        Number(parts.second),
+      );
+      const offsetMs = wallAsUtc - naiveUtc.getTime();
+      return new Date(naiveUtc.getTime() - offsetMs).toISOString();
+    } catch (_error) {
+      // No tz data (very old runtime): fall back to the UTC boundary.
+      return naiveUtc.toISOString();
+    }
+  }
+
   function fetchFinanceBookedReservations(client, options) {
     const rangeStart = options?.rangeStart;
     const rangeEnd = options?.rangeEnd;
@@ -423,20 +470,23 @@
           'total_price',
           'payment_type',
           'payment_status',
+          'paid_at',
           'created_at',
           'cancelled_at',
           'rooms(id, number, type)',
         ].join(', '),
       )
-      .neq('payment_status', 'cancelled')
-      .is('cancelled_at', null);
+      // Show every booking created in the day, including ones paid then
+      // cancelled/refunded (rendered as "anulată"); drop only never-paid
+      // abandoned/expired holds, which would just be noise.
+      .or('paid_at.not.is.null,and(payment_status.neq.cancelled,cancelled_at.is.null)');
 
     if (rangeStart) {
-      query = query.gte('created_at', `${rangeStart}T00:00:00.000Z`);
+      query = query.gte('created_at', chisinauDayStartUtc(rangeStart));
     }
 
     if (rangeEnd) {
-      query = query.lt('created_at', `${rangeEnd}T00:00:00.000Z`);
+      query = query.lt('created_at', chisinauDayStartUtc(rangeEnd));
     }
 
     return unwrapSupabaseResult(query.order('created_at', { ascending: true }));

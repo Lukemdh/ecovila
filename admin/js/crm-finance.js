@@ -228,7 +228,12 @@
   function normalizeBookedDayRows(rows) {
     return (rows || [])
       .filter((reservation) => {
-        return reservation?.id && !isCancelled(reservation);
+        if (!reservation?.id) {
+          return false;
+        }
+        // Keep live bookings, plus ones that were actually paid then cancelled
+        // (real refunds, shown as "anulată"); drop never-paid abandoned holds.
+        return !isCancelled(reservation) || Boolean(reservation.paid_at);
       })
       .map((reservation) => {
         const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
@@ -372,6 +377,10 @@
   }
 
   function paymentLabel(row) {
+    if (row.paymentStatus === 'cancelled') {
+      return 'anulată';
+    }
+
     if (row.paymentStatus === 'paid') {
       if (row.paymentType === 'office') {
         return 'din oficiu';
