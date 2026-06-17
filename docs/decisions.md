@@ -1327,6 +1327,41 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   ship with the next TopHost upload. Builds on ADR-052; the auth gate diverges from the
   `['diana']`-only convention by design.
 
+### ADR-054 — Server-side, anti-fragmentation room auto-assignment
+- **Date:** 2026-06-17.
+- **Decision:** when a guest books a villa **type** without picking a specific unit
+  (`room_explicitly_selected = false`), the **server** now assigns the room, using a
+  **tightest-free-window** heuristic: among the rooms of that type free for the stay, pick the one
+  whose contiguous free window — the gap before the stay + the stay + the gap after, capped at 60
+  days per side — is the **smallest**. Filling the most-constrained room first preserves longer
+  contiguous gaps on the other rooms for future multi-night stays. Ties fall back to the existing
+  per-type room-number direction (`small` descending, `large`/`hotel` ascending) so the common
+  no-pressure case is unchanged. Implemented as a pure, unit-tested core
+  (`orderRoomsByTightestWindow` / `freeWindowDays`) plus a thin `assignAutomaticRooms` orchestrator
+  in `supabase/functions/_shared/roomAssignment.ts`, wired through a new optional `assignRooms`
+  hook in `createReservationsWithTokens` that runs **before** the price guard (price depends only on
+  the villa type, which assignment never changes, so the order is safe). It is **best-effort**: any
+  error, or no available candidate, falls back to the client-supplied `room_id`, and the DB
+  `reservations_no_room_overlap` exclusion constraint stays the final backstop.
+- **Why:** the browser auto-assigned by room number only (`orderRoomsForAssignment` in
+  `js/calendar.js`), blind to the bookings around the requested dates. A 1-night booking could grab
+  a room sitting in the middle of a long free gap and fragment it — e.g. small villas, booking
+  11–12 Jul: #3 is free 10–13 Jul and #7 is free only 11–12 Jul; the old logic took #3 and
+  destroyed the 3-night gap, when #7 was the perfect tight fit. Moving the decision server-side
+  also makes it **authoritative** (no stale-/old-client divergence), **race-safe** (availability is
+  re-read at insert time, after the guest finishes paying — a freed/taken room is reflected), and
+  deployable **without a TopHost upload**.
+- **Consequence:** the browser still sends a candidate `room_id` and still renders availability +
+  the explicit room picker, but the server **overrides** the candidate for auto rows — so **no
+  client change and no TopHost upload were needed**, only the `create-reservation` redeploy. The
+  guest never sees a specific number pre-booking (`getRoomsCopy` in `js/checkout.js` gates on
+  `roomExplicitlySelected`) and the confirmation/email read the real room from the DB, so the
+  override is invisible. Cost is one small indexed `reservations` read + a `rooms` read per booking
+  that has an auto row — negligible at 25 rooms / boutique volume, and edge-function invocations are
+  unchanged. Explicit guest picks (`room_explicitly_selected = true`) and CRM staff bookings
+  (`buildStaffReservationRows`, always explicit, separate direct-insert path) are untouched.
+  Deployed to prod 2026-06-17 (`create-reservation`).
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

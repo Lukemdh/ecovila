@@ -3,6 +3,7 @@ import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { createReservationsWithTokens } from '../_shared/reservations.ts';
+import { assignAutomaticRooms } from '../_shared/roomAssignment.ts';
 import { verifyReservationGroupPricing } from '../_shared/pricingGuard.ts';
 import type { ReservationInput } from '../_shared/reservations.ts';
 
@@ -19,6 +20,16 @@ Deno.serve(async (request) => {
 
     const client = createServiceClient();
     const result = await createReservationsWithTokens(client, reservations as ReservationInput[], {
+      // Best-effort optimization: if auto-assignment fails for any reason, keep
+      // the client-supplied room ids so a booking is never lost to it (ADR-054).
+      assignRooms: async (rows) => {
+        try {
+          return await assignAutomaticRooms(client, rows);
+        } catch (error) {
+          console.error('Room auto-assignment failed; using client room ids', error);
+          return rows;
+        }
+      },
       priceGuard: (rows) => verifyReservationGroupPricing(client, rows),
     });
     const primaryPhone = result.reservations[0]?.guest_phone || '';

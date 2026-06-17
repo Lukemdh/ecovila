@@ -132,10 +132,18 @@ export async function createReservationsWithTokens(
   inputs: ReservationInput[],
   options: {
     now?: Date;
+    assignRooms?: (rows: ReservationRow[]) => Promise<ReservationRow[]>;
     priceGuard?: (rows: ReservationRow[]) => Promise<ReservationRow[]>;
   } = {},
 ) {
   let rows = buildReservationRows(inputs, options);
+
+  // Auto-assign rooms before the price guard so the guard validates the final
+  // room ids. Price depends only on the villa type (unchanged by assignment),
+  // so the order is safe. See ADR-054.
+  if (options.assignRooms) {
+    rows = await options.assignRooms(rows);
+  }
 
   if (options.priceGuard) {
     rows = await options.priceGuard(rows);

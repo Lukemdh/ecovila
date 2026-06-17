@@ -40,6 +40,7 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'supabase/functions/_shared/notifications.ts',
       'supabase/functions/_shared/providers.ts',
       'supabase/functions/_shared/reservations.ts',
+      'supabase/functions/_shared/roomAssignment.ts',
       'supabase/functions/_shared/supabaseAdmin.ts',
       'supabase/functions/tests/reservations.test.ts',
     ]) {
