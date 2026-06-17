@@ -1264,8 +1264,13 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   just after local midnight) and shows paid-then-cancelled bookings as "anulată" instead of
   dropping them; never-paid abandoned holds stay excluded. The MIA page CTA was renamed to
   "Click aici pentru a plăti" and restyled (depth gradient, hover lift, forward-arrow, subtle
-  light sweep; reduced-motion safe). Branch `mia` is kept separate for a few days of prod
-  testing before merging to `main`.
+  light sweep; reduced-motion safe). The pay-card title was shortened from "Scanează codul QR
+  pentru a plăti" to just "Scanează codul QR" (all three locales), and a
+  **"Denumirea comerciantului: S.C. PROELECTROCOMPLEX S.R.L"** line was added directly below the
+  pay button so guests recognise the abbreviated `S c P` beneficiary name their banking app shows
+  for the MIA transfer — that displayed name is set on the MAIB merchant account, not in our QR
+  payload (`buildMaibMiaQrPayload` sends no merchant name), so this is a label-only clarification.
+  Branch `mia` is kept separate for a few days of prod testing before merging to `main`.
 
 ---
 
