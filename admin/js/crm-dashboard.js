@@ -330,7 +330,7 @@
       <span class="crm-reservation-card__phone">${phone}</span>
       ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${expiresAt}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
     `;
-    card.addEventListener('click', () => openReservation(reservation));
+    card.addEventListener('click', () => openReservation(reservation, { groupTotal: total }));
     return card;
   }
 
@@ -446,7 +446,7 @@
     await activeState?.reload?.();
   }
 
-  function openReservation(reservation) {
+  function openReservation(reservation, options = {}) {
     if (!reservation) {
       return;
     }
@@ -465,7 +465,13 @@
     qs('[data-edit-notes]', dialog).value = reservation.notes || '';
     const paymentLabel = PAYMENT_LABELS[reservation.payment_type] || reservation.payment_type || '-';
     qs('[data-edit-payment]', dialog).textContent = `Tip plată: ${paymentLabel} · ${reservation.payment_status}`;
-    qs('[data-edit-total]', dialog).textContent = `Preț total: ${root.EcoVilaCrmApp.formatMDL(reservation.total_price)}`;
+    // Grouped (multi-villa) bookings: show the booking-group total to match the
+    // calendar card. Falls back to the single reservation price when no group
+    // total is supplied (e.g. the dialog opened outside the calendar grid).
+    const totalPrice = Number.isFinite(options.groupTotal)
+      ? options.groupTotal
+      : Number(reservation.total_price || 0);
+    qs('[data-edit-total]', dialog).textContent = `Preț total: ${root.EcoVilaCrmApp.formatMDL(totalPrice)}`;
     const sendConfirmation = qs('[data-send-payment-confirmation]', dialog);
     if (sendConfirmation) {
       const canSendConfirmation = reservation.payment_type === 'cash' && reservation.payment_status === 'paid';
@@ -512,7 +518,19 @@
         await root.EcoVilaSupabase.updateReservation(context.client, reservation.id, cancellation);
       }
 
-      context.setAlert?.('');
+      // Best-effort: tell the guest their reservation was cancelled. The
+      // cancellation already succeeded, so a failed notification must not undo it.
+      let alert = '';
+      try {
+        await root.EcoVilaSupabase.notifyReservationCancellation(context.client, {
+          bookingGroupId: reservation.booking_group_id,
+          reservationId: reservation.id,
+        });
+      } catch (notifyError) {
+        alert = 'Rezervarea a fost anulată, dar notificarea către client nu a putut fi trimisă.';
+      }
+
+      context.setAlert?.(alert);
       await activeState.reload();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Anularea a eșuat.';

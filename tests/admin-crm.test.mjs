@@ -877,6 +877,93 @@ describe('EcoVila Step 9 CRM', () => {
       /payment_status:\s*'cancelled'[\s\S]*updateReservationGroup/s,
       'CRM cancellation should cancel the full booking group after any required refund',
     );
+    assert.match(
+      helpers,
+      /function notifyReservationCancellation/,
+      'Supabase helpers should expose the staff cancellation-notification Edge Function',
+    );
+    assert.match(
+      helpers,
+      /functions\.invoke\('reservation-cancel-notify'/,
+      'CRM cancellations should notify the guest via the reservation-cancel-notify Edge Function',
+    );
+    assert.match(
+      dashboardJs,
+      /updateReservationGroup[\s\S]*notifyReservationCancellation/s,
+      'CRM cancellation should notify the guest after the reservation is cancelled',
+    );
+  });
+
+  it('shows the booking-group total in the edit dialog for grouped reservations', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+
+    assert.match(
+      dashboardJs,
+      /openReservation\(reservation,\s*\{\s*groupTotal:\s*total\s*\}\)/,
+      'the calendar card should pass the aggregated booking-group total to the dialog',
+    );
+    assert.match(
+      dashboardJs,
+      /options\.groupTotal[\s\S]*data-edit-total/s,
+      'the edit dialog should render the group total when provided',
+    );
+  });
+
+  it('renders the supplied group total instead of the single reservation price', () => {
+    const totalField = createFakeElement('strong');
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.querySelector = (selector) =>
+      ({
+        '[data-edit-check-in]': createFakeElement('input'),
+        '[data-edit-check-out]': createFakeElement('input'),
+        '[data-edit-adults]': createFakeElement('input'),
+        '[data-edit-kids-ages]': createFakeElement('input'),
+        '[data-edit-name]': createFakeElement('input'),
+        '[data-edit-phone]': createFakeElement('input'),
+        '[data-edit-notes]': createFakeElement('textarea'),
+        '[data-edit-payment]': createFakeElement('p'),
+        '[data-edit-total]': totalField,
+        '[data-send-payment-confirmation]': createFakeElement('button'),
+        '[data-delete-reservation]': createFakeElement('button'),
+      })[selector] || null;
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: {
+        createElement: createFakeElement,
+        querySelector(selector) {
+          return selector === '[data-reservation-dialog]' ? dialog : null;
+        },
+        querySelectorAll() {
+          return [];
+        },
+        addEventListener() {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: { formatMDL: (amount) => `${amount} MDL` },
+      EcoVilaCrmCalendar,
+    });
+
+    const reservation = {
+      id: 'reservation-group-owner',
+      booking_group_id: 'group-two-villas',
+      check_in: '2026-07-04',
+      check_out: '2026-07-07',
+      adults: 4,
+      kids_ages: [],
+      guest_first_name: 'Anatolie',
+      guest_last_name: 'Popov',
+      guest_phone: '+37362109460',
+      payment_type: 'card',
+      payment_status: 'paid',
+      total_price: 8600,
+    };
+
+    EcoVilaCrmDashboard.openReservation(reservation, { groupTotal: 17200 });
+    assert.equal(totalField.textContent, 'Preț total: 17200 MDL');
+
+    EcoVilaCrmDashboard.openReservation(reservation);
+    assert.equal(totalField.textContent, 'Preț total: 8600 MDL');
   });
 
   it('asks for two Romanian confirmations and refunds paid MAIB bookings before CRM deletion', async () => {
@@ -933,6 +1020,10 @@ describe('EcoVila Step 9 CRM', () => {
           operations.push(['cancel-single']);
           return {};
         },
+        async notifyReservationCancellation(_client, payload) {
+          operations.push(['notify', payload]);
+          return { ok: true };
+        },
       },
     });
     const context = { client: {}, setAlert() {} };
@@ -968,7 +1059,10 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(operations[0][0], 'refund');
     assert.equal(operations[0][1].bookingGroupId, 'group-paid-card');
     assert.equal(operations[0][1].reason, 'crm_cancellation');
-    assert.deepEqual(operations.slice(1).map((item) => item[0]), ['cancel-group', 'reload']);
+    assert.deepEqual(operations.slice(1).map((item) => item[0]), ['cancel-group', 'notify', 'reload']);
+    const notify = operations.find((item) => item[0] === 'notify');
+    assert.equal(notify[1].bookingGroupId, 'group-paid-card');
+    assert.equal(notify[1].reservationId, 'reservation-paid-card');
   });
 
   it('stops CRM deletion when the second confirmation is declined', async () => {

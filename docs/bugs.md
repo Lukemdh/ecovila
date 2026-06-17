@@ -38,6 +38,7 @@ High / Medium / Low.
 | B-29 | Reused MAIB checkout session could serve a stale amount | Medium | Fixed |
 | B-30 | PostgREST `.or()` filter injection in `maib-refund` payment lookup | Low | Fixed |
 | B-31 | CRM auth cookie missing the `Secure` flag | Low | Fixed |
+| B-32 | CRM edit dialog showed single-villa price for grouped bookings | Low | Fixed |
 
 ---
 
@@ -482,3 +483,14 @@ High / Medium / Low.
 - **Description:** `admin/js/crm-auth.js` wrote the session cookie with `SameSite=Lax`
   and `Path=/admin` but no `Secure` flag.
 - **Fix:** `Secure` is appended except on plain-HTTP local development hosts.
+
+### B-32 — CRM edit dialog showed single-villa price for grouped bookings (Low) — Fixed 2026-06-17
+- **Description:** for a multi-villa booking group the CRM calendar card summed every villa
+  into the group total (e.g. `17.200 MDL`), but clicking it opened the edit dialog which
+  rendered only the clicked (primary) reservation's `total_price` (e.g. `8.600 MDL`), so the
+  card and dialog disagreed. Other dialog fields (adults, phone, dates) intentionally reflect
+  the primary villa and already matched the card — price was the only aggregated value.
+- **Fix:** `reservationCard` passes the already-computed block total into
+  `openReservation(reservation, { groupTotal: total })`; the dialog renders `options.groupTotal`
+  and falls back to `reservation.total_price` when opened outside the calendar grid. Display-only
+  (`admin/js/crm-dashboard.js`); ships with the next TopHost upload.

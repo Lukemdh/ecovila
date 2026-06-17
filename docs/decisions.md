@@ -1300,6 +1300,33 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `mapNotificationOwners`. Builds on ADR-005 (idempotent lifecycle notifications); the email
   redesign from ADR-039 is unchanged apart from the aggregated room/total lines.
 
+### ADR-053 — CRM staff cancellations notify the guest
+- **Date:** 2026-06-17.
+- **Decision:** when staff cancel a booking from the CRM ("Șterge rezervarea"), the guest now
+  receives the same localized cancellation SMS + email that guest self-service cancellations
+  already send (ADR-052 grouping applies). A new staff-gated Edge Function
+  `reservation-cancel-notify` (`verify_jwt = true`, `requireStaffRole(['diana', 'angela'])`) loads
+  the cancelled booking group and dispatches **one** notification per `booking_group_id` via
+  `mapNotificationOwners`, recorded under the `reservation_cancelled` notification event type —
+  deliberately distinct from guest self-cancellation's `guest_cancellation`. The CRM
+  `deleteReservation` calls it **best-effort** after the cancellation update (frontend helper
+  `notifyReservationCancellation` in `js/supabase.js`): a notification failure never undoes the
+  cancel, it only surfaces a soft staff notice. Staff use `['diana', 'angela']` rather than the
+  `['diana']`-only gate of the refund/SMS functions because both staff accounts cancel non-card
+  bookings from the CRM and should be able to notify.
+- **Why:** the CRM delete path only refunded (when card+paid) and flipped the rows to `cancelled`;
+  it sent the guest nothing. So a staff cancellation looked, from the guest's side, like a silent
+  refund with no explanation. This surfaced when a paid MIA booking (Zamineagri Valentin,
+  2026-06-17) was cancelled from the CRM, auto-refunded, and the guest was never told — the
+  cancellation appeared to "happen on its own". `reservation_cancelled` was already declared in the
+  `notification_events` event-type check (ADR added in `20260612160000`) but had never been used.
+- **Consequence:** `reservation_cancelled` is now the staff-cancellation dedup key; the
+  per-`(reservation_id, event_type)` unique constraint keeps it exactly-once even if the delete is
+  retried, and it cannot collide with a guest self-cancel (terminal state, different event type).
+  Deployed to prod 2026-06-17 (`reservation-cancel-notify` v1); the frontend helper + CRM wiring
+  ship with the next TopHost upload. Builds on ADR-052; the auth gate diverges from the
+  `['diana']`-only convention by design.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

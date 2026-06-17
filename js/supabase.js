@@ -237,6 +237,25 @@
     return result.data || {};
   }
 
+  async function notifyReservationCancellation(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-cancel-notify', {
+      body: {
+        bookingGroupId: input?.bookingGroupId || '',
+        reservationId: input?.reservationId || '',
+      },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
   async function startReservationLookup(client, phone) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -871,6 +890,7 @@
     createMaibPaymentRequest,
     fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
+    notifyReservationCancellation,
     createReservationRequest,
     startReservationLookup,
     verifyReservationLookup,

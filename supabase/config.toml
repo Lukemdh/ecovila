@@ -50,3 +50,6 @@ verify_jwt = true
 
 [functions.reservation-cancel]
 verify_jwt = true
+
+[functions.reservation-cancel-notify]
+verify_jwt = true
