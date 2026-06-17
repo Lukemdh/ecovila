@@ -70,9 +70,115 @@
   background: var(--line);
 }
 
+/* Primary payment CTA — the click-to-pay path for mobile guests. Designed to
+   feel inviting and tappable: warm depth gradient, a lift on hover, a tactile
+   press, a forward-nudging arrow, and a slow light sweep that draws the eye
+   without nagging. Motion is disabled for reduced-motion users. */
 .mia-pay-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   width: 100%;
   max-width: 340px;
+  min-height: 56px;
+  padding: 16px 28px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--white);
+  font-family: var(--body-font);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    linear-gradient(135deg, #4a3528 0%, var(--espresso) 52%, #271a13 100%);
+  box-shadow:
+    0 12px 26px -12px rgba(51, 38, 31, 0.6),
+    0 2px 6px -2px rgba(51, 38, 31, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms ease,
+    filter 240ms ease;
+}
+
+.mia-pay-link:hover,
+.mia-pay-link:focus-visible {
+  transform: translateY(-2px);
+  filter: brightness(1.07) saturate(1.05);
+  box-shadow:
+    0 18px 36px -12px rgba(51, 38, 31, 0.62),
+    0 4px 10px -3px rgba(51, 38, 31, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  outline: none;
+}
+
+.mia-pay-link:active {
+  transform: translateY(0) scale(0.99);
+  box-shadow:
+    0 6px 16px -10px rgba(51, 38, 31, 0.6),
+    inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.mia-pay-link__icon {
+  flex: none;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mia-pay-link:hover .mia-pay-link__icon,
+.mia-pay-link:focus-visible .mia-pay-link__icon {
+  transform: translateX(4px);
+}
+
+/* Slow, subtle light sweep to gently signal "this is the action". */
+.mia-pay-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 65%
+  );
+  background-size: 250% 100%;
+  background-position: 150% 0;
+  background-repeat: no-repeat;
+  animation: mia-pay-sheen 5s ease-in-out infinite;
+}
+
+@keyframes mia-pay-sheen {
+  0%,
+  22% {
+    background-position: 150% 0;
+  }
+  55%,
+  100% {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mia-pay-link,
+  .mia-pay-link__icon {
+    transition: none;
+  }
+
+  .mia-pay-link:hover,
+  .mia-pay-link:focus-visible {
+    transform: none;
+  }
+
+  .mia-pay-link::after {
+    animation: none;
+    display: none;
+  }
 }
 
 .mia-amount {

@@ -1256,6 +1256,16 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `mia`, not yet deployed.
 - **Optional later hardening:** rate-limit / early-reject the unauthenticated `maib-mia-callback`;
   a cron that re-checks pending MIA payments before the expiry cron cancels them.
+- **Update (2026-06-17):** deployed to prod (`maib-create-payment` v14, `maib-callback` v17,
+  `maib-mia-callback`/`maib-mia-status` v1). A real `+373` booking paid 38 MDL via QR MIA and
+  reconciled (paid_at stamped), then refunded cleanly — full money path verified on a device.
+  Follow-up fixes on `mia`: the Finance "Rezervări create în ziua selectată" list now uses the
+  Moldova (Europe/Chisinau) calendar day for `created_at` (was UTC-shifted, hiding bookings made
+  just after local midnight) and shows paid-then-cancelled bookings as "anulată" instead of
+  dropping them; never-paid abandoned holds stay excluded. The MIA page CTA was renamed to
+  "Click aici pentru a plăti" and restyled (depth gradient, hover lift, forward-arrow, subtle
+  light sweep; reduced-motion safe). Branch `mia` is kept separate for a few days of prod
+  testing before merging to `main`.
 
 ---
 
