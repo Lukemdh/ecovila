@@ -12,6 +12,7 @@ import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   buildCancellationEmail,
   cancellationConfirmationSms,
+  mapNotificationOwners,
   normalizeEmailLang,
   titleCaseName,
 } from '../_shared/notifications.ts';
@@ -238,8 +239,17 @@ async function notifyCancelledReservations(
   reservations: CancellationReservationRow[],
 ) {
   const results: CancellationNotificationResult[] = [];
+  // One notification per booking group: the owner reservation sends the SMS and
+  // an email that lists every villa; the rest of the group is skipped.
+  const ownerGroups = mapNotificationOwners(reservations);
 
   for (const reservation of reservations) {
+    const group = ownerGroups.get(reservation.id);
+    if (!group) {
+      results.push({ reservationId: reservation.id, sent: false, skipped_duplicate: true });
+      continue;
+    }
+
     try {
       const reserved = await reserveNotificationEvent(client, reservation.id, 'guest_cancellation');
       if (!reserved) {
@@ -247,9 +257,9 @@ async function notifyCancelledReservations(
         continue;
       }
 
-      const message = composeCancellationConfirmation(reservation);
+      const message = composeCancellationConfirmation(reservation, group);
       const [sms, email] = await Promise.allSettled([
-        sendSms(message.sms),
+        message.sms ? sendSms(message.sms) : Promise.resolve({ skipped: true }),
         sendEmail(message.email),
       ]);
       const result = {
@@ -344,8 +354,11 @@ async function markNotificationEventFailed(
 
 function composeCancellationConfirmation(
   reservation: CancellationReservationRow,
+  groupReservations: CancellationReservationRow[] = [reservation],
 ): NotificationMessage {
-  const roomCopy = roomLabel(reservation);
+  // The owner reservation's email lists every villa in the booking group.
+  const group = groupReservations.length ? groupReservations : [reservation];
+  const roomCopy = [...new Set(group.map((row) => roomLabel(row)))].join(', ');
   const lang = normalizeEmailLang(reservation.guest_language);
   const firstName = titleCaseName(reservation.guest_first_name || '');
   const fullName = titleCaseName(

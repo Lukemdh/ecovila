@@ -342,6 +342,83 @@ Deno.test('composeCancellationConfirmation sends a localized cancellation SMS wi
   }
 });
 
+Deno.test('composeCashExpiryReminder is email-only — the 5-minute SMS was dropped', async () => {
+  const { composeCashExpiryReminder } = await import('../_shared/notifications.ts');
+  const message = composeCashExpiryReminder(
+    {
+      id: 'reservation-reminder',
+      room_number: 8,
+      check_in: '2026-09-20',
+      check_out: '2026-09-21',
+      total_price: 5200,
+      payment_type: 'cash',
+      guest_email: 'ana@example.md',
+      guest_phone: '+37360123456',
+      guest_first_name: 'Ana',
+      guest_last_name: 'Munteanu',
+      guest_language: 'ro',
+    },
+    { siteUrl: 'https://ecovila.md' },
+  );
+
+  assertEquals(message.sms, null);
+  assertEquals(message.email.to, 'ana@example.md');
+  assertEquals(message.email.subject.length > 0, true);
+});
+
+Deno.test('mapNotificationOwners gives one owner (lowest id) per booking group with its members', async () => {
+  const { mapNotificationOwners } = await import('../_shared/notifications.ts');
+  const owners = mapNotificationOwners([
+    { id: 'r-3', booking_group_id: 'group-a' },
+    { id: 'r-1', booking_group_id: 'group-a' },
+    { id: 'r-2', booking_group_id: 'group-a' },
+    { id: 'r-9', booking_group_id: 'group-b' },
+    // A lone reservation with no booking group owns its own notification.
+    { id: 'r-7' },
+  ]);
+
+  // One key per booking group: the lowest id in each group.
+  assertEquals([...owners.keys()].sort(), ['r-1', 'r-7', 'r-9']);
+  // The owner carries every villa in its group so the email can list them all.
+  assertEquals(owners.get('r-1')?.map((row) => row.id).sort(), ['r-1', 'r-2', 'r-3']);
+  assertEquals(owners.get('r-9')?.map((row) => row.id), ['r-9']);
+  assertEquals(owners.get('r-7')?.map((row) => row.id), ['r-7']);
+});
+
+Deno.test('composeBookingConfirmation aggregates the booking group into one email', async () => {
+  const { composeBookingConfirmation } = await import('../_shared/notifications.ts');
+  const base = {
+    check_in: '2026-09-20',
+    check_out: '2026-09-21',
+    payment_type: 'card',
+    guest_email: 'ana@example.md',
+    guest_phone: '+37360123456',
+    guest_first_name: 'Ana',
+    guest_last_name: 'Munteanu',
+    guest_language: 'ro',
+  };
+  const group = [
+    { ...base, id: 'r-1', room_number: 3, total_price: 4000 },
+    { ...base, id: 'r-2', room_number: 5, total_price: 2600 },
+  ];
+
+  const message = composeBookingConfirmation(group[0], {
+    cancellationToken: 'cancel-token',
+    siteUrl: 'https://ecovila.md',
+    groupReservations: group,
+  });
+
+  // Owner SMS is unchanged (dates only, one text for the booking).
+  assertEquals(message.sms.to, '+37360123456');
+  // Email lists every villa and shows the full booking total (4000 + 2600),
+  // not a single villa's split share. formatEmailMoney groups with a
+  // non-breaking space, so normalize before matching.
+  const html = message.email.html.replaceAll(' ', ' ');
+  assertEquals(html.includes('Căsuța #3, Căsuța #5'), true);
+  assertEquals(html.includes('6 600 MDL'), true);
+  assertEquals(html.includes('4 000 MDL'), false);
+});
+
 Deno.test('sendSms follows the SMS.md authorized legacy request shape', async () => {
   const { sendSms } = await import('../_shared/providers.ts');
   const originalToken = Deno.env.get('SMSMD_API_TOKEN');

@@ -1272,6 +1272,34 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   payload (`buildMaibMiaQrPayload` sends no merchant name), so this is a label-only clarification.
   Branch `mia` is kept separate for a few days of prod testing before merging to `main`.
 
+### ADR-052 — Guest notifications are one per booking group, not one per villa
+- **Date:** 2026-06-17.
+- **Decision:** every guest-facing notification — booking/payment confirmation, cash-expiry
+  cancellation, guest/staff cancellation, the cash-expiry "expiră în curând" reminder, and the
+  24h arrival reminder — is sent **once per `booking_group_id`**, regardless of how many villas
+  the booking holds. The lowest reservation id in the group is the "owner": it sends one SMS and
+  one email whose body lists **every** villa in the booking (e.g. "Căsuța #3, Căsuța #5") and sums
+  the per-villa split prices back to the full booking total; the other reservations in the group
+  send nothing. Separately, the standalone "Rezervarea dvs. expiră în 5 minute" **SMS was dropped
+  entirely** — guests already see the deadline at booking time — while the equivalent reminder
+  **email is kept** (now also one per booking). Implemented with `mapNotificationOwners` +
+  `aggregateRoomLabel`/`aggregateTotalPrice` in `supabase/functions/_shared/notifications.ts`,
+  applied in `send-reminders`, `expire-cash-reservations`, `confirm-reservation-payment`,
+  `reservation-cancel`, and `_shared/bookingSettlement.ts` (used by `maib-callback` and
+  `maib-mia-callback`).
+- **Why:** a multi-villa booking is stored as one reservation row per villa sharing a
+  `booking_group_id`, phone, and dates (`js/checkout.js`). The per-reservation notify loops were
+  deduped only on `reservation_id`, so the guest was texted/emailed once **per villa** — e.g. a
+  3-villa cash booking got 3 "expiră în 5 minute" texts at once and 3 cancellation texts, and 3
+  confirmation emails that each showed only a 1/N price split. That reads as spam and the split
+  totals were misleading.
+- **Consequence:** the owner is deterministic (lowest id) and each cron run / settlement processes
+  a whole group together, so dispatch stays exactly-once across retries even though non-owner
+  reservations no longer get their own `notification_events` row — notifications are now audited
+  under the owner reservation only. Any future per-booking guest notification must route through
+  `mapNotificationOwners`. Builds on ADR-005 (idempotent lifecycle notifications); the email
+  redesign from ADR-039 is unchanged apart from the aggregated room/total lines.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

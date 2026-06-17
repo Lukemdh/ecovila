@@ -15,18 +15,91 @@ export type NotificationReservation = {
   guest_last_name: string;
 };
 
-export type NotificationMessage = {
-  sms: {
-    to: string;
-    message: string;
-  };
-  email: {
-    to: string;
-    subject: string;
-    html: string;
-    text: string;
-  };
+export type NotificationSms = {
+  to: string;
+  message: string;
 };
+
+export type NotificationEmail = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+};
+
+// `sms: null` marks an email-only notification. Guest SMS is sent once per
+// booking group — one villa "owns" the notification and the rest of the group
+// carries nothing — so multi-villa bookings no longer trigger one SMS + one
+// email per villa. See mapNotificationOwners.
+export type NotificationMessage = {
+  sms: NotificationSms | null;
+  email: NotificationEmail;
+};
+
+// Composers for single-reservation events whose SMS always goes out return this
+// narrower shape so callers and tests can read `.sms` without a null check.
+export type SmsNotificationMessage = NotificationMessage & { sms: NotificationSms };
+
+export type NotificationGroupRow = { id: string; booking_group_id?: string | null };
+
+/**
+ * Guest notifications are sent once per booking group, not once per villa. Each
+ * cron run / settlement processes a complete group together, so this returns a
+ * map keyed by the group's "owner" reservation id (the lowest id in the group)
+ * whose value is every reservation in that group. The owner sends one SMS plus
+ * one email that aggregates the whole booking; the other reservations are
+ * skipped entirely. The owner is deterministic, so the notification stays
+ * exactly-once even if the batch is reprocessed.
+ */
+export function mapNotificationOwners<T extends NotificationGroupRow>(
+  reservations: T[],
+): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+
+  for (const reservation of reservations) {
+    const groupKey = reservation.booking_group_id || reservation.id;
+    const members = groups.get(groupKey);
+
+    if (members) {
+      members.push(reservation);
+    } else {
+      groups.set(groupKey, [reservation]);
+    }
+  }
+
+  const ownerToGroup = new Map<string, T[]>();
+
+  for (const members of groups.values()) {
+    const owner = members.reduce((lowest, row) => (row.id < lowest.id ? row : lowest), members[0]);
+    ownerToGroup.set(owner.id, members);
+  }
+
+  return ownerToGroup;
+}
+
+/**
+ * One accommodation line for a whole booking group, e.g. "Căsuța #3, Căsuța #5".
+ * Falls back to the single brand label when no room numbers are known.
+ */
+export function aggregateRoomLabel(
+  reservations: NotificationReservation[],
+  language = 'ro',
+): string {
+  const labels = reservations
+    .map((reservation) => roomLabel(reservation, language))
+    .filter((label) => label !== 'EcoVila');
+
+  if (!labels.length) {
+    return 'EcoVila';
+  }
+
+  return [...new Set(labels)].join(', ');
+}
+
+/** Full booking-group total — the per-villa prices summed back together. */
+export function aggregateTotalPrice(reservations: NotificationReservation[]): number {
+  return reservations.reduce((sum, reservation) => sum + Number(reservation.total_price || 0), 0);
+}
 
 export type NotificationDeliveryStatus = 'reserved' | 'sent' | 'failed' | 'abandoned';
 
@@ -62,10 +135,18 @@ const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
 
 export function composeBookingConfirmation(
   reservation: NotificationReservation,
-  options: { cancellationToken: string; siteUrl: string; manageToken?: string },
-): NotificationMessage {
+  options: {
+    cancellationToken: string;
+    siteUrl: string;
+    manageToken?: string;
+    groupReservations?: NotificationReservation[];
+  },
+): SmsNotificationMessage {
   const language = reservationLanguage(reservation) as EmailLang;
-  const roomCopy = roomLabel(reservation, language);
+  // The owner reservation's email represents the whole booking group: every
+  // villa is listed and the per-villa prices are summed back to the full total.
+  const group = options.groupReservations?.length ? options.groupReservations : [reservation];
+  const roomCopy = aggregateRoomLabel(group, language);
   const cancellationLink = `${options.siteUrl}/anulare.html?token=${
     encodeURIComponent(options.cancellationToken)
   }`;
@@ -82,7 +163,7 @@ export function composeBookingConfirmation(
     roomCopy,
     checkIn: reservation.check_in,
     checkOut: reservation.check_out,
-    totalPrice: reservation.total_price,
+    totalPrice: aggregateTotalPrice(group),
     confirmationUrl: confirmationLink,
     cancellationUrl: cancellationLink,
     siteUrl: options.siteUrl,
@@ -108,16 +189,15 @@ export function composeBookingConfirmation(
 
 export function composeCashExpiryReminder(
   reservation: NotificationReservation,
-  options: { siteUrl: string; manageToken?: string },
+  options: { siteUrl: string; manageToken?: string; groupReservations?: NotificationReservation[] },
 ): NotificationMessage {
-  const language = reservationLanguage(reservation);
   const confirmationLink = confirmationUrl(options.siteUrl, reservation.id, options.manageToken);
+  const group = options.groupReservations?.length ? options.groupReservations : [reservation];
 
   return {
-    sms: {
-      to: reservation.guest_phone,
-      message: cashExpiryReminderSms(language, confirmationLink),
-    },
+    // Email-only: the "expiră în 5 minute" SMS was dropped — guests already see
+    // the deadline at booking time and group bookings made it spammy.
+    sms: null,
     email: {
       to: reservation.guest_email,
       subject: 'Rezervarea EcoVila expiră în curând',
@@ -125,7 +205,7 @@ export function composeCashExpiryReminder(
       html: reservationEmailHtml({
         title: 'Rezervarea expiră în curând',
         greeting: `Bună, ${escapeHtml(reservation.guest_first_name)}.`,
-        rows: [['Rezervare', roomLabel(reservation)]],
+        rows: [['Rezervare', aggregateRoomLabel(group)]],
         body: 'Rezervarea cash expiră în 5 minute dacă nu este achitată la oficiu.',
         ctaUrl: confirmationLink,
         ctaLabel: 'Deschide confirmarea',
@@ -147,8 +227,10 @@ function confirmationUrl(siteUrl: string, reservationId: string, manageToken?: s
 
 export function composeExpiredCashCancellation(
   reservation: NotificationReservation,
+  options: { groupReservations?: NotificationReservation[] } = {},
 ): NotificationMessage {
   const language = reservationLanguage(reservation);
+  const group = options.groupReservations?.length ? options.groupReservations : [reservation];
 
   return {
     sms: {
@@ -162,7 +244,7 @@ export function composeExpiredCashCancellation(
       html: reservationEmailHtml({
         title: 'Rezervarea a fost anulată',
         greeting: `Bună, ${escapeHtml(reservation.guest_first_name)}.`,
-        rows: [['Rezervare', roomLabel(reservation)]],
+        rows: [['Rezervare', aggregateRoomLabel(group, language)]],
         body:
           'Termenul pentru achitarea cash a expirat. Puteți crea o rezervare nouă pe ecovila.md.',
       }),
@@ -173,7 +255,7 @@ export function composeExpiredCashCancellation(
 export function composeCancellationConfirmation(
   reservation: NotificationReservation,
   options: { siteUrl?: string } = {},
-): NotificationMessage {
+): SmsNotificationMessage {
   const language = reservationLanguage(reservation) as EmailLang;
   const roomCopy = roomLabel(reservation, language);
   const siteUrl = (options.siteUrl || 'https://ecovila.md').replace(/\/+$/, '');
@@ -210,8 +292,12 @@ export function composeCancellationConfirmation(
   };
 }
 
-export function composeArrivalReminder(reservation: NotificationReservation): NotificationMessage {
+export function composeArrivalReminder(
+  reservation: NotificationReservation,
+  options: { groupReservations?: NotificationReservation[] } = {},
+): SmsNotificationMessage {
   const language = reservationLanguage(reservation);
+  const group = options.groupReservations?.length ? options.groupReservations : [reservation];
 
   return {
     sms: {
@@ -227,7 +313,7 @@ export function composeArrivalReminder(reservation: NotificationReservation): No
         title: 'Mâine vă așteptăm la EcoVila',
         greeting: `Bună, ${escapeHtml(reservation.guest_first_name)}.`,
         rows: [
-          ['Cazare', roomLabel(reservation)],
+          ['Cazare', aggregateRoomLabel(group, language)],
           ['Check-in', `${reservation.check_in}, de la 13:00`],
         ],
         body:
@@ -239,7 +325,7 @@ export function composeArrivalReminder(reservation: NotificationReservation): No
 
 export async function dispatchNotification(message: NotificationMessage) {
   const [sms, email] = await Promise.allSettled([
-    sendSms(message.sms),
+    message.sms ? sendSms(message.sms) : Promise.resolve({ skipped: true }),
     sendEmail(message.email),
   ]);
 
@@ -248,6 +334,12 @@ export async function dispatchNotification(message: NotificationMessage) {
       ? `; email: ${providerErrorMessage(email.reason)}`
       : '';
     throw new Error(`SMS provider failed: ${providerErrorMessage(sms.reason)}${emailDetail}`);
+  }
+
+  // Email-only notification (sms === null): surface a failed email so the
+  // scheduled-notification retry path still runs instead of recording success.
+  if (!message.sms && email.status === 'rejected') {
+    throw new Error(`Email provider failed: ${providerErrorMessage(email.reason)}`);
   }
 
   return {
@@ -723,27 +815,6 @@ function smsMonthName(month: number, language: string, short = false) {
   }
 
   return months[language]?.[month - 1] || months.ro[month - 1] || '';
-}
-
-function cashExpiryReminderSms(language: string, confirmationLink: string) {
-  if (language === 'ru') {
-    return [
-      'EcoVila: Ваше бронирование истекает через 5 минут.',
-      `Оплатите по адресу ул. Аэродромулуй 3 или продлите на сайте: ${confirmationLink}`,
-    ].join('\n');
-  }
-
-  if (language === 'en') {
-    return [
-      'EcoVila: Your reservation expires in 5 minutes.',
-      `Pay at str. Aerodromului 3 or extend it on the site: ${confirmationLink}`,
-    ].join('\n');
-  }
-
-  return [
-    'EcoVila: Rezervarea dvs. expiră în 5 minute.',
-    `Achitați la str. Aerodromului 3 sau extindeți pe site: ${confirmationLink}`,
-  ].join('\n');
 }
 
 function expiredCashCancellationSms(language: string) {

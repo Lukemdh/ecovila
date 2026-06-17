@@ -6,6 +6,7 @@ import {
   composeArrivalReminder,
   composeCashExpiryReminder,
   dispatchScheduledNotificationOnce,
+  mapNotificationOwners,
 } from '../_shared/notifications.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { arrivalReminderTargetDate, shouldSendArrivalReminders } from '../_shared/reminders.ts';
@@ -28,6 +29,7 @@ type RoomJoin = {
 };
 
 type ReminderReservationRow = NotificationReservation & {
+  booking_group_id?: string | null;
   room_id?: string | null;
   rooms?: RoomJoin | RoomJoin[] | null;
 };
@@ -79,7 +81,7 @@ async function sendCashExpiryWarnings(client: SupabaseClient, now: Date) {
   const windowEnd = new Date(now.getTime() + 6 * 60 * 1000).toISOString();
   const { data, error } = await table<ReminderReservationRow[]>(client, 'reservations')
     .select(
-      'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
     .eq('payment_type', 'cash')
     .eq('payment_status', 'pending')
@@ -95,11 +97,12 @@ async function sendCashExpiryWarnings(client: SupabaseClient, now: Date) {
     client,
     (data || []).map(withRoomFields),
     'cash_expiry_warning',
-    async (reservation) => {
+    async (reservation, group) => {
       const manageToken = await createManageTokenForNotification(client, reservation.guest_phone);
       return composeCashExpiryReminder(reservationForNotification(reservation), {
         manageToken,
         siteUrl: getSiteUrl(),
+        groupReservations: group.map(reservationForNotification),
       });
     },
   );
@@ -116,7 +119,7 @@ async function sendArrivalReminders(client: SupabaseClient, now: Date) {
   const tomorrow = arrivalReminderTargetDate(now);
   const { data, error } = await table<ReminderReservationRow[]>(client, 'reservations')
     .select(
-      'id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
+      'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, total_price, payment_type, rooms(number, type)',
     )
     .eq('payment_status', 'paid')
     .is('cancelled_at', null)
@@ -130,7 +133,10 @@ async function sendArrivalReminders(client: SupabaseClient, now: Date) {
     client,
     (data || []).map(withRoomFields),
     'arrival_24h',
-    composeArrivalReminder,
+    (reservation, group) =>
+      composeArrivalReminder(reservationForNotification(reservation), {
+        groupReservations: group.map(reservationForNotification),
+      }),
   );
 }
 
@@ -140,17 +146,27 @@ async function notifyEach(
   eventType: string,
   createMessage: (
     reservation: ReminderReservationRow,
+    groupReservations: ReminderReservationRow[],
   ) => NotificationMessage | Promise<NotificationMessage>,
 ) {
   const results: NotificationResult[] = [];
+  // One notification per booking group: the owner reservation sends the SMS and
+  // an email that lists every villa; the rest of the group is skipped.
+  const ownerGroups = mapNotificationOwners(reservations);
 
   for (const reservation of reservations) {
+    const group = ownerGroups.get(reservation.id);
+    if (!group) {
+      results.push({ reservationId: reservation.id, sent: false, skipped_duplicate: true });
+      continue;
+    }
+
     try {
       const result = await dispatchScheduledNotificationOnce(
         client,
         reservation.id,
         eventType,
-        await createMessage(reservation),
+        await createMessage(reservation, group),
       );
       results.push({
         reservationId: reservation.id,

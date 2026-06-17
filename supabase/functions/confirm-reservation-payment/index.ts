@@ -12,6 +12,7 @@ import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   composeBookingConfirmation,
   dispatchScheduledNotificationOnce,
+  mapNotificationOwners,
 } from '../_shared/notifications.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { buildCancellationTokenRows, withRoomFields } from '../_shared/reservations.ts';
@@ -176,8 +177,17 @@ async function notifyPaidReservations(
 ) {
   const results: NotificationResult[] = [];
   const siteUrl = getSiteUrl();
+  // One notification per booking group: the owner reservation sends the SMS and
+  // an email that lists every villa; the rest of the group is skipped.
+  const ownerGroups = mapNotificationOwners(reservations);
 
   for (const reservation of reservations) {
+    const group = ownerGroups.get(reservation.id);
+    if (!group) {
+      results.push({ reservationId: reservation.id, sent: false, skipped_duplicate: true });
+      continue;
+    }
+
     try {
       let token = await findCancellationToken(client, reservation.id);
       if (!token) {
@@ -203,6 +213,7 @@ async function notifyPaidReservations(
           cancellationToken: token,
           manageToken,
           siteUrl,
+          groupReservations: group.map(reservationForNotification),
         }),
       );
       results.push({

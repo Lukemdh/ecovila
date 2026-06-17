@@ -4,6 +4,7 @@ import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   composeExpiredCashCancellation,
   dispatchScheduledNotificationOnce,
+  mapNotificationOwners,
 } from '../_shared/notifications.ts';
 import { withRoomFields } from '../_shared/reservations.ts';
 import type { NotificationReservation } from '../_shared/notifications.ts';
@@ -272,14 +273,26 @@ async function notifyExpiredReservations(
   reservations: ExpirableReservationRow[],
 ) {
   const results: NotificationResult[] = [];
+  // One notification per booking group: the owner reservation sends the SMS and
+  // an email that lists every villa; the rest of the group is skipped.
+  const ownerGroups = mapNotificationOwners(reservations);
 
   for (const reservation of reservations) {
+    const group = ownerGroups.get(reservation.id);
+    if (!group) {
+      results.push({ reservationId: reservation.id, sent: false, skipped_duplicate: true });
+      continue;
+    }
+
     try {
+      const message = composeExpiredCashCancellation(reservationForNotification(reservation), {
+        groupReservations: group.map(reservationForNotification),
+      });
       const result = await dispatchScheduledNotificationOnce(
         client,
         reservation.id,
         'cash_expired',
-        composeExpiredCashCancellation(reservationForNotification(reservation)),
+        message,
       );
       results.push({
         reservationId: reservation.id,

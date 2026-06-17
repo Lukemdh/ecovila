@@ -10,6 +10,7 @@ import { buildManageTokenRow } from './reservationManage.ts';
 import {
   bookingConfirmationSms,
   buildConfirmationEmail,
+  mapNotificationOwners,
   normalizeEmailLang,
   titleCaseName,
 } from './notifications.ts';
@@ -265,8 +266,17 @@ async function notifyPaidReservations(
 ) {
   const results: PaymentConfirmationNotificationResult[] = [];
   const siteUrl = getSiteUrl();
+  // One notification per booking group: the owner reservation sends the SMS and
+  // an email that lists every villa; the rest of the group is skipped.
+  const ownerGroups = mapNotificationOwners(reservations);
 
   for (const reservation of reservations) {
+    const group = ownerGroups.get(reservation.id);
+    if (!group) {
+      results.push({ reservationId: reservation.id, sent: false, skipped_duplicate: true });
+      continue;
+    }
+
     try {
       let token = await findCancellationToken(client, reservation.id);
       if (!token) {
@@ -285,6 +295,7 @@ async function notifyPaidReservations(
       const result = await dispatchPaymentConfirmationOnce(
         client,
         reservation,
+        group,
         token,
         siteUrl,
         source,
@@ -306,6 +317,7 @@ async function notifyPaidReservations(
 async function dispatchPaymentConfirmationOnce(
   client: SupabaseClient,
   reservation: PaymentReservationRow,
+  groupReservations: PaymentReservationRow[],
   cancellationToken: string,
   siteUrl: string,
   source: string,
@@ -336,7 +348,13 @@ async function dispatchPaymentConfirmationOnce(
   }
 
   const manageToken = await createManageTokenForNotification(client, reservation.guest_phone);
-  const message = composePaymentConfirmation(reservation, cancellationToken, siteUrl, manageToken);
+  const message = composePaymentConfirmation(
+    reservation,
+    groupReservations,
+    cancellationToken,
+    siteUrl,
+    manageToken,
+  );
   const providerResponse: Record<string, unknown> = {};
   const errors = [];
 
@@ -428,12 +446,17 @@ function createSecureToken() {
 
 function composePaymentConfirmation(
   reservation: PaymentReservationRow,
+  groupReservations: PaymentReservationRow[],
   cancellationToken: string,
   siteUrl: string,
   manageToken: string,
 ) {
   const lang = normalizeEmailLang(reservation.guest_language);
-  const roomCopy = roomLabel(reservation, lang);
+  // The owner reservation's email represents the whole booking group: every
+  // villa is listed and the per-villa prices are summed back to the full total.
+  const group = groupReservations.length ? groupReservations : [reservation];
+  const roomCopy = aggregateGroupRoomLabel(group, lang);
+  const totalPrice = group.reduce((sum, row) => sum + Number(row.total_price || 0), 0);
   const confirmationLink = confirmationUrl(siteUrl, reservation.id, manageToken);
   const cancelLink = `${siteUrl}/anulare.html?token=${encodeURIComponent(cancellationToken)}`;
   const firstName = titleCaseName(reservation.guest_first_name || '');
@@ -453,7 +476,7 @@ function composePaymentConfirmation(
     roomCopy,
     checkIn: reservation.check_in,
     checkOut: reservation.check_out,
-    totalPrice: Number(reservation.total_price || 0),
+    totalPrice,
     confirmationUrl: confirmationLink,
     cancellationUrl: cancelLink,
     siteUrl,
@@ -483,4 +506,17 @@ function roomLabel(reservation: PaymentReservationRow, language: string) {
   if (language === 'ru') return `Домик #${reservation.room_number}`;
   if (language === 'en') return `Villa #${reservation.room_number}`;
   return `Căsuța #${reservation.room_number}`;
+}
+
+// One accommodation line for the whole booking group, e.g. "Căsuța #3, Căsuța #5".
+function aggregateGroupRoomLabel(reservations: PaymentReservationRow[], language: string): string {
+  const labels = reservations
+    .map((reservation) => roomLabel(reservation, language))
+    .filter((label) => label !== 'EcoVila');
+
+  if (!labels.length) {
+    return 'EcoVila';
+  }
+
+  return [...new Set(labels)].join(', ');
 }
