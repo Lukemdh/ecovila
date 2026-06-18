@@ -8,6 +8,8 @@ import {
   isRefundEligible,
   refundEligibilityReason,
 } from '../_shared/reservationManage.ts';
+import { refundPaidChanges } from '../_shared/reservationChanges.ts';
+import type { ChangeRefundResult } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   buildCancellationEmail,
@@ -133,6 +135,7 @@ Deno.serve(async (request) => {
 
     const payment = await findMaibPayment(client, summary.bookingGroupId);
     let refundResult = null;
+    let differenceRefunds: ChangeRefundResult[] = [];
 
     if (paidCard && refundable) {
       if (!payment || payment.status !== 'paid') {
@@ -140,6 +143,10 @@ Deno.serve(async (request) => {
       }
 
       refundResult = await createRefund(client, payment, summary.bookingGroupId);
+      // Reverse any paid "add guests" differences too — each as its own MAIB
+      // transaction. Done before the reservations are marked cancelled so a
+      // failure surfaces as an error and the booking stays active for a retry.
+      differenceRefunds = await refundPaidChanges(client, summary.bookingGroupId, 'guest_request');
     }
 
     const now = new Date().toISOString();
@@ -172,6 +179,7 @@ Deno.serve(async (request) => {
           createdAt,
         }),
         refund: refundResult,
+        differenceRefunds,
         notificationResults,
       },
       {},

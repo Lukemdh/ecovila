@@ -1434,6 +1434,47 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   next TopHost upload; the RLS migration is already live (applied via `db query --linked` +
   `migration repair`, per the migration-drift workflow).
 
+### ADR-057 — Guest-initiated "add people" to a paid booking, paying only the price difference
+- **Date:** 2026-06-18.
+- **Decision:** a guest with a confirmed online-paid booking can add adults/children on
+  `gestionare.html` (within the capacity of the villas they already booked) and pay only the price
+  **difference** for the extra guests — via MIA QR for `+373` numbers or card Checkout otherwise,
+  matching the booking rail rule (ADR-041/MIA). Each request is a row in a new
+  **`public.reservation_changes`** ledger — deliberately **not** on `maib_payments`, whose every
+  reconcile/refund/callback path keys off the *latest* row per booking group and would be hijacked
+  by a difference payment. The MAIB **order id is the change id**, so callbacks route a difference
+  to its ledger row and never to the booking's original payment. Capacity and the difference are
+  **recomputed server-side** (`reservationChanges.ts`); the browser quote is advisory. The
+  difference is `price(newParty) − price(oldParty)` at **current** tariffs, isolating the added
+  guests so a tariff change since booking never leaks in. On payment the party (`adults`,
+  `kids_ages`) is applied to the booking's rows **once** (claims `applied_at` atomically), the base
+  `total_price` is **left immutable**, and a short localized SMS + email confirm the update. A zero
+  difference (only free 1–3-year-olds) is applied instantly with no payment. New edge functions
+  `reservation-change-create` + `reservation-change-status`; `maib-callback` (card, signature-
+  verified) and `maib-mia-callback` (MIA, re-reads MAIB authoritatively) gained a change branch.
+  **Finance CRM** surfaces each paid difference as its own dated **"online plătit diferență"** line
+  in the Încasări tab and folds it into the online/commercial totals (paid-mode only). On self-serve
+  (`reservation-cancel`) **and** CRM full-refund (`maib-refund`) cancellation, every paid difference
+  is **auto-refunded** as its own MAIB transaction (idempotent; partial CRM refunds are excluded).
+- **Why:** the booking total stays the originally-charged amount (read in many places — nights
+  revenue, refunds, emails, exports), so a separate append-only ledger is both safer and the exact
+  shape the owner wanted for the finance "difference" line. Keeping differences off `maib_payments`
+  preserves all existing single-payment-per-group invariants. Server-side recompute prevents a
+  tampered party/price from reaching MAIB, mirroring the booking price guard (ADR pricing-guard).
+- **Consequence / hardening:** a pre-ship audit fixed four issues — (1) `applyBookingChange` wrote a
+  non-existent `reservations.updated_at` (would have failed every apply; the table has only
+  `created_at`); (2) a forged oversized `adults` could DoS `getUnitsNeeded`'s linear scan, now bounded
+  to physical capacity first; (3) a superseded **card** checkout (uncancelable at MAIB) could be paid
+  late and overwrite the party with a stale snapshot — a paid callback now applies only a still-
+  `pending` change, plus a partial unique index enforces one open change per booking; (4) the MIA QR
+  validity was cut 15→5 min to stay inside the `plata-mia` poll window. Known rare edges (logged for
+  manual review): paying a difference at the instant of cancellation, or deliberately paying an
+  abandoned/superseded card checkout — captured but not auto-applied/refunded. Mid-stay additions are
+  priced over the full stay (a deliberate policy choice, not pro-rated). **Deploy:** migration
+  `20260618160000_reservation_changes.sql` + functions `reservation-change-create`,
+  `reservation-change-status`, `maib-callback`, `maib-mia-callback`, `reservation-cancel`,
+  `maib-refund`; frontend ships with the next TopHost upload.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

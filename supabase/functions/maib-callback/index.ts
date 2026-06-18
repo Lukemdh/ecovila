@@ -14,6 +14,14 @@ import {
   type PaymentReservationRow,
   settleBookingGroupAsPaid,
 } from '../_shared/bookingSettlement.ts';
+import {
+  findChangeById,
+  findChangeByPayId,
+  markChangePaymentPaid,
+  markChangeStatus,
+  type ReservationChangeRow,
+  settleChangePaid,
+} from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -81,6 +89,18 @@ Deno.serve(async (request) => {
 
     if (payment?.processed_at && ['paid', 'failed', 'cancelled'].includes(payment.status)) {
       return jsonResponse({ ok: true, duplicate: true, status: payment.status }, {}, request);
+    }
+
+    // A "add guests" difference payment is tracked in reservation_changes, not
+    // maib_payments. Its MAIB order id is the change id, so when no maib_payments
+    // row matches we look it up by checkout id / order id and settle the change
+    // instead of a booking. Normal bookings always have a maib_payments row, so
+    // this branch never intercepts them.
+    if (!payment) {
+      const change = await findChangePaymentForCallback(client, payId, orderId);
+      if (change) {
+        return await handleChangeCallback(client, change, payload, request);
+      }
     }
 
     const bookingGroupId = payment?.booking_group_id || orderId;
@@ -197,6 +217,97 @@ Deno.serve(async (request) => {
     return errorResponse(error, request);
   }
 });
+
+const CHANGE_ORDER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function findChangePaymentForCallback(
+  client: SupabaseClient,
+  payId: string | undefined,
+  orderId: string | undefined,
+): Promise<ReservationChangeRow | null> {
+  if (payId) {
+    const byPayId = await findChangeByPayId(client, payId);
+    if (byPayId) return byPayId;
+  }
+  if (orderId && CHANGE_ORDER_ID_RE.test(orderId)) {
+    const byId = await findChangeById(client, orderId);
+    if (byId) return byId;
+  }
+  return null;
+}
+
+async function handleChangeCallback(
+  client: SupabaseClient,
+  change: ReservationChangeRow,
+  payload: Record<string, unknown>,
+  request: Request,
+) {
+  if (change.applied_at) {
+    return jsonResponse({ ok: true, duplicate: true, status: 'paid' }, {}, request);
+  }
+
+  const reportedStatus = getMaibCallbackStatus(payload);
+  const now = new Date().toISOString();
+  const context = {
+    changeId: change.id,
+    bookingGroupId: change.booking_group_id,
+    status: reportedStatus,
+  };
+
+  if (reportedStatus === 'paid') {
+    // Only a still-pending change may be applied. A card checkout cannot be
+    // cancelled at MAIB, so a superseded/failed change could be paid late — its
+    // new_adults/new_kids_ages is a stale snapshot, and applying it would
+    // overwrite a newer change's party. Capture it for manual refund instead.
+    if (change.status !== 'pending') {
+      console.error('Paid card callback for a non-pending change — not applied, manual refund review', {
+        ...context,
+        changeStatus: change.status,
+      });
+      return jsonResponse({ ok: true, status: 'stale', changeId: change.id }, {}, request);
+    }
+
+    const callbackAmount = getMaibCallbackAmount(payload);
+    if (
+      callbackAmount !== null &&
+      Math.round(callbackAmount * 100) !== Math.round(Number(change.difference_amount) * 100)
+    ) {
+      console.error('Maib change callback amount mismatch — left pending for manual review', {
+        ...context,
+        callbackAmount,
+        expected: change.difference_amount,
+      });
+      await markChangeStatus(client, change.id, 'pending', payload);
+      return jsonResponse({ ok: true, status: 'amount_mismatch' }, {}, request);
+    }
+
+    await markChangePaymentPaid(client, change.id, getMaibProviderPaymentId(payload), payload);
+    const settlement = await settleChangePaid(client, change, now, 'maib-callback-change');
+    console.info('Maib change callback processed', {
+      ...context,
+      decision: 'paid',
+      applied: settlement.applied,
+    });
+    return jsonResponse({ ok: true, status: 'paid', applied: settlement.applied }, {}, request);
+  }
+
+  if (reportedStatus === 'pending') {
+    console.info('Maib change callback processed', { ...context, decision: 'left_pending' });
+    return jsonResponse({ ok: true, status: 'pending' }, {}, request);
+  }
+
+  // failed / cancelled: a difference payment holds no inventory, so mark it
+  // terminal and let the guest re-initiate from the manage page if they wish.
+  await markChangeStatus(
+    client,
+    change.id,
+    reportedStatus === 'cancelled' ? 'cancelled' : 'failed',
+    payload,
+  );
+  console.info('Maib change callback processed', { ...context, decision: reportedStatus });
+  return jsonResponse({ ok: true, status: reportedStatus }, {}, request);
+}
 
 function expectedPaymentAmount(
   payment: MaibPaymentRow | null | undefined,

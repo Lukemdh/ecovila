@@ -75,8 +75,18 @@
     const bookingGroupId = getParam('group') || pending.bookingGroupId || '';
     const reservationId = getParam('id') || pending.primaryReservationId || '';
     const manageToken = getParam('manage') || pending.manageToken || '';
+    // When present this page is paying an "add guests" difference, not a booking.
+    const changeId = getParam('change') || '';
 
-    return { bookingGroupId, reservationId, manageToken };
+    return { bookingGroupId, reservationId, manageToken, changeId };
+  }
+
+  function fetchStatus(context) {
+    const client = supabaseHelpers.getSupabaseClient();
+    if (context.changeId) {
+      return supabaseHelpers.fetchReservationChangeStatus(client, { changeId: context.changeId });
+    }
+    return supabaseHelpers.fetchMiaPaymentStatus(client, { bookingGroupId: context.bookingGroupId });
   }
 
   const PANELS = ['[data-mia-loading]', '[data-mia-error]', '[data-mia-pay]', '[data-mia-expired]'];
@@ -202,7 +212,7 @@
 
     stopPolling();
     const context = getContext();
-    if (context.bookingGroupId) {
+    if (context.bookingGroupId || context.changeId) {
       poll(context);
     }
   }
@@ -213,6 +223,15 @@
     if (context.manageToken) {
       params.set('manage', context.manageToken);
     }
+
+    // A paid difference returns to the management page, which confirms the new
+    // party and shows the success state.
+    if (context.changeId) {
+      params.set('change', payment === 'success' ? 'success' : 'failed');
+      root.location.href = `gestionare.html?${params.toString()}`;
+      return;
+    }
+
     params.set('payment', payment);
     root.location.href = `confirmare.html?${params.toString()}`;
   }
@@ -267,10 +286,7 @@
     _pollAttempts += 1;
 
     try {
-      const client = supabaseHelpers.getSupabaseClient();
-      const result = await supabaseHelpers.fetchMiaPaymentStatus(client, {
-        bookingGroupId: context.bookingGroupId,
-      });
+      const result = await fetchStatus(context);
 
       if (_qrRendered === false && result?.qrUrl) {
         showOnly('[data-mia-pay]');
@@ -292,7 +308,7 @@
   async function init() {
     const context = getContext();
 
-    if (!context.bookingGroupId) {
+    if (!context.bookingGroupId && !context.changeId) {
       showOnly('[data-mia-error]');
       return;
     }
@@ -300,10 +316,7 @@
     showOnly('[data-mia-loading]');
 
     try {
-      const client = supabaseHelpers.getSupabaseClient();
-      const result = await supabaseHelpers.fetchMiaPaymentStatus(client, {
-        bookingGroupId: context.bookingGroupId,
-      });
+      const result = await fetchStatus(context);
 
       if (result?.qrUrl && result.status !== 'paid') {
         showOnly('[data-mia-pay]');

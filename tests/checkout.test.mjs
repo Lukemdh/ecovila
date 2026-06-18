@@ -52,7 +52,7 @@ describe('EcoVila Step 5 checkout', () => {
     const html = read('checkout.html');
     const footer = footerMarkup(html);
 
-    assert.match(footer, /src="\/assets\/logoNT\.png"/, 'checkout footer should use the alternate PNG logo');
+    assert.match(footer, /src="\/assets\/logo-trim\.png"/, 'checkout footer should use the trimmed PNG logo');
   });
 
   it('renders a reservation summary, guest form, GDPR consent, and payment selection hooks', () => {

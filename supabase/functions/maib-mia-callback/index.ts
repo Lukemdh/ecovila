@@ -6,8 +6,16 @@ import {
   parseMaibCallback,
 } from '../_shared/maib.ts';
 import { reconcileMiaBookingGroup } from '../_shared/miaReconcile.ts';
+import {
+  findChangeById,
+  findChangeByPayId,
+  reconcileMiaChange,
+} from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+
+const CHANGE_ORDER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
@@ -33,13 +41,32 @@ Deno.serve(async (request) => {
     const payload = parseMaibCallback(rawBody) as Record<string, unknown>;
 
     const client = createServiceClient();
-    let bookingGroupId = getMaibMiaCallbackOrderId(payload);
+    const orderId = getMaibMiaCallbackOrderId(payload);
+    const qrId = getMaibMiaCallbackQrId(payload);
 
-    if (!bookingGroupId) {
-      const qrId = getMaibMiaCallbackQrId(payload);
-      if (qrId) {
-        bookingGroupId = await bookingGroupIdForQr(client, qrId);
-      }
+    // A "add guests" MIA difference is tracked in reservation_changes (order id
+    // = change id, qr id = its pay_id). Route it to the change reconcile, which
+    // re-reads MAIB and applies the party change once paid.
+    const change = await resolveMiaChange(client, orderId, qrId);
+    if (change) {
+      const result = await reconcileMiaChange(client, change.id, 'maib-mia-callback');
+      console.info('MIA change callback processed', {
+        changeId: change.id,
+        status: result.status,
+        applied: Boolean(result.applied),
+        amountMismatch: Boolean(result.amountMismatch),
+      });
+      return jsonResponse(
+        { ok: true, status: result.status, applied: Boolean(result.applied) },
+        {},
+        request,
+      );
+    }
+
+    let bookingGroupId = orderId;
+
+    if (!bookingGroupId && qrId) {
+      bookingGroupId = await bookingGroupIdForQr(client, qrId);
     }
 
     if (!bookingGroupId) {
@@ -64,6 +91,18 @@ Deno.serve(async (request) => {
     return errorResponse(error, request);
   }
 });
+
+async function resolveMiaChange(client: SupabaseClient, orderId: string, qrId: string) {
+  if (orderId && CHANGE_ORDER_ID_RE.test(orderId)) {
+    const byId = await findChangeById(client, orderId);
+    if (byId && byId.payment_rail === 'mia') return byId;
+  }
+  if (qrId) {
+    const byPay = await findChangeByPayId(client, qrId);
+    if (byPay && byPay.payment_rail === 'mia') return byPay;
+  }
+  return null;
+}
 
 async function bookingGroupIdForQr(client: SupabaseClient, qrId: string) {
   // For MIA rows the QR id is stored as the primary key pay_id.

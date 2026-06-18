@@ -415,6 +415,7 @@
 
     renderManagedSummary(summary, details.reservations || []);
     renderIncluded();
+    setupAddGuests(summary, details.reservations || [], reservationId, manageToken);
     const serverStatus = managedServerStatus(summary, details.reservations || []);
     showContentState(summary.paymentType || 'card', serverStatus);
     trackBrowserPurchaseIfPaid(summary, details.reservations || []);
@@ -822,6 +823,473 @@
     }
   }
 
+  // ── Add guests (pay the price difference) ────────────────────────────────────
+
+  const STORAGE_PENDING_CHANGE = 'ecovila_pending_change';
+  const DEFAULT_KID_AGE = 5;
+  const CHANGE_POLL_MS = 3000;
+  const CHANGE_POLL_LIMIT = 40;
+
+  let _ag = null;
+  // null while choosing; 'processing' / 'success' / 'failed' after a payment return.
+  let _agReturnState = null;
+  let _changePollTimer = null;
+  let _changePollAttempts = 0;
+
+  function writeStorage(key, value) {
+    try {
+      root.localStorage?.setItem(key, JSON.stringify(value));
+    } catch {
+      // Storage may be unavailable (private mode); the return poll just won't run.
+    }
+  }
+
+  function clearStorage(key) {
+    try {
+      root.localStorage?.removeItem(key);
+    } catch {
+      // ignore
+    }
+  }
+
+  function getChangeParam() {
+    try {
+      return new URLSearchParams(root.location?.search).get('change') || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function isAddGuestsEligible(summary) {
+    if (!summary || !pricing) return false;
+    // Online-paid bookings only (cash/pending settle at the office). Both card
+    // and MIA originals are stored as payment_type 'card'.
+    if (summary.paymentType !== 'card' || summary.paymentStatus !== 'paid') return false;
+    const today = pricing.todayISO ? pricing.todayISO() : new Date().toISOString().slice(0, 10);
+    return String(summary.checkOut || '') > today;
+  }
+
+  function reservationRoomType(reservation) {
+    const room = Array.isArray(reservation?.rooms) ? reservation.rooms[0] : reservation?.rooms;
+    return room?.type || '';
+  }
+
+  function setupAddGuests(summary, reservations, reservationId, manageToken) {
+    const panel = el('[data-addguests-panel]');
+    if (!panel) return;
+
+    const rows = Array.isArray(reservations) ? reservations : [];
+    const primary = rows[0] || {};
+    const roomType = reservationRoomType(primary);
+
+    if (!isAddGuestsEligible(summary) || !roomType || !pricing.ROOM_TYPES?.[roomType]) {
+      panel.hidden = true;
+      return;
+    }
+
+    _ag = {
+      reservationId,
+      manageToken,
+      roomType,
+      units: rows.length || 1,
+      checkIn: summary.checkIn,
+      checkOut: summary.checkOut,
+      prevAdults: Number(primary.adults || 0),
+      prevKidsAges: (Array.isArray(primary.kids_ages) ? primary.kids_ages : []).map(Number),
+      addedAdults: 0,
+      addedKidsAges: [],
+      pricingTiers: null,
+      holidays: null,
+      submitting: false,
+    };
+
+    panel.hidden = false;
+    wireAddGuestsControls();
+
+    if (_agReturnState === 'success') {
+      showAddGuestsOutcome('success');
+      return;
+    }
+    if (_agReturnState === 'processing') {
+      showAddGuestsOutcome('processing');
+      return;
+    }
+
+    resetAddGuestsView();
+    renderAddGuests();
+    loadAddGuestsPricing();
+
+    if (_agReturnState === 'failed') {
+      setText('[data-addguests-error]', t('addguests.paymentFailed'));
+      show('[data-addguests-error]');
+    }
+  }
+
+  const AG_INPUT_SELECTORS = [
+    '.gm-addguests__lead',
+    '.gm-addguests__steppers',
+    '.gm-kid-ages',
+    '.gm-addguests__summary',
+    '.gm-addguests__capacity',
+    '.gm-addguests__submit',
+  ];
+
+  function resetAddGuestsView() {
+    const panel = el('[data-addguests-panel]');
+    if (!panel) return;
+    AG_INPUT_SELECTORS.forEach((sel) => {
+      const node = panel.querySelector(sel);
+      if (node) node.hidden = false;
+    });
+    hide('[data-addguests-done]');
+    hide('[data-addguests-error]');
+  }
+
+  function showAddGuestsOutcome(state) {
+    const panel = el('[data-addguests-panel]');
+    if (!panel) return;
+    AG_INPUT_SELECTORS.forEach((sel) => {
+      const node = panel.querySelector(sel);
+      if (node) node.hidden = true;
+    });
+    hide('[data-addguests-error]');
+    show('[data-addguests-done]');
+    setText('[data-addguests-done-text]', t(state === 'processing' ? 'addguests.processing' : 'addguests.successApplied'));
+  }
+
+  async function loadAddGuestsPricing() {
+    if (!_ag || _ag.pricingTiers) return;
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const [tiers, holidays] = await Promise.all([
+        supabaseHelpers.fetchPricingTiers(client),
+        supabaseHelpers.fetchHolidays(client),
+      ]);
+      _ag.pricingTiers = tiers || [];
+      _ag.holidays = holidays || [];
+      renderAddGuests();
+    } catch {
+      // Without tiers the live preview shows "--"; the server still computes the
+      // authoritative difference on submit.
+      _ag.pricingTiers = [];
+      _ag.holidays = [];
+    }
+  }
+
+  function agNewAdults() {
+    return _ag.prevAdults + _ag.addedAdults;
+  }
+
+  function agNewKidsAges() {
+    return _ag.prevKidsAges.concat(_ag.addedKidsAges);
+  }
+
+  function agFits(adults, kidsAges) {
+    try {
+      return pricing.getUnitsNeeded(_ag.roomType, { adults, kidsAges }) <= _ag.units;
+    } catch {
+      return false;
+    }
+  }
+
+  function agCanAddAdult() {
+    return agFits(agNewAdults() + 1, agNewKidsAges());
+  }
+
+  function agCanAddKid() {
+    return agFits(agNewAdults(), agNewKidsAges().concat([DEFAULT_KID_AGE]));
+  }
+
+  function wireAddGuestsControls() {
+    const adultsInc = el('[data-adults-inc]');
+    if (adultsInc) {
+      adultsInc.onclick = () => {
+        if (agCanAddAdult()) {
+          _ag.addedAdults += 1;
+          renderAddGuests();
+        }
+      };
+    }
+
+    const adultsDec = el('[data-adults-dec]');
+    if (adultsDec) {
+      adultsDec.onclick = () => {
+        if (_ag.addedAdults > 0) {
+          _ag.addedAdults -= 1;
+          renderAddGuests();
+        }
+      };
+    }
+
+    const kidsInc = el('[data-kids-inc]');
+    if (kidsInc) {
+      kidsInc.onclick = () => {
+        if (agCanAddKid()) {
+          _ag.addedKidsAges.push(DEFAULT_KID_AGE);
+          renderAddGuests();
+        }
+      };
+    }
+
+    const kidsDec = el('[data-kids-dec]');
+    if (kidsDec) {
+      kidsDec.onclick = () => {
+        if (_ag.addedKidsAges.length > 0) {
+          _ag.addedKidsAges.pop();
+          renderAddGuests();
+        }
+      };
+    }
+
+    const submit = el('[data-addguests-submit]');
+    if (submit) submit.onclick = submitAddGuests;
+  }
+
+  function renderAddGuests() {
+    if (!_ag) return;
+
+    setText('[data-adults-value]', String(_ag.addedAdults));
+    setText('[data-kids-value]', String(_ag.addedKidsAges.length));
+
+    const adultsInc = el('[data-adults-inc]');
+    if (adultsInc) adultsInc.disabled = !agCanAddAdult();
+    const adultsDec = el('[data-adults-dec]');
+    if (adultsDec) adultsDec.disabled = _ag.addedAdults <= 0;
+    const kidsInc = el('[data-kids-inc]');
+    if (kidsInc) kidsInc.disabled = !agCanAddKid();
+    const kidsDec = el('[data-kids-dec]');
+    if (kidsDec) kidsDec.disabled = _ag.addedKidsAges.length <= 0;
+
+    renderKidAgeSelectors();
+
+    const added = _ag.addedAdults > 0 || _ag.addedKidsAges.length > 0;
+    setText('[data-addguests-party]', formatPartyLabel(agNewAdults(), agNewKidsAges().length));
+
+    const diffEl = el('[data-addguests-difference]');
+    if (diffEl) {
+      const diff = added ? previewDifference() : null;
+      diffEl.textContent = diff === null || diff === undefined
+        ? '--'
+        : pricing.formatMDL(diff);
+    }
+
+    const capEl = el('[data-addguests-capacity]');
+    if (capEl) {
+      const atMax = !agCanAddAdult() && !agCanAddKid();
+      capEl.hidden = !atMax;
+      if (atMax) capEl.textContent = t('addguests.capacityFull');
+    }
+
+    const submit = el('[data-addguests-submit]');
+    if (submit) submit.disabled = !added || _ag.submitting;
+  }
+
+  function renderKidAgeSelectors() {
+    const container = el('[data-kid-ages]');
+    const list = el('[data-kid-ages-list]');
+    if (!container || !list) return;
+
+    const count = _ag.addedKidsAges.length;
+    container.hidden = count === 0;
+    list.innerHTML = '';
+
+    for (let index = 0; index < count; index += 1) {
+      const wrap = root.document.createElement('label');
+      wrap.className = 'gm-kid-age';
+
+      const label = root.document.createElement('span');
+      label.className = 'gm-kid-age__label';
+      label.textContent = t('addguests.kidLabel', { n: index + 1 });
+
+      const select = root.document.createElement('select');
+      select.className = 'gm-kid-age__select';
+
+      for (let age = 1; age <= 17; age += 1) {
+        const option = root.document.createElement('option');
+        option.value = String(age);
+        option.textContent = t('addguests.ageOption', { age });
+        if (age === _ag.addedKidsAges[index]) option.selected = true;
+        select.appendChild(option);
+      }
+
+      select.addEventListener('change', (event) => {
+        _ag.addedKidsAges[index] = Number(event.target.value);
+        renderAddGuests();
+      });
+
+      wrap.append(label, select);
+      list.appendChild(wrap);
+    }
+  }
+
+  function previewDifference() {
+    if (!_ag.pricingTiers || !_ag.pricingTiers.length) return null;
+
+    try {
+      const base = {
+        roomType: _ag.roomType,
+        checkIn: _ag.checkIn,
+        checkOut: _ag.checkOut,
+        units: _ag.units,
+        pricingTiers: _ag.pricingTiers,
+        holidays: _ag.holidays,
+      };
+      const oldQuote = pricing.calculateStayPrice(
+        Object.assign({}, base, { adults: _ag.prevAdults, kidsAges: _ag.prevKidsAges }),
+      );
+      const newQuote = pricing.calculateStayPrice(
+        Object.assign({}, base, { adults: agNewAdults(), kidsAges: agNewKidsAges() }),
+      );
+      return Math.max(0, Math.round(newQuote.total) - Math.round(oldQuote.total));
+    } catch {
+      return null;
+    }
+  }
+
+  function formatPartyLabel(adults, kids) {
+    const adultsCopy = adults === 1 ? t('checkout.oneAdult') : t('checkout.adultsCount', { count: adults });
+    const kidsCopy = kids === 1 ? t('checkout.oneChild') : t('checkout.childrenCount', { count: kids });
+    return kids ? `${adultsCopy} · ${kidsCopy}` : adultsCopy;
+  }
+
+  function buildGestionareReturn(state) {
+    const params = new URLSearchParams({ id: _ag.reservationId, change: state });
+    if (_ag.manageToken) params.set('manage', _ag.manageToken);
+    return `gestionare.html?${params.toString()}`;
+  }
+
+  async function submitAddGuests() {
+    if (!_ag || _ag.submitting) return;
+    if (_ag.addedAdults === 0 && _ag.addedKidsAges.length === 0) return;
+
+    _ag.submitting = true;
+    const submit = el('[data-addguests-submit]');
+    if (submit) submit.disabled = true;
+    setBtnText(submit, t('addguests.submitting'));
+    hide('[data-addguests-error]');
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const result = await supabaseHelpers.createReservationChange(client, {
+        manageToken: _ag.manageToken,
+        reservationId: _ag.reservationId,
+        adults: agNewAdults(),
+        kidsAges: agNewKidsAges(),
+      });
+
+      if (result.changeId) {
+        writeStorage(STORAGE_PENDING_CHANGE, {
+          changeId: result.changeId,
+          reservationId: _ag.reservationId,
+          manageToken: _ag.manageToken,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // Free addition (only young children): already applied server-side.
+      if (result.applied && Number(result.difference) === 0) {
+        root.location.href = buildGestionareReturn('success');
+        return;
+      }
+
+      if (result.rail === 'mia' || result.qrUrl) {
+        const params = new URLSearchParams({ change: result.changeId, id: _ag.reservationId });
+        if (_ag.manageToken) params.set('manage', _ag.manageToken);
+        root.location.href = `plata-mia.html?${params.toString()}`;
+        return;
+      }
+
+      if (result.payUrl) {
+        root.location.href = result.payUrl;
+        return;
+      }
+
+      throw new Error('No payment url returned.');
+    } catch {
+      _ag.submitting = false;
+      if (submit) submit.disabled = false;
+      setBtnText(submit, t('addguests.submit'));
+      setText('[data-addguests-error]', t('addguests.error'));
+      show('[data-addguests-error]');
+    }
+  }
+
+  // ── Payment-return handling ──────────────────────────────────────────────────
+
+  function handleChangeReturn() {
+    if (_agReturnState !== 'processing') return;
+
+    const pending = readStorage(STORAGE_PENDING_CHANGE);
+    if (!pending?.changeId) {
+      // No tracked change id — refresh and assume applied (the details reload
+      // reflects the new party either way).
+      _agReturnState = 'success';
+      refreshManagedDetails();
+      return;
+    }
+
+    pollChangeStatus(pending.changeId);
+  }
+
+  function pollChangeStatus(changeId) {
+    clearChangePoll();
+    _changePollAttempts = 0;
+    runChangePoll(changeId);
+  }
+
+  function clearChangePoll() {
+    if (_changePollTimer !== null) {
+      root.clearTimeout?.(_changePollTimer);
+      _changePollTimer = null;
+    }
+  }
+
+  function scheduleChangePoll(changeId) {
+    if (_changePollAttempts >= CHANGE_POLL_LIMIT || !root.setTimeout) return;
+    _changePollTimer = root.setTimeout(() => runChangePoll(changeId), CHANGE_POLL_MS);
+  }
+
+  async function runChangePoll(changeId) {
+    _changePollTimer = null;
+    _changePollAttempts += 1;
+
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const result = await supabaseHelpers.fetchReservationChangeStatus(client, { changeId });
+
+      if (result.status === 'paid') {
+        clearStorage(STORAGE_PENDING_CHANGE);
+        _agReturnState = 'success';
+        await refreshManagedDetails();
+        return;
+      }
+
+      if (result.status === 'failed' || result.status === 'expired') {
+        clearStorage(STORAGE_PENDING_CHANGE);
+        _agReturnState = 'failed';
+        await refreshManagedDetails();
+        return;
+      }
+    } catch {
+      // Transient — keep polling until the window closes.
+    }
+
+    scheduleChangePoll(changeId);
+  }
+
+  async function refreshManagedDetails() {
+    if (!_managedContext) return;
+    try {
+      const details = await loadManagedReservation(
+        _managedContext.reservationId,
+        _managedContext.manageToken,
+      );
+      renderManagedReservation(details, _managedContext.reservationId, _managedContext.manageToken);
+    } catch {
+      // Keep the current view; the token may have expired after the gateway hop.
+    }
+  }
+
   // ── Language change ─────────────────────────────────────────────────────────
 
   function applyI18nToPage() {
@@ -856,6 +1324,15 @@
       return;
     }
 
+    // Returning from a difference payment: render the add-guests panel in its
+    // pending/failed state before resolving the final outcome below.
+    const changeParam = getChangeParam();
+    if (changeParam === 'success') {
+      _agReturnState = 'processing';
+    } else if (changeParam === 'failed') {
+      _agReturnState = 'failed';
+    }
+
     showLoadingState();
 
     try {
@@ -865,6 +1342,8 @@
       showErrorState();
       return;
     }
+
+    handleChangeReturn();
 
     root.addEventListener?.('ecovila:languagechange', () => {
       applyI18nToPage();

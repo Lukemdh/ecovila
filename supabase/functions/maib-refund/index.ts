@@ -8,6 +8,7 @@ import {
   requireStaffRole,
 } from '../_shared/http.ts';
 import { refundMaibPayment } from '../_shared/maib.ts';
+import { refundPaidChanges } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -58,9 +59,24 @@ Deno.serve(async (request) => {
       throw new HttpError(409, 'Payment is missing a booking group.');
     }
 
+    // A full refund (no custom amount) is a cancellation, so any paid "add
+    // guests" differences are reversed too — each as its own MAIB transaction.
+    // A partial refund touches only the requested amount.
+    const refundDifferences = requestedAmount === null;
+
     const existing = await findExistingRefund(client, payment.pay_id);
     if (existing?.status === 'succeeded') {
-      return jsonResponse({ ok: true, result: existing.response_payload || {} }, {}, request);
+      // The original was already refunded on an earlier attempt. Still settle any
+      // outstanding differences (refundPaidChanges is idempotent) so a retry after
+      // a mid-way failure finishes the job.
+      const differenceRefunds = refundDifferences
+        ? await refundPaidChanges(client, refundBookingGroupId, reason)
+        : [];
+      return jsonResponse(
+        { ok: true, result: existing.response_payload || {}, differenceRefunds },
+        {},
+        request,
+      );
     }
 
     await upsertRefundRequest(client, {
@@ -114,7 +130,15 @@ Deno.serve(async (request) => {
       throw new Error(paymentError.message);
     }
 
-    return jsonResponse({ ok: true, result: refund?.result || refund }, {}, request);
+    const differenceRefunds = refundDifferences
+      ? await refundPaidChanges(client, refundBookingGroupId, reason)
+      : [];
+
+    return jsonResponse(
+      { ok: true, result: refund?.result || refund, differenceRefunds },
+      {},
+      request,
+    );
   } catch (error) {
     return errorResponse(error, request);
   }

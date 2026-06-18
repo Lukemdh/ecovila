@@ -852,6 +852,73 @@
     );
   }
 
+  async function createReservationChange(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-change-create', {
+      body: {
+        manageToken: input?.manageToken || '',
+        reservationId: input?.reservationId || '',
+        adults: Number(input?.adults || 0),
+        kidsAges: Array.isArray(input?.kidsAges) ? input.kidsAges.map((age) => Number(age)) : [],
+      },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  async function fetchReservationChangeStatus(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-change-status', {
+      body: { changeId: input?.changeId || '' },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data || {};
+  }
+
+  // Paid "add guests" differences within a date range, for the finance ledger.
+  function fetchFinanceChangePayments(client, options) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservation_changes')
+        .select(
+          [
+            'id',
+            'booking_group_id',
+            'room_type',
+            'check_in',
+            'check_out',
+            'prev_adults',
+            'prev_kids_ages',
+            'new_adults',
+            'new_kids_ages',
+            'difference_amount',
+            'payment_rail',
+            'paid_at',
+            'created_at',
+          ].join(', '),
+        )
+        .eq('status', 'paid')
+        .gt('difference_amount', 0)
+        .gte('paid_at', `${options?.rangeStart}T00:00:00.000Z`)
+        .lt('paid_at', `${options?.rangeEnd}T00:00:00.000Z`)
+        .order('paid_at', { ascending: true }),
+    );
+  }
+
   function insertPricingRows(client, rows) {
     return unwrapSupabaseResult(
       client
@@ -888,6 +955,9 @@
     cancelReservationByToken,
     confirmReservationPayment,
     createMaibPaymentRequest,
+    createReservationChange,
+    fetchReservationChangeStatus,
+    fetchFinanceChangePayments,
     fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
     notifyReservationCancellation,

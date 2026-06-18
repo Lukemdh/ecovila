@@ -858,6 +858,35 @@ export function cancellationConfirmationSms(input: {
   return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}. Speram sa ne mai vedem in curand!`;
 }
 
+export function bookingChangeSms(input: {
+  language: string;
+  newAdults: number;
+  newKids: number;
+  difference: number;
+}) {
+  const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
+  const amount = formatEmailMoney(input.difference);
+  const free = !(Number(input.difference) > 0);
+  const adults = Math.max(0, Math.trunc(input.newAdults));
+  const kids = Math.max(0, Math.trunc(input.newKids));
+
+  if (language === 'ru') {
+    const guests = `${adults} взрослых${kids ? ` и ${kids} детей` : ''}`;
+    const tail = free ? '' : ` Разница ${amount} MDL оплачена.`;
+    return `EcoVila: ваша бронь обновлена. Теперь включает ${guests}.${tail}`;
+  }
+
+  if (language === 'en') {
+    const guests = `${adults} adults${kids ? ` and ${kids} children` : ''}`;
+    const tail = free ? '' : ` The ${amount} MDL difference has been paid.`;
+    return `EcoVila: your reservation was updated. It now includes ${guests}.${tail}`;
+  }
+
+  const guests = `${adults} adulti${kids ? ` si ${kids} copii` : ''}`;
+  const tail = free ? '' : ` Diferenta de ${amount} MDL a fost achitata.`;
+  return `EcoVila: rezervarea ta a fost actualizata. Acum include ${guests}.${tail}`;
+}
+
 function arrivalReminderSms(language: string) {
   if (language === 'ru') {
     return 'Ждем вас завтра в EcoVila! Заезд и доступ на территорию с 13.00. Вопросы: 060120220';
@@ -1489,6 +1518,205 @@ export function buildCancellationEmail(args: {
 
   return { subject: copy.subject, text, html };
 }
+
+export function buildBookingChangeEmail(args: {
+  lang: EmailLang;
+  firstName: string;
+  roomCopy: string;
+  checkIn: string;
+  checkOut: string;
+  newAdults: number;
+  newKids: number;
+  addedAdults: number;
+  addedKids: number;
+  difference: number;
+  siteUrl: string;
+  confirmationUrl?: string;
+}): { subject: string; text: string; html: string } {
+  const copy = CHANGE_COPY[args.lang];
+  const checkInLabel = formatEmailDate(args.checkIn, args.lang);
+  const checkOutLabel = formatEmailDate(args.checkOut, args.lang);
+  const stay = nightsLabel(nightsBetween(args.checkIn, args.checkOut), args.lang);
+  const guestsLabel = partyLabelForEmail(args.lang, args.newAdults, args.newKids);
+  const addedLabel = partyLabelForEmail(args.lang, args.addedAdults, args.addedKids);
+  const differenceLabel = Number(args.difference) > 0
+    ? `${formatEmailMoney(args.difference)} MDL`
+    : copy.freeLabel;
+  const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
+  const greetingHtml = args.firstName
+    ? copy.greeting(escapeHtml(args.firstName))
+    : copy.greetingFallback;
+
+  const rows: EmailRow[] = [
+    { label: copy.labels.checkIn, value: checkInLabel },
+    { label: copy.labels.checkOut, value: checkOutLabel },
+    { label: copy.labels.duration, value: stay },
+    { label: copy.labels.accommodation, value: args.roomCopy },
+    { label: copy.labels.added, value: addedLabel },
+    { label: copy.labels.guests, value: guestsLabel },
+    { label: copy.labels.difference, value: differenceLabel, total: true },
+  ];
+
+  const html = renderReservationEmail({
+    lang: args.lang,
+    siteUrl: args.siteUrl,
+    preheader: copy.preheader,
+    tagline: copy.tagline,
+    badgeSymbol: '✓',
+    badgeBg: EMAIL_COLORS.green,
+    heading: copy.heading,
+    greetingHtml,
+    intro: copy.intro,
+    rows,
+    primary: args.confirmationUrl ? { label: copy.cta, url: args.confirmationUrl } : undefined,
+    info: copy.info,
+    closing: copy.closing,
+  });
+
+  const text = [
+    copy.heading,
+    '',
+    greetingText,
+    '',
+    copy.intro,
+    '',
+    copy.textDetails,
+    `${copy.labels.checkIn}: ${checkInLabel}`,
+    `${copy.labels.checkOut}: ${checkOutLabel}`,
+    `${copy.labels.duration}: ${stay}`,
+    `${copy.labels.accommodation}: ${args.roomCopy}`,
+    `${copy.labels.added}: ${addedLabel}`,
+    `${copy.labels.guests}: ${guestsLabel}`,
+    `${copy.labels.difference}: ${differenceLabel}`,
+    '',
+    ...(args.confirmationUrl ? [`${copy.cta}: ${args.confirmationUrl}`, ''] : []),
+    copy.closing,
+  ].join('\n');
+
+  return { subject: copy.subject, text, html };
+}
+
+function partyLabelForEmail(lang: EmailLang, adults: number, kids: number): string {
+  const a = Math.max(0, Math.trunc(adults));
+  const k = Math.max(0, Math.trunc(kids));
+
+  if (lang === 'ru') {
+    const adultsLabel = `${a} ${a === 1 ? 'взрослый' : 'взрослых'}`;
+    return k ? `${adultsLabel} · ${k} ${k === 1 ? 'ребёнок' : 'детей'}` : adultsLabel;
+  }
+  if (lang === 'en') {
+    const adultsLabel = `${a} ${a === 1 ? 'adult' : 'adults'}`;
+    return k ? `${adultsLabel} · ${k} ${k === 1 ? 'child' : 'children'}` : adultsLabel;
+  }
+  const adultsLabel = `${a} ${a === 1 ? 'adult' : 'adulți'}`;
+  return k ? `${adultsLabel} · ${k} ${k === 1 ? 'copil' : 'copii'}` : adultsLabel;
+}
+
+const CHANGE_COPY: Record<EmailLang, {
+  subject: string;
+  preheader: string;
+  tagline: string;
+  heading: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  intro: string;
+  labels: {
+    checkIn: string;
+    checkOut: string;
+    duration: string;
+    accommodation: string;
+    added: string;
+    guests: string;
+    difference: string;
+  };
+  cta: string;
+  freeLabel: string;
+  info: { title: string; lines: string[]; phoneLead: string };
+  closing: string;
+  textDetails: string;
+}> = {
+  ro: {
+    subject: 'Rezervarea ta la EcoVila a fost actualizată',
+    preheader: 'Am adăugat persoanele la rezervarea ta și am încasat diferența.',
+    tagline: 'Odihnă all-inclusive la Orheiul Vechi',
+    heading: 'Rezervarea ta a fost actualizată',
+    greeting: (name) => `Bună, ${name}!`,
+    greetingFallback: 'Bună!',
+    intro: 'Am adăugat persoanele solicitate la rezervarea ta. Mai jos găsești detaliile actualizate.',
+    labels: {
+      checkIn: 'Check-in',
+      checkOut: 'Check-out',
+      duration: 'Durată',
+      accommodation: 'Cazare',
+      added: 'Persoane adăugate',
+      guests: 'Oaspeți acum',
+      difference: 'Diferență achitată',
+    },
+    cta: 'Vezi rezervarea',
+    freeLabel: 'Gratuit',
+    info: {
+      title: 'Accesul pe teritoriu este permis după ora 13:00.',
+      lines: ['Check-in de la 13:00.', 'Check-out până la 10:00.'],
+      phoneLead: 'Pentru întrebări ne poți suna la',
+    },
+    closing: 'Te așteptăm cu drag la EcoVila.',
+    textDetails: 'Detaliile actualizate',
+  },
+  ru: {
+    subject: 'Ваша бронь в EcoVila обновлена',
+    preheader: 'Мы добавили гостей к вашей брони и приняли оплату разницы.',
+    tagline: 'All-inclusive отдых в Орхеюл Векь',
+    heading: 'Ваша бронь обновлена',
+    greeting: (name) => `Здравствуйте, ${name}!`,
+    greetingFallback: 'Здравствуйте!',
+    intro: 'Мы добавили запрошенных гостей к вашей брони. Ниже — обновлённые детали.',
+    labels: {
+      checkIn: 'Заезд',
+      checkOut: 'Выезд',
+      duration: 'Длительность',
+      accommodation: 'Размещение',
+      added: 'Добавлено гостей',
+      guests: 'Гостей теперь',
+      difference: 'Оплачена разница',
+    },
+    cta: 'Открыть бронь',
+    freeLabel: 'Бесплатно',
+    info: {
+      title: 'Доступ на территорию открыт после 13:00.',
+      lines: ['Заезд с 13:00.', 'Выезд до 10:00.'],
+      phoneLead: 'По вопросам звоните нам по номеру',
+    },
+    closing: 'Будем рады видеть вас в EcoVila.',
+    textDetails: 'Обновлённые детали',
+  },
+  en: {
+    subject: 'Your EcoVila reservation was updated',
+    preheader: 'We added the guests to your reservation and collected the difference.',
+    tagline: 'All-inclusive escape at Orheiul Vechi',
+    heading: 'Your reservation was updated',
+    greeting: (name) => `Hi ${name}!`,
+    greetingFallback: 'Hello!',
+    intro: 'We added the requested guests to your reservation. Here are the updated details.',
+    labels: {
+      checkIn: 'Check-in',
+      checkOut: 'Check-out',
+      duration: 'Duration',
+      accommodation: 'Accommodation',
+      added: 'Guests added',
+      guests: 'Guests now',
+      difference: 'Difference paid',
+    },
+    cta: 'View reservation',
+    freeLabel: 'Free',
+    info: {
+      title: 'Access to the property opens after 13:00.',
+      lines: ['Check-in from 13:00.', 'Check-out until 10:00.'],
+      phoneLead: 'For any questions, call us at',
+    },
+    closing: 'We look forward to welcoming you to EcoVila.',
+    textDetails: 'Updated details',
+  },
+};
 
 function reservationEmailHtml(input: {
   title: string;

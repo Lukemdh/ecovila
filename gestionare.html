@@ -328,6 +328,72 @@
             <p class="booking-error" data-managed-action-error hidden></p>
           </section>
 
+          <!-- Add guests — pay only the price difference -->
+          <section class="gm-card gm-addguests" data-addguests-panel hidden aria-labelledby="gm-addguests-title">
+            <div class="gm-card__head">
+              <h2 class="gm-card__title" id="gm-addguests-title" data-i18n="addguests.title">
+                Adaugă persoane
+              </h2>
+              <span class="gm-card__tag" data-i18n="addguests.tag">Modificare</span>
+            </div>
+
+            <p class="gm-addguests__lead" data-i18n="addguests.lead">
+              Poți adăuga adulți sau copii dacă încap în cazarea rezervată. Achiți doar diferența de preț.
+            </p>
+
+            <div class="gm-addguests__steppers">
+              <div class="gm-stepper" data-adults-stepper>
+                <span class="gm-stepper__label">
+                  <span data-i18n="addguests.addAdults">Adulți în plus</span>
+                </span>
+                <span class="gm-stepper__controls">
+                  <button type="button" class="gm-stepper__btn" data-adults-dec aria-label="−">−</button>
+                  <span class="gm-stepper__value" data-adults-value aria-live="polite">0</span>
+                  <button type="button" class="gm-stepper__btn" data-adults-inc aria-label="+">+</button>
+                </span>
+              </div>
+
+              <div class="gm-stepper" data-kids-stepper>
+                <span class="gm-stepper__label">
+                  <span data-i18n="addguests.addKids">Copii în plus</span>
+                </span>
+                <span class="gm-stepper__controls">
+                  <button type="button" class="gm-stepper__btn" data-kids-dec aria-label="−">−</button>
+                  <span class="gm-stepper__value" data-kids-value aria-live="polite">0</span>
+                  <button type="button" class="gm-stepper__btn" data-kids-inc aria-label="+">+</button>
+                </span>
+              </div>
+            </div>
+
+            <div class="gm-kid-ages" data-kid-ages hidden>
+              <p class="gm-kid-ages__title" data-i18n="addguests.kidAgesTitle">Vârsta copiilor adăugați</p>
+              <div class="gm-kid-ages__list" data-kid-ages-list></div>
+            </div>
+
+            <div class="gm-addguests__summary">
+              <div class="gm-addguests__row">
+                <span data-i18n="addguests.newParty">Oaspeți după modificare</span>
+                <strong data-addguests-party>--</strong>
+              </div>
+              <div class="gm-addguests__row gm-addguests__row--total">
+                <span data-i18n="addguests.difference">Diferență de achitat</span>
+                <strong data-addguests-difference>--</strong>
+              </div>
+            </div>
+
+            <p class="gm-addguests__capacity" data-addguests-capacity hidden></p>
+            <p class="booking-error" data-addguests-error hidden></p>
+
+            <button type="button" class="cf-btn cf-btn--primary gm-addguests__submit" data-addguests-submit disabled>
+              <span data-addguests-submit-label data-i18n="addguests.submit">Adaugă și achită diferența</span>
+            </button>
+
+            <div class="gm-addguests__done" data-addguests-done hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <p data-addguests-done-text data-i18n="addguests.successApplied">Persoanele au fost adăugate la rezervare.</p>
+            </div>
+          </section>
+
           <!-- What's included — all-inclusive package -->
           <section class="gm-card gm-included" aria-labelledby="gm-included-title">
             <div class="gm-card__head">
@@ -378,7 +444,7 @@
     <footer class="site-footer" id="footer">
       <div class="section-inner site-footer__grid">
         <div class="site-footer__brand">
-          <img src="/assets/logoNT.png" alt="EcoVila" class="site-footer__logo">
+          <img src="/assets/logo-trim.png" alt="EcoVila" class="site-footer__logo">
           <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi.</p>
           <div class="site-footer__payments">
             <span class="site-footer__payment"><img src="/assets/maib.png" alt="maib" loading="lazy" decoding="async"></span>
@@ -408,6 +474,10 @@
           <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
           <span data-i18n="footer.copy">© 2026 EcoVila</span>
         </div>
+        <p class="footer-credit">
+          <span data-i18n="footer.developed">Dezvoltat de</span>
+          <a class="novano" href="http://novano.space" target="_blank" rel="noopener noreferrer" aria-label="Developed by novano.us">novano<span class="novano-slot"><span class="novano-tld">.us</span><span class="novano-bulb" aria-hidden="true"><i class="novano-bulb-glass"></i><i class="novano-bulb-cap"></i></span></span></a>
+        </p>
       </div>
     </footer>
 

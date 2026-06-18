@@ -26,13 +26,13 @@ type PricingApi = {
   }): StayQuote;
 };
 
-type RoomRow = {
+export type RoomRow = {
   id: string;
   type: string;
   is_active: boolean;
 };
 
-type PricingTierRow = {
+export type PricingTierRow = {
   nights_tier: number;
   day_type: string;
   adult_price: number;
@@ -41,7 +41,7 @@ type PricingTierRow = {
   created_at?: string;
 };
 
-type HolidayRow = {
+export type HolidayRow = {
   date: string;
 };
 
@@ -55,7 +55,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_ROOMS_PER_BOOKING = 10;
 const MAX_STAY_NIGHTS = 365;
 
-function getPricing(): PricingApi {
+export function getPricing(): PricingApi {
   const pricing = (globalThis as { EcoVilaPricing?: PricingApi }).EcoVilaPricing;
 
   if (!pricing) {
@@ -171,7 +171,7 @@ export function splitTotal(total: number, count: number) {
   );
 }
 
-async function fetchRooms(client: SupabaseClient, roomIds: string[]) {
+export async function fetchRooms(client: SupabaseClient, roomIds: string[]) {
   const { data, error } = await (client.from('rooms') as SelectBuilder<RoomRow[]>)
     .select('id, type, is_active')
     .in('id', roomIds);
@@ -183,7 +183,7 @@ async function fetchRooms(client: SupabaseClient, roomIds: string[]) {
   return data || [];
 }
 
-async function fetchPricingTiers(client: SupabaseClient) {
+export async function fetchPricingTiers(client: SupabaseClient) {
   const { data, error } = await (client.from('pricing_tiers') as SelectBuilder<PricingTierRow[]>)
     .select('nights_tier, day_type, adult_price, kid_price, effective_from, created_at')
     .order('effective_from', { ascending: true });
@@ -195,7 +195,7 @@ async function fetchPricingTiers(client: SupabaseClient) {
   return data || [];
 }
 
-async function fetchHolidays(client: SupabaseClient) {
+export async function fetchHolidays(client: SupabaseClient) {
   // Holidays are recurring month-day rules, so every row applies regardless of
   // the stored year — never filter by date range here.
   const { data, error } = await (client.from('holidays') as SelectBuilder<HolidayRow[]>)

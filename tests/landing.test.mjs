@@ -95,7 +95,7 @@ describe('EcoVila landing page structure', () => {
     const html = read('site.html');
     const footer = footerMarkup(html);
 
-    assert.match(footer, /src="\/assets\/logoNT\.png"/, 'footer should use the alternate PNG logo');
+    assert.match(footer, /src="\/assets\/logo-trim\.png"/, 'footer should use the trimmed PNG logo');
   });
 
   it('marks public photo surfaces for lazy asynchronous loading', () => {
@@ -138,7 +138,7 @@ describe('EcoVila landing page structure', () => {
     assert.match(css, /--paper:\s*#F7F4EF/i, 'CSS should include a light editorial paper surface');
     assert.match(css, /--espresso:\s*#33261F/i, 'CSS should include a dark brown footer surface');
     assert.match(css, /\.site-footer\s*{[^}]*padding:\s*30px 0/s, 'footer should stay compact');
-    assert.match(css, /\.site-footer__logo\s*{[^}]*width:\s*96px/s, 'footer logo should stay small');
+    assert.match(css, /\.site-footer__logo\s*{[^}]*height:\s*28px/s, 'footer logo should stay small');
     assert.match(
       css,
       /\.site-footer__grid\s*{[^}]*grid-template-columns:\s*minmax\(220px,\s*280px\)\s+minmax\(180px,\s*220px\)\s+minmax\(140px,\s*180px\)\s+minmax\(180px,\s*220px\)[^}]*width:\s*fit-content[^}]*margin-inline:\s*auto/s,

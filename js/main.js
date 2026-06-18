@@ -488,6 +488,25 @@
     }
   }
 
+  // Footer "Developed by novano.us" credit. First hover/focus lights the link
+  // and drops a halogen bulb in place of ".us" (see novano.md). Runs to
+  // completion and stays lit until the page reloads.
+  function initNovano() {
+    const link = document.querySelector('.novano');
+    if (!link || link.classList.contains('is-lit')) {
+      return;
+    }
+
+    const light = () => {
+      link.classList.add('is-lit');
+      link.removeEventListener('mouseenter', light);
+      link.removeEventListener('focus', light);
+    };
+
+    link.addEventListener('mouseenter', light);
+    link.addEventListener('focus', light);
+  }
+
   window.EcoVilaLanguage = {
     getLanguage: () => state.language,
     setLanguage: applyLanguage,
@@ -500,5 +519,6 @@
     initializeAccommodationModal();
     initializeCookieBanner();
     initializePublishedPhotos();
+    initNovano();
   });
 })();

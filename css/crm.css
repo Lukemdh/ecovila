@@ -1469,6 +1469,17 @@ h2 {
   gap: 12px;
 }
 
+/* Paid "add guests" difference: a distinct accent so it reads as a change to an
+   existing booking, not a new reservation. */
+.crm-finance-booked-card--change {
+  background: rgba(92, 122, 82, 0.08);
+  border-color: rgba(92, 122, 82, 0.28);
+}
+
+.crm-finance-booked-card--change .crm-finance-booked-status {
+  color: #4d6b41;
+}
+
 .crm-finance-booked-card strong {
   color: var(--crm-ink);
   font-weight: 800;

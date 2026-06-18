@@ -210,6 +210,32 @@
       }
     });
 
+    // Paid "add guests" differences are their own dated online income. They fold
+    // into the commercial + online totals (and the villa-type split) by paid_at,
+    // never inflating the booking's original paid day. Pre-filtered to the range
+    // by the fetch, they only apply in the "paid" (Încasări) view.
+    if (mode === MODE_PAID) {
+      (input?.changeRows || []).forEach((change) => {
+        const amount = Number(change.difference_amount || 0);
+        if (!(amount > 0)) {
+          return;
+        }
+
+        summary.commercialTotal += amount;
+        summary.onlineTotal += amount;
+
+        const roomType = change.room_type || '';
+        if (roomType in summary.roomTypeTotals) {
+          summary.roomTypeTotals[roomType] += amount;
+        }
+
+        const key = change.booking_group_id || change.id;
+        if (key) {
+          commercialKeys.add(key);
+        }
+      });
+    }
+
     summary.commercialTotal = roundMoney(summary.commercialTotal);
     summary.cashTotal = roundMoney(summary.cashTotal);
     summary.onlineTotal = roundMoney(summary.onlineTotal);
@@ -493,10 +519,11 @@
     }
 
     const groups = groupBookedDayRows(normalizeBookedDayRows(state.bookedDayRows));
+    const changes = (state.changeRows || []).filter((change) => Number(change.difference_amount || 0) > 0);
     if (count) {
-      count.textContent = String(groups.length);
+      count.textContent = String(groups.length + changes.length);
     }
-    empty.hidden = groups.length > 0;
+    empty.hidden = groups.length + changes.length > 0;
     list.innerHTML = '';
 
     groups.forEach((group) => {
@@ -528,6 +555,52 @@
       card.append(summary, buildBookedVillaBreakdown(context, group.villas));
       list.appendChild(card);
     });
+
+    changes.forEach((change) => {
+      list.appendChild(buildChangeCard(context, change));
+    });
+  }
+
+  function changeDeltaLabel(change) {
+    const addedAdults = Number(change.new_adults || 0) - Number(change.prev_adults || 0);
+    const prevKids = Array.isArray(change.prev_kids_ages) ? change.prev_kids_ages.length : 0;
+    const newKids = Array.isArray(change.new_kids_ages) ? change.new_kids_ages.length : 0;
+    const addedKids = newKids - prevKids;
+    const parts = [];
+    if (addedAdults > 0) {
+      parts.push(addedAdults === 1 ? '+1 adult' : `+${addedAdults} adulți`);
+    }
+    if (addedKids > 0) {
+      parts.push(addedKids === 1 ? '+1 copil' : `+${addedKids} copii`);
+    }
+    return parts.join(', ') || 'persoane adăugate';
+  }
+
+  function buildChangeCard(context, change) {
+    const card = root.document.createElement('article');
+    card.className = 'crm-finance-booked-card crm-finance-booked-card--change';
+
+    const title = root.document.createElement('strong');
+    title.textContent = `Diferență · ${changeDeltaLabel(change)}`;
+
+    const meta = root.document.createElement('span');
+    meta.textContent = roomTypeLabel(change.room_type || '');
+
+    const stay = root.document.createElement('span');
+    stay.textContent = `${formatStayDate(context, change.check_in)} - ${formatStayDate(context, change.check_out)}`;
+
+    const total = root.document.createElement('span');
+    total.textContent = formatMDL(context, change.difference_amount);
+
+    const paidAt = root.document.createElement('span');
+    paidAt.textContent = `Achitat: ${formatCreatedAt(change.paid_at)}`;
+
+    const status = root.document.createElement('span');
+    status.className = 'crm-finance-booked-status';
+    status.textContent = 'online plătit diferență';
+
+    card.append(title, meta, stay, total, paidAt, status);
+    return card;
   }
 
   async function loadFinance(context, state) {
@@ -538,7 +611,8 @@
       rangeEnd: state.rangeEnd,
     };
     const shouldLoadBookedDay = state.mode === MODE_PAID && isOneDayRange(state.rangeStart, state.rangeEnd);
-    const [rows, bookedDayRows] = await Promise.all([
+    const loadChanges = state.mode === MODE_PAID;
+    const [rows, bookedDayRows, changeRows] = await Promise.all([
       root.EcoVilaSupabase.fetchFinanceReservations(context.client, financeOptions),
       shouldLoadBookedDay
         ? root.EcoVilaSupabase.fetchFinanceBookedReservations(context.client, {
@@ -546,11 +620,19 @@
             rangeEnd: state.rangeEnd,
           })
         : Promise.resolve([]),
+      loadChanges
+        ? root.EcoVilaSupabase.fetchFinanceChangePayments(context.client, {
+            rangeStart: state.rangeStart,
+            rangeEnd: state.rangeEnd,
+          })
+        : Promise.resolve([]),
     ]);
     state.rows = rows || [];
     state.bookedDayRows = bookedDayRows || [];
+    state.changeRows = changeRows || [];
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
+      changeRows: state.changeRows,
       mode: state.mode,
       rangeStart: state.rangeStart,
       rangeEnd: state.rangeEnd,
@@ -662,6 +744,7 @@
       calendarOpen: false,
       rows: [],
       bookedDayRows: [],
+      changeRows: [],
     };
     activeFinance = { context, state };
 
@@ -723,6 +806,7 @@
     context.client
       .channel('crm-finance-reservations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => loadFinance(context, state))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_changes' }, () => loadFinance(context, state))
       .subscribe();
   }
 

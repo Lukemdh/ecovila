@@ -45,7 +45,7 @@ describe('EcoVila Step 4 booking page', () => {
     const html = read('rezervari.html');
     const footer = footerMarkup(html);
 
-    assert.match(footer, /src="\/assets\/logoNT\.png"/, 'booking footer should use the alternate PNG logo');
+    assert.match(footer, /src="\/assets\/logo-trim\.png"/, 'booking footer should use the trimmed PNG logo');
   });
 
   it('renders guest selectors, a date range calendar, accommodation cards, and room selection UI hooks', () => {
