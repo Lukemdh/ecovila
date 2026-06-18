@@ -179,6 +179,10 @@
       return;
     }
 
+    // Read-only roles (Angela) still see which payments are pending, but the
+    // "mark as paid" action is omitted (and is Diana-only server-side anyway).
+    const readOnly = Boolean(context.permissions?.dashboardReadOnly);
+
     list.innerHTML = groups.map((group) => {
       const reservation = group.primary;
       const name = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume');
@@ -192,16 +196,18 @@
           <span>${roomLabel}</span>
           <span>Cash · ${context.formatMDL(group.totalPrice)}</span>
           <span data-countdown data-expires-at="${expiresAt}">${formatCountdown(group.cash_expires_at)}</span>
-          <button class="crm-button crm-button--primary crm-button--small" type="button" data-mark-paid="${reservationId}" data-mark-paid-group="${bookingGroupId}">
+          ${readOnly ? '' : `<button class="crm-button crm-button--primary crm-button--small" type="button" data-mark-paid="${reservationId}" data-mark-paid-group="${bookingGroupId}">
             Marchează ca plătit
-          </button>
+          </button>`}
         </article>
       `;
     }).join('');
 
-    list.querySelectorAll('[data-mark-paid]').forEach((button) => {
-      button.addEventListener('click', () => markPaid(context, button.dataset.markPaid, button.dataset.markPaidGroup));
-    });
+    if (!readOnly) {
+      list.querySelectorAll('[data-mark-paid]').forEach((button) => {
+        button.addEventListener('click', () => markPaid(context, button.dataset.markPaid, button.dataset.markPaidGroup));
+      });
+    }
   }
 
   function guestSummary(reservation) {
@@ -319,7 +325,9 @@
     ].filter(Boolean).join(' ');
     card.style.gridColumn = `${block.columnStart} / span ${block.columnSpan}`;
     card.style.gridRow = `${block.rowStart} / span ${block.rowSpan}`;
-    card.draggable = true;
+    // Read-only roles (Angela) can open a reservation to view it, but cannot
+    // drag it between rooms.
+    card.draggable = !context.permissions?.dashboardReadOnly;
     card.dataset.reservationId = reservation.id;
     card.dataset.bookingGroupId = block.bookingGroupId;
     card.dataset.roomId = reservation.room_id || '';
@@ -383,8 +391,10 @@
         cell.style.gridRow = String(roomIndex + 2);
         cell.dataset.roomId = room.id;
         cell.dataset.date = date;
-        cell.addEventListener('dragover', (event) => event.preventDefault());
-        cell.addEventListener('drop', (event) => handleDrop(context, state, event, cell));
+        if (!state.readOnly) {
+          cell.addEventListener('dragover', (event) => event.preventDefault());
+          cell.addEventListener('drop', (event) => handleDrop(context, state, event, cell));
+        }
         grid.appendChild(cell);
       });
     });
@@ -457,6 +467,8 @@
       return;
     }
 
+    const readOnly = Boolean(activeState?.context?.permissions?.dashboardReadOnly);
+
     qs('[data-edit-check-in]', dialog).value = reservation.check_in || '';
     qs('[data-edit-check-out]', dialog).value = reservation.check_out || '';
     qs('[data-edit-adults]', dialog).value = reservation.adults || 0;
@@ -475,11 +487,29 @@
     qs('[data-edit-total]', dialog).textContent = `Preț total: ${root.EcoVilaCrmApp.formatMDL(totalPrice)}`;
     const sendConfirmation = qs('[data-send-payment-confirmation]', dialog);
     if (sendConfirmation) {
-      const canSendConfirmation = reservation.payment_type === 'cash' && reservation.payment_status === 'paid';
+      const canSendConfirmation = !readOnly && reservation.payment_type === 'cash' && reservation.payment_status === 'paid';
       sendConfirmation.hidden = !canSendConfirmation;
       sendConfirmation.onclick = canSendConfirmation ? () => sendPaymentConfirmation(reservation) : null;
     }
-    qs('[data-delete-reservation]', dialog).onclick = () => deleteReservation(reservation);
+
+    // Read-only roles (Angela) open the dialog to inspect a reservation, but the
+    // fields are locked and the save/cancel actions are removed. The server
+    // rejects these writes too, so this is purely to keep the UI honest.
+    qsa('input, textarea', dialog).forEach((field) => {
+      field.disabled = readOnly;
+    });
+    const saveButton = qs('[data-save-reservation]', dialog);
+    if (saveButton) {
+      saveButton.hidden = readOnly;
+    }
+    const dangerZone = qs('.crm-danger-zone', dialog);
+    if (dangerZone) {
+      dangerZone.hidden = readOnly;
+    }
+    const deleteButton = qs('[data-delete-reservation]', dialog);
+    if (deleteButton) {
+      deleteButton.onclick = readOnly ? null : () => deleteReservation(reservation);
+    }
     dialog.showModal?.();
   }
 
@@ -686,6 +716,9 @@
     const state = {
       context,
       today,
+      // When true (Angela), the dashboard renders without drag-to-swap, mark-paid
+      // or the reservation editor's write actions.
+      readOnly: Boolean(context.permissions?.dashboardReadOnly),
       startDate: root.EcoVilaCrmCalendar.startOfMonth(today),
       focusDate: today,
       dates: buildCalendarWindowDates(today),

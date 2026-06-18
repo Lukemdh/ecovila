@@ -697,38 +697,49 @@
     wireToggles();
 
     const addForm = qs('[data-add-reservation-form]');
-    const addController = initAddForm(context, state, addForm);
-    state.refreshAddReservationForm = () => addController?.refresh?.();
 
-    addForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      try {
-        const validationError = validateAddForm(state, addForm, addController.formState);
-        if (validationError) {
-          context.setAlert(validationError);
-          return;
-        }
-
-        const rows = buildStaffReservationRows(addForm, state.rooms || [], context);
-        await helpers.insertStaffReservations(context.client, rows);
-        addForm.reset();
-        addController.formState.childBuckets = [];
-        addController.formState.calendarOpen = false;
-        addController.formState.currentMonth = firstOfMonth(todayISO());
-        addController.refresh();
-        await state.reload?.();
-      } catch (error) {
-        // 23P01 = exclusion constraint (reservations_no_room_overlap): another
-        // booking won the room between the local availability check and the
-        // insert. Reload so the calendar reflects the conflict.
-        if (error?.code === '23P01' || String(error?.message || '').includes('reservations_no_room_overlap')) {
-          context.setAlert('Camerele selectate tocmai au fost rezervate pentru perioada aleasă. Calendarul a fost actualizat — verifică disponibilitatea.');
-          await state.reload?.();
-          return;
-        }
-        context.setAlert(error?.message || 'Rezervarea nu a putut fi adăugată.');
+    // A read-only dashboard (Angela) hides the "add reservation" tool entirely
+    // and skips its wiring; server-side RLS also denies her reservation inserts.
+    // The search form below stays available — it only reads.
+    if (context.permissions?.dashboardReadOnly) {
+      const addSection = addForm?.closest('.crm-sidebar-section');
+      if (addSection) {
+        addSection.hidden = true;
       }
-    });
+    } else {
+      const addController = initAddForm(context, state, addForm);
+      state.refreshAddReservationForm = () => addController?.refresh?.();
+
+      addForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        try {
+          const validationError = validateAddForm(state, addForm, addController.formState);
+          if (validationError) {
+            context.setAlert(validationError);
+            return;
+          }
+
+          const rows = buildStaffReservationRows(addForm, state.rooms || [], context);
+          await helpers.insertStaffReservations(context.client, rows);
+          addForm.reset();
+          addController.formState.childBuckets = [];
+          addController.formState.calendarOpen = false;
+          addController.formState.currentMonth = firstOfMonth(todayISO());
+          addController.refresh();
+          await state.reload?.();
+        } catch (error) {
+          // 23P01 = exclusion constraint (reservations_no_room_overlap): another
+          // booking won the room between the local availability check and the
+          // insert. Reload so the calendar reflects the conflict.
+          if (error?.code === '23P01' || String(error?.message || '').includes('reservations_no_room_overlap')) {
+            context.setAlert('Camerele selectate tocmai au fost rezervate pentru perioada aleasă. Calendarul a fost actualizat — verifică disponibilitatea.');
+            await state.reload?.();
+            return;
+          }
+          context.setAlert(error?.message || 'Rezervarea nu a putut fi adăugată.');
+        }
+      });
+    }
 
     const searchForm = qs('[data-search-reservation-form]');
     searchForm?.addEventListener('submit', async (event) => {

@@ -2814,4 +2814,20 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(sql, /crm_daily_statuses_updated_by_idx/i);
     assert.match(sql, /to anon\s+using \(status = 'published'\)/i);
   });
+
+  it('restricts Angela to a read-only reservations dashboard while keeping daily writes', () => {
+    const sql = allMigrations();
+
+    // The shared both-roles manage policy is replaced by explicit per-role policies.
+    assert.match(sql, /drop policy if exists "CRM staff can manage reservations" on public\.reservations/i);
+    assert.match(sql, /create policy "Diana can manage reservations"[\s\S]+?for all[\s\S]+?ecovila_app_role\(\) = 'diana'/i);
+    assert.match(sql, /create policy "Angela can read reservations"[\s\S]+?for select[\s\S]+?ecovila_app_role\(\) = 'angela'/i);
+    assert.match(sql, /create policy "Angela can update daily reservation fields"[\s\S]+?for update[\s\S]+?ecovila_app_role\(\) = 'angela'/i);
+
+    // The column guard limits Angela's UPDATEs to exactly the daily-tab fields.
+    assert.match(sql, /create or replace function public\.enforce_angela_reservation_columns\(\)/i);
+    assert.match(sql, /allowed_columns constant text\[\] := array\[\s*'towel_cards_issued', 'adults', 'check_out', 'kids_ages', 'total_price'\s*\]/i);
+    assert.match(sql, /if public\.ecovila_app_role\(\) <> 'angela' then\s+return new;/i);
+    assert.match(sql, /create trigger enforce_angela_reservation_columns\s+before update on public\.reservations/i);
+  });
 });

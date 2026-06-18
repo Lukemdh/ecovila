@@ -8,11 +8,29 @@
   // refresh restores the view the user was on instead of snapping back to the
   // dashboard/calendar. The dashboard is the default and stays on a clean URL.
   const TAB_NAMES = ['dashboard', 'finance', 'daily', 'towels', 'photos', 'pricing'];
+  // Per-role visible tabs. Angela operates a read-only dashboard plus the daily
+  // ("Situația zilnică") and towels tabs; finance, photos and pricing are hidden
+  // for her. Roles not listed here (e.g. diana) see every tab. The same boundary
+  // is enforced server-side by RLS on public.reservations.
+  const ROLE_TABS = Object.freeze({
+    angela: ['dashboard', 'daily', 'towels'],
+  });
+  let allowedTabs = TAB_NAMES;
   let hashNavigationWired = false;
+
+  function isTabAllowed(name) {
+    return allowedTabs.includes(name);
+  }
+
+  function applyTabVisibility() {
+    qsa('[data-tab]').forEach((button) => {
+      button.hidden = !isTabAllowed(button.dataset.tab);
+    });
+  }
 
   function resolveTabFromHash() {
     const hash = String(root.location?.hash || '').replace(/^#/, '');
-    return TAB_NAMES.includes(hash) ? hash : null;
+    return isTabAllowed(hash) ? hash : null;
   }
 
   function syncTabHash(name) {
@@ -55,25 +73,29 @@
   }
 
   function setActiveTab(name) {
+    // Clamp to the role's allowed tabs so a stale hash (#finance) or a direct
+    // call can never surface a hidden tab.
+    const target = isTabAllowed(name) ? name : 'dashboard';
+
     qsa('[data-tab]').forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.tab === name);
+      button.classList.toggle('is-active', button.dataset.tab === target);
     });
 
     qsa('[data-panel]').forEach((panel) => {
-      panel.classList.toggle('is-active', panel.dataset.panel === name);
+      panel.classList.toggle('is-active', panel.dataset.panel === target);
     });
 
-    if (name === 'daily') {
+    if (target === 'daily') {
       root.EcoVilaCrmDaily?.showToday?.();
     }
-    if (name === 'finance') {
+    if (target === 'finance') {
       root.EcoVilaCrmFinance?.showToday?.();
     }
-    if (name === 'towels') {
+    if (target === 'towels') {
       root.EcoVilaCrmTowels?.showToday?.();
     }
 
-    syncTabHash(name);
+    syncTabHash(target);
   }
 
   function wireTabs() {
@@ -138,22 +160,39 @@
       qs('[data-crm-user-label]').textContent = sessionState.role === 'angela' ? 'Angela' : 'Diana';
       qs('[data-crm-sign-out]')?.addEventListener('click', () => auth.signOut(sessionState.client));
 
+      allowedTabs = ROLE_TABS[sessionState.role] || TAB_NAMES;
+      applyTabVisibility();
+
       const context = {
         client: sessionState.client,
         role: sessionState.role,
         session: sessionState.session,
+        permissions: {
+          tabs: allowedTabs,
+          // A read-only dashboard means Angela can view the calendar and search,
+          // but cannot add, swap, mark paid or cancel reservations.
+          dashboardReadOnly: sessionState.role === 'angela',
+        },
         setAlert,
         setActiveTab,
         formatDate,
         formatMDL,
       };
 
+      // Dashboard, daily and towels are visible to every CRM role; the rest only
+      // initialise (and fetch their data) when the role is allowed to see them.
       root.EcoVilaCrmDashboard?.init?.(context);
-      root.EcoVilaCrmFinance?.init?.(context);
       root.EcoVilaCrmDaily?.init?.(context);
       root.EcoVilaCrmTowels?.init?.(context);
-      root.EcoVilaCrmPhotos?.init?.(context);
-      root.EcoVilaCrmPricing?.init?.(context);
+      if (isTabAllowed('finance')) {
+        root.EcoVilaCrmFinance?.init?.(context);
+      }
+      if (isTabAllowed('photos')) {
+        root.EcoVilaCrmPhotos?.init?.(context);
+      }
+      if (isTabAllowed('pricing')) {
+        root.EcoVilaCrmPricing?.init?.(context);
+      }
       setActiveTab(resolveTabFromHash() || 'dashboard');
     } catch (error) {
       app.hidden = false;

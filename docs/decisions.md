@@ -1396,6 +1396,44 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   no edge redeploy required (the `_shared/pricing.js` change is behaviourally identical server-side,
   where the runtime is already UTC).
 
+### ADR-056 — Angela CRM least-privilege: read-only dashboard, daily + towels only, enforced in RLS
+- **Date:** 2026-06-18.
+- **Decision:** the `angela` role now sees only three CRM tabs — Dashboard (read-only),
+  Situația zilnică and Ștergare — with finance, photos and pricing hidden. In `admin/js/crm-app.js`
+  a `ROLE_TABS` map drives tab visibility, clamps `setActiveTab`/`resolveTabFromHash` so a stale
+  `#finance` hash cannot surface a hidden tab, and skips initialising the hidden modules. A
+  `context.permissions.dashboardReadOnly` flag (true for Angela) makes the dashboard view-only:
+  the add-reservation tool is hidden and unwired (`crm-sidebar.js`), the cash "mark paid" button is
+  omitted, reservation cards are non-draggable with cell drop wiring skipped, and the reservation
+  dialog opens with disabled fields and no save/cancel/SMS actions (`crm-dashboard.js`). Search stays
+  available — it only reads. **Server-side**, migration `20260618150000` replaces the both-roles
+  "CRM staff can manage reservations" policy with `Diana can manage` (ALL) + `Angela can read`
+  (SELECT) + `Angela can update daily reservation fields` (UPDATE), and a `before update` trigger
+  `enforce_angela_reservation_columns()` restricts Angela's UPDATEs to the daily-tab allowlist
+  (`towel_cards_issued, adults, check_out, kids_ages, total_price`). Angela has no INSERT/DELETE
+  policy, so add and hard-delete are denied outright.
+- **Why:** UI hiding alone is cosmetic — a determined session could still write directly to the
+  `reservations` table, which the old shared policy permitted. The dashboard's financial actions
+  (mark paid, refund, confirmation SMS/email) already run through `requireStaffRole(['diana'])` edge
+  functions, but add/room-swap/cancel are **direct** table writes that needed RLS. A blanket
+  read-only policy was impossible because Situația zilnică legitimately writes five `reservations`
+  columns (check-in towel cards + the guest-count/stay-extension edit), so a column-level trigger is
+  the only way to keep those while blocking everything else (RLS cannot compare OLD vs NEW per
+  column). Diana and the service role return early from the trigger and are unrestricted. Verified
+  against the linked DB by simulating each role's JWT in rolled-back transactions: Angela's room
+  swap, cancel and insert are rejected; her towel-card write succeeds; Diana passes the guard.
+- **Consequence:** the boundary is now defense-in-depth (UI + RLS). Angela retains write access to
+  the five daily-tab columns on any reservation — including `total_price` — because the guest-edit
+  recomputes price; that is the intended daily capability, not a new one. **Deliberately scoped to
+  reservations:** the owner chose (2026-06-18) to leave the hidden Prețuri/Poze tabs UI-only —
+  `pricing_tiers`, `holidays`, `rooms`, `crm_photos` and the photo storage bucket keep their
+  both-roles "manage" policies, so Angela could still write them via a crafted API call (she keeps
+  the SELECT she needs for daily supplements). `reservation-cancel-notify` likewise still allows
+  `angela` (notification only, no state change). If that risk appetite changes, the same
+  Diana-manage/Angela-read split applies cleanly to those tables. Frontend changes ship with the
+  next TopHost upload; the RLS migration is already live (applied via `db query --linked` +
+  `migration repair`, per the migration-drift workflow).
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
