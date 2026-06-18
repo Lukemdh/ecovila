@@ -1474,6 +1474,20 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `20260618160000_reservation_changes.sql` + functions `reservation-change-create`,
   `reservation-change-status`, `maib-callback`, `maib-mia-callback`, `reservation-cancel`,
   `maib-refund`; frontend ships with the next TopHost upload.
+- **Post-ship audit + deploy (2026-06-18):** a second full review before deploy found and fixed three
+  more issues — (1) self-serve `reservation-cancel` refunded the original booking payment *before* the
+  add-guests differences, so a mid-way difference-refund failure stranded the booking active with the
+  original already refunded and a retry blocked by the "payment not ready for refund" guard; the order
+  is now **differences-first** (both `refundPaidChanges` and `createRefund` are idempotent, so a retry
+  re-runs cleanly); (2) a concurrent double-submit tripped the one-open-change partial unique index as
+  a raw 500 — `insertChangeRow` now maps `23505` to a retryable **409**; (3) added
+  `supabase/functions/tests/reservationChanges.test.ts` (13 tests) covering the price-difference math,
+  the capacity/DoS bounds, the add-only/superset rules, the once-only apply, and the 409 mapping (the
+  module previously had none). **Deployed to prod 2026-06-18:** migration applied via `supabase db push
+  --linked` (recorded in remote history; verified live — table + RLS + 1 staff-read policy + 6 indexes
+  + realtime publication, no new security advisories), and all six edge functions deployed via
+  `supabase functions deploy … --use-api` and smoke-tested (verify_jwt correct per function, new table
+  queryable). The guest-facing UI goes live with the pending TopHost frontend upload.
 
 ---
 

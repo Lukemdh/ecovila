@@ -142,11 +142,17 @@ Deno.serve(async (request) => {
         throw new HttpError(409, 'The MAIB payment is not ready for refund.');
       }
 
-      refundResult = await createRefund(client, payment, summary.bookingGroupId);
-      // Reverse any paid "add guests" differences too — each as its own MAIB
-      // transaction. Done before the reservations are marked cancelled so a
-      // failure surfaces as an error and the booking stays active for a retry.
+      // Reverse any paid "add guests" differences FIRST, then the original
+      // booking payment — each as its own MAIB transaction. Order matters: if a
+      // difference refund fails, the original payment is still 'paid', so a
+      // retry passes the guard above and re-runs cleanly (both refundPaidChanges
+      // and createRefund are idempotent — already-refunded rows are skipped).
+      // Refunding the original first would flip it to 'refunded' and the retry
+      // would then 409 here, stranding the booking active with the difference
+      // unrefunded. All run before the reservations are marked cancelled so any
+      // failure surfaces as an error and leaves the booking retryable.
       differenceRefunds = await refundPaidChanges(client, summary.bookingGroupId, 'guest_request');
+      refundResult = await createRefund(client, payment, summary.bookingGroupId);
     }
 
     const now = new Date().toISOString();

@@ -14,11 +14,7 @@
 import { HttpError } from './http.ts';
 import { getSiteUrl } from './env.ts';
 import { buildManageTokenRow, hashManageToken } from './reservationManage.ts';
-import {
-  fetchHolidays,
-  fetchPricingTiers,
-  getPricing,
-} from './pricingGuard.ts';
+import { fetchHolidays, fetchPricingTiers, getPricing } from './pricingGuard.ts';
 import {
   cancelMaibMiaQr,
   getMaibMiaPaymentByOrderId,
@@ -278,7 +274,10 @@ export async function quoteBookingChange(
   // "Fit in the rooms they have chosen": the new party must need no more units
   // than the booking already has. Adults can only grow, so each villa keeps an
   // adult and the units stay valid.
-  const neededUnits = pricing.getUnitsNeeded(roomType, { adults: newAdults, kidsAges: newKidsAges });
+  const neededUnits = pricing.getUnitsNeeded(roomType, {
+    adults: newAdults,
+    kidsAges: newKidsAges,
+  });
   if (neededUnits > units) {
     throw new HttpError(409, 'The added guests do not fit in the booked accommodation.');
   }
@@ -376,7 +375,20 @@ export async function insertChangeRow(
     .select('*')
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    // A concurrent double-submit trips the one-open-change-per-booking partial
+    // unique index (reservation_changes_one_open_per_group_idx). That is the
+    // index doing its job — surface it as a retryable 409 rather than a raw 500
+    // so the loser of the race gets a clean "try again", never a second payable
+    // session.
+    if ((error as { code?: string }).code === '23505') {
+      throw new HttpError(
+        409,
+        'A guest change is already in progress for this booking. Please wait a moment and try again.',
+      );
+    }
+    throw new Error(error.message);
+  }
   if (!data) throw new Error('Reservation change row could not be created.');
   return data;
 }
@@ -542,8 +554,7 @@ export async function refundPaidChanges(
     const refund = (await refundMaibPayment(providerPayId, amount, reason)) as
       & Record<string, unknown>
       & { result?: { refundId?: unknown }; refundId?: unknown };
-    const refundId =
-      String(refund?.result?.refundId ?? refund?.refundId ?? '').trim() || null;
+    const refundId = String(refund?.result?.refundId ?? refund?.refundId ?? '').trim() || null;
     const now = new Date().toISOString();
 
     const { error: updateError } = await table(client, 'reservation_changes')
