@@ -1362,6 +1362,40 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   (`buildStaffReservationRows`, always explicit, separate direct-insert path) are untouched.
   Deployed to prod 2026-06-17 (`create-reservation`).
 
+### ADR-055 — Date-only values render in UTC; "today" is the Europe/Chisinau business day
+- **Date:** 2026-06-18.
+- **Decision:** every formatter that displays a **date-only** value (`YYYY-MM-DD`, which
+  `parseISODate` anchors to UTC midnight) now passes `timeZone: 'UTC'` to
+  `Intl.DateTimeFormat`, on both the guest site (`formatDate`/`formatMonth` in `js/booking.js`,
+  `js/gestionare.js`, `js/anulare.js`, `js/checkout.js`, `js/confirmare.js`) and the CRM
+  (`admin/js/crm-app.js`, `crm-dashboard.js`, `crm-sidebar.js`, `crm-finance.js`). The CRM's
+  `formatCreatedAt` — a real timestamp, not a date-only value — is instead pinned to
+  `timeZone: 'Europe/Chisinau'` so created-at always reads in business time. Separately,
+  "today" is now a single source of truth: `pricing.todayISO()` computes the **Europe/Chisinau**
+  calendar day via `Intl.DateTimeFormat(...).formatToParts` and is exported; the three other
+  copies (`js/booking.js`, `admin/js/crm-pricing.js`, `admin/js/crm-calendar.js`) delegate to it
+  with their previous local-time logic kept only as a no-tz-data fallback. The shared edge copy
+  `supabase/functions/_shared/pricing.js` is kept byte-identical (pricing guard, ADR-pricing).
+- **Why:** an on-site workstation (Angela's) had its timezone/locale set behind UTC; the CRM
+  rendered 20 Jun reservations as 19 Jun. `Intl.DateTimeFormat().format()` of a UTC-midnight
+  instant uses the **machine's** timezone unless told otherwise, so on any behind-UTC machine the
+  day rolled back. The four divergent `todayISO()` implementations (two local-time, one UTC, one
+  using local getters) compounded it: "today" itself differed by machine and by module. Anchoring
+  both display and "today" to a fixed business timezone makes the calendar correct regardless of
+  how a viewer's computer is configured. Verified by reproducing the off-by-one under
+  `TZ=America/*` and confirming UTC output is stable across `America/*`, `Europe/Chisinau`, and
+  `Asia/Tokyo`.
+- **Consequence:** date-only displays are now machine-independent; a misconfigured workstation can
+  no longer shift them. The native `<input type="date">` controls in the CRM are a **separate,
+  unfixable-in-page** case: an empirical probe proved Chromium ignores the `lang` attribute for
+  date inputs (explicit `lang="ro"` and `lang="en-GB"` still rendered `mm/dd/yyyy`) and formats
+  purely by the **browser's language preference** (`navigator.languages[0]`), which the OS *region*
+  (Moldova) does not override. So mm/dd/yyyy in the CRM is fixed per-machine by putting Romanian at
+  the top of the browser's language list — no code change, and **no custom pickers** were built (a
+  deliberate decision to avoid the risk for marginal benefit). Ships with the next TopHost upload;
+  no edge redeploy required (the `_shared/pricing.js` change is behaviourally identical server-side,
+  where the runtime is already UTC).
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

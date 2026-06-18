@@ -123,6 +123,11 @@
   }
 
   function todayISO() {
+    // Defer to the shared Europe/Chisinau business day (pricing.js).
+    const pricing = root.EcoVilaPricing;
+    if (pricing?.todayISO) {
+      return pricing.todayISO();
+    }
     const date = new Date();
     const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
     return localDate.toISOString().slice(0, 10);

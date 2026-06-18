@@ -12,6 +12,7 @@
   const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
   const HOLIDAY_KEY_PATTERN = /^(\d{2})-(\d{2})$/;
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const BUSINESS_TIME_ZONE = 'Europe/Chisinau';
   // A night is premium only when the next morning is a Sunday — i.e. the
   // Saturday-to-Sunday night. The Friday-to-Saturday night bills as a weekday.
   const DEFAULT_PREMIUM_NEXT_DAYS = [0];
@@ -115,9 +116,28 @@
   }
 
   function todayISO() {
-    const date = new Date();
-    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
-    return localDate.toISOString().slice(0, 10);
+    // "Today" for EcoVila is always the Europe/Chisinau (Moldova) calendar day,
+    // independent of the viewer's machine timezone — a workstation set to a
+    // behind-UTC zone must not roll the business day back.
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: BUSINESS_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const value = (type) => parts.find((part) => part.type === type)?.value;
+      const year = value('year');
+      const month = value('month');
+      const day = value('day');
+      if (year && month && day) {
+        return `${year}-${month}-${day}`;
+      }
+    } catch (_error) {
+      // Runtime without IANA tz data: fall through to the UTC instant.
+    }
+
+    return new Date().toISOString().slice(0, 10);
   }
 
   function compareDates(left, right) {
@@ -426,6 +446,7 @@
     isTypeAvailableForParty,
     normalizeParty,
     parseISODate,
+    todayISO,
     toHolidayKey,
     toISODate,
     validateParty,

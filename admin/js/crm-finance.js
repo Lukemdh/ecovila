@@ -308,6 +308,7 @@
     const formatted = new Intl.DateTimeFormat('ro-MD', {
       month: 'long',
       year: 'numeric',
+      timeZone: 'UTC',
     }).format(parsed);
     return formatted.charAt(0).toUpperCase() + formatted.slice(1);
   }
@@ -348,6 +349,7 @@
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Europe/Chisinau',
     }).format(parsed);
   }
 

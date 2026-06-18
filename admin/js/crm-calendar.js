@@ -41,6 +41,11 @@
   }
 
   function todayISO() {
+    // Defer to the shared Europe/Chisinau business day (pricing.js).
+    const pricing = root.EcoVilaPricing;
+    if (pricing?.todayISO) {
+      return pricing.todayISO();
+    }
     const now = new Date();
     return [
       now.getFullYear(),

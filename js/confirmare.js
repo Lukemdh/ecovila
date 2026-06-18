@@ -130,7 +130,7 @@
     try {
       return new Intl.DateTimeFormat(
         locale,
-        options || { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' },
+        { ...(options || { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }), timeZone: 'UTC' },
       ).format(pricing.parseISODate(dateStr));
     } catch {
       return dateStr;

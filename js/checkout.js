@@ -316,7 +316,7 @@
 
     const language = getLanguage();
     const locale = language === 'ro' ? 'ro-MD' : language;
-    return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+    return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
       .format(pricing.parseISODate(date));
   }
 

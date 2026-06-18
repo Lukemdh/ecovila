@@ -67,6 +67,7 @@
     const formatted = new Intl.DateTimeFormat('ro-MD', {
       month: 'long',
       year: 'numeric',
+      timeZone: 'UTC',
     }).format(new Date(`${root.EcoVilaCrmCalendar.startOfMonth(date)}T00:00:00Z`));
     return formatted.charAt(0).toUpperCase() + formatted.slice(1);
   }

@@ -107,7 +107,8 @@
   }
 
   function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    // Single source of truth: the Europe/Chisinau business day (see pricing.js).
+    return pricing?.todayISO ? pricing.todayISO() : new Date().toISOString().slice(0, 10);
   }
 
   function firstOfMonth(date) {
@@ -272,12 +273,12 @@
     }
 
     const locale = state.language === 'ro' ? 'ro-MD' : state.language;
-    return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short' }).format(pricing.parseISODate(date));
+    return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(pricing.parseISODate(date));
   }
 
   function formatMonth(date) {
     const locale = state.language === 'ro' ? 'ro-MD' : state.language;
-    const formatted = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(pricing.parseISODate(date));
+    const formatted = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(pricing.parseISODate(date));
     return formatted.charAt(0).toLocaleUpperCase(locale) + formatted.slice(1);
   }
 

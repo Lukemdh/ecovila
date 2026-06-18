@@ -100,7 +100,7 @@
     const locale = lang === 'ro' ? 'ro-MD' : lang;
 
     try {
-      return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+      return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
         .format(pricing.parseISODate(dateStr));
     } catch {
       return dateStr;
