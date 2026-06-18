@@ -10,7 +10,6 @@ import { buildManageTokenRow } from './reservationManage.ts';
 import {
   bookingConfirmationSms,
   buildConfirmationEmail,
-  mapNotificationOwners,
   normalizeEmailLang,
   titleCaseName,
 } from './notifications.ts';
@@ -24,6 +23,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   eq(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   single(): Promise<SupabaseQueryResult<T>>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
 };
@@ -259,52 +259,49 @@ async function reinstateExpiredOnlineReservations(
     .map((reservation) => withRoomFields({ ...reservation, payment_status: 'paid' }));
 }
 
-async function notifyPaidReservations(
+export async function notifyPaidReservations(
   client: SupabaseClient,
   reservations: PaymentReservationRow[],
   source: string,
 ) {
   const results: PaymentConfirmationNotificationResult[] = [];
   const siteUrl = getSiteUrl();
-  // One notification per booking group: the owner reservation sends the SMS and
-  // an email that lists every villa; the rest of the group is skipped.
-  const ownerGroups = mapNotificationOwners(reservations);
 
+  // Exactly one confirmation per booking group, claimed on a booking-group-stable
+  // owner (the lowest reservation id in the *whole* group, re-read below) rather
+  // than on this call's settled subset. Both online rails can settle the same
+  // booking concurrently — the MIA push callback and the browser status poll, or
+  // two polls landing inside the MAIB-lookup window — and each call's
+  // paidReservations can be a different subset of the group. Keying the dedup on
+  // the subset let two settlements each "own" a different villa, so both inserted
+  // a distinct notification_events row and both texted the guest. Keying it on
+  // the group owner makes the unique (reservation_id, event_type) index admit
+  // exactly one confirmation; the losing settlement collides and skips. ADR-058.
+  const groups = new Map<string, PaymentReservationRow[]>();
   for (const reservation of reservations) {
-    const group = ownerGroups.get(reservation.id);
-    if (!group) {
-      results.push({ reservationId: reservation.id, sent: false, skipped_duplicate: true });
-      continue;
+    const key = reservation.booking_group_id || reservation.id;
+    const members = groups.get(key);
+    if (members) {
+      members.push(reservation);
+    } else {
+      groups.set(key, [reservation]);
     }
+  }
 
+  for (const [bookingGroupId, settled] of groups) {
     try {
-      let token = await findCancellationToken(client, reservation.id);
-      if (!token) {
-        const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
-          .insert([{ reservation_id: reservation.id, token: createSecureToken() }])
-          .select('reservation_id, token')
-          .single();
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        token = data?.token || '';
-      }
-
-      const result = await dispatchPaymentConfirmationOnce(
+      const { ownerId, dispatch } = await notifyBookingGroupConfirmationOnce(
         client,
-        reservation,
-        group,
-        token,
+        bookingGroupId,
+        settled,
         siteUrl,
         source,
       );
-      results.push({ reservationId: reservation.id, ...result });
+      results.push({ reservationId: ownerId, ...dispatch });
     } catch (error) {
       console.error('Payment confirmation notification failed', error);
       results.push({
-        reservationId: reservation.id,
+        reservationId: settled[0]?.id ?? bookingGroupId,
         sent: false,
         error: error instanceof Error ? error.message : 'Notification failed.',
       });
@@ -314,9 +311,72 @@ async function notifyPaidReservations(
   return results;
 }
 
+async function notifyBookingGroupConfirmationOnce(
+  client: SupabaseClient,
+  bookingGroupId: string,
+  settled: PaymentReservationRow[],
+  siteUrl: string,
+  source: string,
+): Promise<{ ownerId: string; dispatch: PaymentConfirmationDispatchResult }> {
+  // Authoritative group membership (every status) so the owner id is identical
+  // across concurrent settlements regardless of which villas each one settled.
+  const group = await loadBookingGroupReservations(client, bookingGroupId);
+  const owner = group[0] ?? settled[0];
+  const ownerId = owner.id;
+
+  // The email lists every confirmed villa of the group; fall back to this call's
+  // settled rows only if the re-read came back empty.
+  const paid = group.filter((reservation) => reservation.payment_status === 'paid');
+  const groupForEmail = paid.length ? paid : settled;
+
+  let token = await findCancellationToken(client, ownerId);
+  if (!token) {
+    const { data, error } = await table<CancellationTokenRow>(client, 'cancellation_tokens')
+      .insert([{ reservation_id: ownerId, token: createSecureToken() }])
+      .select('reservation_id, token')
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    token = data?.token || '';
+  }
+
+  const dispatch = await dispatchPaymentConfirmationOnce(
+    client,
+    owner,
+    groupForEmail,
+    token,
+    siteUrl,
+    source,
+  );
+
+  return { ownerId, dispatch };
+}
+
+async function loadBookingGroupReservations(
+  client: SupabaseClient,
+  bookingGroupId: string,
+): Promise<PaymentReservationRow[]> {
+  // Every reservation in the group, lowest id first. Cancelled rows are kept on
+  // purpose: rows are never deleted, so MIN(id) over the full group is invariant
+  // even while holds churn, which is exactly what makes the owner stable.
+  const { data, error } = await table<RawPaymentReservationRow[]>(client, 'reservations')
+    .select(RESERVATION_COLUMNS)
+    .eq('booking_group_id', bookingGroupId)
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []).map(withRoomFields);
+}
+
 async function dispatchPaymentConfirmationOnce(
   client: SupabaseClient,
-  reservation: PaymentReservationRow,
+  owner: PaymentReservationRow,
   groupReservations: PaymentReservationRow[],
   cancellationToken: string,
   siteUrl: string,
@@ -325,13 +385,13 @@ async function dispatchPaymentConfirmationOnce(
   const now = new Date().toISOString();
   const { data, error } = await table<NotificationEventRow>(client, 'notification_events')
     .insert({
-      reservation_id: reservation.id,
+      reservation_id: owner.id,
       event_type: 'payment_confirmation',
       provider: 'edge',
       delivery_status: 'reserved',
       attempt_count: 1,
       attempted_at: now,
-      metadata: { source },
+      metadata: { source, booking_group_id: owner.booking_group_id },
     })
     .select('id')
     .single();
@@ -347,9 +407,9 @@ async function dispatchPaymentConfirmationOnce(
     throw new Error('Notification event reservation did not return an id.');
   }
 
-  const manageToken = await createManageTokenForNotification(client, reservation.guest_phone);
+  const manageToken = await createManageTokenForNotification(client, owner.guest_phone);
   const message = composePaymentConfirmation(
-    reservation,
+    owner,
     groupReservations,
     cancellationToken,
     siteUrl,
@@ -359,14 +419,14 @@ async function dispatchPaymentConfirmationOnce(
   const errors = [];
 
   try {
-    providerResponse.sms = await sendSms({ to: reservation.guest_phone, message: message.sms });
+    providerResponse.sms = await sendSms({ to: owner.guest_phone, message: message.sms });
   } catch (error) {
     errors.push(`SMS: ${error instanceof Error ? error.message : 'failed'}`);
   }
 
   try {
     providerResponse.email = await sendEmail({
-      to: reservation.guest_email,
+      to: owner.guest_email,
       subject: message.subject,
       html: message.html,
       text: message.text,

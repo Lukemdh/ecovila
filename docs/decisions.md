@@ -1489,6 +1489,43 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   `supabase functions deploy … --use-api` and smoke-tested (verify_jwt correct per function, new table
   queryable). The guest-facing UI goes live with the pending TopHost frontend upload.
 
+### ADR-058 — Payment confirmation is exactly-once per booking group, not per reservation
+
+A multi-villa booking is one `booking_group_id` with one reservation row per villa, and the
+confirmation SMS/email is meant to go out once for the whole group. Some guests booking two villas
+still received **two** texts. Production `notification_events` showed the signature unambiguously: two
+`payment_confirmation` rows for the **same booking group**, different `reservation_id`s, sent <1s
+apart, always on the **MIA QR** rail (e.g. group `9ee7b54d…` and `2d5f3375…`, one row from
+`maib-mia-status`, one from `maib-mia-callback`). It was never CSS or a stale/cached frontend bundle —
+the frontend grouped the booking correctly (single group, single `maib_payments` row).
+
+**Root cause:** both MIA rails call `reconcileMiaBookingGroup` — the MAIB push callback
+(`maib-mia-callback`) and the browser status poll (`maib-mia-status`). There is a time-of-check/
+time-of-use gap between reading `maib_payments.status = 'pending'` and writing `'paid'`, spanning an
+awaited authoritative MAIB lookup. Two calls inside that window both run `settleBookingGroupAsPaid`,
+and each call's `paidReservations` can be a different subset of the group. The notification "owner" was
+chosen from that per-call subset while the idempotency index is `unique(reservation_id, event_type)` —
+so two settlements that owned different villas inserted two different rows and both texted the guest.
+The reservation flip, the hold reinstate, and purchase tracking (`tracking_events`, keyed on the
+group-stable `tracking_event_id`) are all already idempotent per group; only the notification leaked.
+
+**Fix (correct-by-construction; no migration, no rail serialization):** the confirmation is now claimed
+on a **booking-group-stable owner** — the lowest reservation id in the *whole* group, re-read inside
+`notifyPaidReservations` rather than taken from the settled subset — so concurrent settlements compute
+the identical key and the existing `unique(reservation_id, event_type)` index admits exactly one
+confirmation; the loser collides (`23505`) and skips. The email aggregates the group's authoritative
+paid villas. Serializing the rail with an atomic `maib_payments` claim was **rejected**: it adds a
+crash-stranding window (mark paid → crash before settle → the poll's `status='paid'` early-return means
+the booking never settles and no SMS is ever sent), and it is unnecessary once the side-effect is
+itself idempotent — the same philosophy as the existing guarded UPDATEs and `tracking_events` dedup.
+Regression test `supabase/functions/tests/bookingSettlement.test.ts` drives two racing settlements over
+one group (the second seeing only a subset — the exact prod interleaving) and asserts a single
+SMS + email keyed on the group owner. **Deployed to prod 2026-06-18:** shared module
+`_shared/bookingSettlement.ts` rebundled into edge functions `maib-callback` (v20),
+`maib-mia-callback` (v4), `maib-mia-status` (v2) via `supabase functions deploy … --use-api` (all
+ACTIVE, `verify_jwt` preserved per `config.toml`: callbacks false, status true). No migration, no
+frontend change — no TopHost upload required.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
