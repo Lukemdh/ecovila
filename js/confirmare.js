@@ -139,8 +139,15 @@
 
   function formatGuests(reservations) {
     const rows = Array.isArray(reservations) ? reservations : [];
-    const adults = rows.reduce((sum, row) => sum + Number(row.adults || 0), 0);
-    const kids = rows.flatMap((row) => Array.isArray(row.kids_ages) ? row.kids_ages : []);
+    // Every room in a booking group stores the *same* full party — the server
+    // enforces this (pricingGuard rejects rows whose party differs from the
+    // first; applyBookingChange rewrites every row identically). So the party is
+    // read from a single row. Summing across rooms multiplied the party by the
+    // room count and doubled the headline guest count for multi-villa bookings
+    // (e.g. 3 adults · 4 children shown as 6 · 8 for a 2-room booking). ADR-063.
+    const primary = rows[0] || {};
+    const adults = Number(primary.adults || 0);
+    const kids = Array.isArray(primary.kids_ages) ? primary.kids_ages : [];
     const adultsCopy = adults === 1 ? t('checkout.oneAdult') : t('checkout.adultsCount', { count: adults });
 
     if (!kids.length) {
@@ -666,5 +673,5 @@
     root.document.addEventListener('DOMContentLoaded', init);
   }
 
-  return { init, loadManagedReservation, renderReservation, buildIcsContent, daysUntilCheckIn };
+  return { init, loadManagedReservation, renderReservation, buildIcsContent, daysUntilCheckIn, formatGuests };
 });

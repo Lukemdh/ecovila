@@ -1751,6 +1751,54 @@ change and was deliberately left uncommitted/undeployed in this session.
 
 ---
 
+### ADR-063 — Guest headline count is read from one booking-group row, never summed across rooms
+
+**Date:** 2026-06-19.
+
+A guest who booked **two hotel rooms** for a family of **3 adults + 4 children** (ages 7, 11,
+11, 11) saw their confirmation page report **"6 adulți · 8 copii"** — exactly double. The admin
+edit modal, the price (7.950 MDL) and the payment were all correct; only the headline guest count
+on the guest-facing pages was wrong, and the doubling factor equalled the room count.
+
+**Root cause.** The data model replicates the **full party on every room row** of a booking group
+and *partitions* only the price. The server guarantees this: `pricingGuard.verifyReservationGroupPricing`
+rejects any booking whose rows differ from the first in `adults`/`kids_ages`, computes the price
+once from the first row with `units = rows.length`, then `splitTotal` divides the total across
+rooms; `reservationChanges.applyBookingChange` rewrites **every** row in the group with identical
+`new_adults`/`new_kids_ages`. So the correct reads are: **sum `total_price` across rows** (price is
+split) but **take the party from a single row** (party is replicated).
+
+`confirmare.js#formatGuests` and `gestionare.js#formatManagedGuests` instead did
+`rows.reduce((s, r) => s + r.adults, 0)` and `rows.flatMap(r => r.kids_ages)`, summing the
+replicated party across rooms. One room → correct; N rooms → party ×N. Everywhere else already read
+a single row: `anulare.js` (`reservation.adults`), the manage edit modal and add-guests flow
+(`reservations[0]`/`rows[0]` as the primary), the admin CRM (per-room `reservation.adults`), and the
+confirmation email/SMS (which carry no party count at all). Those were never affected.
+
+**Decision.** Both formatters now read the party from the primary row (`rows[0]`) — `adults =
+Number(primary.adults || 0)`, `kids = primary.kids_ages` — instead of aggregating. Price totals are
+untouched (still summed, which is correct). A scope sweep (`reduce`/`flatMap`/`forEach` over
+`adults`/`kids_ages` across all of `js/` and `admin/js/`) confirmed these were the only two sites
+that collapsed a booking group into a single headline party count; no other bug of this kind exists.
+
+**Admin towels — deliberately NOT changed.** `admin/js/crm-daily.js#guestCount` returns the full
+per-room party and feeds the daily towel-card count (`towelCardsFor`). For a multi-room booking each
+room card therefore suggests towels for the whole family, with a manual `towel_cards_issued`
+override. Whether that is over-issuance or intended per-room provisioning is a staff-workflow
+question, not a guest-facing display bug, so it is left for the owner to decide rather than silently
+altered.
+
+**Tests.** New `tests/guest-party-display.test.mjs` exercises both exported formatters against the
+exact 2-room report scenario and asserts the result is independent of room count and never the
+doubled output (8 cases). The two modules now export `formatGuests` / `formatManagedGuests` for this
+(matching how `anulare.js` exports its helpers). Full suite green: Node 264 passed, Deno 89 passed.
+Also verified in-browser on the running static server — both pages render "3 adulți · 4 copii".
+
+**Deploy.** Frontend-only (two `.js` files); ships as a **TopHost upload** of `js/confirmare.js` and
+`js/gestionare.js` — no migration, no Edge Function deploy. The test file is repo-only.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
