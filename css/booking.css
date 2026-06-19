@@ -1365,6 +1365,15 @@ body.page-booking {
   --booking-green: #5F7A3A;
   --booking-green-dark: #4B6529;
   --booking-soft: #FBF8F3;
+  /* Low-stock cue. Warm amber drawn from the resort's existing "heat" accent
+     family (see .facility-heat-banner) so it reads as "popular / going fast"
+     rather than an alarm-red error state; the is-critical variant nudges toward
+     terracotta for the genuine last-unit moment. Shown as plain text on the
+     card's availability line — no chip. */
+  --scarcity-ink: #99490F;
+  --scarcity-accent: #D9832A;
+  --scarcity-ink-critical: #8A3A12;
+  --scarcity-accent-critical: #C64A1E;
 }
 
 .booking-page {
@@ -1904,6 +1913,58 @@ body.page-booking {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Low-stock cue. Rendered as plain text on the card's own availability line
+   (data-card-availability) — no chip — so it reads as a native part of the
+   card's information flow, level with where "first free date" sits while
+   browsing. The compound selector outranks `.booking-stay-card p { color:
+   var(--muted) }` so the warm accent wins. */
+.booking-stay-card .booking-stay-card__meta.is-scarce {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--scarcity-ink);
+}
+
+/* A quiet status dot — the only non-text element — gently breathing so the cue
+   feels live without pulling the eye off the card. */
+.booking-stay-card__meta.is-scarce::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--scarcity-accent);
+  border-radius: 50%;
+  animation: scarcityBreathe 2600ms ease-in-out infinite;
+}
+
+/* Exactly one unit left: shift to terracotta and breathe a touch faster for the
+   genuine last-chance moment. */
+.booking-stay-card .booking-stay-card__meta.is-scarce.is-critical {
+  color: var(--scarcity-ink-critical);
+}
+
+.booking-stay-card__meta.is-scarce.is-critical::before {
+  background: var(--scarcity-accent-critical);
+  animation-duration: 1800ms;
+}
+
+@keyframes scarcityBreathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-stay-card__meta.is-scarce::before {
+    animation: none;
   }
 }
 

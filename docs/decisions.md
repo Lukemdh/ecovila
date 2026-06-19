@@ -1799,6 +1799,43 @@ Also verified in-browser on the running static server — both pages render "3 a
 
 ---
 
+### ADR-064 — Low-stock urgency cue on the booking cards ("only N left for your dates")
+
+**Context.** The accommodation cards showed price and availability but nothing to convey scarcity. A
+genuine low-stock signal nudges guests to book while staying truthful — the resort really does sell
+out of a given type on popular dates.
+
+**Decision.** Each card surfaces a low-stock cue once live availability for the *chosen* range drops
+to **3 units or fewer** (`SCARCITY_THRESHOLD`) for a type the party can actually book. The trigger is
+a pure, unit-tested helper `calendar.getScarcityState({ availableCount, neededUnits, isAvailable,
+threshold })` → `{ active, count, isLastOne }`. `booking.js` calls it only in the dates-selected
+branch of `getCardInfo`; the preview (no dates) and party-unavailable branches carry an inert
+`INACTIVE_SCARCITY`, so the cue can never appear before real dates are chosen.
+
+**Presentation — deliberately plain, not a badge.** The cue is rendered *inline on the card's own
+availability line* (`data-card-availability`), reusing the slot and typography that shows "first free
+date" while browsing, instead of a separate pill. It is warm-amber plain text (`--scarcity-ink
+#99490F`, from the existing `.facility-heat-banner` "heat" family — not alarm-red) with a small
+breathing status dot (`::before`, `@keyframes scarcityBreathe`, disabled under
+`prefers-reduced-motion`). Exactly one unit left escalates to terracotta (`#8A3A12`) with singular
+copy. Copy is localised in ro/ru/en with singular/plural forms (`booking.scarcityLast` /
+`booking.scarcityFew`); the wording is gender-correct without per-type strings because the RO
+accommodation nouns are all feminine (*căsuță/cameră* → "disponibilă/disponibile") and the RU ones
+all masculine (*домик/номер* → "последний" / neuter "осталось").
+
+**Tests.** `tests/booking-core.test.mjs` exercises `getScarcityState` across the threshold edges
+(>3 inert, 3 active, 1 → `isLastOne`, sold-out/party-unavailable inert, derived availability,
+configurable threshold). `tests/booking-page.test.mjs` asserts the cue rides the availability line
+(no pill element or styles), is plain warm text with a breathing dot, is motion-safe, and is
+localised in every public language. Full suite green: Node 266 passed. Also verified in-browser on
+the running static server — no cue without dates; amber base / terracotta last-one.
+
+**Deploy.** Frontend-only — no migration, no Edge Function. Ships as a TopHost upload of
+`css/booking.css`, `js/booking.js`, `js/calendar.js`, and `js/translations.js` (`rezervari.html` is
+unchanged — the cue reuses an existing element). Test files are repo-only.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

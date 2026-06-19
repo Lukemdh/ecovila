@@ -14,6 +14,10 @@
   const STORAGE_LANGUAGE = 'ecovila_language';
   const TYPE_ORDER = ['small', 'large', 'hotel'];
   const LOOKAHEAD_DAYS = 210;
+  // Surface the "only N left for your dates" urgency cue once a type's live
+  // availability for the chosen range drops to this many units or fewer.
+  const SCARCITY_THRESHOLD = 3;
+  const INACTIVE_SCARCITY = { active: false, count: 0, isLastOne: false };
 
   const cardImages = {
     small: '/assets/photos/small-villa/exterior.svg',
@@ -353,6 +357,7 @@
         isAvailable: false,
         isUnavailableForParty: true,
         quote: null,
+        scarcity: INACTIVE_SCARCITY,
       };
     }
 
@@ -367,14 +372,21 @@
         type,
       });
       const quote = calculateQuote(type, state.checkIn, state.checkOut, neededUnits);
+      const isAvailable = availableRooms.length >= neededUnits;
 
       return {
         mode: 'selected',
         neededUnits,
         availableRooms,
         availableCount: availableRooms.length,
-        isAvailable: availableRooms.length >= neededUnits,
+        isAvailable,
         quote,
+        scarcity: calendar.getScarcityState({
+          availableCount: availableRooms.length,
+          neededUnits,
+          isAvailable,
+          threshold: SCARCITY_THRESHOLD,
+        }),
       };
     }
 
@@ -400,6 +412,8 @@
       isAvailable: Boolean(earliest),
       earliest,
       quote,
+      // No dates chosen yet, so there is nothing honest to be scarce about.
+      scarcity: INACTIVE_SCARCITY,
     };
   }
 
@@ -571,6 +585,34 @@
     }
   }
 
+  // Per-card low-stock cue, rendered inline on the card's availability line so it
+  // sits where "first free date" lives while browsing. Honest by construction:
+  // getCardInfo only marks scarcity active for a bookable type on the chosen
+  // dates with SCARCITY_THRESHOLD units or fewer left (preview/party-unavailable
+  // cards carry INACTIVE_SCARCITY), so this never fabricates urgency. When
+  // inactive it only strips the cue classes and leaves the line's own text — set
+  // by the caller — untouched. The single-unit case gets the hotter is-critical
+  // treatment.
+  function renderScarcity(card, scarcity) {
+    const meta = card.querySelector('[data-card-availability]');
+    if (!meta) {
+      return;
+    }
+
+    const info = scarcity || INACTIVE_SCARCITY;
+
+    if (!info.active) {
+      meta.classList.remove('is-scarce', 'is-critical');
+      return;
+    }
+
+    meta.textContent = info.isLastOne
+      ? t('booking.scarcityLast')
+      : t('booking.scarcityFew', { count: info.count });
+    meta.classList.add('is-scarce');
+    meta.classList.toggle('is-critical', Boolean(info.isLastOne));
+  }
+
   function renderCards() {
     TYPE_ORDER.forEach((type) => {
       const card = document.querySelector(`[data-stay-card="${type}"]`);
@@ -645,6 +687,8 @@
         roomButton.disabled = true;
         soldoutButton.hidden = false;
       }
+
+      renderScarcity(card, info.scarcity);
 
       // Selecting a card turns its primary button into the checkout CTA, so the
       // separate continue bar is no longer needed.

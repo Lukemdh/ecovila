@@ -269,6 +269,31 @@
     return null;
   }
 
+  // Low-stock urgency signal for a single accommodation type on a chosen range.
+  // Returns active:true only when the stay is genuinely bookable for the party
+  // AND live supply has dropped to the threshold (default 3) or below, so the
+  // booking UI can surface an honest "only N left for your dates" nudge without
+  // ever inventing urgency for a sold-out or comfortably-stocked type.
+  function getScarcityState(input) {
+    const source = input || {};
+    const threshold = Number.isFinite(source.threshold) ? Number(source.threshold) : 3;
+    const availableCount = Math.max(0, Math.floor(Number(source.availableCount) || 0));
+    const neededUnits = Math.max(1, Math.floor(Number(source.neededUnits) || 1));
+    const isAvailable = source.isAvailable !== undefined
+      ? Boolean(source.isAvailable)
+      : availableCount >= neededUnits;
+
+    const active = isAvailable && availableCount > 0 && availableCount <= threshold;
+
+    return {
+      active,
+      count: availableCount,
+      // Exactly one unit left is the true last-chance moment — callers lean into
+      // a stronger visual and singular copy for it.
+      isLastOne: active && availableCount === 1,
+    };
+  }
+
   return {
     areRoomsAvailable,
     chooseRoomsForAssignment,
@@ -276,6 +301,7 @@
     getAvailabilityByType,
     getAvailableRooms,
     getDateSelectionState,
+    getScarcityState,
     getUnavailableDates,
     hasAnyAvailability,
     isActiveReservation,

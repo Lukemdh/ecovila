@@ -603,4 +603,83 @@ describe('EcoVila Step 4 booking page', () => {
       'a global hidden rule should override styled button and badge display rules',
     );
   });
+
+  it('renders an honest, on-brand low-stock cue inline on each card availability line for the selected dates', () => {
+    const html = read('rezervari.html');
+    const js = read('js/booking.js');
+    const css = read('css/booking.css');
+    const calendarSource = read('js/calendar.js');
+    const translations = read('js/translations.js');
+
+    // No bespoke badge element or pill: the cue rides the card's existing
+    // availability line so it reads as a native part of the card.
+    assert.doesNotMatch(html, /data-card-scarcity/, 'the cue should not add a separate badge element');
+    assert.doesNotMatch(css, /booking-stay-card__scarcity\b/, 'the old pill styles should be removed');
+    assert.equal(
+      (html.match(/data-card-availability/g) || []).length,
+      3,
+      'each card keeps the availability line that the cue reuses',
+    );
+
+    // Threshold logic is a pure, unit-tested helper in calendar.js.
+    assert.match(calendarSource, /function getScarcityState/, 'calendar.js should own the scarcity threshold logic');
+    assert.match(calendarSource, /\n    getScarcityState,/, 'getScarcityState should be exported');
+
+    // booking.js only nudges for the chosen dates, gated by real availability.
+    assert.match(js, /const SCARCITY_THRESHOLD = 3/, 'booking.js should set the low-stock threshold to 3');
+    assert.match(
+      js,
+      /calendar\.getScarcityState\(\{[\s\S]*?availableCount: availableRooms\.length/,
+      'scarcity should be computed from live available rooms for the selected range',
+    );
+    // Preview (no dates) and party-unavailable cards carry an inactive cue, so the
+    // message can never appear before real dates are chosen.
+    assert.ok(
+      (js.match(/scarcity: INACTIVE_SCARCITY/g) || []).length >= 2,
+      'preview and party-unavailable cards should never fabricate urgency',
+    );
+    assert.match(
+      js,
+      /info\.isLastOne[\s\S]*?booking\.scarcityLast[\s\S]*?booking\.scarcityFew/,
+      'the singular last-one copy should differ from the few-left copy',
+    );
+    // The cue is painted onto the availability line, not a bespoke element.
+    assert.match(
+      js,
+      /function renderScarcity[\s\S]*?\[data-card-availability\][\s\S]*?classList\.add\('is-scarce'\)/,
+      'renderScarcity should render onto the availability line',
+    );
+
+    // Plain warm text with a quiet breathing status dot — no chip — and the
+    // motion must be disabled for reduced-motion users.
+    assert.match(
+      css,
+      /\.booking-stay-card__meta\.is-scarce\s*{[\s\S]*?color:\s*var\(--scarcity-ink\)/s,
+      'the cue should be plain warm text on the availability line',
+    );
+    assert.doesNotMatch(
+      css,
+      /\.booking-stay-card__meta\.is-scarce\s*{[^}]*border-radius/s,
+      'the cue text itself should not be boxed like a pill',
+    );
+    assert.match(
+      css,
+      /\.booking-stay-card__meta\.is-scarce::before\s*{[\s\S]*?border-radius:\s*50%/s,
+      'the cue should use a small status dot via a pseudo-element',
+    );
+    assert.match(css, /@keyframes scarcityBreathe/, 'the status dot should breathe gently');
+    assert.match(
+      css,
+      /@media \(prefers-reduced-motion: reduce\)\s*{[\s\S]*?\.booking-stay-card__meta\.is-scarce::before\s*{[^}]*animation:\s*none/s,
+      'the dot motion must be disabled for reduced-motion users',
+    );
+
+    // Localised, singular + plural, in every public language.
+    for (const lang of ['ro', 'ru', 'en']) {
+      const langBlock = translations.match(new RegExp(`${lang}:\\s*{[\\s\\S]*?\\n  }[,\\n]`));
+      assert.ok(langBlock, `${lang} translation block should exist`);
+      assert.match(langBlock[0], /['"]booking\.scarcityFew['"]/, `${lang}.booking.scarcityFew should exist`);
+      assert.match(langBlock[0], /['"]booking\.scarcityLast['"]/, `${lang}.booking.scarcityLast should exist`);
+    }
+  });
 });

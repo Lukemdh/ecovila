@@ -613,6 +613,46 @@ describe('EcoVila Step 3 calendar and assignment core', () => {
       [9],
     );
   });
+
+  it('flags low-stock urgency only when a type is bookable and at or below the threshold', () => {
+    // Comfortable supply (> 3) raises no urgency.
+    assert.deepEqual(
+      calendar.getScarcityState({ availableCount: 4, neededUnits: 1, isAvailable: true }),
+      { active: false, count: 4, isLastOne: false },
+    );
+
+    // The threshold edge (3 left) is the first urgency step.
+    assert.deepEqual(
+      calendar.getScarcityState({ availableCount: 3, neededUnits: 1, isAvailable: true }),
+      { active: true, count: 3, isLastOne: false },
+    );
+
+    // Exactly one unit left is the last-chance moment.
+    assert.deepEqual(
+      calendar.getScarcityState({ availableCount: 1, neededUnits: 1, isAvailable: true }),
+      { active: true, count: 1, isLastOne: true },
+    );
+
+    // Sold out or not bookable for the party never invents urgency.
+    assert.deepEqual(
+      calendar.getScarcityState({ availableCount: 0, neededUnits: 1, isAvailable: false }),
+      { active: false, count: 0, isLastOne: false },
+    );
+    assert.deepEqual(
+      calendar.getScarcityState({ availableCount: 2, neededUnits: 3, isAvailable: false }),
+      { active: false, count: 2, isLastOne: false },
+    );
+
+    // Availability is derived from neededUnits when the caller omits the flag.
+    assert.equal(calendar.getScarcityState({ availableCount: 2, neededUnits: 2 }).active, true);
+    assert.equal(calendar.getScarcityState({ availableCount: 1, neededUnits: 2 }).active, false);
+
+    // The threshold is configurable for callers that want a different cutoff.
+    assert.equal(
+      calendar.getScarcityState({ availableCount: 5, neededUnits: 1, isAvailable: true, threshold: 5 }).active,
+      true,
+    );
+  });
 });
 
 describe('EcoVila Step 3 Supabase helper', () => {
