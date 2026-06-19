@@ -1428,6 +1428,43 @@ describe('EcoVila Step 9 CRM', () => {
     assert.notEqual(rows[0].guest_phone, '+37300000000');
   });
 
+  it('stores null instead of a stand-in email when the CRM add form email is empty', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const rows = sidebar.buildStaffReservationRows(
+      formWithFields({
+        '[data-add-room-numbers]': field('1'),
+        '[data-add-full-name]': field('Ana Munteanu'),
+        '[data-add-phone]': field('+37369857607'),
+        '[data-add-email]': field('  '),
+        '[data-add-check-in]': field('2026-06-01'),
+        '[data-add-check-out]': field('2026-06-02'),
+        '[data-add-adults]': field('2'),
+        '[data-add-child-bucket]:checked': [],
+        '[data-add-total]': field('', { dataset: { total: '1900' } }),
+        '[data-add-conference]': field('', { checked: false }),
+        '[data-add-notes]': field(''),
+      }),
+      [{ id: 'room-1', number: 1 }],
+      { role: 'diana' },
+      {
+        createGroupId: () => 'staff-group',
+        now: new Date('2026-05-08T09:00:00.000Z'),
+      },
+    );
+
+    assert.equal(rows[0].guest_email, null);
+    assert.notEqual(rows[0].guest_email, 'rezervari@ecovila.md');
+  });
+
+  it('marks the CRM add-reservation email field as optional and never requires it', () => {
+    const dashboardHtml = read('admin/dashboard.html');
+    const emailField = dashboardHtml.match(/<label class="crm-field">\s*<span>Email[\s\S]*?<\/label>/);
+
+    assert.ok(emailField, 'add-reservation email field should be present');
+    assert.match(emailField[0], /opțional/i);
+    assert.doesNotMatch(emailField[0], /data-add-email[^>]*\brequired\b/);
+  });
+
   it('blocks CRM add submit when the phone is empty', () => {
     const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
     const message = sidebar.validateAddForm(

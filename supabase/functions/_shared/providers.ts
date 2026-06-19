@@ -35,7 +35,20 @@ export function sendSms(payload: SmsPayload, options: ProviderOptions = {}) {
   });
 }
 
+function hasEmailRecipient(to: EmailPayload['to']): boolean {
+  const list = Array.isArray(to) ? to : [to];
+  return list.some((address) => String(address || '').trim().length > 0);
+}
+
 export function sendEmail(payload: EmailPayload, options: ProviderOptions = {}) {
+  // A reservation may have no email (e.g. a walk-in booking staff add at the
+  // office). Skip the provider call rather than letting Resend reject an empty
+  // recipient — every caller dispatches the SMS independently, so the guest is
+  // still reached. Mirrors the `skipped` shape the SMS path already returns.
+  if (!hasEmailRecipient(payload.to)) {
+    return Promise.resolve({ skipped: true, reason: 'no recipient' });
+  }
+
   const fetcher = options.fetcher || fetch;
   const endpoint = optionalEnv('RESEND_API_URL') || 'https://api.resend.com/emails';
   const apiKey = requiredEnv('RESEND_API_KEY');

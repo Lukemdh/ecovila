@@ -251,7 +251,9 @@
       guest_first_name: fullName.firstName || 'Client',
       guest_last_name: fullName.lastName,
       guest_phone: normalizeStaffPhone(qs('[data-add-phone]', form)?.value) || '',
-      guest_email: qs('[data-add-email]', form)?.value?.trim() || 'rezervari@ecovila.md',
+      // Email is optional for staff bookings (walk-ins often have no email). Store
+      // null when blank rather than a stand-in address — same stance as guest_phone.
+      guest_email: qs('[data-add-email]', form)?.value?.trim() || null,
       check_in: qs('[data-add-check-in]', form)?.value,
       check_out: qs('[data-add-check-out]', form)?.value,
       adults: Number(qs('[data-add-adults]', form)?.value || 0),

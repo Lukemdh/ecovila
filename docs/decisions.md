@@ -1836,6 +1836,49 @@ unchanged — the cue reuses an existing element). Test files are repo-only.
 
 ---
 
+### ADR-065 — Email is optional for staff (office) reservations; the public path still requires it
+
+**Context.** The CRM "Adaugă rezervare" form already let staff submit without an email, but a blank
+field was silently stored as the company inbox `rezervari@ecovila.md`, because
+`reservations.guest_email` was `NOT NULL` with a check requiring an `@`. Walk-ins often have no
+email, and fabricating one contradicts the deliberate no-stand-in stance taken for `guest_phone`
+(ADR-059) — and the UI gave no hint the field was optional.
+
+**Decision.** Make email genuinely optional for staff bookings. The migration only **drops the
+`NOT NULL`** on `guest_email`: the existing `reservations_guest_email_check
+( position('@' in guest_email) > 1 )` already permits `NULL` — a CHECK constraint passes when its
+expression evaluates to `NULL`, not just `TRUE` — so a `NULL` email is accepted while malformed
+non-null values (`''`, `'foo'`) stay rejected. The CRM row builder
+(`admin/js/crm-sidebar.js`) stores `null` when the field is blank instead of the stand-in address,
+and the form label reads **"Email (opțional)"** (`admin/dashboard.html`, `.crm-field-optional`).
+
+**The public path is unchanged.** `create-reservation` still hard-requires a valid email
+(`_shared/reservations.ts`, `EMAIL_PATTERN`), so only staff-added `office` reservations can be
+emailless — guest bookings always carry one.
+
+**Senders are null-safe at one chokepoint.** `_shared/providers.ts` `sendEmail` now no-ops (returns
+`{ skipped: true }`) when there is no recipient, *before* reading any `RESEND_*` env — mirroring the
+`skipped` shape the SMS path already returns. That single guard protects every sender (arrival
+reminders, cancellations, change confirmations) from a Resend 422 on an emailless office
+reservation, while the SMS still dispatches independently (`dispatchNotification` and the cancel
+flows use `Promise.allSettled`; `reservationChanges` already guarded `if (emailTo)`). The functions
+that send to `guest_email` for reservations that can now be emailless — `send-reminders`,
+`reservation-cancel`, `reservation-cancel-notify` — were redeployed; payment/settlement functions
+never touch `office` reservations.
+
+**Tests.** `tests/admin-crm.test.mjs` asserts a blank email stores `null` (not a stand-in) and that
+the field is labelled optional and never `required`. A new `supabase/functions/tests/providers.test.ts`
+asserts empty/whitespace/array recipients skip the provider call (no env needed) while a real
+recipient still posts. Full suite green: Node 268, Deno 91.
+
+**Deploy.** Migration `20260619160000_optional_guest_email.sql` applied to prod via
+`supabase db query --linked` + `migration repair` (the drift-aware path — see the migration-drift
+note); `send-reminders` / `reservation-cancel` / `reservation-cancel-notify` redeployed with
+`verify_jwt` preserved from `config.toml`. The frontend (`admin/dashboard.html`,
+`admin/js/crm-sidebar.js`, `css/crm.css`) ships as a TopHost upload — pending.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
