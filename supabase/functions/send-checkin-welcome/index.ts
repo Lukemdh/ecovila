@@ -93,12 +93,14 @@ async function resolveGroupOwner(
 
   if (error) throw new Error(error.message);
 
-  // Only paid, non-cancelled members are eligible to "own" the welcome, so the
-  // dedup key never lands on a cancelled villa of a mixed-status group. The
-  // checked-in reservation always qualifies, so the fallback is never empty.
-  const eligible = (data || [])
-    .filter((row) => row.payment_status === 'paid' && !row.cancelled_at);
-  const rows = eligible.length ? eligible : [reservation];
+  // Dedup key MUST be stable across the per-villa, incremental check-ins of a
+  // booking group, or a guest could get a second welcome. Use the lowest id of
+  // the WHOLE group (including cancelled villas): rows are only ever soft-
+  // cancelled, never deleted, so this id never changes — whereas filtering to
+  // paid/non-cancelled members would let the "owner" shift if the lowest villa
+  // is cancelled between two check-ins. A cancelled owner still carries the same
+  // guest phone/language (one guest per booking group), so keying on it is safe.
+  const rows = (data || []).length ? (data as ReservationRow[]) : [reservation];
   const owners = mapNotificationOwners(rows);
   const ownerId = [...owners.keys()][0];
   return rows.find((row) => row.id === ownerId) || reservation;
