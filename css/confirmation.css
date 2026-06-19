@@ -177,6 +177,80 @@
 }
 
 /* ═══════════════════════════════════════════
+   OFFICE LOCATION (cash — where to pay, get there, call)
+   ═══════════════════════════════════════════ */
+
+.cf-office {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.cf-office__card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px;
+  border: 1px solid rgba(51, 47, 44, 0.1);
+  border-radius: 10px;
+  background: rgba(247, 237, 224, 0.6);
+  color: var(--ink);
+  text-align: left;
+}
+
+.cf-office__icon {
+  flex: 0 0 20px;
+  color: var(--cocoa);
+}
+
+.cf-office__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cf-office__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cf-office__value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+/* Clickable phone card */
+.cf-office__card--link {
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 250ms ease,
+    border-color 250ms ease,
+    transform 200ms ease;
+}
+
+.cf-office__card--link:hover {
+  background: rgba(247, 237, 224, 0.95);
+  border-color: rgba(51, 47, 44, 0.22);
+}
+
+.cf-office__card--link:active {
+  transform: translateY(1px);
+}
+
+.cf-office__chevron {
+  margin-left: auto;
+  flex: 0 0 18px;
+  color: var(--cocoa);
+}
+
+/* ═══════════════════════════════════════════
    EXTENDED NOTE
    ═══════════════════════════════════════════ */
 

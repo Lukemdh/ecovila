@@ -1685,6 +1685,48 @@ Edge Functions (`verify_jwt` preserved per `config.toml`), then (3) the frontend
 `js/booking.js`) via the TopHost upload. The frontend only adds a friendlier message, so the backend
 went first without breaking it.
 
+### ADR-061 — Cash pay-office wayfinding on the manage page + one canonical office address site-wide
+
+**Date:** 2026-06-19.
+
+**Problem.** A guest who picks *cash* lands on the manage page (`gestionare.html`,
+`[data-cash-panel]`) with a countdown but no way to actually find the office: the only
+address anywhere was a bare street ("str. Aerodromului 3") in the checkout disclaimer and the
+Terms page, and the cash-hold panel showed no address at all. The owner asked for help to find
+and reach the office.
+
+**Decision.** Add a three-part location block inside the existing cash-hold panel: an address
+card, a "Cum ajungi" directions button deep-linking to Google Maps, and a tappable phone card
+(`tel:+37360120220`). It sits inside `[data-cash-panel]`, so it inherits that panel's
+visibility (pending cash only) — **no new JS, no new visibility logic**. The directions link
+targets the **office** coordinates `47.038340170580554,28.858273527875323` (the Chișinău pay
+office), which is deliberately a *different* location from the resort/check-in directions link
+on the confirmation celebration panel (`maps.google.com/?q=EcoVila+Orheiul+Vechi`, ADR/`MAPS_URL`).
+
+**One canonical address string, kept literal in all three languages.** The full address is
+`Str. Aerodromului 3, Wine Hotel, et.3, cab.301`, used verbatim everywhere it appears — the
+manage-page card, the checkout cash disclaimer (modal + inline, ro/ru/en), and the Terms page
+(`termeni-conditii.html` + its `docs/` source). It is **not** localized: the street was already
+kept untranslated inside the RU/EN disclaimers, so a single literal string both matches that
+convention and keeps wayfinding (the room "cab.301" a guest reads off the page) identical to the
+physical signage. Implemented by repurposing the previously-dead `confirmare.officeAddress` key
+to hold the full address (one source of truth, reused by the card); the card's label and the
+directions button reuse the existing localized keys `confirmare.officeLabel` and
+`confirmare.directions`. New CSS is a small `.cf-office*` family in `css/confirmation.css` that
+reuses the existing `cf-` card/button tokens.
+
+**Deliberately NOT changed — and why it stays frontend-only.** The arrival-reminder email
+(`_shared/notifications.ts`, `composeArrivalReminder`) still reads "Adresa: str. Aerodromului 3".
+That line is the **check-in/arrival address for the stay**, a distinct concept from the cash pay
+office — appending an office room number ("cab.301") there would misdirect a guest arriving to
+check in. Leaving it untouched also keeps this change purely client-side: **no Edge Function
+redeploy, no migration.** If the owner later wants the email address standardized too, that is a
+separate function deploy.
+
+**Scope.** `gestionare.html`, `css/confirmation.css`, `js/translations.js`, `checkout.html`,
+`termeni-conditii.html`, `docs/termeni-conditii.md`. Verified in the static preview (address,
+maps deep-link, `tel:` href, and all three localizations resolve). Ships via the TopHost upload.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

@@ -46,7 +46,7 @@ Modalitățile de plată acceptate pot include:
 - Plata cash.
 - Plata prin transfer, dacă este acceptată de EcoVila pentru rezervarea respectivă.
 
-Pentru plata cash, clientul trebuie să achite suma integrală la adresa str. Aerodromului 3, în termenul comunicat în procesul de rezervare. Dacă plata nu este efectuată în termenul indicat, rezervarea poate fi anulată automat.
+Pentru plata cash, clientul trebuie să achite suma integrală la adresa Str. Aerodromului 3, Wine Hotel, et.3, cab.301, în termenul comunicat în procesul de rezervare. Dacă plata nu este efectuată în termenul indicat, rezervarea poate fi anulată automat.
 
 Prețurile sunt afișate și comunicate în MDL și reprezintă preț final. EcoVila este plătitoare de TVA. Nu se percep taxe separate ascunse pentru serviciile incluse în rezervarea confirmată.
 
