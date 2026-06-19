@@ -1715,7 +1715,9 @@ directions button reuse the existing localized keys `confirmare.officeLabel` and
 `confirmare.directions`. New CSS is a small `.cf-office*` family in `css/confirmation.css` that
 reuses the existing `cf-` card/button tokens.
 
-**Deliberately NOT changed — and why it stays frontend-only.** The arrival-reminder email
+**Deliberately NOT changed — and why it stays frontend-only.** *(Superseded by ADR-062: the owner
+later clarified the resort is in Old Orhei with no street address, so this email's address line was
+removed entirely — making it a backend follow-up.)* The arrival-reminder email
 (`_shared/notifications.ts`, `composeArrivalReminder`) still reads "Adresa: str. Aerodromului 3".
 That line is the **check-in/arrival address for the stay**, a distinct concept from the cash pay
 office — appending an office room number ("cab.301") there would misdirect a guest arriving to
@@ -1726,6 +1728,26 @@ separate function deploy.
 **Scope.** `gestionare.html`, `css/confirmation.css`, `js/translations.js`, `checkout.html`,
 `termeni-conditii.html`, `docs/termeni-conditii.md`. Verified in the static preview (address,
 maps deep-link, `tel:` href, and all three localizations resolve). Ships via the TopHost upload.
+
+### ADR-062 — Arrival-reminder email drops the address line entirely (resort is in Old Orhei, no street address)
+
+**Date:** 2026-06-19.
+
+ADR-061 left the arrival-reminder email (`_shared/notifications.ts`, `composeArrivalReminder`)
+reading "...pe teritoriul complexului. Adresa: str. Aerodromului 3.", treating it as the check-in
+address. The owner clarified the resort sits in **Old Orhei (Orheiul Vechi) and has no street
+address there** — "str. Aerodromului 3" is the Chișinău pay office only, so naming it as the
+arrival/check-in location was simply wrong.
+
+**Decision.** Remove the address sentence from the email body; keep the no-pets notice
+("...nu este permis pe teritoriul complexului."). The arrival **SMS** (`arrivalReminderSms`) never
+carried an address, so the reminder is now address-free in every channel. No test asserted the body
+(the existing test checks only the SMS), so none needed changing; the full Deno suite stays green
+(89 passed).
+
+**Deploy.** Backend change to one shared module, so it ships as an **Edge Function deploy of
+`send-reminders`** — *not* a TopHost upload. Per the owner it is bundled with a separate pending
+change and was deliberately left uncommitted/undeployed in this session.
 
 ---
 

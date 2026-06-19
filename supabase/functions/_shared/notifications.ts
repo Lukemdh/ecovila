@@ -317,7 +317,7 @@ export function composeArrivalReminder(
           ['Check-in', `${reservation.check_in}, de la 13:00`],
         ],
         body:
-          'Vă rugăm să rețineți: accesul cu animale de companie nu este permis pe teritoriul complexului. Adresa: str. Aerodromului 3.',
+          'Vă rugăm să rețineți: accesul cu animale de companie nu este permis pe teritoriul complexului.',
       }),
     },
   };
