@@ -1043,6 +1043,19 @@
     return String(value || '').trim().replace(/[\s().-]/g, '');
   }
 
+  // Country-specific phone length guard. Moldova (+373) numbers carry 8 national
+  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls
+  // back to the generic E.164 length (8–15 digits). Keep this in sync with the
+  // identical helper in checkout.js / anulare.js and the server reservations.ts
+  // guard.
+  function isValidGuestPhone(phone) {
+    const value = String(phone || '');
+    if (value.startsWith('+373')) return /^\+373\d{8}$/.test(value);
+    if (value.startsWith('+380')) return /^\+380\d{9}$/.test(value);
+    if (value.startsWith('+40')) return /^\+40\d{9}$/.test(value);
+    return /^\+\d{8,15}$/.test(value);
+  }
+
   function openReservationLookup() {
     const modal = document.querySelector('[data-reservation-lookup-modal]');
     const error = document.querySelector('[data-lookup-error]');
@@ -1077,7 +1090,7 @@
     const phoneInput = document.querySelector('[data-lookup-phone]');
     const phone = normalizeLookupPhone(phoneInput?.value);
 
-    if (!/^\+\d{8,15}$/.test(phone)) {
+    if (!isValidGuestPhone(phone)) {
       setLookupError(t('checkout.errorPhone'));
       phoneInput?.focus();
       return;
@@ -1095,6 +1108,23 @@
     try {
       const client = supabaseHelpers.getSupabaseClient();
       const result = await supabaseHelpers.startReservationLookup(client, phone);
+
+      // Too many code requests for this number in a short window: tell the guest
+      // to wait instead of advancing to a code step that can never be verified.
+      if (result.rateLimited) {
+        setLookupError(t('booking.lookupRateLimited'));
+        return;
+      }
+
+      // No active reservation matches this phone, so no SMS was sent. Surface the
+      // mismatch on the phone step instead of asking for a code that never came.
+      // Only an explicit `false` triggers this: a missing field (e.g. an older
+      // Edge Function during rollout) falls through to the normal code step.
+      if (result.hasReservations === false) {
+        setLookupError(t('booking.lookupNoReservations'));
+        return;
+      }
+
       lookupState.lookupId = result.lookupId || '';
       const phoneStep = document.querySelector('[data-lookup-phone-step]');
       const codeStep = document.querySelector('[data-lookup-code-step]');

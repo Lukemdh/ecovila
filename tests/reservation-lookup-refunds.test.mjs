@@ -37,6 +37,64 @@ describe('EcoVila reservation lookup and refunds', () => {
     );
   });
 
+  it('errors on the phone step when no active reservation matches the number', () => {
+    const lookupStart = read('supabase/functions/reservation-lookup-start/index.ts');
+    const booking = read('js/booking.js');
+    const translations = read('js/translations.js');
+
+    // The Edge Function tells the browser whether a reservation exists so the
+    // guest is not advanced to a code step when no SMS was ever sent.
+    assert.match(
+      lookupStart,
+      /hasReservations,/,
+      'lookup-start should return hasReservations to the browser',
+    );
+
+    // The booking page stops on the phone step and surfaces the mismatch.
+    assert.match(
+      booking,
+      /if \(result\.hasReservations === false\)/,
+      'lookup should stop only on an explicit no-reservation result (fail-safe during rollout)',
+    );
+    assert.match(
+      booking,
+      /booking\.lookupNoReservations/,
+      'lookup should show the no-reservation message on the phone step',
+    );
+
+    // A rate-limited response must not be mislabeled as "no reservation".
+    assert.match(
+      booking,
+      /result\.rateLimited/,
+      'lookup should handle the rate-limited response explicitly',
+    );
+    assert.match(
+      booking,
+      /booking\.lookupRateLimited/,
+      'lookup should show a dedicated rate-limit message',
+    );
+    assert.match(
+      translations,
+      /'booking\.lookupRateLimited'/,
+      'the rate-limit message should be translated',
+    );
+  });
+
+  it('enforces country-specific phone lengths across guest entry points', () => {
+    for (const file of ['js/checkout.js', 'js/anulare.js', 'js/booking.js']) {
+      assert.match(
+        read(file),
+        /isValidGuestPhone/,
+        `${file} should guard phone length per country`,
+      );
+    }
+    assert.match(
+      read('supabase/functions/_shared/reservations.ts'),
+      /hasValidPhoneLength/,
+      'the server should guard phone length per country',
+    );
+  });
+
   it('adds browser helpers for all reservation management Edge Functions', () => {
     const supabase = read('js/supabase.js');
 

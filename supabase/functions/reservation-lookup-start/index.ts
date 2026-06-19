@@ -78,10 +78,15 @@ Deno.serve(async (request) => {
       await sendSms({ to: phone, message: composeLookupCodeSms(code) });
     }
 
+    // `hasReservations` lets the browser stop the guest on the phone step with a
+    // clear "no reservation for this number" message instead of advancing to a
+    // code step when no SMS was ever sent. Note: this reveals whether a phone has
+    // a booking (enumeration trade-off accepted by the product owner).
     return jsonResponse(
       {
         ok: true,
         lookupId,
+        hasReservations,
         expiresInSeconds: LOOKUP_CODE_TTL_MINUTES * 60,
       },
       {},

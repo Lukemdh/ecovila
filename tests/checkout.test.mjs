@@ -221,6 +221,41 @@ describe('EcoVila Step 5 checkout', () => {
     assert.equal(checkout.validateGuestDetails({ firstName: 'Ana', lastName: 'Munteanu', phone: '+37360123456', email: 'ana@example.md', gdprAccepted: false }).errors[0], 'checkout.errorGdpr');
   });
 
+  it('enforces country-specific phone lengths for +373, +40, and +380', () => {
+    const checkout = loadCheckout();
+
+    // Valid national lengths: Moldova 8 digits, Romania/Ukraine 9 digits.
+    assert.equal(checkout.isValidGuestPhone('+37360123456'), true);
+    assert.equal(checkout.isValidGuestPhone('+40721234567'), true);
+    assert.equal(checkout.isValidGuestPhone('+380501234567'), true);
+
+    // Wrong lengths are rejected even though they fit the generic 8–15 rule.
+    assert.equal(checkout.isValidGuestPhone('+373601234567'), false); // +373 with 9 digits
+    assert.equal(checkout.isValidGuestPhone('+3736012345'), false); // +373 with 7 digits
+    assert.equal(checkout.isValidGuestPhone('+4072123456'), false); // +40 with 8 digits
+    assert.equal(checkout.isValidGuestPhone('+38050123456'), false); // +380 with 8 digits
+
+    // Other countries keep the generic international length rule.
+    assert.equal(checkout.isValidGuestPhone('+15551234567'), true);
+
+    // Non-string / empty input is rejected without throwing.
+    assert.equal(checkout.isValidGuestPhone(undefined), false);
+    assert.equal(checkout.isValidGuestPhone(null), false);
+    assert.equal(checkout.isValidGuestPhone(''), false);
+
+    // The mismatch surfaces through validateGuestDetails as the phone error.
+    assert.equal(
+      checkout.validateGuestDetails({
+        firstName: 'Ion',
+        lastName: 'Rusu',
+        phone: '+373601234567',
+        email: 'ion@example.md',
+        gdprAccepted: true,
+      }).errors[0],
+      'checkout.errorPhone',
+    );
+  });
+
   it('pre-fills the phone field with a deletable +373 and enforces a leading +', () => {
     const html = read('checkout.html');
     const checkoutScript = read('js/checkout.js');

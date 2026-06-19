@@ -164,13 +164,26 @@
     };
   }
 
+  // Country-specific phone length guard. Moldova (+373) numbers carry 8 national
+  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls
+  // back to the generic E.164 length (8–15 digits). Keep this in sync with the
+  // identical helper in anulare.js / booking.js and the server reservations.ts
+  // guard.
+  function isValidGuestPhone(phone) {
+    const value = String(phone || '');
+    if (value.startsWith('+373')) return /^\+373\d{8}$/.test(value);
+    if (value.startsWith('+380')) return /^\+380\d{9}$/.test(value);
+    if (value.startsWith('+40')) return /^\+40\d{9}$/.test(value);
+    return INTERNATIONAL_PHONE_PATTERN.test(value);
+  }
+
   function validateGuestDetails(details) {
     const guest = normalizeGuestDetails(details);
     const errors = [];
 
     if (!guest.firstName || !guest.lastName || !guest.phone || !guest.email) {
       errors.push('checkout.errorRequired');
-    } else if (!INTERNATIONAL_PHONE_PATTERN.test(guest.phone)) {
+    } else if (!isValidGuestPhone(guest.phone)) {
       errors.push('checkout.errorPhone');
     } else if (!EMAIL_PATTERN.test(guest.email)) {
       errors.push('checkout.errorEmail');
@@ -769,6 +782,7 @@
     buildMiaPaymentUrl,
     hasSelectedRoomNumber,
     initCheckout,
+    isValidGuestPhone,
     normalizeInternationalPhone,
     normalizeLanguage,
     normalizeGuestDetails,

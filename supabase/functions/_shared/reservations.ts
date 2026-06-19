@@ -200,6 +200,17 @@ export function normalizeInternationalPhone(value: unknown) {
   return compact;
 }
 
+// Country-specific phone length guard. Moldova (+373) numbers carry 8 national
+// digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls back
+// to the generic E.164 length (8–15 digits). Keep this in sync with the identical
+// client helper in checkout.js / anulare.js / booking.js.
+export function hasValidPhoneLength(phone: string): boolean {
+  if (phone.startsWith('+373')) return /^\+373\d{8}$/.test(phone);
+  if (phone.startsWith('+380')) return /^\+380\d{9}$/.test(phone);
+  if (phone.startsWith('+40')) return /^\+40\d{9}$/.test(phone);
+  return INTERNATIONAL_PHONE_PATTERN.test(phone);
+}
+
 export function withRoomFields<T extends ReservationRoomFields>(reservation: T) {
   const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
 
@@ -253,7 +264,7 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
   const guestLanguage = normalizeLanguage(input.guest_language);
   const totalPrice = numberInput(input.total_price);
 
-  if (!INTERNATIONAL_PHONE_PATTERN.test(phone)) {
+  if (!hasValidPhoneLength(phone)) {
     throw new Error('Guest phone must use a valid international format.');
   }
 

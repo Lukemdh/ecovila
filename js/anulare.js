@@ -91,6 +91,19 @@
     return compact;
   }
 
+  // Country-specific phone length guard. Moldova (+373) numbers carry 8 national
+  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls
+  // back to the generic E.164 length (8–15 digits). Keep this in sync with the
+  // identical helper in checkout.js / booking.js and the server reservations.ts
+  // guard.
+  function isValidGuestPhone(phone) {
+    const value = String(phone || '');
+    if (value.startsWith('+373')) return /^\+373\d{8}$/.test(value);
+    if (value.startsWith('+380')) return /^\+380\d{9}$/.test(value);
+    if (value.startsWith('+40')) return /^\+40\d{9}$/.test(value);
+    return /^\+\d{8,15}$/.test(value);
+  }
+
   // ── Date formatting ─────────────────────────────────────────────────────────
 
   function formatDate(dateStr) {
@@ -169,7 +182,7 @@
     const normalizedPhone = normalizeInternationalPhone(rawPhone);
 
     // Basic client-side check before hitting the server
-    if (!/^\+\d{8,15}$/.test(normalizedPhone)) {
+    if (!isValidGuestPhone(normalizedPhone)) {
       if (errorEl) {
         errorEl.textContent = t('checkout.errorPhone');
         errorEl.hidden = false;
@@ -416,5 +429,5 @@
     root.document.addEventListener('DOMContentLoaded', init);
   }
 
-  return { init, isRefundEligible, normalizeInternationalPhone };
+  return { init, isRefundEligible, isValidGuestPhone, normalizeInternationalPhone };
 });

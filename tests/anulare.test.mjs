@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 
 const root = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
-const { isRefundEligible, normalizeInternationalPhone } = require('../js/anulare.js');
+const { isRefundEligible, isValidGuestPhone, normalizeInternationalPhone } = require('../js/anulare.js');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -52,6 +52,18 @@ describe('EcoVila cancellation policy alignment', () => {
 
   it('normalizes international phone numbers for cancellation confirmation', () => {
     assert.equal(normalizeInternationalPhone(' +40 721 234 567 '), '+40721234567');
+  });
+
+  it('enforces country-specific phone lengths before confirming cancellation', () => {
+    assert.equal(isValidGuestPhone('+37360123456'), true);
+    assert.equal(isValidGuestPhone('+40721234567'), true);
+    assert.equal(isValidGuestPhone('+380501234567'), true);
+    assert.equal(isValidGuestPhone('+373601234567'), false); // +373 with 9 digits
+    assert.equal(isValidGuestPhone('+4072123456'), false); // +40 with 8 digits
+    assert.equal(isValidGuestPhone('+38050123456'), false); // +380 with 8 digits
+    assert.equal(isValidGuestPhone('+15551234567'), true); // generic international fallback
+    assert.equal(isValidGuestPhone(undefined), false); // coerces without throwing
+    assert.equal(isValidGuestPhone(null), false);
   });
 
   it('treats the exact twentieth calendar day and fresh bookings as refundable in EcoVila time', () => {

@@ -1528,6 +1528,62 @@ frontend change — no TopHost upload required.
 
 ---
 
+### ADR-059 — Per-country phone length validation (+373/+40/+380) and a lookup that tells guests when no reservation matches
+
+Two guest-facing phone problems shipped together. (1) The phone field accepted any E.164-shaped
+number (`/^\+\d{8,15}$/`), so a Moldovan (+373), Romanian (+40), or Ukrainian (+380) guest could
+submit a number with the wrong digit count — a transposed, missing, or extra digit still passed —
+landing a wrong contact number on the booking (and, for +373, on the MIA payment/SMS rail per
+ADR-051). (2) The "Ai deja o rezervare?" SMS lookup always advanced to the "enter the 4-digit code"
+step even when the phone had no active reservation: the backend silently sent no SMS (privacy-
+preserving by design) while the UI told the guest a code was on its way, stranding them.
+
+**Part 1 — country-specific length.** Moldova national numbers are 8 digits, Romania and Ukraine 9.
+A single `isValidGuestPhone` helper enforces `^\+373\d{8}$` / `^\+40\d{9}$` / `^\+380\d{9}$` and falls
+back to the generic `^\+\d{8,15}$` for every other country, so foreign guests are not over-restricted.
+The three prefixes are mutually exclusive (order is irrelevant), and input is coerced with
+`String(phone || '')` so the helper never throws on null/undefined. The guard is duplicated at all
+guest entry points — checkout, the cancellation confirmation, and the lookup modal — and
+authoritatively on the server in `_shared/reservations.ts` (`hasValidPhoneLength`, on the
+`create-reservation` → `buildReservationRows` path), mirroring the codebase's existing "duplicate the
+small validator" idiom (cf. `normalizeInternationalPhone`). The DB `guest_phone` CHECK
+(`^\+[0-9]{8,15}$`) is deliberately kept as the broader backstop — every number the app now accepts is
+a strict subset — so **no migration is needed** and no legacy row is invalidated.
+
+**Part 2 — lookup honesty.** `reservation-lookup-start` already computed whether the phone has an
+active reservation (to decide whether to send the SMS); it now returns that boolean as
+`hasReservations`. The browser stops on the phone step with "Nu am găsit rezervări active pentru acest
+număr." when `hasReservations === false`, and also handles the previously-unhandled `rateLimited`
+response (which used to advance to a code step that could never verify) with a dedicated message. The
+check is `=== false`, not `!result.hasReservations`, as a rollout-safety choice: a missing field — e.g.
+the old function during the deploy window — falls through to the normal flow instead of falsely
+erroring on every lookup. This is why **the backend is deployed before the frontend**.
+
+**Tradeoff accepted by the owner:** surfacing "no reservation for this number" reveals whether a phone
+has a booking, which enables enumeration. The existing rate limit is per-phone (5/10 min) and so does
+not constrain probing across different numbers; an IP-based limit is the noted future hardening. This
+was an explicit product request, made knowingly.
+
+**Out of scope.** The staff CRM (`admin/js/crm-sidebar.js`, `payment_type:'office'`, direct insert)
+keeps the loose generic rule — staff take phone bookings from any country and must not be
+over-restricted, and that path never traverses the public `create-reservation` validator anyway. The
+server `assertValidPhone` used to *match* existing reservations (lookup/cancel) also stays loose, so a
+guest whose stored number predates this rule is never locked out of managing it.
+
+**Tests:** per-country plus non-string cases in `tests/checkout.test.mjs` and `tests/anulare.test.mjs`,
+a new Deno `supabase/functions/tests/reservationPhoneLength.test.ts`, and the
+`hasReservations`/`rateLimited` wiring in `tests/reservation-lookup-refunds.test.mjs`. Full suite green
+(234 Node + 81 Deno).
+
+**Deployed to prod 2026-06-19:** edge functions `reservation-lookup-start` and `create-reservation`
+redeployed via `supabase functions deploy` (linked project `mckchrviaawdxtsfytut`; `verify_jwt`
+preserved per `config.toml`). Live smoke confirmed a non-matching number returns
+`hasReservations:false` with no SMS, and a wrong-length +373 is rejected with "Guest phone must use a
+valid international format." before any DB write. No migration. The frontend (`js/checkout.js`,
+`js/anulare.js`, `js/booking.js`, `js/translations.js`) ships via the TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
