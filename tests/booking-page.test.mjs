@@ -34,7 +34,7 @@ describe('EcoVila Step 4 booking page', () => {
       'js/main.js',
       'js/booking.js',
     ]) {
-      assert.match(html, new RegExp(`src="${script}"`), `${script} should be loaded`);
+      assert.match(html, new RegExp(`src="${script}(?:\\?v=[^"]*)?"`), `${script} should be loaded`);
     }
 
     assert.match(html, /css\/main\.css/, 'booking page should use the shared public design system');

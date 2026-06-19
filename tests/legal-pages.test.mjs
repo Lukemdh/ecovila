@@ -41,10 +41,10 @@ describe('EcoVila Step 8 legal pages', () => {
         /id="cookie-banner"/,
         /href="politica-confidentialitate\.html"/,
         /href="termeni-conditii\.html"/,
-        /href="css\/main\.css"/,
-        /href="css\/legal\.css"/,
-        /src="js\/translations\.js"/,
-        /src="js\/main\.js"/,
+        /href="css\/main\.css(?:\?v=[^"]*)?"/,
+        /href="css\/legal\.css(?:\?v=[^"]*)?"/,
+        /src="js\/translations\.js(?:\?v=[^"]*)?"/,
+        /src="js\/main\.js(?:\?v=[^"]*)?"/,
       ]) {
         assert.match(html, pattern, `${file} should include ${pattern}`);
       }

@@ -1879,6 +1879,73 @@ note); `send-reminders` / `reservation-cancel` / `reservation-cancel-notify` red
 
 ---
 
+### ADR-066 — Children require a per-type adult-supervision minimum on the booking page
+
+**Context.** `rezervari.html` let a party add children with far too few adults. The availability
+gate `pricing.isTypeAvailableForParty` only required **one adult per room for every type**
+(`adults >= neededUnits`), and because children also spill into a room's empty adult slots (a
+deliberate billing detail), a single adult could pull in a pile of children — e.g. **1 adult + 5
+children in a large villa** read as bookable.
+
+**Decision.** Introduce a per-type child-supervision minimum, enforced **per room** and only when
+children are present: **1 adult per room for hotel rooms and small villas, 2 adults per room for
+large villas**. Each `ROOM_TYPES` entry gains a `minAdultsForChildren` field (small 1, large 2,
+hotel 1) and the predicate becomes
+`adults >= neededUnits * (kids > 0 ? minAdultsForChildren : 1)`. When a party exceeds the limit the
+card flips to the existing **"Indisponibil / Недоступно / Unavailable"** badge
+(`booking.unavailableForParty`) and hides the reserve button — no new copy needed. Adults-only stays
+are unaffected (a lone adult can still book a large villa with no kids).
+
+**Billing is untouched.** `isTypeAvailableForParty` is an availability predicate only — it is never
+called by `calculateStayPrice`, `getUnitsNeeded`, or `calculateBillableGuests`, and the billing floor
+(`minimumAdults`) is unchanged. The new gate is strictly *stricter* than before, so anything still
+bookable was already valid at checkout. Both `pricing.js` copies (`js/` and
+`supabase/functions/_shared/`) were kept byte-identical to avoid drift; the server copy is inert (no
+Edge Function calls the predicate), so **no function deploy is required**.
+
+**Tests/verify.** 14 hand-checked party cases (large 1A+1K → unavailable; large 2A+2K → available;
+hotel/small 1A+2K → available; large 1A+5K → unavailable). Live in-browser DOM confirmed
+1A+1K → large `Indisponibil` with small/hotel available, and 2A+1K → large available. Full suite
+green.
+
+**Deploy.** Frontend `js/pricing.js` ships in this TopHost upload. `_shared/pricing.js` synced
+in-repo only.
+
+---
+
+### ADR-067 — Site-wide asset cache-busting via a shared `?v=` version stamp
+
+**Context.** Every page referenced its CSS/JS with no version query, and `.htaccess` sets no cache
+policy, so returning visitors could keep running stale CSS/JS from heuristic browser caching after a
+deploy — including the admin CRM.
+
+**Decision.** Stamp a single shared `?v=<version>` token onto **every local stylesheet and script
+reference across all shipped HTML** (root pages + `en/` + `ru/` + `admin/`). A single global token
+(not per-file content hashes) is intentional: bumping it refetches *every* asset at once, which is
+the "everyone sees the new build" behaviour the owner asked for. The mechanism is a reusable script
+`scripts/stamp-asset-versions.mjs` (`npm run bump:assets [version]`, default `YYYYMMDD`) that walks
+the TopHost deploy entries, rewrites local `.css`/`.js` `href`/`src`, **replaces** an existing `?v=`
+in place (re-runnable, never stacked), and skips external / protocol-relative / `data:` URLs (Google
+Fonts, the Supabase CDN, etc.). First bump: **`?v=20260619` across 15 HTML files, 146 references.**
+
+**Why HTML-level stamping is sufficient.** There are no CSS `@import`s, no `type="module"`/dynamic
+JS imports, and no runtime-loaded local scripts, so every css/js asset is reachable from an HTML
+tag. For the new token to be seen the HTML itself must be refetched; since `.htaccess` sets no
+long-cache and a freshly re-uploaded HTML file has ~0 heuristic freshness, browsers revalidate it
+promptly. (Optional future hardening — explicit `Cache-Control`: HTML `no-cache` + versioned assets
+`immutable` — was left out to stay in scope.)
+
+**Tests.** `tests/asset-versioning.test.mjs` unit-tests the stamper (adds/replaces the token across
+all path styles, skips external/data URLs, leaves html-page links and images alone, `YYYYMMDD`
+default) and adds a **regression guard** that no shipped HTML page contains an unversioned local
+css/js reference. The exact-URL assertions in `booking-page`, `checkout`, `legal-pages`, and
+`supabase-wiring` tests were relaxed to tolerate the `?v=` token. Full suite green: Node 276.
+
+**Deploy.** Frontend-only — a TopHost upload of all HTML (plus the unchanged css/js they reference).
+Re-run `npm run bump:assets <version>` on any future deploy that changes CSS/JS.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

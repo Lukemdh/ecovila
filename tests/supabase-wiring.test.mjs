@@ -22,7 +22,9 @@ function loadBrowserModule(relativePath, extras = {}) {
 }
 
 function scriptIndex(html, src) {
-  return html.indexOf(`src="${src}"`);
+  // Tolerate the cache-busting ?v= token (see scripts/stamp-asset-versions.mjs).
+  const escaped = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.search(new RegExp(`src="${escaped}(?:\\?v=[^"]*)?"`));
 }
 
 describe('EcoVila live Supabase wiring', () => {

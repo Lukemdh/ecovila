@@ -4,6 +4,7 @@
   "private": true,
   "description": "EcoVila static frontend and Supabase Edge Function test scripts.",
   "scripts": {
+    "bump:assets": "node scripts/stamp-asset-versions.mjs",
     "prepare:tophost": "node scripts/prepare-tophost-upload.mjs",
     "test": "npm run test:node && npm run test:deno",
     "test:node": "node --test 'tests/**/*.test.mjs'",

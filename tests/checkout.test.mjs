@@ -44,7 +44,7 @@ describe('EcoVila Step 5 checkout', () => {
       'js/main.js',
       'js/checkout.js',
     ]) {
-      assert.match(html, new RegExp(`src="${script}"`), `${script} should be loaded`);
+      assert.match(html, new RegExp(`src="${script}(?:\\?v=[^"]*)?"`), `${script} should be loaded`);
     }
   });
 
