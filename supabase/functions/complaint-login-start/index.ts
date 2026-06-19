@@ -6,12 +6,11 @@ import {
   composeLookupCodeSms,
   createLookupCode,
   getClientIp,
-  hashLookupCode,
   LOOKUP_CODE_TTL_MINUTES,
   minutesFromNow,
   normalizeSmsLanguage,
-  todayIso,
 } from '../_shared/reservationManage.ts';
+import { hashComplaintCode } from '../_shared/complaints.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 import { enforceRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
@@ -26,13 +25,8 @@ type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
   update(payload: unknown): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
   gte(column: string, value: unknown): QueryBuilder<T>;
-  in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
   single(): Promise<QueryResult<T>>;
-};
-
-type LookupCodeInsertRow = {
-  id: string;
 };
 
 Deno.serve(async (request) => {
@@ -46,13 +40,12 @@ Deno.serve(async (request) => {
     const language = normalizeSmsLanguage(body?.language);
     const client = createServiceClient();
 
-    // Per-phone (existing, ADR-059) and per-IP (ADR-060). Either tripping returns
-    // the rateLimited shape the browser already handles — it stops the guest on
-    // the phone step with a wait message instead of advancing to a code step that
-    // can never verify.
+    // Per-phone (mirrors reservation-lookup-start) + per-IP. Either tripping
+    // returns the rateLimited shape the browser already handles — it stops the
+    // guest on the phone step instead of advancing to a code step.
     const [recentCount, ipAllowed] = await Promise.all([
-      countRecentLookupAttempts(client, phone),
-      enforceRateLimit(client, RATE_LIMITS.lookupStartIp, rateLimitIp(request)),
+      countRecentLoginAttempts(client, phone),
+      enforceRateLimit(client, RATE_LIMITS.complaintLoginStartIp, rateLimitIp(request)),
     ]);
 
     if (recentCount >= 5 || !ipAllowed) {
@@ -75,28 +68,29 @@ Deno.serve(async (request) => {
 
     if (error) throw new Error(error.message);
 
-    const lookupId = data.id;
-    const codeHash = await hashLookupCode(lookupId, code);
+    const loginId = data.id;
+    const codeHash = await hashComplaintCode(loginId, code);
     const { error: updateError } = await client
       .from('reservation_lookup_codes')
       .update({ code_hash: codeHash })
-      .eq('id', lookupId);
+      .eq('id', loginId);
 
     if (updateError) throw new Error(updateError.message);
 
-    const hasReservations = await hasActiveReservations(client, phone);
+    // Only real guests (a phone with at least one PAID reservation, any date)
+    // can leave a complaint. hasReservations lets the browser stop with a clear
+    // "no reservation for this number" message and no SMS is sent otherwise.
+    // Note: like the reservation lookup, this reveals whether a phone is a guest
+    // (enumeration trade-off accepted by the product owner).
+    const hasReservations = await hasPaidReservation(client, phone);
     if (hasReservations) {
       await sendSms({ to: phone, message: composeLookupCodeSms(code, language) });
     }
 
-    // `hasReservations` lets the browser stop the guest on the phone step with a
-    // clear "no reservation for this number" message instead of advancing to a
-    // code step when no SMS was ever sent. Note: this reveals whether a phone has
-    // a booking (enumeration trade-off accepted by the product owner).
     return jsonResponse(
       {
         ok: true,
-        lookupId,
+        loginId,
         hasReservations,
         expiresInSeconds: LOOKUP_CODE_TTL_MINUTES * 60,
       },
@@ -108,7 +102,7 @@ Deno.serve(async (request) => {
   }
 });
 
-async function countRecentLookupAttempts(client: SupabaseClient, phone: string) {
+async function countRecentLoginAttempts(client: SupabaseClient, phone: string) {
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { count, error } = await table(client, 'reservation_lookup_codes')
     .select('id', { count: 'exact', head: true })
@@ -119,13 +113,11 @@ async function countRecentLookupAttempts(client: SupabaseClient, phone: string) 
   return count || 0;
 }
 
-async function hasActiveReservations(client: SupabaseClient, phone: string) {
+async function hasPaidReservation(client: SupabaseClient, phone: string) {
   const { count, error } = await table(client, 'reservations')
     .select('id', { count: 'exact', head: true })
     .eq('guest_phone', phone)
-    .in('payment_status', ['pending', 'paid'])
-    .is('cancelled_at', null)
-    .gte('check_out', todayIso());
+    .eq('payment_status', 'paid');
 
   if (error) throw new Error(error.message);
   return Boolean(count);

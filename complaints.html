@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EcoVila | Sesizări</title>
+    <meta
+      name="description"
+      content="Ai întâmpinat o problemă la EcoVila? Autentifică-te cu numărul de telefon și lasă-ne un mesaj."
+    >
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="css/main.css?v=20260619">
+    <link rel="stylesheet" href="css/checkout.css?v=20260619">
+    <link rel="stylesheet" href="css/confirmation.css?v=20260619">
+    <link rel="stylesheet" href="css/gestionare.css?v=20260619">
+    <link rel="stylesheet" href="css/complaints.css?v=20260619">
+    <meta name="robots" content="noindex">
+  </head>
+  <body>
+    <a class="skip-link" href="#complaints-page" data-i18n="access.skip">Sari la conținut</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="index.html#top" aria-label="EcoVila">
+        <img src="/assets/logo.png" alt="EcoVila" class="brand__mark">
+      </a>
+
+      <div class="header-actions">
+        <div class="language-dropdown header-bar-control">
+          <label class="visually-hidden" for="language-select">Language</label>
+          <select class="language-select" id="language-select" data-lang-select aria-label="Language">
+            <option value="ro">RO</option>
+            <option value="ru">RU</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="checkout-page" id="complaints-page" data-complaints-app>
+      <div class="cmp-shell">
+        <div class="gm-hero">
+          <h1 data-i18n="complaints.title">Ai o problemă?</h1>
+          <p class="gm-hero__lead" data-i18n="complaints.lead">
+            Spune-ne ce nu a fost în regulă la EcoVila. Autentifică-te cu numărul de telefon folosit la rezervare.
+          </p>
+        </div>
+
+        <!-- Login -->
+        <section class="cmp-card" data-cmp-login>
+          <div class="cmp-step" data-cmp-phone-step>
+            <label for="complaints-phone" data-i18n="complaints.phoneLabel">Număr de telefon</label>
+            <input
+              id="complaints-phone"
+              type="tel"
+              value="+373"
+              autocomplete="tel"
+              inputmode="tel"
+              data-cmp-phone
+            >
+            <p class="cmp-hint" data-i18n="complaints.phoneHint">Îți trimitem un cod prin SMS.</p>
+            <button class="editorial-button editorial-button--filled" type="button" data-cmp-start>
+              <span data-i18n="complaints.sendCode">Trimite codul</span>
+            </button>
+          </div>
+
+          <div class="cmp-step" data-cmp-code-step hidden>
+            <label for="complaints-code" data-i18n="complaints.codeLabel">Cod SMS</label>
+            <input
+              id="complaints-code"
+              type="text"
+              inputmode="numeric"
+              maxlength="4"
+              autocomplete="one-time-code"
+              data-cmp-code
+            >
+            <p class="cmp-hint" data-i18n="complaints.codeHint">Introdu codul din 4 cifre primit prin SMS.</p>
+            <button class="editorial-button editorial-button--filled" type="button" data-cmp-verify>
+              <span data-i18n="complaints.verify">Verifică</span>
+            </button>
+          </div>
+
+          <p class="booking-error cmp-error" data-cmp-login-error hidden></p>
+        </section>
+
+        <!-- Complaint form -->
+        <section class="cmp-card" data-cmp-form hidden>
+          <h2 data-i18n="complaints.formTitle">Lasă-ne un mesaj</h2>
+
+          <fieldset class="cmp-categories">
+            <legend data-i18n="complaints.categoryLabel">La ce se referă problema?</legend>
+            <div class="cmp-chip-row" role="radiogroup" data-cmp-categories>
+              <button type="button" class="cmp-chip" role="radio" aria-checked="false" data-cmp-category="casuta">
+                <span data-i18n="complaints.cat.casuta">Căsuța</span>
+              </button>
+              <button type="button" class="cmp-chip" role="radio" aria-checked="false" data-cmp-category="facilitati">
+                <span data-i18n="complaints.cat.facilitati">Facilități</span>
+              </button>
+              <button type="button" class="cmp-chip" role="radio" aria-checked="false" data-cmp-category="personal">
+                <span data-i18n="complaints.cat.personal">Personal</span>
+              </button>
+              <button type="button" class="cmp-chip" role="radio" aria-checked="false" data-cmp-category="altceva">
+                <span data-i18n="complaints.cat.altceva">Altceva</span>
+              </button>
+            </div>
+          </fieldset>
+
+          <label class="cmp-field">
+            <span data-i18n="complaints.descriptionLabel">Descriere</span>
+            <textarea
+              data-cmp-description
+              rows="5"
+              maxlength="2000"
+              placeholder="Descrie problema..."
+            ></textarea>
+          </label>
+
+          <label class="cmp-checkbox">
+            <input type="checkbox" data-cmp-anonymous>
+            <span class="cmp-checkbox__copy">
+              <span data-i18n="complaints.anonymous">Vreau anonim</span>
+              <small data-i18n="complaints.anonymousHint">Nu îți vom afișa numele sau numărul.</small>
+            </span>
+          </label>
+
+          <button class="editorial-button editorial-button--filled" type="button" data-cmp-submit>
+            <span data-i18n="complaints.submit">Trimite</span>
+          </button>
+
+          <p class="booking-error cmp-error" data-cmp-form-error hidden></p>
+        </section>
+
+        <!-- Success -->
+        <section class="cmp-card cmp-success" data-cmp-success hidden>
+          <span class="cmp-success__icon" aria-hidden="true">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </span>
+          <h2 data-i18n="complaints.successTitle">Îți mulțumim!</h2>
+          <p data-i18n="complaints.successLead">
+            Am primit mesajul tău și vom încerca să rezolvăm situația.
+          </p>
+          <button class="editorial-button" type="button" data-cmp-again>
+            <span data-i18n="complaints.sendAnother">Trimite alt mesaj</span>
+          </button>
+          <a class="cmp-back" href="index.html" data-i18n="complaints.backHome">Înapoi la pagina principală</a>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer" id="footer">
+      <div class="section-inner site-footer__grid">
+        <div class="site-footer__brand">
+          <img src="/assets/logo-trim.png" alt="EcoVila" class="site-footer__logo">
+          <p data-i18n="footer.tagline">Complex all-inclusive în Orheiul Vechi.</p>
+          <div class="site-footer__payments">
+            <span class="site-footer__payment"><img src="/assets/maib.png" alt="maib" loading="lazy" decoding="async"></span>
+            <span class="site-footer__payment"><img src="/assets/mastercard.png" alt="Mastercard" loading="lazy" decoding="async"></span>
+            <span class="site-footer__payment"><img src="/assets/visa.png" alt="Visa" loading="lazy" decoding="async"></span>
+          </div>
+        </div>
+        <dl class="site-footer__legal">
+          <div>
+            <dt data-i18n="footer.phoneLabel">Telefon</dt>
+            <dd>+37360120220</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href="mailto:rezervari@ecovila.md">rezervari@ecovila.md</a></dd>
+          </div>
+        </dl>
+        <div class="site-footer__links">
+          <h2 data-i18n="footer.useful">Utile</h2>
+          <a href="politica-confidentialitate.html" data-i18n="footer.privacy">Politica de Confidențialitate</a>
+          <a href="termeni-conditii.html" data-i18n="footer.terms">Termeni și Condiții</a>
+          <span data-i18n="footer.copy">© 2026 EcoVila</span>
+        </div>
+        <p class="footer-credit">
+          <span data-i18n="footer.developed">Dezvoltat de</span>
+          <a class="novano" href="http://novano.space" target="_blank" rel="noopener noreferrer" aria-label="Developed by novano.us">novano<span class="novano-slot"><span class="novano-tld">.us</span><span class="novano-bulb" aria-hidden="true"><i class="novano-bulb-glass"></i><i class="novano-bulb-cap"></i></span></span></a>
+        </p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js?v=20260619"></script>
+    <script src="js/supabase.js?v=20260619"></script>
+    <script src="js/translations.js?v=20260619"></script>
+    <script src="js/main.js?v=20260619"></script>
+    <script src="js/complaints.js?v=20260619"></script>
+  </body>
+</html>

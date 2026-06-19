@@ -68,6 +68,10 @@ describe('Tophost upload preparation', () => {
     assert.equal(TOPHOST_UPLOAD_ENTRIES.includes('site.html'), true);
   });
 
+  it('ships the guest complaints page', () => {
+    assert.equal(TOPHOST_UPLOAD_ENTRIES.includes('complaints.html'), true);
+  });
+
   it('copies static files into a clean folder with cPanel-safe permissions', async () => {
     const fixtureRoot = makeFixture();
     const outputDir = path.join(fixtureRoot, 'dist', 'tophost');

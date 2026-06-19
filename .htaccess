@@ -1,5 +1,8 @@
 RewriteEngine On
 
+# Clean URL for the guest complaints page (the check-in SMS links here).
+RewriteRule ^complaints/?$ /complaints.html [L]
+
 # Legacy DB-driven content pages with query strings.
 RewriteCond %{QUERY_STRING} (^|&)id=3(&|$)
 RewriteRule ^continut\.php$ /rezervari.html [R=301,L,QSD]

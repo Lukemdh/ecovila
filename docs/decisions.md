@@ -1946,6 +1946,50 @@ Re-run `npm run bump:assets <version>` on any future deploy that changes CSS/JS.
 
 ---
 
+### ADR-068 — Guest complaints page + admin "Probleme" tab + check-in welcome SMS
+
+**Context.** Guests had no channel to flag problems with their stay, and staff had no triage surface
+for such reports. The owner asked for a public `ecovila.md/complaints` page (phone-OTP login, even
+for long-past stays), an admin tab visible to both Diana and Angela, and a localized welcome SMS
+linking the page when a guest checks in.
+
+**Decision — guest flow.** A new `complaints.html` reuses the existing phone-OTP pattern. Three
+public edge functions (`complaint-login-start`, `complaint-login-verify`, `complaint-submit`,
+`verify_jwt=true`, all rate-limited per ADR-060) back it. The login-code SMS (`composeLookupCodeSms`)
+is now **localized RO/RU/EN** from the caller's page language, which also localizes the existing
+reservation-lookup OTP (`reservation-lookup-start` passes the browser language). Login storage
+**reuses `reservation_lookup_codes`**; the login-code hash uses a distinct `complaint_login_code` prefix so a
+complaint code can never satisfy `reservation-lookup-verify` (cross-redeem is unit-tested). Verify
+mints a 30-minute `complaint_sessions` token — a dedicated store, deliberately **isolated** from the
+reservation-management manage-token so a complaint login grants no booking-management capability.
+Eligibility = the phone has ≥1 **paid** reservation (any date). The "Vreau anonim" toggle is **fully
+anonymous**: anonymous rows persist no phone/name/reservation (DB `complaints_anonymous_identity_check`
+constraint), so they are unlinkable rather than merely hidden.
+
+**Decision — admin.** A `probleme` tab (added to `TAB_NAMES` and `ROLE_TABS.angela`) with a
+current/archive switch and per-row "Mark as solved". A **per-staff** unread badge counts complaints
+created after that user's own `complaint_read_state.last_seen_at`, cleared when they open the tab.
+The list/badge update live via realtime on `public.complaints`. Complaint text renders via
+`textContent` only (no innerHTML) so a description cannot inject markup. Inserts are service-role only
+(no insert RLS policy); both roles get read + update (mark-solved).
+
+**Decision — welcome SMS.** Fires from the existing CRM check-in action (`saveCheckIn` →
+`send-checkin-welcome`, staff-gated), not a date cron, so it lands on real arrival. It is SMS-only
+(empty email recipient → `sendEmail` no-ops) and deduped via `notification_events`
+(`checkin_welcome`, keyed on the booking-group owner) so multi-villa bookings / re-toggled check-ins
+send exactly once. Copy is localized RO/RU/EN within one segment (RO/EN ≤160, RU ≤140) and the
+lengths are asserted in tests.
+
+**Tests.** `tests/complaints.test.mjs` (wiring: migration, functions, page, admin, htaccess, i18n)
+and `supabase/functions/tests/complaints.test.ts` (category/description/hash helpers, cross-redeem
+safety, welcome-SMS localization + length bounds). Full suite green: Node 302 + Deno 96.
+
+**Deploy.** Apply `20260619170000_complaints.sql`; deploy the 4 new functions **plus the changed
+`reservation-lookup-start`** (OTP localization); TopHost-upload the frontend (`complaints.html`,
+css/js, admin, `.htaccess`). The clean `/complaints` URL is served by an `.htaccess` rewrite.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

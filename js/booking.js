@@ -1151,7 +1151,7 @@
 
     try {
       const client = supabaseHelpers.getSupabaseClient();
-      const result = await supabaseHelpers.startReservationLookup(client, phone);
+      const result = await supabaseHelpers.startReservationLookup(client, phone, state.language);
 
       // Too many code requests for this number in a short window: tell the guest
       // to wait instead of advancing to a code step that can never be verified.

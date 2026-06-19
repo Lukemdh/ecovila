@@ -7,13 +7,13 @@
   // The active tab is mirrored to the URL hash (#finance, #daily, ...) so a page
   // refresh restores the view the user was on instead of snapping back to the
   // dashboard/calendar. The dashboard is the default and stays on a clean URL.
-  const TAB_NAMES = ['dashboard', 'finance', 'daily', 'towels', 'photos', 'pricing'];
+  const TAB_NAMES = ['dashboard', 'finance', 'daily', 'towels', 'photos', 'pricing', 'probleme'];
   // Per-role visible tabs. Angela operates a read-only dashboard plus the daily
-  // ("Situația zilnică") and towels tabs; finance, photos and pricing are hidden
-  // for her. Roles not listed here (e.g. diana) see every tab. The same boundary
-  // is enforced server-side by RLS on public.reservations.
+  // ("Situația zilnică"), towels and complaints ("Probleme") tabs; finance,
+  // photos and pricing are hidden for her. Roles not listed here (e.g. diana)
+  // see every tab. The same boundary is enforced server-side by RLS.
   const ROLE_TABS = Object.freeze({
-    angela: ['dashboard', 'daily', 'towels'],
+    angela: ['dashboard', 'daily', 'towels', 'probleme'],
   });
   let allowedTabs = TAB_NAMES;
   let hashNavigationWired = false;
@@ -93,6 +93,9 @@
     }
     if (target === 'towels') {
       root.EcoVilaCrmTowels?.showToday?.();
+    }
+    if (target === 'probleme') {
+      root.EcoVilaCrmComplaints?.showPanel?.();
     }
 
     syncTabHash(target);
@@ -179,11 +182,13 @@
         formatMDL,
       };
 
-      // Dashboard, daily and towels are visible to every CRM role; the rest only
-      // initialise (and fetch their data) when the role is allowed to see them.
+      // Dashboard, daily, towels and complaints are visible to every CRM role;
+      // the rest only initialise (and fetch their data) when the role is allowed
+      // to see them.
       root.EcoVilaCrmDashboard?.init?.(context);
       root.EcoVilaCrmDaily?.init?.(context);
       root.EcoVilaCrmTowels?.init?.(context);
+      root.EcoVilaCrmComplaints?.init?.(context);
       if (isTabAllowed('finance')) {
         root.EcoVilaCrmFinance?.init?.(context);
       }

@@ -206,7 +206,22 @@ export function groupReservations(
   });
 }
 
-export function composeLookupCodeSms(code: string) {
+export function normalizeSmsLanguage(value: unknown): 'ro' | 'ru' | 'en' {
+  const language = String(value || '').trim().toLowerCase();
+  return language === 'ru' || language === 'en' ? language : 'ro';
+}
+
+export function composeLookupCodeSms(code: string, language: unknown = 'ro') {
+  const lang = normalizeSmsLanguage(language);
+
+  if (lang === 'ru') {
+    return `EcoVila: код для вашего бронирования — ${code}. Код действителен 10 минут.`;
+  }
+
+  if (lang === 'en') {
+    return `EcoVila: your reservation code is ${code}. The code is valid for 10 minutes.`;
+  }
+
   return `EcoVila: codul pentru rezervarea dvs. este ${code}. Codul este valabil 10 minute.`;
 }
 

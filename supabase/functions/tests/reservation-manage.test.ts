@@ -16,6 +16,39 @@ Deno.test('reservation refund eligibility requires at least 20 days or the 2-hou
   }
 });
 
+Deno.test('lookup-code SMS is localized for ro/ru/en and always carries the code', async () => {
+  const { composeLookupCodeSms, normalizeSmsLanguage } = await import(
+    '../_shared/reservationManage.ts'
+  );
+
+  const ro = composeLookupCodeSms('1234', 'ro');
+  const ru = composeLookupCodeSms('1234', 'ru');
+  const en = composeLookupCodeSms('1234', 'en');
+
+  for (const message of [ro, ru, en]) {
+    if (!message.includes('1234')) {
+      throw new Error('every lookup-code SMS must include the code');
+    }
+  }
+
+  if (ro === ru || ro === en || ru === en) {
+    throw new Error('each language should produce a distinct lookup-code SMS');
+  }
+
+  if (!ru.includes('код') || !en.includes('code')) {
+    throw new Error('ru/en lookup-code SMS should be translated');
+  }
+
+  // Unknown / missing language falls back to Romanian (the default).
+  if (composeLookupCodeSms('1234') !== ro || composeLookupCodeSms('1234', 'fr') !== ro) {
+    throw new Error('lookup-code SMS should default to ro');
+  }
+
+  if (normalizeSmsLanguage('RU') !== 'ru' || normalizeSmsLanguage('') !== 'ro') {
+    throw new Error('normalizeSmsLanguage should map known languages and default to ro');
+  }
+});
+
 Deno.test('reservation manage hashing does not expose plaintext codes or tokens', async () => {
   const { hashLookupCode, hashManageToken, normalizeLookupCode } = await import(
     '../_shared/reservationManage.ts'

@@ -37,6 +37,10 @@
           <button class="crm-tab" type="button" data-tab="towels">Ștergare</button>
           <button class="crm-tab" type="button" data-tab="photos">Poze</button>
           <button class="crm-tab" type="button" data-tab="pricing">Prețuri</button>
+          <button class="crm-tab crm-tab--badged" type="button" data-tab="probleme">
+            Probleme
+            <span class="crm-tab__badge" data-complaints-badge hidden>0</span>
+          </button>
         </nav>
 
         <div class="crm-user">
@@ -749,6 +753,18 @@
           </section>
         </div>
       </section>
+
+      <section class="crm-panel" data-panel="probleme" aria-labelledby="probleme-title">
+        <div class="crm-panel-header crm-panel-header--stacked">
+          <h1 id="probleme-title">Probleme</h1>
+          <p class="crm-panel-subtitle">Sesizările lăsate de oaspeți pe pagina de reclamații.</p>
+          <div class="crm-complaints-views" role="tablist" aria-label="Vizualizare probleme">
+            <button class="crm-complaints-view is-active" type="button" role="tab" aria-selected="true" data-complaints-view="current">Curente</button>
+            <button class="crm-complaints-view" type="button" role="tab" aria-selected="false" data-complaints-view="archive">Arhivă</button>
+          </div>
+        </div>
+        <div class="crm-complaints-list" data-complaints-list></div>
+      </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -764,6 +780,7 @@
     <script src="js/crm-towels.js?v=20260619"></script>
     <script src="js/crm-photos.js?v=20260619"></script>
     <script src="js/crm-pricing.js?v=20260619"></script>
+    <script src="js/crm-complaints.js?v=20260619"></script>
     <script src="js/crm-auth.js?v=20260619"></script>
     <script src="js/crm-app.js?v=20260619"></script>
   </body>

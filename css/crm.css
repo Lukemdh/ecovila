@@ -2429,3 +2429,130 @@ h2 {
     min-width: 0;
   }
 }
+
+/* Complaints ("Probleme") tab — unread badge + cards (ADR-068). */
+.crm-tab--badged {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.crm-tab__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--crm-danger);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.crm-complaints-views {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.crm-complaints-view {
+  border: 1px solid var(--crm-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--crm-ink);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.crm-complaints-view.is-active {
+  border-color: var(--crm-moss);
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+.crm-complaints-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.crm-complaint-card {
+  border: 1px solid var(--crm-line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crm-complaint-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.crm-complaint-card__category {
+  font-weight: 700;
+  color: var(--crm-ink);
+  background: rgba(96, 108, 56, 0.12);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+
+.crm-complaint-card__date {
+  color: var(--crm-muted);
+  font-size: 0.82rem;
+}
+
+.crm-complaint-card__text {
+  margin: 0;
+  color: var(--crm-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.crm-complaint-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--crm-muted);
+  font-size: 0.85rem;
+}
+
+.crm-complaint-card__guest--anon {
+  font-style: italic;
+}
+
+.crm-complaint-card__lang {
+  border: 1px solid var(--crm-line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.crm-complaint-card__solved {
+  margin: 0;
+  color: var(--crm-moss);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.crm-complaint-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.crm-complaints-empty {
+  color: var(--crm-muted);
+  text-align: center;
+  padding: 32px 0;
+}

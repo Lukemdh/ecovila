@@ -18,6 +18,7 @@ export const TOPHOST_UPLOAD_ENTRIES = [
   'plata-mia.html',
   'gestionare.html',
   'anulare.html',
+  'complaints.html',
   'politica-confidentialitate.html',
   'termeni-conditii.html',
   'robots.txt',

@@ -323,6 +323,30 @@ export function composeArrivalReminder(
   };
 }
 
+/**
+ * Welcome SMS sent when staff mark a guest checked-in. SMS-only: the empty
+ * email recipient makes sendEmail no-op (see providers.ts), so the dispatch +
+ * dedup machinery is reused without sending an unwanted email.
+ */
+export function composeCheckinWelcome(
+  reservation: NotificationReservation,
+): SmsNotificationMessage {
+  const language = reservationLanguage(reservation);
+
+  return {
+    sms: {
+      to: reservation.guest_phone,
+      message: checkinWelcomeSms(language),
+    },
+    email: {
+      to: '',
+      subject: '',
+      html: '',
+      text: '',
+    },
+  };
+}
+
 export async function dispatchNotification(message: NotificationMessage) {
   const [sms, email] = await Promise.allSettled([
     message.sms ? sendSms(message.sms) : Promise.resolve({ skipped: true }),
@@ -897,6 +921,21 @@ function arrivalReminderSms(language: string) {
   }
 
   return 'Va asteptam maine la EcoVila! Check-in si acces pe teritoriu - de la 13.00. Pentru intrebari: 060120220';
+}
+
+// Welcome + complaints-link SMS. Kept within one segment for RO/EN (<=160 GSM-7)
+// and two segments for RU (<=140 UCS-2) per the product brief; the lengths are
+// asserted in tests/complaints.test.ts so an edit that overflows fails CI.
+function checkinWelcomeSms(language: string) {
+  if (language === 'ru') {
+    return 'Добро пожаловать в EcoVila! Приятного отдыха. Если есть проблемы: ecovila.md/complaints';
+  }
+
+  if (language === 'en') {
+    return 'Welcome to EcoVila! We wish you a pleasant stay. If you have any problems, we will try to solve them - ecovila.md/complaints';
+  }
+
+  return 'Bun venit la EcoVila! Va dorim o odihna placuta. Daca aveti careva probleme, incercam sa le solutionam - ecovila.md/complaints';
 }
 
 export type EmailLang = 'ro' | 'ru' | 'en';

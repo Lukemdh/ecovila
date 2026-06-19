@@ -426,6 +426,11 @@
   async function saveCheckIn(context, state, reservation) {
     await saveIssuedTowelCards(context, state, reservation, guestCount(reservation));
     await saveDailyStatus(context, state, reservation, { checked_in_at: new Date().toISOString() });
+    // Welcome + complaints-link SMS (ADR-068). Fire-and-forget so a provider
+    // hiccup never makes the (already saved) check-in look failed; the server
+    // dedups on the booking group, so re-checking-in safely retries.
+    root.EcoVilaSupabase?.sendCheckinWelcome?.(context.client, reservation.id)
+      .catch((error) => console.error('check-in welcome SMS failed', error));
   }
 
   function renderDailyChildBuckets(context, state) {

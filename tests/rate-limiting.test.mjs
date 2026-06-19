@@ -29,6 +29,9 @@ const RATE_LIMITED_FUNCTIONS = [
   'reservation-cancel',
   'reservation-extend-cash',
   'reservation-manage-details',
+  'complaint-login-start',
+  'complaint-login-verify',
+  'complaint-submit',
 ];
 
 // maib-callback is gated by the MAIB HMAC signature, so it deliberately carries
@@ -192,6 +195,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'send-sms',
       'send-email',
       'reservation-cancel-notify',
+      'send-checkin-welcome',
       // cron-secret gated
       'expire-cash-reservations',
       'send-reminders',

@@ -1,0 +1,210 @@
+/* Complaints page (ADR-068) — guest login + report form. */
+
+.cmp-shell {
+  width: min(640px, 100%);
+  margin: 0 auto;
+  padding: 0 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.cmp-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 26px 24px;
+  box-shadow: 0 18px 40px -34px var(--shadow);
+}
+
+.cmp-card h2 {
+  font-family: var(--heading-font);
+  font-size: 1.7rem;
+  margin: 0 0 6px;
+  color: var(--espresso);
+}
+
+.cmp-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cmp-step + .cmp-step {
+  margin-top: 6px;
+}
+
+.cmp-step label {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.cmp-step input,
+.cmp-field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: var(--body-font);
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.cmp-step input:focus,
+.cmp-field textarea:focus {
+  outline: none;
+  border-color: #5F7A3A;
+  box-shadow: 0 0 0 3px rgba(95, 122, 58, 0.18);
+}
+
+.cmp-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.cmp-error {
+  margin: 14px 0 0;
+}
+
+.cmp-categories {
+  border: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.cmp-categories legend {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 0.92rem;
+  padding: 0;
+  margin-bottom: 10px;
+}
+
+.cmp-chip-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.cmp-chip {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 14px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.cmp-chip:hover {
+  border-color: #5F7A3A;
+}
+
+.cmp-chip.is-active {
+  background: #5F7A3A;
+  border-color: #4B6529;
+  color: #fff;
+}
+
+.cmp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cmp-field > span {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.cmp-field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.cmp-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+
+.cmp-checkbox input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: #5F7A3A;
+  flex: none;
+}
+
+.cmp-checkbox__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmp-checkbox__copy > span {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cmp-checkbox__copy small {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.cmp-card [data-cmp-submit],
+.cmp-card [data-cmp-start],
+.cmp-card [data-cmp-verify] {
+  width: 100%;
+  justify-content: center;
+}
+
+.cmp-success {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.cmp-success__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(95, 122, 58, 0.14);
+  color: #4B6529;
+}
+
+.cmp-success h2 {
+  margin: 0;
+}
+
+.cmp-success p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.cmp-back {
+  color: var(--cocoa);
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .cmp-chip-row {
+    grid-template-columns: 1fr;
+  }
+}

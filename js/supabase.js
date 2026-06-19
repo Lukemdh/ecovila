@@ -281,13 +281,13 @@
     return result.data || {};
   }
 
-  async function startReservationLookup(client, phone) {
+  async function startReservationLookup(client, phone, language) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
     }
 
     const result = await client.functions.invoke('reservation-lookup-start', {
-      body: { phone },
+      body: { phone, language: language || 'ro' },
     });
 
     if (result.error) {
@@ -972,6 +972,149 @@
     );
   }
 
+  async function startComplaintLogin(client, phone, language) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('complaint-login-start', {
+      body: { phone, language: language || 'ro' },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function verifyComplaintLogin(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('complaint-login-verify', {
+      body: {
+        loginId: input?.loginId || '',
+        code: input?.code || '',
+      },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function submitComplaint(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('complaint-submit', {
+      body: {
+        complaintToken: input?.complaintToken || '',
+        category: input?.category || '',
+        description: input?.description || '',
+        isAnonymous: input?.isAnonymous === true,
+        language: input?.language || 'ro',
+      },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  function fetchComplaints(client, options) {
+    let query = client
+      .from('complaints')
+      .select(
+        'id, category, description, is_anonymous, guest_phone, guest_first_name, reservation_id, language, status, created_at, solved_at',
+      )
+      .order('created_at', { ascending: false });
+
+    if (options?.status) {
+      query = query.eq('status', options.status);
+    }
+
+    return unwrapSupabaseResult(query);
+  }
+
+  function markComplaintSolved(client, complaintId, solvedBy) {
+    return unwrapSupabaseResult(
+      client
+        .from('complaints')
+        .update({
+          status: 'solved',
+          solved_at: new Date().toISOString(),
+          solved_by: solvedBy || null,
+        })
+        .eq('id', complaintId)
+        .eq('status', 'new')
+        .select(),
+    );
+  }
+
+  async function fetchComplaintReadState(client, userId) {
+    const { data, error } = await client
+      .from('complaint_read_state')
+      .select('last_seen_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw decorateInvokeError(error);
+    }
+
+    return data || null;
+  }
+
+  function upsertComplaintReadState(client, userId) {
+    const now = new Date().toISOString();
+    return unwrapSupabaseResult(
+      client
+        .from('complaint_read_state')
+        .upsert({ user_id: userId, last_seen_at: now, updated_at: now }, { onConflict: 'user_id' })
+        .select(),
+    );
+  }
+
+  async function sendCheckinWelcome(client, reservationId) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('send-checkin-welcome', {
+      body: { reservationId },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function countUnreadComplaints(client, sinceIso) {
+    let query = client.from('complaints').select('id', { count: 'exact', head: true });
+
+    if (sinceIso) {
+      query = query.gt('created_at', sinceIso);
+    }
+
+    const { count, error } = await query;
+
+    if (error) {
+      throw decorateInvokeError(error);
+    }
+
+    return count || 0;
+  }
+
   return {
     CLIENT_OPTIONS,
     PHOTO_CACHE_CONTROL,
@@ -990,6 +1133,15 @@
     createReservationRequest,
     startReservationLookup,
     verifyReservationLookup,
+    startComplaintLogin,
+    verifyComplaintLogin,
+    submitComplaint,
+    fetchComplaints,
+    markComplaintSolved,
+    fetchComplaintReadState,
+    upsertComplaintReadState,
+    countUnreadComplaints,
+    sendCheckinWelcome,
     fetchManagedReservationDetails,
     cancelManagedReservation,
     extendCashReservation,
