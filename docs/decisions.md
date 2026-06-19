@@ -1990,6 +1990,52 @@ css/js, admin, `.htaccess`). The clean `/complaints` URL is served by an `.htacc
 
 ---
 
+### ADR-069 — Admin "Probleme" card redesign: uniform tiles + click-to-expand detail modal
+
+**Context.** The ADR-068 "Probleme" tab shipped functional but visually weak: one full-width card
+per row, ragged heights (a one-word report sat as tall as a paragraph), no category cues, and no way
+to read a long complaint without the card growing unbounded. The owner asked for a better-looking
+page where **cards are always the same size**, long text is cropped unless expanded, and the same
+treatment applies to the active (current) tab — as the last step before the ADR-068 frontend goes to
+prod.
+
+**Decision — layout.** The list is a responsive grid (`repeat(auto-fill, minmax(360px, 1fr))`) of
+fixed-dimension tiles. Uniform height is *deterministic*, not `align-items`-dependent: the
+description is locked to a 3-line box (`height: 4.5em` + `-webkit-line-clamp: 3` + `overflow:hidden`)
+and the footer is forced onto a single line (`flex-wrap: nowrap`; the guest name truncates with
+ellipsis while the phone link and action stay `flex: none`). So `head + clamped-text + 1-line-footer`
+sums to the same height for every card regardless of content — verified at 192px across long, short,
+and one-word descriptions in 1/2/3-column layouts. Cards are colour-accented per category (moss /
+clay / teal / sage via a `--accent` custom property driving the left strip, dot, and chip tint), the
+tabs became a segmented control, and a live result count sits beside them.
+
+**Decision — detail modal.** Clicking a card (mouse, or Enter/Space when focused) opens a centered
+dialog with the **full, unclamped** description, the guest identity, and the same resolve action.
+Clicks on the in-card phone link or resolve button are excluded via `event.target.closest('a, button')`
+so they keep their own behaviour. The modal is a lazily-created singleton appended to `<body>`
+(`z-index: 1000`, above all CRM chrome at ≤60, and outside any transformed ancestor so `position:
+fixed` is viewport-anchored); it closes on the ✕ button, backdrop click, or Escape, locks body scroll
+while open (`.crm-modal-open`), and restores focus to the opener on close. The card uses a short
+"Rezolvă" label to protect the single-line footer; the modal shows the full "Marchează rezolvată".
+
+**Safety.** Unchanged from ADR-068 — every guest-supplied value (description, name, phone) is still
+written with `textContent`; only the fixed feather-style icon set uses `innerHTML`, from trusted
+module constants that never touch complaint data. The public module API (`init`, `showPanel`,
+`setView`, `renderList`, `buildCard`) is unchanged, so `crm-app.js` wiring is untouched.
+
+**Tests.** No new tests — this is a presentational change to the admin card builder/CSS with no new
+data paths; the existing `tests/complaints.test.mjs` wiring assertions still pass (Node 303). Verified
+in a local dev server: identical 192px heights, ellipsis crop, modal open/close (current → resolve
+button, archive → "Rezolvată" pill), body-scroll lock, mobile single-column with no footer overflow,
+and a clean console.
+
+**Deploy.** Frontend-only; no migration, no functions. Ships with the still-pending ADR-068 TopHost
+upload under the existing unserved `?v=2026061901` token (bumped in 7a35de7 for this deploy), so
+caches bust naturally — no asset re-bump. Files: `admin/dashboard.html`, `admin/js/crm-complaints.js`,
+`css/crm.css`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

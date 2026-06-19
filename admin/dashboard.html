@@ -758,9 +758,12 @@
         <div class="crm-panel-header crm-panel-header--stacked">
           <h1 id="probleme-title">Probleme</h1>
           <p class="crm-panel-subtitle">Sesizările lăsate de oaspeți pe pagina de reclamații.</p>
-          <div class="crm-complaints-views" role="tablist" aria-label="Vizualizare probleme">
-            <button class="crm-complaints-view is-active" type="button" role="tab" aria-selected="true" data-complaints-view="current">Curente</button>
-            <button class="crm-complaints-view" type="button" role="tab" aria-selected="false" data-complaints-view="archive">Arhivă</button>
+          <div class="crm-complaints-bar">
+            <div class="crm-complaints-views" role="tablist" aria-label="Vizualizare probleme">
+              <button class="crm-complaints-view is-active" type="button" role="tab" aria-selected="true" data-complaints-view="current">Curente</button>
+              <button class="crm-complaints-view" type="button" role="tab" aria-selected="false" data-complaints-view="archive">Arhivă</button>
+            </div>
+            <span class="crm-complaints-count" data-complaints-count></span>
           </div>
         </div>
         <div class="crm-complaints-list" data-complaints-list></div>

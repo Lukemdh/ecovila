@@ -2452,107 +2452,413 @@ h2 {
   line-height: 1;
 }
 
+/* Shared inline-icon wrapper for the complaints panel. */
+.crm-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.crm-icon svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
+
+.crm-complaints-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
 .crm-complaints-views {
   display: inline-flex;
-  gap: 8px;
+  gap: 4px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--crm-line);
+  border-radius: 11px;
 }
 
 .crm-complaints-view {
-  border: 1px solid var(--crm-line);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--crm-ink);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--crm-muted);
   cursor: pointer;
   font-weight: 700;
-  padding: 8px 14px;
+  padding: 7px 18px;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.crm-complaints-view:hover {
+  color: var(--crm-ink);
 }
 
 .crm-complaints-view.is-active {
-  border-color: var(--crm-moss);
   background: var(--crm-moss);
   color: #fff;
+  box-shadow: 0 1px 3px rgba(96, 108, 56, 0.3);
+}
+
+.crm-complaints-count {
+  color: var(--crm-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .crm-complaints-list {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 14px;
   margin-top: 18px;
+  align-items: stretch;
 }
 
 .crm-complaint-card {
+  --accent: var(--crm-sage);
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--crm-line);
-  border-radius: 10px;
-  background: #fff;
-  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--crm-panel);
+  padding: 15px 18px 15px 22px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(39, 48, 39, 0.04);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+
+.crm-complaint-card:hover {
+  box-shadow: 0 10px 26px rgba(39, 48, 39, 0.1);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--crm-line));
+  transform: translateY(-1px);
+}
+
+.crm-complaint-card:focus-visible {
+  outline: 2px solid var(--crm-moss);
+  outline-offset: 2px;
+}
+
+.crm-complaint-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--accent);
+}
+
+.crm-complaint-card--casuta { --accent: var(--crm-clay); }
+.crm-complaint-card--facilitati { --accent: var(--crm-moss); }
+.crm-complaint-card--personal { --accent: var(--crm-group-2); }
+.crm-complaint-card--altceva { --accent: var(--crm-sage); }
+
+.crm-complaint-card--resolved {
+  background: linear-gradient(180deg, rgba(79, 139, 91, 0.05), var(--crm-panel) 40%);
 }
 
 .crm-complaint-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .crm-complaint-card__category {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 700;
+  font-size: 0.82rem;
   color: var(--crm-ink);
-  background: rgba(96, 108, 56, 0.12);
+  background: rgba(96, 108, 56, 0.08);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
   border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 0.85rem;
+  padding: 4px 12px 4px 9px;
+}
+
+.crm-complaint-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.crm-complaint-card__head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .crm-complaint-card__date {
   color: var(--crm-muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.crm-complaint-card__lang {
+  border: 1px solid var(--crm-line);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--crm-muted);
 }
 
 .crm-complaint-card__text {
   margin: 0;
   color: var(--crm-ink);
-  white-space: pre-wrap;
+  font-size: 0.97rem;
+  line-height: 1.5;
+  /* Fixed 3-line height keeps every card the exact same dimensions; the full
+     text is shown in the detail modal opened on click. */
+  height: 4.5em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
   word-break: break-word;
 }
 
-.crm-complaint-card__meta {
+.crm-complaint-card__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  color: var(--crm-muted);
-  font-size: 0.85rem;
+  gap: 10px;
+  flex-wrap: nowrap;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--crm-line);
+}
+
+.crm-complaint-card__who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.crm-complaint-card__guest {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--crm-ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+  min-width: 0;
+}
+
+/* Name truncates so the footer stays one line and every card matches height. */
+.crm-complaint-card__guest > span:not(.crm-icon) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-complaint-card__guest .crm-icon {
+  font-size: 1.05rem;
+  color: var(--crm-sage);
 }
 
 .crm-complaint-card__guest--anon {
   font-style: italic;
+  font-weight: 500;
+  color: var(--crm-muted);
 }
 
-.crm-complaint-card__lang {
-  border: 1px solid var(--crm-line);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.crm-complaint-card__phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  color: var(--crm-moss);
+  font-size: 0.86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.crm-complaint-card__phone .crm-icon {
+  font-size: 0.92rem;
+}
+
+.crm-complaint-card__phone:hover {
+  text-decoration: underline;
 }
 
 .crm-complaint-card__solved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
   margin: 0;
-  color: var(--crm-moss);
-  font-size: 0.82rem;
-  font-weight: 600;
+  color: var(--crm-paid-card);
+  background: rgba(79, 139, 91, 0.12);
+  border-radius: 999px;
+  padding: 4px 11px 4px 9px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.crm-complaint-card__actions {
-  display: flex;
-  justify-content: flex-end;
+.crm-complaint-card__solved .crm-icon {
+  font-size: 0.95rem;
+}
+
+.crm-complaint-card__solve {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.crm-complaint-card__solve .crm-icon {
+  font-size: 0.95rem;
 }
 
 .crm-complaints-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   color: var(--crm-muted);
   text-align: center;
-  padding: 32px 0;
+  padding: 56px 0;
+}
+
+.crm-complaints-empty p {
+  margin: 0;
+}
+
+.crm-complaints-empty .crm-icon {
+  font-size: 44px;
+  color: var(--crm-sand);
+}
+
+/* Detail modal — full, uncropped complaint shown when a card is clicked. */
+.crm-modal-open {
+  overflow: hidden;
+}
+
+.crm-complaint-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.crm-complaint-modal[hidden] {
+  display: none;
+}
+
+.crm-complaint-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(39, 48, 39, 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: crm-fade-in 0.18s ease;
+}
+
+.crm-complaint-modal__dialog {
+  --accent: var(--crm-sage);
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--crm-panel);
+  border: 1px solid var(--crm-line);
+  border-radius: 16px;
+  padding: 22px 24px 24px;
+  box-shadow: 0 24px 60px rgba(39, 48, 39, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: crm-modal-in 0.2s ease;
+}
+
+.crm-complaint-modal__dialog::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--accent);
+  border-radius: 16px 0 0 16px;
+}
+
+@keyframes crm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes crm-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+.crm-complaint-modal__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.crm-complaint-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--crm-muted);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.crm-complaint-modal__close:hover {
+  border-color: var(--crm-moss);
+  color: var(--crm-ink);
+}
+
+.crm-complaint-modal__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--crm-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.crm-complaint-modal__text {
+  margin: 0;
+  color: var(--crm-ink);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.crm-complaint-modal__dialog .crm-complaint-card__footer {
+  margin-top: 4px;
+  flex-wrap: wrap;
 }
