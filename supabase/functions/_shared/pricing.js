@@ -28,6 +28,7 @@
       maxAdults: 2,
       maxKids: 2,
       minimumAdults: 2,
+      minAdultsForChildren: 1,
       roomNumbers: Object.freeze([1, 2, 3, 4, 5, 6, 7, 8]),
       assignmentDirection: 'descending',
     }),
@@ -37,6 +38,7 @@
       maxAdults: 4,
       maxKids: 2,
       minimumAdults: 4,
+      minAdultsForChildren: 2,
       roomNumbers: Object.freeze([9, 10, 11, 12, 13, 14, 15]),
       assignmentDirection: 'ascending',
     }),
@@ -46,6 +48,7 @@
       maxAdults: 2,
       maxKids: 2,
       minimumAdults: 2,
+      minAdultsForChildren: 1,
       roomNumbers: Object.freeze([16, 17, 18, 19, 20, 21, 22, 23, 24, 25]),
       assignmentDirection: 'ascending',
     }),
@@ -262,10 +265,22 @@
   }
 
   function isTypeAvailableForParty(roomType, party) {
+    const config = assertRoomType(roomType);
     const normalized = normalizeParty(party);
     const neededUnits = getUnitsNeeded(roomType, normalized);
 
-    return normalized.adults >= neededUnits;
+    // Children must be supervised: a room may only carry kids when it holds the
+    // type's adult minimum — 1 adult for hotel rooms and small villas, 2 adults
+    // for large villas. Enforced per room (neededUnits), so e.g. a large villa
+    // with one adult plus children is unavailable, while an adults-only stay
+    // still just needs one adult per room. This is an availability gate only and
+    // never feeds price math (calculateStayPrice uses its own billing floor), so
+    // billing is unaffected.
+    const minAdultsPerRoom = normalized.kids > 0
+      ? (config.minAdultsForChildren || 1)
+      : 1;
+
+    return normalized.adults >= neededUnits * minAdultsPerRoom;
   }
 
   function calculateBillableGuests(roomType, party, options) {
