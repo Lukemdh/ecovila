@@ -12,6 +12,7 @@ import {
   todayIso,
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -50,6 +51,9 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+    // Per-lookupId brute force is capped at 5 below; this bounds how many codes
+    // one IP can churn through across lookupIds (ADR-060).
+    await assertRateLimit(client, RATE_LIMITS.lookupVerifyIp, rateLimitIp(request));
     const lookup = await findLookup(client, lookupId);
 
     if (!lookup || new Date(lookup.expires_at).getTime() < Date.now()) {

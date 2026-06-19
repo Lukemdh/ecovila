@@ -1,6 +1,8 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/http.ts';
 import { dispatchTrackingEvent, hashUserData } from '../_shared/tracking.ts';
+import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
+import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 
 const ALLOWED_EVENTS = new Set([
   'PageView',
@@ -29,6 +31,10 @@ Deno.serve(async (request) => {
     if (!body?.consent?.marketing) {
       return jsonResponse({ ok: true, skipped: true, reason: 'no-consent' }, {}, request);
     }
+
+    // Only count real dispatches (outbound to the tracking provider); the cheap
+    // skipped/no-consent paths above never reach here (ADR-060).
+    await assertRateLimit(createServiceClient(), RATE_LIMITS.trackEventIp, rateLimitIp(request));
 
     const eventId = String(body?.eventId || crypto.randomUUID()).trim();
     const userData = await hashUserData({

@@ -670,7 +670,9 @@
       );
     } catch (error) {
       const message = String(error?.message || '');
-      const key = message.includes('Missing Supabase config')
+      const key = supabaseHelpers.isRateLimited?.(error)
+        ? 'common.rateLimited'
+        : message.includes('Missing Supabase config')
         ? 'checkout.errorSupabaseConfig'
         : 'checkout.errorCreate';
       showMessage('[data-checkout-status]', '');

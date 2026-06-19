@@ -1209,8 +1209,10 @@
       lookupState.manageToken = result.manageToken || '';
       lookupState.reservations = Array.isArray(result.reservations) ? result.reservations : [];
       renderLookupResults(lookupState.reservations);
-    } catch {
-      setLookupError(t('booking.lookupCodeError'));
+    } catch (error) {
+      setLookupError(
+        t(supabaseHelpers.isRateLimited?.(error) ? 'common.rateLimited' : 'booking.lookupCodeError'),
+      );
     } finally {
       if (button) button.disabled = false;
     }

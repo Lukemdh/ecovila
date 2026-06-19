@@ -1,6 +1,7 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import { groupReservations, hashManageToken } from '../_shared/reservationManage.ts';
+import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
@@ -66,6 +67,8 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+    // Token-gated; an IP cap blunts token-guessing / DB-probe floods (ADR-060).
+    await assertRateLimit(client, RATE_LIMITS.manageActionIp, rateLimitIp(request));
     const manageToken = await validateManageToken(client, token);
     const reservations = await findReservationGroup(client, reservationId, manageToken.phone);
 

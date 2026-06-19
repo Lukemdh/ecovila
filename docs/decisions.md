@@ -1584,6 +1584,109 @@ valid international format." before any DB write. No migration. The frontend (`j
 
 ---
 
+### ADR-060 — Site-wide rate limiting for the public Edge Functions
+
+ADR-059 left an explicit gap: the SMS lookup is an enumeration oracle, and its only throttle was
+per-phone (5/10min), which an attacker defeats by rotating the phone number on each request. More
+broadly, almost every guest-facing Edge Function runs with `verify_jwt = true` but is called with the
+public anon key — so "JWT-gated" really means "reachable by anyone with the key baked into the
+frontend". The booking flow had no defence against a single source spamming SMS, holding inventory
+with pending reservations, brute-forcing lookup codes, or driving outbound MAIB / tracking calls.
+
+**One shared, DB-backed limiter.** A generic sliding window in `public.rate_limit_events (bucket, key,
+created_at)` backs every endpoint. Edge isolates do not share memory, so the database is the only
+correct shared counter (the same reason the existing per-phone limit counts DB rows). The decision is
+taken inside a `SECURITY DEFINER` Postgres function `rate_limit_hit(bucket, key, limit, window)` in one
+DB round trip. The count-then-insert is intentionally **lock-free**: under burst concurrency a handful
+of requests may slip one over the limit, which is irrelevant for abuse protection and avoids
+serializing every caller of a hot `global` bucket (the pre-existing per-phone limiter is racy for the
+same reason). A blocked request is **not** recorded, so a flood already over the limit cannot keep
+extending its own window or growing the table. The function is `revoke`d from `anon`/`authenticated`
+and then **explicitly `grant`ed to `service_role`** — the Edge runtime calls it as the service role, and
+revoking from `PUBLIC` strips the inherited grant, which would make every call error and (by the
+fail-open rule below) silently disable rate limiting. Two `pg_cron` jobs prune: `rate_limit_events`
+every 30 min (longest window is 10 min), and — for the first time — `reservation_lookup_codes`, which
+had no cleanup and is read on the lookup path.
+
+**Layered keys — and deliberately NO global bucket.** Each endpoint composes `ip` (best-effort
+per-caller) and, where one exists, a per-resource key (`phone`, booking-group, change). An earlier
+draft added a spoof-proof `global` ceiling to every endpoint as a backstop for empty/spoofed IPs; the
+owner **rejected it**: a single site-wide cap is a circuit breaker that, when it trips (one attacker, or
+one legitimate spike/marketing push), denies booking to *every* guest at once — unacceptable collateral
+for a business whose revenue is bookings. The accepted trade-off is explicit: an attacker on rotating
+IPs is not fully stopped by the rate limiter, and the cryptographic controls (manage tokens, MAIB
+signature, reconcile-against-MAIB) remain the integrity guarantees. All limits live in one tunable
+`RATE_LIMITS` map in `_shared/rateLimit.ts`.
+
+**Per-endpoint policy (window in minutes):**
+
+| Function | Keys (limit/window) | Why |
+|---|---|---|
+| `reservation-lookup-start` | phone 5/10 (ADR-059), ip 20/10 | SMS + enumeration oracle |
+| `reservation-lookup-verify` | ip 40/10 | code brute force (per-lookupId already capped at 5) |
+| `create-reservation` | ip 10/10, phone 6/10 | pending rows hold inventory (denial vector) |
+| `track-event` | ip 120/1 | outbound analytics fan-out |
+| `maib-mia-status` | ip 150/1, group 40/1 | poll re-confirms vs MAIB; legit ~17/min/booking; unknown id = cheap not_found |
+| `reservation-change-status` | ip 150/1, change 40/1 | same, difference-payment poll |
+| `maib-mia-callback` | ip 60/1 | unsigned; each valid id → outbound reconcile. IP cap sits far above MAIB's real volume; a dropped callback is non-fatal (browser poll reconciles) |
+| `maib-callback` | **none** | gated by the MAIB HMAC signature; a per-IP cap could throttle the provider, so it is left to the signature |
+| `maib-create-payment` | ip 30/10, group 12/10 | mints a MAIB session (now token-validated, see below) |
+| `reservation-change-create` | ip 20/10 | token-gated but mints a MAIB session |
+| `reservation-cancel` / `-extend-cash` / `-manage-details` | ip 60/10 | token-gated; cap vs token-guessing / DB probes |
+
+**Closed the `maib-create-payment` auth hole.** It previously minted a MAIB payment session from
+`bookingGroupId` alone — a server UUID, but a *capability* anyone holding it could spend. It now
+validates the manage token (`validateManageTokenPhone`, the same helper `reservation-change-create`
+uses) and asserts the token's phone owns every reservation in the group (`assertBookingBelongsToPhone`),
+so a leaked or guessed group id can no longer drive the provider on a stranger's booking. The token TTL
+(30 min) always outlives the payment session (5 min), so no legitimate retry/reload regresses; all
+callers (checkout, the confirmation retry, the MIA page) already pass the token.
+
+**Deliberately not limited:** the staff functions (`confirm-reservation-payment`, `maib-refund`,
+`send-sms`, `send-email`, `reservation-cancel-notify`) are gated by `requireStaffRole`, and the cron
+functions (`expire-cash-reservations`, `send-reminders`) by `requireSharedSecret` — adding a limiter
+would be redundant and could throttle legitimate back-office bursts.
+
+**Fail-open by design.** A missing key (stripped IP header) or any limiter error returns *allowed* and
+logs — keeping the booking flow available beats strict enforcement. Blocked guests on
+`reservation-lookup-start` reuse the existing `{ ok: true, rateLimited: true }` shape the browser
+already handles (ADR-059); every other limited endpoint returns HTTP 429.
+
+**Customer-facing message.** A 429 surfaces in the UI as a localized "Sorry — our systems flagged your
+requests. Please try again in a few minutes." (`common.rateLimited`, ro/ru/en). `js/supabase.js` exposes
+`isRateLimited(error)` which reads the status off the supabase-js `FunctionsHttpError.context` (the raw
+Response), and the customer surfaces — checkout, the confirmation payment-retry (new `[data-retry-status]`
+line), the manage page (cancel / extend / add-guests), and the SMS-code step — show that string instead
+of their generic error. Background status polls stay silent: they self-heal by retrying, and legit
+polling sits below the per-key budget anyway.
+
+**Client IP, honestly.** On Supabase Edge Functions the client IP is the *first* `x-forwarded-for` hop
+(Supabase's gateway sets it; their documented pattern reads `[0]`), so a caller-supplied header does not
+become `[0]`; `rateLimitIp` additionally prefers a single-value vendor header (`cf-connecting-ip` etc.)
+when present. Two realities keep IP imperfect: the header is empty on a meaningful share of requests
+(then the limiter fails open for that call), and the trustworthy XFF position is platform-specific. With
+no global backstop (by the decision above), this is mitigation that raises cost and bounds spend/abuse,
+not a wall — an attacker on rotating IPs/proxies gets past the IP buckets. Limit values are a starting
+point, tunable in one map, and may need adjustment once prod logs show real traffic.
+
+**Tests:** Deno unit tests for the helper (`supabase/functions/tests/rateLimit.test.ts`: IP resolution,
+fail-open on missing key / limiter error, explicit-false-only blocking, 429 mapping, RATE_LIMITS
+well-formedness) and a Node wiring guard (`tests/rate-limiting.test.mjs`) that asserts the migration
+shape (incl. the `service_role` grant), that every public function routes through the limiter, that **no
+global/`'all'` bucket remains**, that `maib-callback` stays signature-gated with no limiter, that
+`maib-create-payment` validates the token, and that the customer message is wired in all three languages
+— plus a catch-all that forces any *new* Edge Function to be classified, so an unprotected endpoint
+cannot ship silently. Full suite green (256 Node + 89 Deno).
+
+**Deployed to prod 2026-06-19.** Order: (1) applied migration `20260619140000_rate_limiting.sql` (table
++ `rate_limit_hit` + `service_role` grant + 2 crons; idempotent), then (2) redeployed all 13 touched
+Edge Functions (`verify_jwt` preserved per `config.toml`), then (3) the frontend (`js/supabase.js`,
+`js/translations.js`, `js/checkout.js`, `js/confirmare.js`, `confirmare.html`, `js/gestionare.js`,
+`js/booking.js`) via the TopHost upload. The frontend only adds a friendlier message, so the backend
+went first without breaking it.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

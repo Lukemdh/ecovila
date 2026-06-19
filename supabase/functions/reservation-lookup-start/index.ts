@@ -13,6 +13,7 @@ import {
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+import { enforceRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 
 type QueryResult<T = unknown> = SupabaseQueryResult<T> & {
   count?: number | null;
@@ -42,9 +43,17 @@ Deno.serve(async (request) => {
     const body = await readJson(request);
     const phone = assertValidPhone(body?.phone);
     const client = createServiceClient();
-    const recentCount = await countRecentLookupAttempts(client, phone);
 
-    if (recentCount >= 5) {
+    // Per-phone (existing, ADR-059) and per-IP (ADR-060). Either tripping returns
+    // the rateLimited shape the browser already handles — it stops the guest on
+    // the phone step with a wait message instead of advancing to a code step that
+    // can never verify.
+    const [recentCount, ipAllowed] = await Promise.all([
+      countRecentLookupAttempts(client, phone),
+      enforceRateLimit(client, RATE_LIMITS.lookupStartIp, rateLimitIp(request)),
+    ]);
+
+    if (recentCount >= 5 || !ipAllowed) {
       return jsonResponse({ ok: true, rateLimited: true }, {}, request);
     }
 

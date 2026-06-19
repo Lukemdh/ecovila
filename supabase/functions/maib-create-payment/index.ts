@@ -10,6 +10,8 @@ import {
   MAIB_PAYMENT_SESSION_MINUTES,
 } from '../_shared/maib.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { assertRateLimits, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
+import { validateManageTokenPhone } from '../_shared/reservationChanges.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
@@ -74,12 +76,28 @@ Deno.serve(async (request) => {
     const bookingGroupId = requiredString(body?.bookingGroupId, 'bookingGroupId is required.');
     const requestedReservationIds = normalizeStringArray(body?.reservationIds);
     const paymentRail = normalizePaymentRail(body?.paymentRail);
+    const manageToken = String(body?.manageToken || '').trim();
     const client = createServiceClient();
+
+    // This mints a MAIB session (an outbound provider call). Bound it per IP and
+    // per booking group; the manage-token check below is the real gate (ADR-060).
+    await assertRateLimits(client, [
+      { rule: RATE_LIMITS.createPaymentIp, key: rateLimitIp(request) },
+      { rule: RATE_LIMITS.createPaymentGroup, key: bookingGroupId },
+    ]);
+
+    // The manage token (issued by create-reservation / the SMS lookup) is the
+    // real capability for paying a booking: validate it and bind it to the
+    // booking's phone, so a leaked or guessed bookingGroupId can no longer drive
+    // MAIB on a stranger's reservation (ADR-060, mirrors reservation-change-create).
+    const tokenPhone = await validateManageTokenPhone(client, manageToken);
+
     const reservations = await findPayableReservations(
       client,
       bookingGroupId,
       requestedReservationIds,
     );
+    assertBookingBelongsToPhone(reservations, tokenPhone);
     const primaryReservationId = normalizePrimaryReservationId(
       body?.primaryReservationId,
       reservations,
@@ -92,7 +110,7 @@ Deno.serve(async (request) => {
       siteUrl: getSiteUrl(),
       primaryReservationId,
       bookingGroupId,
-      manageToken: String(body?.manageToken || '').trim(),
+      manageToken,
     };
     const existingPayment = await findReusablePayment(client, bookingGroupId);
 
@@ -311,6 +329,19 @@ async function findPayableReservations(
   }
 
   return reservations;
+}
+
+// The manage token's phone must own every reservation being paid. A booking
+// group is created from a single guest form, so all rows share one phone;
+// requiring an exact match means a valid token for booking A can never start a
+// payment for booking B.
+function assertBookingBelongsToPhone(
+  reservations: PayableReservationRow[],
+  tokenPhone: string,
+) {
+  if (!tokenPhone || reservations.some((reservation) => reservation.guest_phone !== tokenPhone)) {
+    throw new HttpError(403, 'This manage token does not match the booking.');
+  }
 }
 
 function resolvePaymentDeadline(reservations: PayableReservationRow[], now: Date) {

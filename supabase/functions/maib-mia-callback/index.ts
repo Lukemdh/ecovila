@@ -12,10 +12,10 @@ import {
   reconcileMiaChange,
 } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
-const CHANGE_ORDER_ID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHANGE_ORDER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
@@ -41,6 +41,13 @@ Deno.serve(async (request) => {
     const payload = parseMaibCallback(rawBody) as Record<string, unknown>;
 
     const client = createServiceClient();
+
+    // Unsigned endpoint: each valid id triggers an outbound MAIB reconcile. The
+    // legit caller is MAIB's server, so a generous per-IP cap blunts a
+    // single-source flood while sitting far above real volume; a dropped callback
+    // is non-fatal — MAIB retries and the browser poll also reconciles (ADR-060).
+    await assertRateLimit(client, RATE_LIMITS.miaCallbackIp, rateLimitIp(request));
+
     const orderId = getMaibMiaCallbackOrderId(payload);
     const qrId = getMaibMiaCallbackQrId(payload);
 

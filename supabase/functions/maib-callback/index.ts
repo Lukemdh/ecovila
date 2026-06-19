@@ -68,6 +68,9 @@ type UpsertPaymentCallbackInput = {
 Deno.serve(async (request) => {
   try {
     assertMethod(request, ['POST']);
+    // No rate limit here by design: this endpoint is gated by the MAIB HMAC
+    // signature below, and a per-IP cap could throttle the provider while a
+    // global ceiling (rejected for the site) could drop legitimate callbacks.
     const rawBody = await request.text();
     const signatureValid = await verifyMaibCallbackSignature(rawBody, request.headers);
 
@@ -218,8 +221,7 @@ Deno.serve(async (request) => {
   }
 });
 
-const CHANGE_ORDER_ID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHANGE_ORDER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function findChangePaymentForCallback(
   client: SupabaseClient,
@@ -261,10 +263,13 @@ async function handleChangeCallback(
     // new_adults/new_kids_ages is a stale snapshot, and applying it would
     // overwrite a newer change's party. Capture it for manual refund instead.
     if (change.status !== 'pending') {
-      console.error('Paid card callback for a non-pending change — not applied, manual refund review', {
-        ...context,
-        changeStatus: change.status,
-      });
+      console.error(
+        'Paid card callback for a non-pending change — not applied, manual refund review',
+        {
+          ...context,
+          changeStatus: change.status,
+        },
+      );
       return jsonResponse({ ok: true, status: 'stale', changeId: change.id }, {}, request);
     }
 

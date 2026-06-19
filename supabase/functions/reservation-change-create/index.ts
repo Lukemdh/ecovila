@@ -20,6 +20,7 @@ import {
   supersedeOpenChanges,
   validateManageTokenPhone,
 } from '../_shared/reservationChanges.ts';
+import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 
 // Guest adds adults/children to a confirmed booking and pays only the price
 // difference (ADR-057). The party fit + difference are recomputed server-side;
@@ -41,6 +42,9 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+    // Token-gated, but each change mints a MAIB session — cap the provider load
+    // per IP (ADR-060).
+    await assertRateLimit(client, RATE_LIMITS.changeCreateIp, rateLimitIp(request));
     const phone = await validateManageTokenPhone(client, manageToken);
     const reservations = await loadBookingGroupForChange(client, reservationId, phone);
     assertEligibleForChange(reservations);

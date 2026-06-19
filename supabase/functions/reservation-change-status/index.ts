@@ -1,6 +1,7 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { assertRateLimits, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import {
   findChangeById,
   reconcileMiaChange,
@@ -26,6 +27,12 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+    // MIA polls re-confirm against MAIB; budgets sit above the ~20/min browser
+    // cadence, per-change bounds spam on a known UUID (ADR-060).
+    await assertRateLimits(client, [
+      { rule: RATE_LIMITS.changeStatusIp, key: rateLimitIp(request) },
+      { rule: RATE_LIMITS.changeStatusKey, key: changeId },
+    ]);
     const change = await findChangeById(client, changeId);
 
     if (!change) {

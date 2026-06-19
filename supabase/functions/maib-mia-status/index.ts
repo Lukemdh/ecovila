@@ -2,6 +2,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import { reconcileMiaBookingGroup } from '../_shared/miaReconcile.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { assertRateLimits, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 
 // Browser poll for the MIA QR payment page. Returns the QR url + live payment
 // status for a booking group. Keyed by the booking group id, an unguessable
@@ -24,6 +25,12 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+    // Each poll re-confirms against MAIB. Budgets sit above the ~17/min/booking
+    // browser cadence; per-group bounds spam on a known UUID (ADR-060).
+    await assertRateLimits(client, [
+      { rule: RATE_LIMITS.miaStatusIp, key: rateLimitIp(request) },
+      { rule: RATE_LIMITS.miaStatusGroup, key: bookingGroupId },
+    ]);
     const result = await reconcileMiaBookingGroup(client, bookingGroupId, 'maib-mia-status');
 
     return jsonResponse(

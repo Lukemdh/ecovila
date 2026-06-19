@@ -616,10 +616,13 @@
       if (_managedContext?.details?.reservation) {
         _managedContext.details.reservation.paymentStatus = 'cancelled';
       }
-    } catch {
+    } catch (error) {
       yesBtn.disabled = false;
       setBtnText(yesBtn, t('confirmare.cancelYes'));
-      setText('[data-managed-action-error]', t('confirmare.cancelError'));
+      setText(
+        '[data-managed-action-error]',
+        t(supabaseHelpers.isRateLimited?.(error) ? 'common.rateLimited' : 'confirmare.cancelError'),
+      );
       show('[data-managed-action-error]');
     }
   }
@@ -774,10 +777,13 @@
         setText('[data-confirmare-action-error]', t('confirmare.extendError'));
         show('[data-confirmare-action-error]');
       }
-    } catch {
+    } catch (error) {
       btn.disabled = false;
       setBtnText(btn, t('confirmare.extend'));
-      setText('[data-confirmare-action-error]', t('confirmare.extendError'));
+      setText(
+        '[data-confirmare-action-error]',
+        t(supabaseHelpers.isRateLimited?.(error) ? 'common.rateLimited' : 'confirmare.extendError'),
+      );
       show('[data-confirmare-action-error]');
     }
   }
@@ -815,10 +821,13 @@
         setText('[data-confirmare-action-error]', t('confirmare.cancelError'));
         show('[data-confirmare-action-error]');
       }
-    } catch {
+    } catch (error) {
       yesBtn.disabled = false;
       setBtnText(yesBtn, t('confirmare.cancelYes'));
-      setText('[data-confirmare-action-error]', t('confirmare.cancelError'));
+      setText(
+        '[data-confirmare-action-error]',
+        t(supabaseHelpers.isRateLimited?.(error) ? 'common.rateLimited' : 'confirmare.cancelError'),
+      );
       show('[data-confirmare-action-error]');
     }
   }
@@ -1205,11 +1214,14 @@
       }
 
       throw new Error('No payment url returned.');
-    } catch {
+    } catch (error) {
       _ag.submitting = false;
       if (submit) submit.disabled = false;
       setBtnText(submit, t('addguests.submit'));
-      setText('[data-addguests-error]', t('addguests.error'));
+      setText(
+        '[data-addguests-error]',
+        t(supabaseHelpers.isRateLimited?.(error) ? 'common.rateLimited' : 'addguests.error'),
+      );
       show('[data-addguests-error]');
     }
   }

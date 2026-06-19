@@ -1,6 +1,7 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import { refundMaibPayment } from '../_shared/maib.ts';
+import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import {
   groupReservations,
@@ -103,6 +104,8 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+    // Token-gated; an IP cap blunts token-guessing / DB-probe floods (ADR-060).
+    await assertRateLimit(client, RATE_LIMITS.manageActionIp, rateLimitIp(request));
     const manageToken = await validateManageToken(client, token);
     const reservations = await findActiveReservationGroup(client, reservationId, manageToken.phone);
 

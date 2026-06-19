@@ -428,6 +428,11 @@
 
     _retryInFlight = true;
     const originalText = button.textContent;
+    const statusNode = button.closest('section')?.querySelector('[data-retry-status]');
+    if (statusNode) {
+      statusNode.hidden = true;
+      statusNode.textContent = '';
+    }
     button.disabled = true;
     button.textContent = t('confirmare.retryPaymentLoading');
 
@@ -449,11 +454,15 @@
       // flip the page to the cancelled state once the server confirms it.
       button.disabled = false;
       button.textContent = originalText;
-    } catch {
+    } catch (error) {
       // A transient failure: re-enable so the guest can try again. If the window
       // truly closed, the card status poller will switch to the cancelled state.
       button.disabled = false;
       button.textContent = originalText;
+      if (statusNode && supabaseHelpers.isRateLimited?.(error)) {
+        statusNode.textContent = t('common.rateLimited');
+        statusNode.hidden = false;
+      }
     } finally {
       _retryInFlight = false;
     }

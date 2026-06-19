@@ -5,6 +5,7 @@ import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { createReservationsWithTokens } from '../_shared/reservations.ts';
 import { assignAutomaticRooms } from '../_shared/roomAssignment.ts';
 import { verifyReservationGroupPricing } from '../_shared/pricingGuard.ts';
+import { assertRateLimits, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import type { ReservationInput } from '../_shared/reservations.ts';
 
 Deno.serve(async (request) => {
@@ -19,6 +20,18 @@ Deno.serve(async (request) => {
     const reservations = Array.isArray(body?.reservations) ? body.reservations : body;
 
     const client = createServiceClient();
+
+    // A pending reservation holds inventory, so an unauthenticated flood here is
+    // an inventory-denial vector. Bound it per IP and per guest phone (ADR-060).
+    const guestPhone = String(
+      (Array.isArray(reservations) ? reservations[0]?.guest_phone : reservations?.guest_phone) ||
+        '',
+    ).trim();
+    await assertRateLimits(client, [
+      { rule: RATE_LIMITS.createReservationIp, key: rateLimitIp(request) },
+      { rule: RATE_LIMITS.createReservationPhone, key: guestPhone },
+    ]);
+
     const result = await createReservationsWithTokens(client, reservations as ReservationInput[], {
       // Best-effort optimization: if auto-assignment fails for any reason, keep
       // the client-supplied room ids so a booking is never lost to it (ADR-054).

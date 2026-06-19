@@ -115,6 +115,8 @@ window.EcoVilaTranslations = {
     'booking.lookupCodeError': 'Codul nu este valid sau a expirat.',
     'booking.lookupNoReservations': 'Nu am găsit rezervări active pentru acest număr.',
     'booking.lookupRateLimited': 'Prea multe încercări. Încearcă din nou peste câteva minute.',
+    'common.rateLimited':
+      'Ne pare rău, sistemele noastre au semnalat prea multe cereri. Te rugăm să încerci din nou peste câteva minute.',
     'booking.lookupChooseReservation': 'Alege rezervarea pe care vrei să o gestionezi.',
     'booking.selectorTitle': 'Persoane și date',
     'booking.adults': 'Adulți',
@@ -496,6 +498,8 @@ window.EcoVilaTranslations = {
     'booking.lookupCodeError': 'Код недействителен или истёк.',
     'booking.lookupNoReservations': 'Активных бронирований для этого номера не найдено.',
     'booking.lookupRateLimited': 'Слишком много попыток. Повторите попытку через несколько минут.',
+    'common.rateLimited':
+      'Извините, наши системы отметили слишком много запросов. Пожалуйста, попробуйте снова через несколько минут.',
     'booking.lookupChooseReservation': 'Выберите бронирование для управления.',
     'booking.selectorTitle': 'Гости и даты',
     'booking.adults': 'Взрослые',
@@ -877,6 +881,8 @@ window.EcoVilaTranslations = {
     'booking.lookupCodeError': 'The code is invalid or expired.',
     'booking.lookupNoReservations': 'No active reservations were found for this number.',
     'booking.lookupRateLimited': 'Too many attempts. Please try again in a few minutes.',
+    'common.rateLimited':
+      'Sorry — our systems flagged your requests. Please try again in a few minutes.',
     'booking.lookupChooseReservation': 'Choose the reservation you want to manage.',
     'booking.selectorTitle': 'Guests and Dates',
     'booking.adults': 'Adults',

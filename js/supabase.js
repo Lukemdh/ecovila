@@ -74,6 +74,31 @@
     };
   }
 
+  // A rate-limited Edge Function answers 429 (see _shared/rateLimit.ts). supabase-js
+  // surfaces that as a FunctionsHttpError whose `context` is the raw Response, so the
+  // status lives at `error.context.status`. We check a few shapes defensively and
+  // tag the error so every caller can show one friendly "try again later" message.
+  function isRateLimitError(error) {
+    if (!error) return false;
+    if (error.rateLimited === true) return true;
+    const status = error.status ?? error.statusCode ?? error.context?.status;
+    if (Number(status) === 429) return true;
+    const message = String(error.message || '');
+    return /\b429\b/.test(message) || /too many requests/i.test(message);
+  }
+
+  function decorateInvokeError(error) {
+    if (isRateLimitError(error)) {
+      try {
+        error.rateLimited = true;
+      } catch (_error) {
+        // Some error objects are frozen; the shape checks in isRateLimitError
+        // still detect the 429, so swallowing this is safe.
+      }
+    }
+    return error;
+  }
+
   function createSupabaseClient(config, library, options) {
     const supabaseLibrary = library || defaultRoot.supabase;
 
@@ -103,7 +128,7 @@
     const result = await resultPromise;
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || [];
@@ -178,7 +203,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -194,7 +219,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -210,7 +235,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -231,7 +256,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -250,7 +275,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -266,7 +291,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -285,7 +310,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -304,7 +329,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -323,7 +348,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -544,7 +569,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -822,7 +847,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data?.cash_expires_at || null;
@@ -840,7 +865,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data;
@@ -867,7 +892,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -883,7 +908,7 @@
     });
 
     if (result.error) {
-      throw result.error;
+      throw decorateInvokeError(result.error);
     }
 
     return result.data || {};
@@ -951,6 +976,7 @@
     CLIENT_OPTIONS,
     PHOTO_CACHE_CONTROL,
     PHOTO_VARIANTS,
+    isRateLimited: isRateLimitError,
     cancelPendingReservation,
     cancelReservationByToken,
     confirmReservationPayment,
