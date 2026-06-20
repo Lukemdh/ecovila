@@ -2322,9 +2322,11 @@ decisions.
 
 **Status.** Committed and pushed to `main`; asset token bumped to `?v=2026062003`
 (`npm run bump:assets`) and `dist/tophost` rebuilt (`npm run prepare:tophost`) — live on next
-TopHost upload. Backend redeploy still pending owner sign-off: `confirm-reservation-payment`
-(confirmation email) and `send-reminders` (reminder email) both bundle the shared
-`notifications.ts`. Verified: `deno check` clean, 31 email/reminder tests pass, all three
+TopHost upload. **Backend deployed to prod 2026-06-20**: `supabase functions deploy` redeployed
+all 24 edge functions (notably `confirm-reservation-payment` v26 for the confirmation email and
+`send-reminders` v23 for the reminder email); the same redeploy also shipped the previously
+undeployed ADR-072 SMS trim (`send-sms` v17). Verified: `deno check` clean, 31 email/reminder
+tests pass, all three
 languages render the correct localized label + exact URL in HTML and plaintext, and the
 confirmation page button carries the new href with no console errors. Files: `confirmare.html`,
 `js/confirmare.js`, `supabase/functions/_shared/notifications.ts` (+ the `?v=` re-stamp across
