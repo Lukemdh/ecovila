@@ -61,6 +61,22 @@
     return translations[state.language]?.[key] || translations.ro?.[key] || key;
   }
 
+  // The FAQ has a dedicated, indexable page per language. Interior pages (booking,
+  // legal, etc.) hardcode the Romanian FAQ link, so rewrite those links to the
+  // visitor's localized FAQ to keep language consistent as they navigate.
+  const localizedFaqHref = {
+    ro: '/intrebari-frecvente.html',
+    ru: '/ru/voprosy.html',
+    en: '/en/faq.html',
+  };
+
+  function localizeInteriorLinks(language) {
+    const faqHref = localizedFaqHref[language] || localizedFaqHref.ro;
+    document.querySelectorAll('a[href$="intrebari-frecvente.html"]').forEach((link) => {
+      link.setAttribute('href', faqHref);
+    });
+  }
+
   function applyLanguage(language) {
     const translations = getTranslations();
     state.language = normalizeLanguage(language);
@@ -101,6 +117,8 @@
       select.value = state.language;
     });
 
+    localizeInteriorLinks(state.language);
+
     window.dispatchEvent(
       new CustomEvent('ecovila:languagechange', {
         detail: { language: state.language },
@@ -115,10 +133,28 @@
     state.language = currentLanguage;
 
     if (staticSelectSwitcher) {
-      staticSelectSwitcher.value = currentLanguage === 'ru' ? '/ru/' : currentLanguage === 'en' ? '/en/' : '/';
+      // Static pages (homepages, localized FAQ) declare their language via the URL.
+      // Persist it so downstream dynamic pages (booking, legal) inherit the choice
+      // instead of defaulting to Romanian for a visitor who landed straight on /ru/.
+      localStorage.setItem(storageKeys.language, currentLanguage);
+      localizeInteriorLinks(currentLanguage);
+
+      // Localized static pages whose slug isn't /ru/ or /en/ (e.g. /ru/voprosy.html)
+      // tag each option with data-lang. Homepages omit it and keep using the option
+      // value ("/", "/ru/", "/en/") as both the navigation target and language hint.
+      const optionForLang = (lang) =>
+        staticSelectSwitcher.querySelector(`option[data-lang="${lang}"]`);
+      const currentOption = optionForLang(currentLanguage);
+      staticSelectSwitcher.value = currentOption
+        ? currentOption.value
+        : currentLanguage === 'ru' ? '/ru/' : currentLanguage === 'en' ? '/en/' : '/';
+
       staticSelectSwitcher.addEventListener('change', () => {
+        const selectedOption = staticSelectSwitcher.selectedOptions[0];
         const target = staticSelectSwitcher.value || '/';
-        const nextLanguage = target === '/ru/' ? 'ru' : target === '/en/' ? 'en' : 'ro';
+        const nextLanguage =
+          selectedOption?.dataset.lang ||
+          (target === '/ru/' ? 'ru' : target === '/en/' ? 'en' : 'ro');
         localStorage.setItem(storageKeys.language, nextLanguage);
         window.location.href = target;
       });
@@ -272,7 +308,7 @@
     // On the booking page (rezervari.html) booking.js fully owns the details modal,
     // including the [data-booking-modal-reserve] button (Select → Continue → checkout).
     // main.js's landing-page version of this modal must not bind here, otherwise its
-    // reserve handler (window.location.href = 'rezervari.html') fires alongside
+    // reserve handler (window.location.href = '/rezervari.html') fires alongside
     // booking.js's and reloads the page, wiping the selection.
     if (document.body.classList.contains('page-booking')) {
       return;
@@ -291,7 +327,7 @@
     const reserveBtn = document.querySelector('[data-booking-modal-reserve]');
     if (reserveBtn) {
       reserveBtn.addEventListener('click', () => {
-        window.location.href = 'rezervari.html';
+        window.location.href = '/rezervari.html';
       });
     }
 

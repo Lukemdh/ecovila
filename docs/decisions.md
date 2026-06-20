@@ -2242,11 +2242,58 @@ upload. Files: `site.html`, `robots.txt`.
 
 ---
 
-## Open questions for the owner (decisions not yet made)
+### ADR-076 — Localized FAQ pages (`/ru/voprosy.html`, `/en/faq.html`) + i18n cross-language link fixes + Cyrillic brand schema
 
-- Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
-  `/ru/...`, `/en/...`) with hreflang, mirroring the homepage (ADR-016) and superseding the
-  interim single-URL `@graph` from ADR-024?
+**Context.** The homepage trio (ADR-016) has distinct per-language URLs with hreflang, but
+every interior page was single-URL with client-side JS translation — so the RU/EN FAQ had no
+crawlable URL, no hreflang, and was invisible to search in those languages (the interim
+three-language `@graph` of FAQPage entities on the one RO URL, ADR-024, was non-standard).
+Separately, a reserve button on the `en/`/`ru/` homepages 404'd, and the brand was spelled in
+Latin everywhere (`EcoVila`/`Eco Vila`), giving no relevance signal for the common Cyrillic
+query "эко вилла". Resolves the FAQ-split open question carried since ADR-024.
+
+**Localized FAQ pages.** Added static, fully-translated `/ru/voprosy.html` and `/en/faq.html`
+(homepage-trio model: hardcoded per-language copy, `data-static-lang-select`, absolute
+asset/link paths). Each carries a self-canonical, a reciprocal hreflang cluster
+(ro/ru/en/x-default → RO), localized title/description/og, and ONE `FAQPage` JSON-LD in its own
+language. The RO `intrebari-frecvente.html` was converted dynamic→static and its `@graph`
+trimmed to a single RO FAQPage (the RU/EN FAQPage moved to their own URLs). `sitemap.xml` gained
+the two URLs plus a hreflang cluster on all three FAQ entries. Homepage FAQ CTAs now point at the
+per-language URL.
+
+**main.js static-switcher generalized.** `<option data-lang="…">` lets static pages whose slug
+isn't `/ru/` or `/en/` (e.g. `/ru/voprosy.html`) select and navigate correctly; homepages omit
+it and keep the legacy `/`,`/ru/`,`/en/` value mapping (backward compatible). Static pages now
+persist their page language to `localStorage` on load, so a visitor landing straight on `/ru/…`
+makes downstream dynamic pages (booking, legal) inherit RU instead of defaulting to RO.
+`localizeInteriorLinks()` rewrites any `intrebari-frecvente.html` link to the visitor's localized
+FAQ (future-proofing; today only `index.html` and the RO FAQ self-link match — interior pages
+have no FAQ link).
+
+**Reserve-button 404 fix.** The accommodation-modal reserve handler used a relative
+`window.location.href = 'rezervari.html'`, which under `/ru/`,`/en/` resolved to the
+non-existent `/ru/rezervari.html`. Made it absolute `/rezervari.html`.
+
+**Cyrillic brand schema.** Homepage `alternateName` on both the `LodgingBusiness` and
+`Organization` nodes is now `["Eco Vila", "Эко Вилла", "Эковила"]` across all three homepages,
+so the entity carries the Cyrillic brand form (was Latin-only).
+
+**FAQ content refresh.** Two stale answers corrected to match the current site: a4 (booking) —
+online-first on the booking page, pay online by card (Maib) or instant MIA QR, or cash at the
+office, phone as alternative (previously read as "call only"); a7 (cancel/change) — self-service
+online via the confirmation link (status / extend deadline / cancel) with the ≥20-days-before-
+arrival (or <2h-since-booking) card-refund rule (ADR-057). Updated in all three FAQ pages
+(visible + JSON-LD) and the now-unused `translations.js` `faq.a4`/`faq.a7`.
+
+**Status.** Committed and pushed to `main`; asset token bumped to `?v=2026062002`
+(`npm run bump:assets`) and `dist/tophost` rebuilt (`npm run prepare:tophost`) — live on next
+TopHost upload. Frontend-only (no migration/functions). Files: `index.html`, `ru/index.html`,
+`en/index.html`, `ru/voprosy.html` (new), `en/faq.html` (new), `intrebari-frecvente.html`,
+`js/main.js`, `js/translations.js`, `sitemap.xml`.
+
+---
+
+## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,
   `assets/logo_small.png`) stay in the repo even though they are not referenced or deployed?
