@@ -2213,6 +2213,35 @@ deployed. Files: `assets/videos/ecovila-hero-1080.{mp4,webm}`, `index.html`, `en
 
 ---
 
+### ADR-075 — Pre-production audit sweep: two fixes (hero parity + robots /admin/)
+
+**Context.** Before a production push, ran a full-codebase audit: node + deno test suites
+(303 + 97 green), JS parse / TS type-check, pricing client↔server parity, XSS surfaces
+(dynamic data uses `textContent`, only developer translation strings reach `innerHTML`), CORS
+allowlisting, tabnabbing, `parseInt` radix, duplicate element IDs, broken local links/assets,
+`<img>` alt coverage, translation-key parity (425 keys identical across ro/ru/en, no undefined
+referenced keys), canonical/hreflang/sitemap/og:image/JSON-LD validity, guarded `JSON.parse`
+(frontend + edge functions), `noindex` scope, and merge-conflict markers. The codebase was clean;
+the audit surfaced two issues.
+
+**Fix 1 — hero video parity (`site.html`).** ADR-074 swapped the homepage trio to the 1080p
+hero sources and deleted the old 720p `ecovila-hero.mp4`, but the legacy `site.html` landing
+(still in the TopHost upload manifest and asserted by `tests/landing.test.mjs`) was missed and
+left pointing at the deleted file — a broken reference that also failed the asset-existence test.
+Updated its `<video>` to the same WebM-first + MP4-fallback sources and `preload="auto"`.
+
+**Fix 2 — `robots.txt` admin exclusion.** robots.txt groups do not inherit, so the named
+crawler groups (Googlebot, Bingbot, the AI bots, etc.) carried only `Allow: /` and were not
+covered by the `Disallow: /admin/` that lived solely in the `*` group — i.e. a named search bot
+was technically permitted to crawl `/admin/`. Practical risk was already nil (admin pages are
+`noindex` and auth-gated), but added `Disallow: /admin/` to every named group as defense-in-depth.
+
+**Status.** Both fixes committed and pushed to `main`; `dist/tophost` rebuilt via
+`npm run prepare:tophost`. Frontend-only, ships with the ADR-074 upload — live on next TopHost
+upload. Files: `site.html`, `robots.txt`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
