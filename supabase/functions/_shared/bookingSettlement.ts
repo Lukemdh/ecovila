@@ -8,6 +8,7 @@ import { getSiteUrl } from './env.ts';
 import { sendEmail, sendSms } from './providers.ts';
 import { buildManageTokenRow } from './reservationManage.ts';
 import {
+  aggregateRoomLabel,
   bookingConfirmationSms,
   buildConfirmationEmail,
   normalizeEmailLang,
@@ -515,7 +516,7 @@ function composePaymentConfirmation(
   // The owner reservation's email represents the whole booking group: every
   // villa is listed and the per-villa prices are summed back to the full total.
   const group = groupReservations.length ? groupReservations : [reservation];
-  const roomCopy = aggregateGroupRoomLabel(group, lang);
+  const roomCopy = aggregateRoomLabel(group, lang);
   const totalPrice = group.reduce((sum, row) => sum + Number(row.total_price || 0), 0);
   const confirmationLink = confirmationUrl(siteUrl, reservation.id, manageToken);
   const cancelLink = `${siteUrl}/anulare.html?token=${encodeURIComponent(cancellationToken)}`;
@@ -561,22 +562,6 @@ function confirmationUrl(siteUrl: string, reservationId: string, manageToken: st
   return `${siteUrl}/confirmare.html?${params.toString()}`;
 }
 
-function roomLabel(reservation: PaymentReservationRow, language: string) {
-  if (!reservation.room_number) return 'EcoVila';
-  if (language === 'ru') return `Домик #${reservation.room_number}`;
-  if (language === 'en') return `Villa #${reservation.room_number}`;
-  return `Căsuța #${reservation.room_number}`;
-}
-
-// One accommodation line for the whole booking group, e.g. "Căsuța #3, Căsuța #5".
-function aggregateGroupRoomLabel(reservations: PaymentReservationRow[], language: string): string {
-  const labels = reservations
-    .map((reservation) => roomLabel(reservation, language))
-    .filter((label) => label !== 'EcoVila');
-
-  if (!labels.length) {
-    return 'EcoVila';
-  }
-
-  return [...new Set(labels)].join(', ');
-}
+// Accommodation label + multi-villa aggregation now live in notifications.ts
+// (`accommodationTypeLabel` / `aggregateRoomLabel`) so every email shares one
+// localized, type-based source.

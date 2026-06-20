@@ -10,6 +10,7 @@ import {
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
+  aggregateRoomLabel,
   buildCancellationEmail,
   cancellationConfirmationSms,
   mapNotificationOwners,
@@ -179,8 +180,8 @@ function composeCancellation(
 ): NotificationMessage {
   // The owner reservation's email lists every villa in the booking group.
   const group = groupReservations.length ? groupReservations : [reservation];
-  const roomCopy = [...new Set(group.map((row) => roomLabel(row)))].join(', ');
   const lang = normalizeEmailLang(reservation.guest_language);
+  const roomCopy = aggregateRoomLabel(group, lang);
   const firstName = titleCaseName(reservation.guest_first_name || '');
   const fullName = titleCaseName(
     `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`,
@@ -212,14 +213,6 @@ function composeCancellation(
       html: email.html,
     },
   };
-}
-
-function roomLabel(reservation: CancelledReservationRow) {
-  const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
-  const type = room?.type || 'hotel';
-  const number = room?.number;
-  const typeLabel = type === 'small' ? 'Căsuță Mică' : type === 'large' ? 'Căsuță Mare' : 'Hotel';
-  return number ? `${typeLabel} #${number}` : typeLabel;
 }
 
 function providerError(error: unknown) {

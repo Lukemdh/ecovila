@@ -135,6 +135,7 @@ async function sendArrivalReminders(client: SupabaseClient, now: Date) {
     'arrival_24h',
     (reservation, group) =>
       composeArrivalReminder(reservationForNotification(reservation), {
+        siteUrl: getSiteUrl(),
         groupReservations: group.map(reservationForNotification),
       }),
   );

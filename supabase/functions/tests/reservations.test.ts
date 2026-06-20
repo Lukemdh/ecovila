@@ -296,6 +296,86 @@ Deno.test('composeArrivalReminder sends short translated SMS without sender pref
   }
 });
 
+Deno.test('composeArrivalReminder email uses the premium layout and informal Te address', async () => {
+  const { composeArrivalReminder } = await import('../_shared/notifications.ts');
+  const message = composeArrivalReminder({
+    id: 'reservation-reminder-style',
+    room_number: 3,
+    room_type: 'small',
+    check_in: '2026-10-22',
+    check_out: '2026-10-23',
+    total_price: 2600,
+    payment_type: 'office',
+    guest_email: 'guest@example.md',
+    guest_phone: '+37360123456',
+    guest_first_name: 'client',
+    guest_last_name: '',
+    guest_language: 'ro',
+  }, { siteUrl: 'https://ecovila.md' });
+
+  assertEquals(message.email.subject, 'Mâine te așteptăm la EcoVila');
+  // Premium shared layout markers (logo + rounded cards), not the bare template.
+  assertEquals(message.email.html.includes('https://ecovila.md/assets/logo.png'), true);
+  assertEquals(message.email.html.includes('border-radius'), true);
+  // Accommodation shows the localized type, not the room number.
+  assertEquals(message.email.html.includes('Căsuță mică'), true);
+  assertEquals(message.email.html.includes('Căsuța #3'), false);
+  // Informal "tu/te" address, never the formal "vă".
+  assertEquals(message.email.html.includes('Bună, Client!'), true);
+  assertEquals(message.email.html.includes('te așteptăm'), true);
+  assertEquals(message.email.html.toLowerCase().includes('vă așteptăm'), false);
+});
+
+Deno.test('composeArrivalReminder localizes the premium email (ru/en)', async () => {
+  const { composeArrivalReminder } = await import('../_shared/notifications.ts');
+  const base = {
+    id: 'reservation-reminder-i18n',
+    room_number: 3,
+    room_type: 'small',
+    check_in: '2026-10-22',
+    check_out: '2026-10-23',
+    total_price: 2600,
+    payment_type: 'office',
+    guest_email: 'guest@example.md',
+    guest_phone: '+37360123456',
+    guest_first_name: 'Ana',
+    guest_last_name: 'Munteanu',
+  };
+
+  const ru = composeArrivalReminder({ ...base, guest_language: 'ru' }, {
+    siteUrl: 'https://ecovila.md',
+  });
+  assertEquals(ru.email.subject, 'Завтра ждём вас в EcoVila');
+  assertEquals(ru.email.html.includes('Здравствуйте, Ana!'), true);
+  assertEquals(ru.email.html.includes('Малый домик'), true);
+  assertEquals(ru.email.html.includes('Как добраться'), true);
+
+  const en = composeArrivalReminder({ ...base, guest_language: 'en' }, {
+    siteUrl: 'https://ecovila.md',
+  });
+  assertEquals(en.email.subject, 'See you tomorrow at EcoVila');
+  assertEquals(en.email.html.includes('Hi Ana!'), true);
+  assertEquals(en.email.html.includes('Small Villa'), true);
+  assertEquals(en.email.html.includes('Get directions'), true);
+});
+
+Deno.test('accommodationTypeLabel + aggregateRoomLabel render localized types with counts', async () => {
+  const { accommodationTypeLabel, aggregateRoomLabel } = await import('../_shared/notifications.ts');
+  // Resolves from either room_type or a raw rooms(type) join, localized.
+  assertEquals(accommodationTypeLabel({ room_type: 'hotel' }, 'ro'), 'Cameră în hotel');
+  assertEquals(accommodationTypeLabel({ rooms: { type: 'large' } }, 'en'), 'Large Villa');
+  assertEquals(accommodationTypeLabel({ room_type: 'mystery' }, 'ro'), 'EcoVila');
+  // Same type collapses into a count; distinct types are listed.
+  assertEquals(
+    aggregateRoomLabel([{ room_type: 'small' }, { room_type: 'small' }], 'ro'),
+    '2× Căsuță mică',
+  );
+  assertEquals(
+    aggregateRoomLabel([{ room_type: 'small' }, { room_type: 'large' }], 'ru'),
+    'Малый домик, Большой домик',
+  );
+});
+
 Deno.test('composeCancellationConfirmation sends a localized cancellation SMS with full-letter dates', async () => {
   const { composeCancellationConfirmation } = await import('../_shared/notifications.ts');
   const cases = [
@@ -398,8 +478,8 @@ Deno.test('composeBookingConfirmation aggregates the booking group into one emai
     guest_language: 'ro',
   };
   const group = [
-    { ...base, id: 'r-1', room_number: 3, total_price: 4000 },
-    { ...base, id: 'r-2', room_number: 5, total_price: 2600 },
+    { ...base, id: 'r-1', room_number: 3, room_type: 'small', total_price: 4000 },
+    { ...base, id: 'r-2', room_number: 5, room_type: 'large', total_price: 2600 },
   ];
 
   const message = composeBookingConfirmation(group[0], {
@@ -414,7 +494,7 @@ Deno.test('composeBookingConfirmation aggregates the booking group into one emai
   // not a single villa's split share. formatEmailMoney groups with a
   // non-breaking space, so normalize before matching.
   const html = message.email.html.replaceAll(' ', ' ');
-  assertEquals(html.includes('Căsuța #3, Căsuța #5'), true);
+  assertEquals(html.includes('Căsuță mică, Căsuță mare'), true);
   assertEquals(html.includes('6 600 MDL'), true);
   assertEquals(html.includes('4 000 MDL'), false);
 });

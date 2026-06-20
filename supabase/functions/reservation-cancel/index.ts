@@ -13,6 +13,7 @@ import { refundPaidChanges } from '../_shared/reservationChanges.ts';
 import type { ChangeRefundResult } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
+  aggregateRoomLabel,
   buildCancellationEmail,
   cancellationConfirmationSms,
   mapNotificationOwners,
@@ -375,8 +376,8 @@ function composeCancellationConfirmation(
 ): NotificationMessage {
   // The owner reservation's email lists every villa in the booking group.
   const group = groupReservations.length ? groupReservations : [reservation];
-  const roomCopy = [...new Set(group.map((row) => roomLabel(row)))].join(', ');
   const lang = normalizeEmailLang(reservation.guest_language);
+  const roomCopy = aggregateRoomLabel(group, lang);
   const firstName = titleCaseName(reservation.guest_first_name || '');
   const fullName = titleCaseName(
     `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`,
@@ -408,14 +409,6 @@ function composeCancellationConfirmation(
       html: email.html,
     },
   };
-}
-
-function roomLabel(reservation: CancellationReservationRow) {
-  const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
-  const type = room?.type || reservation.room_type || 'hotel';
-  const number = room?.number || reservation.room_number;
-  const typeLabel = type === 'small' ? 'Căsuță Mică' : type === 'large' ? 'Căsuță Mare' : 'Hotel';
-  return number ? `${typeLabel} #${number}` : typeLabel;
 }
 
 function providerError(error: unknown) {

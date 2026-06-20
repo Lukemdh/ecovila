@@ -4,6 +4,7 @@ import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 export type NotificationReservation = {
   id: string;
   room_number?: number;
+  room_type?: string;
   check_in: string;
   check_out: string;
   total_price: number;
@@ -82,18 +83,28 @@ export function mapNotificationOwners<T extends NotificationGroupRow>(
  * Falls back to the single brand label when no room numbers are known.
  */
 export function aggregateRoomLabel(
-  reservations: NotificationReservation[],
-  language = 'ro',
+  reservations: RoomTypeSource[],
+  language: unknown = 'ro',
 ): string {
   const labels = reservations
-    .map((reservation) => roomLabel(reservation, language))
+    .map((reservation) => accommodationTypeLabel(reservation, language))
     .filter((label) => label !== 'EcoVila');
 
   if (!labels.length) {
     return 'EcoVila';
   }
 
-  return [...new Set(labels)].join(', ');
+  // Group identical type labels into a count ("2× Căsuță mică") so a multi-villa
+  // booking still conveys how many units it covers now that the room number is no
+  // longer shown. A Map keeps the first-seen type first.
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([label, count]) => (count > 1 ? `${count}× ${label}` : label))
+    .join(', ');
 }
 
 /** Full booking-group total — the per-villa prices summed back together. */
@@ -257,7 +268,7 @@ export function composeCancellationConfirmation(
   options: { siteUrl?: string } = {},
 ): SmsNotificationMessage {
   const language = reservationLanguage(reservation) as EmailLang;
-  const roomCopy = roomLabel(reservation, language);
+  const roomCopy = accommodationTypeLabel(reservation, language);
   const siteUrl = (options.siteUrl || 'https://ecovila.md').replace(/\/+$/, '');
   const firstName = titleCaseName(reservation.guest_first_name);
   const fullName = titleCaseName(
@@ -294,11 +305,19 @@ export function composeCancellationConfirmation(
 
 export function composeArrivalReminder(
   reservation: NotificationReservation,
-  options: { groupReservations?: NotificationReservation[] } = {},
+  options: { siteUrl?: string; groupReservations?: NotificationReservation[] } = {},
 ): SmsNotificationMessage {
   const language = reservationLanguage(reservation);
   const group = options.groupReservations?.length ? options.groupReservations : [reservation];
-  const directionsLabel = EMAIL_DIRECTIONS_LABEL[language as EmailLang] ?? EMAIL_DIRECTIONS_LABEL.ro;
+  const siteUrl = (options.siteUrl || 'https://ecovila.md').replace(/\/+$/, '');
+
+  const email = buildArrivalReminderEmail({
+    lang: language as EmailLang,
+    firstName: titleCaseName(reservation.guest_first_name),
+    roomCopy: aggregateRoomLabel(group, language),
+    checkIn: reservation.check_in,
+    siteUrl,
+  });
 
   return {
     sms: {
@@ -307,21 +326,9 @@ export function composeArrivalReminder(
     },
     email: {
       to: reservation.guest_email,
-      subject: 'Mâine vă așteptăm la EcoVila',
-      text:
-        `Vă așteptăm mâine la EcoVila. Check-in de la 13:00. Accesul cu animale de companie nu este permis.\n\n${directionsLabel}: ${EMAIL_MAPS_URL}`,
-      html: reservationEmailHtml({
-        title: 'Mâine vă așteptăm la EcoVila',
-        greeting: `Bună, ${escapeHtml(reservation.guest_first_name)}.`,
-        rows: [
-          ['Cazare', aggregateRoomLabel(group, language)],
-          ['Check-in', `${reservation.check_in}, de la 13:00`],
-        ],
-        body:
-          'Vă rugăm să rețineți: accesul cu animale de companie nu este permis pe teritoriul complexului.',
-        ctaUrl: EMAIL_MAPS_URL,
-        ctaLabel: directionsLabel,
-      }),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
     },
   };
 }
@@ -721,22 +728,6 @@ function reservationLanguage(reservation: NotificationReservation) {
   return SUPPORTED_LANGUAGES.has(language) ? language : 'ro';
 }
 
-function roomLabel(reservation: NotificationReservation, language = 'ro') {
-  if (!reservation.room_number) {
-    return 'EcoVila';
-  }
-
-  if (language === 'ru') {
-    return `Домик #${reservation.room_number}`;
-  }
-
-  if (language === 'en') {
-    return `Villa #${reservation.room_number}`;
-  }
-
-  return `Căsuța #${reservation.room_number}`;
-}
-
 export function bookingConfirmationSms(input: {
   language: string;
   checkIn: string;
@@ -959,6 +950,32 @@ const EMAIL_DIRECTIONS_LABEL: Record<EmailLang, string> = {
   ru: 'Как добраться',
   en: 'Get directions',
 };
+
+// Localized accommodation-type names shown in every guest email. The room number
+// is intentionally not shown (owner decision) — guests see the type instead.
+// Keys match the `rooms.type` enum (small | large | hotel).
+const ACCOMMODATION_TYPE_LABELS: Record<EmailLang, Record<string, string>> = {
+  ro: { small: 'Căsuță mică', large: 'Căsuță mare', hotel: 'Cameră în hotel' },
+  ru: { small: 'Малый домик', large: 'Большой домик', hotel: 'Номер в гостинице' },
+  en: { small: 'Small Villa', large: 'Large Villa', hotel: 'Hotel Room' },
+};
+
+// Accepts either a normalized row (`room_type`) or a raw row carrying the
+// `rooms(type)` join, so every email path can share one label source.
+type RoomTypeSource = {
+  room_type?: string | null;
+  rooms?: { type?: string | null } | Array<{ type?: string | null }> | null;
+};
+
+export function accommodationTypeLabel(
+  reservation: RoomTypeSource,
+  language: unknown = 'ro',
+): string {
+  const lang = normalizeEmailLang(language);
+  const room = Array.isArray(reservation.rooms) ? reservation.rooms[0] : reservation.rooms;
+  const type = String(room?.type || reservation.room_type || '').trim().toLowerCase();
+  return ACCOMMODATION_TYPE_LABELS[lang][type] || ACCOMMODATION_TYPE_LABELS.ro[type] || 'EcoVila';
+}
 
 const EMAIL_COLORS = {
   bg: '#F7F4EF',
@@ -1583,6 +1600,144 @@ export function buildCancellationEmail(args: {
     `${copy.labels.accommodation}: ${args.roomCopy}`,
     '',
     `${copy.cta}: ${rebookUrl}`,
+    '',
+    copy.closing,
+  ].join('\n');
+
+  return { subject: copy.subject, text, html };
+}
+
+const ARRIVAL_COPY: Record<EmailLang, {
+  subject: string;
+  preheader: string;
+  tagline: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  intro: string;
+  labels: { accommodation: string; checkIn: string };
+  checkInSuffix: string;
+  info: { title: string; lines: string[]; phoneLead: string };
+  closing: string;
+  textDetails: string;
+}> = {
+  ro: {
+    subject: 'Mâine te așteptăm la EcoVila',
+    preheader: 'A mai rămas o zi până ne revedem — detaliile sosirii și cum ajungi.',
+    tagline: 'Odihnă all-inclusive la Orheiul Vechi',
+    greeting: (name) => `Bună, ${name}!`,
+    greetingFallback: 'Bună!',
+    intro: 'A mai rămas o zi până ne revedem. Îți reamintim câteva detalii pentru sosirea ta.',
+    labels: { accommodation: 'Cazare', checkIn: 'Check-in' },
+    checkInSuffix: ', de la 13:00',
+    info: {
+      title: 'Accesul pe teritoriu este permis după ora 13:00.',
+      lines: [
+        'Check-in de la 13:00.',
+        'Accesul cu animale de companie nu este permis pe teritoriu.',
+      ],
+      phoneLead: 'Pentru întrebări ne poți suna la',
+    },
+    closing: 'Te așteptăm cu drag la EcoVila.',
+    textDetails: 'Detaliile sosirii',
+  },
+  ru: {
+    subject: 'Завтра ждём вас в EcoVila',
+    preheader: 'Остался один день — детали заезда и как добраться.',
+    tagline: 'All-inclusive отдых в Орхеюл Векь',
+    greeting: (name) => `Здравствуйте, ${name}!`,
+    greetingFallback: 'Здравствуйте!',
+    intro: 'До встречи остался один день. Напоминаем несколько деталей к заезду.',
+    labels: { accommodation: 'Размещение', checkIn: 'Заезд' },
+    checkInSuffix: ', с 13:00',
+    info: {
+      title: 'Доступ на территорию открыт после 13:00.',
+      lines: [
+        'Заезд с 13:00.',
+        'Размещение с домашними животными на территории не допускается.',
+      ],
+      phoneLead: 'По вопросам звоните нам по номеру',
+    },
+    closing: 'Будем рады видеть вас в EcoVila.',
+    textDetails: 'Детали заезда',
+  },
+  en: {
+    subject: 'See you tomorrow at EcoVila',
+    preheader: 'One day to go — arrival details and how to get here.',
+    tagline: 'All-inclusive escape at Orheiul Vechi',
+    greeting: (name) => `Hi ${name}!`,
+    greetingFallback: 'Hello!',
+    intro: 'Just one day until we see you. Here are a few details for your arrival.',
+    labels: { accommodation: 'Accommodation', checkIn: 'Check-in' },
+    checkInSuffix: ', from 13:00',
+    info: {
+      title: 'Access to the property opens after 13:00.',
+      lines: [
+        'Check-in from 13:00.',
+        'Pets are not allowed on the property.',
+      ],
+      phoneLead: 'For any questions, call us at',
+    },
+    closing: 'We look forward to welcoming you to EcoVila.',
+    textDetails: 'Arrival details',
+  },
+};
+
+export function buildArrivalReminderEmail(args: {
+  lang: EmailLang;
+  firstName: string;
+  roomCopy: string;
+  checkIn: string;
+  siteUrl: string;
+}): { subject: string; text: string; html: string } {
+  // Localized (ro/ru/en) and built on the shared premium layout to match the
+  // confirmation email; supersedes the RO-only body from ADR-062. RO uses the
+  // informal "tu/te" address. The directions button label is localized (ADR-077).
+  const copy = ARRIVAL_COPY[args.lang];
+  const checkInLabel = formatEmailDate(args.checkIn, args.lang);
+  const directionsLabel = EMAIL_DIRECTIONS_LABEL[args.lang] ?? EMAIL_DIRECTIONS_LABEL.ro;
+  const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
+  const greetingHtml = args.firstName
+    ? copy.greeting(escapeHtml(args.firstName))
+    : copy.greetingFallback;
+  const checkInValue = `${checkInLabel}${copy.checkInSuffix}`;
+
+  const rows: EmailRow[] = [
+    { label: copy.labels.accommodation, value: args.roomCopy },
+    { label: copy.labels.checkIn, value: checkInValue },
+  ];
+
+  const html = renderReservationEmail({
+    lang: args.lang,
+    siteUrl: args.siteUrl,
+    preheader: copy.preheader,
+    tagline: copy.tagline,
+    badgeSymbol: '★',
+    badgeBg: EMAIL_COLORS.green,
+    heading: copy.subject,
+    greetingHtml,
+    intro: copy.intro,
+    rows,
+    primary: { label: directionsLabel, url: EMAIL_MAPS_URL },
+    info: copy.info,
+    closing: copy.closing,
+  });
+
+  const text = [
+    copy.subject,
+    '',
+    greetingText,
+    '',
+    copy.intro,
+    '',
+    copy.textDetails,
+    `${copy.labels.accommodation}: ${args.roomCopy}`,
+    `${copy.labels.checkIn}: ${checkInValue}`,
+    '',
+    `${directionsLabel}: ${EMAIL_MAPS_URL}`,
+    '',
+    copy.info.title,
+    ...copy.info.lines,
+    `${copy.info.phoneLead} ${EMAIL_PHONE_DISPLAY}.`,
     '',
     copy.closing,
   ].join('\n');

@@ -2334,6 +2334,57 @@ shipped HTML).
 
 ---
 
+### ADR-078 — Premium, localized arrival-reminder email (informal "Te" in RO)
+
+**Context.** The "see you tomorrow" arrival-reminder email (`composeArrivalReminder`) used
+the bare `reservationEmailHtml` template (plain `<h1>`/`<table>`), so next to the premium
+confirmation/cancellation emails it read as an automated, low-effort message. The owner
+asked to bring it up to the shared house style and to address the guest informally ("Te"),
+matching the confirmation copy.
+
+**Change.** `composeArrivalReminder` now builds via the shared premium renderer
+(`renderReservationEmail`) through a new `buildArrivalReminderEmail` + `ARRIVAL_COPY` map,
+fully localized RO/RU/EN (subject, preheader, greeting, intro, info card carrying the
+access-after-13:00 + no-pets rules, closing). RO uses the informal "tu/te" address
+("Mâine te așteptăm…", "Bună, …!"), superseding the RO-only body of ADR-062. The arrival
+SMS is unchanged — it stays formal like every other SMS, asserted by tests. Added `siteUrl`
+plumbing in `send-reminders` so the email logo resolves; the localized directions button
+(ADR-077) is preserved. Badge glyph is a monochrome "★"; the directions CTA is a filled
+green primary button.
+
+**Status.** Backend deployed to prod 2026-06-21 (`send-reminders`). Verified: `deno check`
+clean, ro/ru/en reminder tests pass, previews sent to the owner inboxes. Files:
+`supabase/functions/_shared/notifications.ts`, `supabase/functions/send-reminders/index.ts`,
+`supabase/functions/tests/reservations.test.ts`.
+
+---
+
+### ADR-079 — All guest emails show the accommodation type, not the room number
+
+**Context.** Every transactional email showed accommodation as "Căsuța #N" (room number).
+The owner wanted the human-readable type instead — „Căsuță mică” / „Căsuță mare” /
+„Cameră în hotel” — localized, across ALL emails (confirmation, cancellation, arrival
+reminder, cash-expiry reminder, expired-cash cancellation, booking-change).
+
+**Change.** Centralized the label in `notifications.ts`: `ACCOMMODATION_TYPE_LABELS`
+(ro/ru/en × `small`|`large`|`hotel`) + a shared `accommodationTypeLabel(reservation,
+language)` that resolves the type from either a normalized `room_type` or a raw
+`rooms(type)` join, plus `aggregateRoomLabel`, which now groups a multi-villa booking by
+type with a count ("2× Căsuță mică"; mixed types are listed, e.g. "Căsuță mică, Căsuță
+mare"). The room number is no longer shown. Removed the four duplicate, number-based
+`roomLabel`/aggregate helpers that had drifted across `_shared/bookingSettlement.ts`,
+`reservation-cancel`, `reservation-cancel-notify`, and `_shared/reservationChanges.ts`;
+all now call the shared helper.
+
+**Status.** Backend deployed to prod 2026-06-21 (all edge functions redeployed so every
+email path shares the new label). Verified: `deno check` clean on all affected functions,
+100 edge tests pass (ro/ru/en single + multi-villa aggregation). Files:
+`supabase/functions/_shared/notifications.ts`, `_shared/bookingSettlement.ts`,
+`_shared/reservationChanges.ts`, `reservation-cancel/index.ts`,
+`reservation-cancel-notify/index.ts`, `supabase/functions/tests/reservations.test.ts`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

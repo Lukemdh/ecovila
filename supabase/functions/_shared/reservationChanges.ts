@@ -23,6 +23,7 @@ import {
 } from './maib.ts';
 import { sendEmail, sendSms } from './providers.ts';
 import {
+  aggregateRoomLabel,
   bookingChangeSms,
   buildBookingChangeEmail,
   normalizeEmailLang,
@@ -720,7 +721,7 @@ async function notifyBookingChange(
   if (!primary) return;
 
   const lang = normalizeEmailLang(primary.guest_language);
-  const roomCopy = aggregateRoomCopy(rows, lang);
+  const roomCopy = aggregateRoomLabel(rows, lang);
   const newKids = change.new_kids_ages.length;
   const addedAdults = change.new_adults - change.prev_adults;
   const addedKids = change.new_kids_ages.length - change.prev_kids_ages.length;
@@ -830,22 +831,6 @@ export function minutesFromNowIso(minutes: number, now = new Date()) {
 function roomTypeOf(row: ChangeReservationRow): string {
   const room = Array.isArray(row.rooms) ? row.rooms[0] : row.rooms;
   return String(room?.type || '');
-}
-
-function aggregateRoomCopy(rows: ChangeReservationRow[], lang: string): string {
-  const labels = rows
-    .map((row) => {
-      const room = Array.isArray(row.rooms) ? row.rooms[0] : row.rooms;
-      const number = room?.number;
-      if (!number) return '';
-      if (lang === 'ru') return `Домик #${number}`;
-      if (lang === 'en') return `Villa #${number}`;
-      return `Căsuța #${number}`;
-    })
-    .filter(Boolean);
-
-  if (!labels.length) return 'EcoVila';
-  return [...new Set(labels)].join(', ');
 }
 
 function normalizeKidsAges(value: unknown): number[] {
