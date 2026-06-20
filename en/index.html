@@ -165,6 +165,9 @@
           <p class="section-kicker" data-i18n="showcase.spa.kicker">SPA area</p>
           <h2 id="spa-title" data-i18n="showcase.spa.title">Warm water, saunas, and quiet after the forest</h2>
           <p data-i18n="showcase.spa.body">Two indoor pools, one outdoor pool, jacuzzi, three types of sauna, salt room, cold room, and cold pool for unhurried days at EcoVila.</p>
+          <div class="showcase__cta">
+            <button class="editorial-button" type="button" data-facility-open="spa" data-i18n="showcase.spa.cta">Discover the SPA</button>
+          </div>
         </div>
         <div class="photo-stack" aria-label="Zona SPA">
           <img src="/assets/photos/spa/pool.svg" alt="Warm indoor pool in the EcoVila SPA area" class="photo-stack__large" loading="lazy" decoding="async" data-photo-section="landing" data-photo-index="1">
@@ -183,6 +186,9 @@
           <h2 id="restaurant-title" data-i18n="showcase.restaurant.title">Three meals a day, without planning the menu</h2>
         </div>
         <p data-i18n="showcase.restaurant.body">Breakfast, lunch, dinner, desserts, coffee, tea, and sweet water are included, so guests can keep the day for rest.</p>
+        <div class="image-hero__cta">
+          <button class="editorial-button" type="button" data-facility-open="dining" data-i18n="showcase.restaurant.cta">See what's included</button>
+        </div>
       </div>
     </section>
 
@@ -374,6 +380,23 @@
     </article>
   </div>
 
+  <div class="booking-modal" data-facility-modal hidden>
+    <div class="booking-modal__scrim" data-facility-close></div>
+    <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="facility-modal-title">
+      <button class="booking-modal__close booking-modal__close--icon" type="button" data-facility-close aria-label="Close">×</button>
+      <div data-facility-gallery></div>
+      <div class="booking-modal__content booking-modal__content--details">
+        <h2 id="facility-modal-title" data-facility-title></h2>
+        <p data-facility-body></p>
+        <div class="facility-heat-banner" data-facility-heat hidden></div>
+        <section class="booking-detail-section" aria-labelledby="facility-highlights-title">
+          <h3 id="facility-highlights-title" data-facility-highlights-label data-i18n="facilities.highlightsLabel">What awaits you:</h3>
+          <ul class="booking-check-list booking-check-list--wide" data-facility-highlights></ul>
+        </section>
+      </div>
+    </article>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/js/supabase-config.js?v=2026061901"></script>
   <script src="/js/supabase.js?v=2026061901"></script>
@@ -382,6 +405,7 @@
   <script src="/js/translations.js?v=2026061901"></script>
   <script src="/js/gallery.js?v=2026061901"></script>
   <script src="/js/main.js?v=2026061901"></script>
+  <script src="/js/facilities.js?v=2026061901"></script>
 </body>
 
 </html>

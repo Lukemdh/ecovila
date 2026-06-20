@@ -2036,6 +2036,44 @@ caches bust naturally — no asset re-bump. Files: `admin/dashboard.html`, `admi
 
 ---
 
+### ADR-070 — SPA & dining facility modals on the `en/`/`ru/` homepages (parity with RO)
+
+**Context.** The Romanian homepage (`index.html`) has an interactive **facility detail modal**: a
+"Descoperă zona SPA" CTA in the SPA section and a "Vezi ce este inclus" CTA in the restaurant section,
+each opening a `[data-facility-modal]` dialog (photo gallery + localized title/body/highlights, plus a
+"all pools heated" heat banner for SPA), driven by `js/facilities.js`. The localized homepages
+`en/index.html` and `ru/index.html` were forked without any of it — the two CTAs, the modal markup, and
+the `facilities.js` script tag were all absent, so EN/RU visitors got static SPA/restaurant sections with
+no way to open the gallery+detail view their RO counterparts have.
+
+**Decision.** Port the feature verbatim into both localized pages, mirroring the RO markup but with
+localized fallback text (the live text is supplied by `data-i18n` either way):
+
+- SPA section gains `<div class="showcase__cta"><button … data-facility-open="spa" data-i18n="showcase.spa.cta">`.
+- Restaurant section gains `<div class="image-hero__cta"><button … data-facility-open="dining" data-i18n="showcase.restaurant.cta">`.
+- The full `[data-facility-modal]` dialog is added before the script block (close `aria-label` localized
+  to "Close"/"Закрыть"; `data-facility-highlights-label` fallback "What awaits you:"/"Что вас ждёт:").
+- `<script src="/js/facilities.js?v=2026061901">` is added after `main.js`.
+
+No JS, CSS, or translation changes were needed: every `data-i18n` key the feature uses
+(`showcase.spa.cta`, `showcase.restaurant.cta`, `facilities.highlightsLabel`, the full `facilities.*`
+content set) already exists in all three locales in `js/translations.js`, and `facilities.js` already
+guards `if (!modal) return` and treats the cards-list as optional, so it runs correctly on a
+CTA-only homepage. After the change the `data-i18n` key set and local `<script>` set on all three
+homepages are identical (verified by diff); only human-readable text and the per-locale meta/schema
+differ.
+
+**Tests.** No new automated tests — frontend-only static-HTML parity change with no new data paths.
+Verified in a local dev server: EN SPA modal opens with English content ("SPA & Relaxation", "What
+awaits you:", 10 highlights, gallery), RU dining modal opens with Russian content ("Питание
+All-Inclusive", 10-photo gallery), and a clean console on both.
+
+**Deploy.** Frontend-only; no migration, no functions. Ships with the still-pending ADR-068 TopHost
+upload under the existing unserved `?v=2026061901` token, so caches bust naturally — no asset re-bump.
+Files: `en/index.html`, `ru/index.html`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
