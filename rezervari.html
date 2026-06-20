@@ -23,8 +23,8 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="css/main.css?v=2026061901">
-    <link rel="stylesheet" href="css/booking.css?v=2026061901">
+    <link rel="stylesheet" href="css/main.css?v=2026062001">
+    <link rel="stylesheet" href="css/booking.css?v=2026062001">
   </head>
   <body class="page-booking">
     <a class="skip-link" href="#booking-page" data-i18n="access.skip">Sari la conținut</a>
@@ -62,15 +62,15 @@
           </div>
 
           <div class="booking-selector-grid">
-            <div class="guest-picker" aria-label="Persoane">
+            <div class="guest-picker" aria-label="Persoane" data-i18n-aria-label="aria.guests">
               <div class="guest-control">
                 <div>
                   <span class="guest-control__label" data-i18n="booking.adults">Adulți</span>
                   <span class="guest-control__value" data-adults-value>1</span>
                 </div>
                 <div class="guest-control__actions">
-                  <button type="button" data-counter="adults" data-counter-action="decrease" aria-label="Scade adulți">−</button>
-                  <button type="button" data-counter="adults" data-counter-action="increase" aria-label="Adaugă adulți">+</button>
+                  <button type="button" data-counter="adults" data-counter-action="decrease" aria-label="Scade adulți" data-i18n-aria-label="aria.decreaseAdults">−</button>
+                  <button type="button" data-counter="adults" data-counter-action="increase" aria-label="Adaugă adulți" data-i18n-aria-label="aria.increaseAdults">+</button>
                 </div>
               </div>
 
@@ -80,8 +80,8 @@
                   <span class="guest-control__value" data-kids-value>0</span>
                 </div>
                 <div class="guest-control__actions">
-                  <button type="button" data-counter="children" data-counter-action="decrease" aria-label="Scade copii">−</button>
-                  <button type="button" data-counter="children" data-counter-action="increase" aria-label="Adaugă copii">+</button>
+                  <button type="button" data-counter="children" data-counter-action="decrease" aria-label="Scade copii" data-i18n-aria-label="aria.decreaseChildren">−</button>
+                  <button type="button" data-counter="children" data-counter-action="increase" aria-label="Adaugă copii" data-i18n-aria-label="aria.increaseChildren">+</button>
                 </div>
               </div>
 
@@ -110,9 +110,9 @@
 
               <div class="calendar" data-booking-calendar>
                 <div class="calendar__header">
-                  <button class="calendar__nav" type="button" data-calendar-prev aria-label="Luna precedentă">‹</button>
+                  <button class="calendar__nav" type="button" data-calendar-prev aria-label="Luna precedentă" data-i18n-aria-label="aria.prevMonth">‹</button>
                   <h2 data-calendar-title>Mai 2026</h2>
-                  <button class="calendar__nav" type="button" data-calendar-next aria-label="Luna următoare">›</button>
+                  <button class="calendar__nav" type="button" data-calendar-next aria-label="Luna următoare" data-i18n-aria-label="aria.nextMonth">›</button>
                 </div>
                 <div class="calendar-weekdays" aria-hidden="true">
                   <span>L</span>
@@ -155,7 +155,7 @@
                 <p class="booking-stay-card__capacity" data-card-capacity>Până la 2 adulți + 2 copii</p>
                 <p class="booking-stay-card__meta" data-card-availability></p>
                 <p class="booking-stay-card__price" data-card-price></p>
-                <div class="booking-amenities" aria-label="Facilități incluse">
+                <div class="booking-amenities" aria-label="Facilități incluse" data-i18n-aria-label="aria.facilitiesIncluded">
                   <span>All-Inclusive</span>
                   <span>Access SPA</span>
                   <span>Wi-Fi</span>
@@ -183,7 +183,7 @@
                 <p class="booking-stay-card__capacity" data-card-capacity>Până la 4 adulți + 2 copii</p>
                 <p class="booking-stay-card__meta" data-card-availability></p>
                 <p class="booking-stay-card__price" data-card-price></p>
-                <div class="booking-amenities" aria-label="Facilități incluse">
+                <div class="booking-amenities" aria-label="Facilități incluse" data-i18n-aria-label="aria.facilitiesIncluded">
                   <span>All-Inclusive</span>
                   <span>Access SPA</span>
                   <span>Wi-Fi</span>
@@ -211,7 +211,7 @@
                 <p class="booking-stay-card__capacity" data-card-capacity>Până la 2 adulți + 2 copii</p>
                 <p class="booking-stay-card__meta" data-card-availability></p>
                 <p class="booking-stay-card__price" data-card-price></p>
-                <div class="booking-amenities" aria-label="Facilități incluse">
+                <div class="booking-amenities" aria-label="Facilități incluse" data-i18n-aria-label="aria.facilitiesIncluded">
                   <span>All-Inclusive</span>
                   <span>Access SPA</span>
                   <span>Wi-Fi</span>
@@ -272,7 +272,7 @@
     <div class="booking-modal" data-reservation-lookup-modal hidden role="dialog" aria-modal="true" aria-labelledby="reservation-lookup-title">
       <div class="booking-modal__backdrop" data-lookup-close></div>
       <div class="booking-modal__panel booking-lookup">
-        <button class="booking-modal__close" type="button" data-lookup-close aria-label="Închide">×</button>
+        <button class="booking-modal__close" type="button" data-lookup-close aria-label="Închide" data-i18n-aria-label="aria.close">×</button>
         <h2 id="reservation-lookup-title" data-i18n="booking.lookupTitle">Găsește rezervarea</h2>
         <p data-i18n="booking.lookupLead">Introdu numărul folosit la rezervare. Îți trimitem un cod prin SMS.</p>
 
@@ -381,7 +381,7 @@
 <div class="booking-modal" data-room-panel hidden>
       <div class="booking-modal__scrim" data-room-panel-close></div>
       <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="room-panel-title">
-        <button class="booking-modal__close" type="button" data-room-panel-close aria-label="Închide">×</button>
+        <button class="booking-modal__close" type="button" data-room-panel-close aria-label="Închide" data-i18n-aria-label="aria.close">×</button>
         <div class="booking-modal__content">
           <h2 id="room-panel-title" data-room-panel-title>Alege numărul</h2>
           <p data-room-panel-intro></p>
@@ -394,15 +394,15 @@
     <div class="booking-modal" data-soldout-modal hidden>
       <div class="booking-modal__scrim" data-soldout-close></div>
       <article class="booking-modal__panel booking-modal__panel--compact" role="dialog" aria-modal="true" aria-labelledby="soldout-modal-title">
-        <button class="booking-modal__close" type="button" data-soldout-close aria-label="Închide">×</button>
+        <button class="booking-modal__close" type="button" data-soldout-close aria-label="Închide" data-i18n-aria-label="aria.close">×</button>
         <div class="booking-modal__content">
           <h2 id="soldout-modal-title" data-soldout-title>Date disponibile</h2>
           <p data-soldout-intro></p>
           <div class="calendar calendar--modal" data-soldout-calendar>
             <div class="calendar__header">
-              <button class="calendar__nav" type="button" data-soldout-prev aria-label="Luna precedentă">‹</button>
+              <button class="calendar__nav" type="button" data-soldout-prev aria-label="Luna precedentă" data-i18n-aria-label="aria.prevMonth">‹</button>
               <h2 data-soldout-month>—</h2>
-              <button class="calendar__nav" type="button" data-soldout-next aria-label="Luna următoare">›</button>
+              <button class="calendar__nav" type="button" data-soldout-next aria-label="Luna următoare" data-i18n-aria-label="aria.nextMonth">›</button>
             </div>
             <div class="calendar-weekdays" aria-hidden="true">
               <span>L</span>
@@ -422,7 +422,7 @@
     <div class="booking-modal" data-booking-modal hidden>
       <div class="booking-modal__scrim" data-modal-close></div>
       <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
-        <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
+        <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide" data-i18n-aria-label="aria.close">×</button>
         <div data-booking-modal-gallery></div>
         <div class="booking-modal__content booking-modal__content--details">
           <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
@@ -446,7 +446,7 @@
     <div class="booking-modal" data-facility-modal hidden>
       <div class="booking-modal__scrim" data-facility-close></div>
       <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="facility-modal-title">
-        <button class="booking-modal__close booking-modal__close--icon" type="button" data-facility-close aria-label="Închide">×</button>
+        <button class="booking-modal__close booking-modal__close--icon" type="button" data-facility-close aria-label="Închide" data-i18n-aria-label="aria.close">×</button>
         <div data-facility-gallery></div>
         <div class="booking-modal__content booking-modal__content--details">
           <h2 id="facility-modal-title" data-facility-title></h2>
@@ -461,16 +461,16 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/supabase-config.js?v=2026061901"></script>
-    <script src="js/supabase.js?v=2026061901"></script>
-    <script src="js/tracking-config.js?v=2026061901"></script>
-    <script src="js/tracking.js?v=2026061901"></script>
-    <script src="js/translations.js?v=2026061901"></script>
-    <script src="js/pricing.js?v=2026061901"></script>
-    <script src="js/calendar.js?v=2026061901"></script>
-    <script src="js/gallery.js?v=2026061901"></script>
-    <script src="js/main.js?v=2026061901"></script>
-    <script src="js/booking.js?v=2026061901"></script>
-    <script src="js/facilities.js?v=2026061901"></script>
+    <script src="js/supabase-config.js?v=2026062001"></script>
+    <script src="js/supabase.js?v=2026062001"></script>
+    <script src="js/tracking-config.js?v=2026062001"></script>
+    <script src="js/tracking.js?v=2026062001"></script>
+    <script src="js/translations.js?v=2026062001"></script>
+    <script src="js/pricing.js?v=2026062001"></script>
+    <script src="js/calendar.js?v=2026062001"></script>
+    <script src="js/gallery.js?v=2026062001"></script>
+    <script src="js/main.js?v=2026062001"></script>
+    <script src="js/booking.js?v=2026062001"></script>
+    <script src="js/facilities.js?v=2026062001"></script>
   </body>
 </html>

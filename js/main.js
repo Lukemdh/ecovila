@@ -75,6 +75,22 @@
       element.textContent = value;
     });
 
+    // Attribute-level translations (aria-label, placeholder, title) so that
+    // buttons/inputs without visible text still localize on language change.
+    const attributeKeys = {
+      'data-i18n-aria-label': 'aria-label',
+      'data-i18n-placeholder': 'placeholder',
+      'data-i18n-title': 'title',
+    };
+    Object.entries(attributeKeys).forEach(([dataAttr, targetAttr]) => {
+      document.querySelectorAll(`[${dataAttr}]`).forEach((element) => {
+        const value = t(element.getAttribute(dataAttr));
+        if (typeof value === 'string') {
+          element.setAttribute(targetAttr, value);
+        }
+      });
+    });
+
     document.querySelectorAll('[data-lang]').forEach((button) => {
       const isActive = button.dataset.lang === state.language;
       button.classList.toggle('is-active', isActive);

@@ -15,8 +15,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="css/main.css?v=2026061901">
-  <link rel="stylesheet" href="css/booking.css?v=2026061901">
+  <link rel="stylesheet" href="css/main.css?v=2026062001">
+  <link rel="stylesheet" href="css/booking.css?v=2026062001">
 </head>
 
 <body>
@@ -90,7 +90,7 @@
             cameră rece și piscină rece pentru zile tihnite la EcoVila.
           </p>
         </div>
-        <div class="photo-stack" aria-label="Zona SPA">
+        <div class="photo-stack" aria-label="Zona SPA" data-i18n-aria-label="aria.spaZone">
           <img src="/assets/photos/spa/pool.svg" alt="" class="photo-stack__large" loading="lazy" decoding="async" data-photo-section="landing" data-photo-index="1">
           <img src="/assets/photos/spa/sauna.svg" alt="" class="photo-stack__small photo-stack__small--top" loading="lazy" decoding="async" data-photo-section="landing" data-photo-index="2">
           <img src="/assets/photos/spa/salt-room.svg" alt="" class="photo-stack__small photo-stack__small--bottom" loading="lazy" decoding="async" data-photo-section="landing" data-photo-index="3">
@@ -127,7 +127,7 @@
               <h3 data-i18n="accommodation.small.title">Căsuță Mică</h3>
               <p class="booking-stay-card__capacity" data-i18n="accommodation.small.capacity">Până la 2 adulți + 2 copii</p>
               <p data-i18n="accommodation.small.summary">O căsuță intimă pentru odihnă în doi sau pentru o familie mică.</p>
-              <div class="booking-amenities" aria-label="Facilități incluse">
+              <div class="booking-amenities" aria-label="Facilități incluse" data-i18n-aria-label="aria.facilitiesIncluded">
                 <span>All-Inclusive</span>
                 <span>Access SPA</span>
                 <span>Wi-Fi</span>
@@ -144,7 +144,7 @@
               <h3 data-i18n="accommodation.large.title">Căsuță Mare</h3>
               <p class="booking-stay-card__capacity" data-i18n="accommodation.large.capacity">Până la 4 adulți + 2 copii</p>
               <p data-i18n="accommodation.large.summary">Două dormitoare separate și living pentru familii sau prieteni.</p>
-              <div class="booking-amenities" aria-label="Facilități incluse">
+              <div class="booking-amenities" aria-label="Facilități incluse" data-i18n-aria-label="aria.facilitiesIncluded">
                 <span>All-Inclusive</span>
                 <span>Access SPA</span>
                 <span>Wi-Fi</span>
@@ -161,7 +161,7 @@
               <h3 data-i18n="accommodation.hotel.title">Cameră în Hotel</h3>
               <p class="booking-stay-card__capacity" data-i18n="accommodation.hotel.capacity">Până la 2 adulți + 2 copii</p>
               <p data-i18n="accommodation.hotel.summary">Camere comode în clădirea hotelului, aproape de facilități.</p>
-              <div class="booking-amenities" aria-label="Facilități incluse">
+              <div class="booking-amenities" aria-label="Facilități incluse" data-i18n-aria-label="aria.facilitiesIncluded">
                 <span>All-Inclusive</span>
                 <span>Access SPA</span>
                 <span>Wi-Fi</span>
@@ -184,7 +184,7 @@
         <p data-i18n="conference.body">
           Sala de conferințe este disponibilă pentru oaspeți business. Pentru rezervări:
         </p>
-        <p class="conference__phone">Telefon: <a href="tel:+37360120220">060 120 220</a><br>E-mail: <a href="mailto:conferinte@ecovila.md">conferinte@ecovila.md</a></p>
+        <p class="conference__phone"><span data-i18n="conference.phoneLabel">Telefon:</span> <a href="tel:+37360120220">060 120 220</a><br><span data-i18n="conference.emailLabel">E-mail:</span> <a href="mailto:conferinte@ecovila.md">conferinte@ecovila.md</a></p>
       </div>
     </section>
 
@@ -281,7 +281,7 @@
 <div class="booking-modal" data-booking-modal hidden>
     <div class="booking-modal__scrim" data-modal-close></div>
     <article class="booking-modal__panel booking-modal__panel--details" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
-      <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide">×</button>
+      <button class="booking-modal__close booking-modal__close--icon" type="button" data-modal-close aria-label="Închide" data-i18n-aria-label="aria.close">×</button>
       <div data-booking-modal-gallery></div>
       <div class="booking-modal__content booking-modal__content--details">
         <h2 id="booking-modal-title" data-booking-modal-title>Căsuță Mică</h2>
@@ -294,7 +294,7 @@
           <h3 id="booking-facilities-title" data-i18n="booking.facilities">Facilități:</h3>
           <ul class="booking-check-list booking-check-list--wide" data-booking-modal-facilities></ul>
         </section>
-        <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve>
+        <button class="editorial-button editorial-button--filled" type="button" data-booking-modal-reserve data-i18n="booking.reserveNow">
           Rezervă acum →
         </button>
       </div>
@@ -302,13 +302,13 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/supabase-config.js?v=2026061901"></script>
-  <script src="js/supabase.js?v=2026061901"></script>
-  <script src="js/tracking-config.js?v=2026061901"></script>
-  <script src="js/tracking.js?v=2026061901"></script>
-  <script src="js/translations.js?v=2026061901"></script>
-  <script src="js/gallery.js?v=2026061901"></script>
-  <script src="js/main.js?v=2026061901"></script>
+  <script src="js/supabase-config.js?v=2026062001"></script>
+  <script src="js/supabase.js?v=2026062001"></script>
+  <script src="js/tracking-config.js?v=2026062001"></script>
+  <script src="js/tracking.js?v=2026062001"></script>
+  <script src="js/translations.js?v=2026062001"></script>
+  <script src="js/gallery.js?v=2026062001"></script>
+  <script src="js/main.js?v=2026062001"></script>
 </body>
 
 </html>

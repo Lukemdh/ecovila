@@ -2074,6 +2074,53 @@ Files: `en/index.html`, `ru/index.html`.
 
 ---
 
+### ADR-071 — Localize the i18n strings that bypassed the translation system (aria-labels, conference labels, reserve button)
+
+**Context.** An audit of every `data-i18n` key (243 distinct, all resolving; `ro`/`ru`/`en` at
+parity) confirmed the data layer was complete — but several user-facing strings bypassed the i18n
+system entirely and stayed Romanian for EN/RU visitors:
+
+- Button **aria-labels** were never translated: `applyLanguage()` in `js/main.js` only set
+  `textContent`, never attributes. Affected the guest counter ± buttons ("Scade/Adaugă adulți/copii"),
+  calendar nav ("Luna precedentă/următoare"), modal close buttons ("Închide"), `.guest-picker`
+  ("Persoane"), `.booking-amenities` ("Facilități incluse") and `.photo-stack` ("Zona SPA").
+- The conference **"Telefon:" / "E-mail:"** labels and the booking-detail modal **"Rezervă acum →"**
+  button were hardcoded with no `data-i18n`.
+- The static `en/`/`ru/` homepages — which do **not** run `applyLanguage` (they use the per-folder
+  `data-static-lang-select` switcher) — had those same strings hardcoded in Romanian.
+
+**Decision.**
+
+- Extend `applyLanguage()` to also translate attributes: `data-i18n-aria-label`→`aria-label`,
+  `data-i18n-placeholder`→`placeholder`, `data-i18n-title`→`title`. The literal attribute is kept as a
+  no-JS / RO fallback. This runs on every dynamic interior page that loads `main.js`.
+- Add 13 keys × 3 locales to `js/translations.js`: `conference.phoneLabel`, `conference.emailLabel`,
+  `booking.reserveNow`, and `aria.{close,guests,spaZone,decreaseAdults,increaseAdults,decreaseChildren,increaseChildren,prevMonth,nextMonth,facilitiesIncluded}`.
+- Wire the dynamic pages (`rezervari.html`, `site.html`, `confirmare.html`) via `data-i18n` /
+  `data-i18n-aria-label`. The `rezervari.html` reserve button already carried `data-i18n="booking.select"`
+  (owned by `booking.js`) and was left untouched.
+- Hardcode the correct per-locale text on the static homepages (`en/index.html`, `ru/index.html`);
+  `index.html` (RO) was already correct.
+
+**Intentionally left RO.** The legal pages (`termeni-conditii.html`, `politica-confidentialitate.html`)
+declare "Textul juridic este afișat în limba română"; `admin/` is a RO-only staff tool; brand terms
+(EcoVila, the "All-Inclusive" badge), emails/address, and interior-page `<title>` tags (canonical RO for
+SEO — one URL serves all languages) are deliberately not translated.
+
+**Tests.** No new automated tests — frontend-only, no new data paths. Verified on a local dev server
+across RO/EN/RU: `rezervari.html` aria-labels switch language live (EN "Decrease adults" /
+"Previous month" / "Included facilities" / "Close"; RU equivalents), `site.html` conference labels +
+reserve button localize, and the `en/`/`ru/` homepages render their hardcoded labels/button. Clean
+console on all.
+
+**Deploy.** Frontend-only; no migration, no functions. Because this changes `js/main.js` and
+`js/translations.js`, the shared cache-bust token is bumped `2026061901 → 2026062001` (ADR-067), so this
+upload also carries the still-pending ADR-068 and ADR-070 frontend. Files: `js/main.js`,
+`js/translations.js`, `rezervari.html`, `site.html`, `confirmare.html`, `en/index.html`,
+`ru/index.html`, plus the site-wide `?v=` bump on all shipped HTML.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
