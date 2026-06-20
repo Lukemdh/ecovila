@@ -1,0 +1,45 @@
+name: Supabase backup
+
+# Daily off-platform backup of the Supabase DB + reservations to
+# Google Drive and OneDrive. See docs/BACKUP_SETUP.md for one-time setup.
+
+on:
+  schedule:
+    - cron: "30 2 * * *" # 02:30 UTC daily
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install psql + rclone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          command -v rclone >/dev/null || (curl -fsSL https://rclone.org/install.sh | sudo bash)
+          rclone version
+
+      - name: Restore rclone config
+        run: |
+          mkdir -p "$HOME/.config/rclone"
+          echo "${{ secrets.RCLONE_CONF_BASE64 }}" | base64 -d > "$HOME/.config/rclone/rclone.conf"
+
+      - name: Run backup
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          REMOTES: "gdrive onedrive"
+          REMOTE_PATH: "EcoVila-Backups"
+          RETENTION_DAYS: "90"
+        run: bash scripts/backup-supabase.sh

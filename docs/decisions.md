@@ -2149,6 +2149,30 @@ pending owner sign-off.** Files: `supabase/functions/_shared/notifications.ts`,
 
 ---
 
+### ADR-073 — Off-platform daily database backups to Google Drive + OneDrive
+
+**Context.** Booking data lived only inside Supabase. We wanted an independent, owner-controlled copy
+that survives a Supabase account/project loss, without standing up new infrastructure or a paid service.
+
+**Decision.** A scheduled GitHub Actions workflow (`.github/workflows/backup.yml`, 02:30 UTC daily +
+manual `workflow_dispatch`) runs `scripts/backup-supabase.sh`, which dumps roles/schema/data plus a
+`public.reservations` CSV into a dated tarball and `rclone copyto`s both the tarball and a standalone
+CSV to two remotes (`gdrive`, `onedrive`), then prunes copies older than 90 days. Configuration travels
+as two GitHub secrets: `SUPABASE_DB_URL` (the Session Pooler / IPv4 connection string) and
+`RCLONE_CONF_BASE64` (base64 of the local `rclone.conf`). Full runbook in `docs/BACKUP_SETUP.md`.
+
+**Unencrypted by choice.** The tarball and CSV contain guest PII and are stored unencrypted so restore
+is dead-simple (double-click the CSV). The mitigation is access control — both Drive folders stay
+private. The script is crypt-ready: wrapping the remotes in an `rclone crypt` layer later needs no
+script change.
+
+**Status.** Code committed, but the pipeline is inert until the owner does the one-time setup —
+authorize the two rclone remotes locally and add the two GitHub secrets. Until then each scheduled run
+fails harmlessly (missing secrets, no side effects). No application code, migration, or edge function is
+affected. Files: `.github/workflows/backup.yml`, `scripts/backup-supabase.sh`, `docs/BACKUP_SETUP.md`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
