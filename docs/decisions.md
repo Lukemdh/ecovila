@@ -2173,14 +2173,54 @@ affected. Files: `.github/workflows/backup.yml`, `scripts/backup-supabase.sh`, `
 
 ---
 
+### ADR-074 — 1080p homepage hero video with progressive (play-as-it-buffers) playback
+
+**Context.** The homepage hero served a soft 720p file (`assets/videos/ecovila-hero.mp4`,
+1280×720, ~1 Mbps, 3.8 MB). Two unused 1080p masters already lived in the repo root:
+`ecovilavideo.mp4` (HEVC — Safari-only support) and `ecovilavideo-web.mp4` (H.264). We wanted
+real 1080p without making visitors download the whole clip before it starts.
+
+**Decision.** Re-encoded `ecovilavideo-web.mp4` into two web-tuned, faststart 1080p sources with
+audio stripped (the hero is muted): `assets/videos/ecovila-hero-1080.webm` (VP9, ~7.9 MB) and
+`assets/videos/ecovila-hero-1080.mp4` (H.264 high, +faststart, ~10 MB), both 1920×1080 at
+~2.3–2.8 Mbps. The `<video>` in `index.html`, `en/index.html`, `ru/index.html` now lists the WebM
+first (Chrome/Firefox/Android) with the MP4 as the universal fallback (Safari), and
+`preload="metadata"` → `preload="auto"`. The old 720p file is deleted.
+
+**"YouTube-like" buffering is progressive download, not adaptive streaming.** HLS/DASH would be
+overkill for a 28 s muted loop on shared hosting. Two ingredients deliver play-as-it-buffers: the
+`moov` atom at the **front** of the MP4 (`-movflags +faststart`) and Apache serving the file with
+`Accept-Ranges: bytes`, which TopHost does by default for static files. `.htaccess` now also pins
+`video/mp4`/`video/webm` MIME types and a 1-year cache (the version is in the file name, so a
+re-encode is a new URL — safe to cache hard).
+
+**Encode recipe** (re-run when the master changes):
+
+```
+ffmpeg -i ecovilavideo-web.mp4 -an -c:v libx264 -profile:v high -crf 27 \
+  -maxrate 3500k -bufsize 7000k -preset slow -pix_fmt yuv420p \
+  -movflags +faststart assets/videos/ecovila-hero-1080.mp4
+ffmpeg -i ecovilavideo-web.mp4 -an -c:v libvpx-vp9 -crf 36 -b:v 2000k \
+  -row-mt 1 -pix_fmt yuv420p assets/videos/ecovila-hero-1080.webm
+```
+
+**Status.** Code committed and pushed to `main`; `dist/tophost` rebuilt via
+`npm run prepare:tophost`. Goes live once the folder is uploaded to TopHost — no backend,
+migration, or edge function involved. The root master `ecovilavideo-web.mp4` is intentionally
+retained as the re-encode source; it is root-level and not in the upload manifest, so it is never
+deployed. Files: `assets/videos/ecovila-hero-1080.{mp4,webm}`, `index.html`, `en/index.html`,
+`ru/index.html`, `.htaccess`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,
   `/ru/...`, `/en/...`) with hreflang, mirroring the homepage (ADR-016) and superseding the
   interim single-URL `@graph` from ADR-024?
 
-- Should the owner-retained unused media (`ecovilavideo.mp4`, `ecovilavideo-web.mp4`,
-  `assets/logo_small.png`) stay in production deploy artifacts even though they are not
-  referenced?
+- Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,
+  `assets/logo_small.png`) stay in the repo even though they are not referenced or deployed?
+  (`ecovilavideo-web.mp4` now has a defined role — the hero re-encode master, ADR-074.)
 - Should dependency pinning/security scanning stay manual because this is a no-build
   static site, or should CI/security tooling be introduced before launch?
