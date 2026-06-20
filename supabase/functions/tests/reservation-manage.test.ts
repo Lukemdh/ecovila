@@ -35,7 +35,7 @@ Deno.test('lookup-code SMS is localized for ro/ru/en and always carries the code
     throw new Error('each language should produce a distinct lookup-code SMS');
   }
 
-  if (!ru.includes('код') || !en.includes('code')) {
+  if (!ru.toLowerCase().includes('код') || !en.toLowerCase().includes('code')) {
     throw new Error('ru/en lookup-code SMS should be translated');
   }
 

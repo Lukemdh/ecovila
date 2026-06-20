@@ -844,21 +844,21 @@ function smsMonthName(month: number, language: string, short = false) {
 function expiredCashCancellationSms(language: string) {
   if (language === 'ru') {
     return [
-      'EcoVila: Ваше бронирование отменено, так как срок оплаты истек.',
+      'Ваше бронирование отменено, так как срок оплаты истек.',
       'Вы можете забронировать снова на ecovila.md',
     ].join('\n');
   }
 
   if (language === 'en') {
     return [
-      'EcoVila: Your reservation was cancelled because the payment deadline expired.',
+      'Your reservation was cancelled because the payment deadline expired.',
       'You can book again at ecovila.md',
     ].join('\n');
   }
 
   return [
-    'EcoVila: Rezervarea dvs. a fost anulată deoarece termenul de achitare a expirat.',
-    'Puteți rezerva din nou pe ecovila.md',
+    'Rezervarea dvs. a fost anulata deoarece termenul de achitare a expirat.',
+    'Puteti rezerva din nou pe ecovila.md',
   ].join('\n');
 }
 
@@ -897,18 +897,18 @@ export function bookingChangeSms(input: {
   if (language === 'ru') {
     const guests = `${adults} взрослых${kids ? ` и ${kids} детей` : ''}`;
     const tail = free ? '' : ` Разница ${amount} MDL оплачена.`;
-    return `EcoVila: ваша бронь обновлена. Теперь включает ${guests}.${tail}`;
+    return `Ваша бронь обновлена. Теперь включает ${guests}.${tail}`;
   }
 
   if (language === 'en') {
     const guests = `${adults} adults${kids ? ` and ${kids} children` : ''}`;
     const tail = free ? '' : ` The ${amount} MDL difference has been paid.`;
-    return `EcoVila: your reservation was updated. It now includes ${guests}.${tail}`;
+    return `Your reservation was updated. It now includes ${guests}.${tail}`;
   }
 
   const guests = `${adults} adulti${kids ? ` si ${kids} copii` : ''}`;
   const tail = free ? '' : ` Diferenta de ${amount} MDL a fost achitata.`;
-  return `EcoVila: rezervarea ta a fost actualizata. Acum include ${guests}.${tail}`;
+  return `Rezervarea ta a fost actualizata. Acum include ${guests}.${tail}`;
 }
 
 function arrivalReminderSms(language: string) {

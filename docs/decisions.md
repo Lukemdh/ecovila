@@ -2121,6 +2121,34 @@ upload also carries the still-pending ADR-068 and ADR-070 frontend. Files: `js/m
 
 ---
 
+### ADR-072 — Transactional SMS: drop the redundant "EcoVila:" body prefix and Romanian diacritics
+
+**Context.** Every transactional SMS body (lookup-code OTP, expired-cash cancellation, booking-change
+confirmation) opened with a literal `EcoVila:` prefix, and the Romanian copy carried diacritics
+(`ă/â/î/ș/ț` — "anulată", "Puteți", "actualizată"). Two costs: (1) the SMS.md sender is already the
+alphanumeric originator `SMSMD_FROM` = "EcoVila", so the handset shows "EcoVila" as the sender and the
+in-body prefix merely duplicated it; (2) any non-GSM-7 character (the diacritics) forces the whole
+message into UCS-2 encoding, which drops the per-segment limit from 160 to 70 chars and can split a
+one-segment SMS into two billable parts.
+
+**Decision.** Remove the `EcoVila:` prefix from all three locales of `composeLookupCodeSms`
+(`reservationManage.ts`) and of `expiredCashCancellationSms` / `bookingChangeSms` (`notifications.ts`),
+and strip diacritics from the Romanian variants ("anulata", "Puteti", "actualizata"). Russian keeps
+Cyrillic (unavoidably UCS-2); English was already plain ASCII. Email copy is untouched — this is only
+about SMS, where length and encoding are billed.
+
+**Tests.** `reservation-manage.test.ts` asserted `ru.includes('код')`; the RU body now starts with a
+capital "Код", so the check was relaxed to `.toLowerCase().includes('код')` (still proves the RU SMS is
+translated). Full `deno task test` suite green (97 passed).
+
+**Deploy.** Backend-only; no migration. Takes effect only when the functions importing these shared
+composers are redeployed (lookup/OTP, cash-expiry cancellation, booking-change). **Not yet deployed —
+pending owner sign-off.** Files: `supabase/functions/_shared/notifications.ts`,
+`supabase/functions/_shared/reservationManage.ts`,
+`supabase/functions/tests/reservation-manage.test.ts`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should `intrebari-frecvente.html` be split into per-language URLs (`/intrebari-frecvente.html`,

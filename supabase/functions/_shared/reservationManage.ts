@@ -215,14 +215,14 @@ export function composeLookupCodeSms(code: string, language: unknown = 'ro') {
   const lang = normalizeSmsLanguage(language);
 
   if (lang === 'ru') {
-    return `EcoVila: код для вашего бронирования — ${code}. Код действителен 10 минут.`;
+    return `Код для вашего бронирования — ${code}. Код действителен 10 минут.`;
   }
 
   if (lang === 'en') {
-    return `EcoVila: your reservation code is ${code}. The code is valid for 10 minutes.`;
+    return `Your reservation code is ${code}. The code is valid for 10 minutes.`;
   }
 
-  return `EcoVila: codul pentru rezervarea dvs. este ${code}. Codul este valabil 10 minute.`;
+  return `Codul pentru rezervarea dvs. este ${code}. Codul este valabil 10 minute.`;
 }
 
 export function getClientIp(request: Request) {
