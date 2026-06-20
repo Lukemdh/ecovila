@@ -298,6 +298,7 @@ export function composeArrivalReminder(
 ): SmsNotificationMessage {
   const language = reservationLanguage(reservation);
   const group = options.groupReservations?.length ? options.groupReservations : [reservation];
+  const directionsLabel = EMAIL_DIRECTIONS_LABEL[language as EmailLang] ?? EMAIL_DIRECTIONS_LABEL.ro;
 
   return {
     sms: {
@@ -308,7 +309,7 @@ export function composeArrivalReminder(
       to: reservation.guest_email,
       subject: 'Mâine vă așteptăm la EcoVila',
       text:
-        'Vă așteptăm mâine la EcoVila. Check-in de la 13:00. Accesul cu animale de companie nu este permis.',
+        `Vă așteptăm mâine la EcoVila. Check-in de la 13:00. Accesul cu animale de companie nu este permis.\n\n${directionsLabel}: ${EMAIL_MAPS_URL}`,
       html: reservationEmailHtml({
         title: 'Mâine vă așteptăm la EcoVila',
         greeting: `Bună, ${escapeHtml(reservation.guest_first_name)}.`,
@@ -318,6 +319,8 @@ export function composeArrivalReminder(
         ],
         body:
           'Vă rugăm să rețineți: accesul cu animale de companie nu este permis pe teritoriul complexului.',
+        ctaUrl: EMAIL_MAPS_URL,
+        ctaLabel: directionsLabel,
       }),
     },
   };
@@ -944,6 +947,19 @@ const EMAIL_PHONE_DISPLAY = '+373 60 120 220';
 const EMAIL_PHONE_HREF = 'tel:+37360120220';
 const EMAIL_LOGO_PATH = '/assets/logo.png';
 
+// Driving-directions link to the resort, shared across the booking touchpoints
+// where guests see a "Cum ajungi" button (confirmation page, confirmation email,
+// arrival-reminder email). The cash/office payment location is intentionally
+// separate and not covered here.
+const EMAIL_MAPS_URL =
+  'https://maps.google.com?q=7WX6+M8%20Indicator%20spre%20EcoVila,%20Ivancea&ftid=0x40cbe700370a96df:0x462e18a7fbf6b042&entry=gps&shh=CAE&lucs=,94297699,94231188,94280568,47071704,94218641,94282134,100813469,94286869&g_st=ic';
+
+const EMAIL_DIRECTIONS_LABEL: Record<EmailLang, string> = {
+  ro: 'Cum ajungi',
+  ru: 'Как добраться',
+  en: 'Get directions',
+};
+
 const EMAIL_COLORS = {
   bg: '#F7F4EF',
   card: '#FFFAF2',
@@ -1093,6 +1109,7 @@ function renderReservationEmail(input: {
   intro: string;
   rows: EmailRow[];
   primary?: { label: string; url: string };
+  directions?: { label: string; url: string };
   secondary?: { label: string; url: string };
   info?: EmailInfoCard;
   closing: string;
@@ -1134,6 +1151,18 @@ function renderReservationEmail(input: {
       escapeAttribute(input.primary.url)
     }" style="display:inline-block; background:${c.green}; color:#ffffff; text-decoration:none; font-size:16px; font-weight:700; line-height:1; padding:16px 36px; border-radius:999px;">${
       escapeHtml(input.primary.label)
+    }</a>
+            </td>
+          </tr>`
+    : '';
+
+  const directionsHtml = input.directions
+    ? `<tr>
+            <td align="center" style="padding:10px 0 2px 0;">
+              <a href="${
+      escapeAttribute(input.directions.url)
+    }" target="_blank" rel="noopener" style="display:inline-block; background:#ffffff; color:${c.green}; text-decoration:none; font-size:15px; font-weight:700; line-height:1; padding:13px 30px; border:1.5px solid ${c.green}; border-radius:999px;">📍 ${
+      escapeHtml(input.directions.label)
     }</a>
             </td>
           </tr>`
@@ -1238,6 +1267,7 @@ function renderReservationEmail(input: {
     '</td>',
     '</tr>',
     primaryHtml,
+    directionsHtml,
     secondaryHtml,
     '</table>',
     '</td>',
@@ -1464,6 +1494,7 @@ export function buildConfirmationEmail(args: {
     intro: copy.intro,
     rows,
     primary: { label: copy.cta, url: args.confirmationUrl },
+    directions: { label: EMAIL_DIRECTIONS_LABEL[args.lang], url: EMAIL_MAPS_URL },
     secondary: { label: copy.cancel, url: args.cancellationUrl },
     info: copy.info,
     closing: copy.closing,
@@ -1485,6 +1516,7 @@ export function buildConfirmationEmail(args: {
     '',
     `${copy.cta}: ${args.confirmationUrl}`,
     `${copy.cancelTextLabel}: ${args.cancellationUrl}`,
+    `${EMAIL_DIRECTIONS_LABEL[args.lang]}: ${EMAIL_MAPS_URL}`,
     '',
     copy.textArrival,
     copy.info.title,

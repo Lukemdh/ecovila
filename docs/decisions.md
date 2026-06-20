@@ -2293,6 +2293,45 @@ TopHost upload. Frontend-only (no migration/functions). Files: `index.html`, `ru
 
 ---
 
+### ADR-077 — Unify the guest "Cum ajungi" directions link to the resort's Google Maps share URL + add it to the confirmation/reminder emails
+
+**Context.** The post-booking "Cum ajungi" button pointed at a fuzzy text query
+(`maps.google.com/?q=EcoVila+Orheiul+Vechi`), which doesn't resolve to the actual entrance —
+guests would land on the wrong pin. The owner supplied a precise Maps share link
+(plus-code `7WX6+M8 Indicator spre EcoVila, Ivancea` with `ftid`/`entry=gps`). Goal: make every
+directions touchpoint a guest sees use that exact link, while NOT touching the separate
+cash/office payment-location button (that intentionally points at the Chișinău office, ADR-061).
+
+**Confirmation page.** Repointed the celebration-screen directions button: both the static
+`href` in `confirmare.html` and `MAPS_URL` in `js/confirmare.js` (the runtime value actually
+wins — `directions.href = MAPS_URL` on render).
+
+**Emails (new buttons).** Neither the confirmation nor the arrival-reminder email had a
+directions button before. Added a shared `EMAIL_MAPS_URL` + localized labels
+(`EMAIL_DIRECTIONS_LABEL`: `Cum ajungi`/`Как добраться`/`Get directions`) in
+`notifications.ts`. The premium reservation-email renderer gained an optional `directions`
+slot rendered as an outlined "📍" pill between the primary CTA and the cancel link; wired into
+`buildConfirmationEmail` (HTML + plaintext, localized RO/RU/EN). The simpler arrival-reminder
+email (`composeArrivalReminder`, body is hardcoded RO per ADR-062) gained a localized directions
+CTA + plaintext line keyed on the guest's language.
+
+**Explicitly NOT changed.** The cash/office directions button in `gestionare.html` (Chișinău
+office); the FAQ "Cum ajungi…" answers (text-only, owner chose to leave them); the homepage
+`hasMap` JSON-LD (structured data, not a guest-facing button) — all left as-is per the owner's
+decisions.
+
+**Status.** Committed and pushed to `main`; asset token bumped to `?v=2026062003`
+(`npm run bump:assets`) and `dist/tophost` rebuilt (`npm run prepare:tophost`) — live on next
+TopHost upload. Backend redeploy still pending owner sign-off: `confirm-reservation-payment`
+(confirmation email) and `send-reminders` (reminder email) both bundle the shared
+`notifications.ts`. Verified: `deno check` clean, 31 email/reminder tests pass, all three
+languages render the correct localized label + exact URL in HTML and plaintext, and the
+confirmation page button carries the new href with no console errors. Files: `confirmare.html`,
+`js/confirmare.js`, `supabase/functions/_shared/notifications.ts` (+ the `?v=` re-stamp across
+shipped HTML).
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

@@ -17,7 +17,7 @@
   const CARD_STATUS_POLL_LIMIT = 180;
   const CHECK_IN_HOUR = '13:00';
   const CHECK_OUT_HOUR = '10:00';
-  const MAPS_URL = 'https://maps.google.com/?q=EcoVila+Orheiul+Vechi';
+  const MAPS_URL = 'https://maps.google.com?q=7WX6+M8%20Indicator%20spre%20EcoVila,%20Ivancea&ftid=0x40cbe700370a96df:0x462e18a7fbf6b042&entry=gps&shh=CAE&lucs=,94297699,94231188,94280568,47071704,94218641,94282134,100813469,94286869&g_st=ic';
 
   let _cardPollTimeout = null;
   let _cardPollAttempts = 0;
