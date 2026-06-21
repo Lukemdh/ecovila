@@ -24,23 +24,7 @@
   color: var(--espresso);
 }
 
-.cmp-step {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cmp-step + .cmp-step {
-  margin-top: 6px;
-}
-
-.cmp-step label {
-  font-weight: 600;
-  color: var(--ink);
-  font-size: 0.92rem;
-}
-
-.cmp-step input,
+.cmp-field input,
 .cmp-field textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -52,7 +36,7 @@
   background: var(--paper);
 }
 
-.cmp-step input:focus,
+.cmp-field input:focus,
 .cmp-field textarea:focus {
   outline: none;
   border-color: #5F7A3A;

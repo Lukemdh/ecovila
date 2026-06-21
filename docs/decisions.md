@@ -2427,6 +2427,14 @@ field toggles required-on-Căsuța, the validation chain, and the exact submit p
 `supabase/functions/_shared/complaints.ts`, `_shared/rateLimit.ts`, `config.toml`,
 `supabase/migrations/20260621120000_drop_complaint_sessions.sql`, tests.
 
+**Follow-up polish (2026-06-21).** The room-number + phone inputs rendered unstyled because
+the CSS only targeted the now-removed `.cmp-step input`; restyled under `.cmp-field input`.
+The optional phone (guest form) and the staff add-reservation phone are now pre-filled with
+the `+373` prefix so users type only the local digits — a bare prefix counts as "no phone"
+on the guest form and still fails the staff form's `^\+\d{8,15}$` validation (locked in by a
+new test). Asset token re-bumped to `?v=2026062102`. Files: `css/complaints.css`,
+`complaints.html`, `js/complaints.js`, `admin/dashboard.html`, `tests/admin-crm.test.mjs`.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

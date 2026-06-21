@@ -1144,8 +1144,10 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(dashboard, /data-add-date-picker/);
     assert.match(dashboard, /data-add-calendar-grid/);
     assert.match(dashboard, /data-add-calendar-apply/);
-    assert.match(dashboard, /<input type="tel" placeholder="\+373" data-add-phone required>/);
-    assert.doesNotMatch(dashboard, /<input type="tel" value="\+373" data-add-phone/);
+    // The add-reservation phone is pre-filled with the "+373" prefix (ADR-080) so staff
+    // type only the local digits; a bare "+373" still fails validation (see test below).
+    assert.match(dashboard, /<input type="tel" value="\+373" placeholder="\+373" data-add-phone required>/);
+    // The search phone stays placeholder-only (not pre-filled) so an untouched search reads as empty.
     assert.doesNotMatch(dashboard, /<input type="tel" value="\+373" data-search-phone/);
     assert.doesNotMatch(dashboard, /data-add-payment-type/);
   });
@@ -1479,6 +1481,28 @@ describe('EcoVila Step 9 CRM', () => {
         '[data-add-check-in]': field('2026-06-01'),
         '[data-add-check-out]': field('2026-06-02'),
         '[data-add-phone]': field(''),
+        '[data-add-total]': field('', { dataset: { total: '1900' } }),
+      }),
+      { childBuckets: [] },
+    );
+
+    assert.equal(message, 'Introdu un telefon valid în format internațional.');
+  });
+
+  it('blocks CRM add submit when only the pre-filled "+373" prefix is left', () => {
+    const { EcoVilaCrmSidebar: sidebar } = loadAdminModule('admin/js/crm-sidebar.js');
+    const message = sidebar.validateAddForm(
+      {
+        rooms: [{ id: 'room-1', number: 1 }],
+        reservations: [],
+      },
+      formWithFields({
+        '[data-add-room-numbers]': field('1'),
+        '[data-add-adults]': field('2'),
+        '[data-add-kids]': field('0'),
+        '[data-add-check-in]': field('2026-06-01'),
+        '[data-add-check-out]': field('2026-06-02'),
+        '[data-add-phone]': field('+373'),
         '[data-add-total]': field('', { dataset: { total: '1900' } }),
       }),
       { childBuckets: [] },

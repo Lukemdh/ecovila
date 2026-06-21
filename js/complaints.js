@@ -129,9 +129,11 @@
       return;
     }
 
-    // The phone is optional, but if the guest typed something that is not a valid
-    // number we stop rather than silently drop a callback number they expect us to use.
-    if (phoneRaw && phoneRaw !== '+' && !phone) {
+    // The phone is optional and the field is pre-filled with the "+373" prefix, so a
+    // bare country code (or empty) counts as "no number left". Only a real attempt —
+    // digits typed beyond the prefix — that isn't a valid number stops the submit.
+    const phoneAttempted = phoneRaw.replace(/\D/g, '').length > 3;
+    if (phoneAttempted && !phone) {
       setFormError(t('complaints.phoneInvalid'));
       el('[data-cmp-phone]')?.focus();
       return;
@@ -171,12 +173,17 @@
       chip.classList.remove('is-active');
       chip.setAttribute('aria-checked', 'false');
     });
-    ['[data-cmp-description]', '[data-cmp-room]', '[data-cmp-phone]'].forEach((selector) => {
+    ['[data-cmp-description]', '[data-cmp-room]'].forEach((selector) => {
       const node = el(selector);
       if (node) {
         node.value = '';
       }
     });
+    // Keep the phone prefix pre-filled for the next message.
+    const phoneInput = el('[data-cmp-phone]');
+    if (phoneInput) {
+      phoneInput.value = '+373';
+    }
     syncRoomField();
     setFormError('');
     hide(el('[data-cmp-success]'));
