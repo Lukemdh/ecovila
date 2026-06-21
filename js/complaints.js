@@ -9,8 +9,6 @@
 
   const helpers = window.EcoVilaSupabase;
   const state = {
-    loginId: '',
-    complaintToken: '',
     category: '',
     submitting: false,
   };
@@ -49,8 +47,8 @@
     return client;
   }
 
-  function setError(selector, message) {
-    const node = el(selector);
+  function setFormError(message) {
+    const node = el('[data-cmp-form-error]');
     if (!node) {
       return;
     }
@@ -58,95 +56,35 @@
     node.hidden = !message;
   }
 
-  function setLoginError(message) {
-    setError('[data-cmp-login-error]', message);
-  }
-
-  function setFormError(message) {
-    setError('[data-cmp-form-error]', message);
-  }
-
   function normalizePhone(value) {
     return String(value || '').trim().replace(/[\s().-]/g, '');
+  }
+
+  function isValidPhone(value) {
+    return /^\+\d{8,15}$/.test(value);
   }
 
   function isRateLimited(error) {
     return Boolean(helpers.isRateLimited?.(error));
   }
 
-  async function handleStart() {
-    const button = el('[data-cmp-start]');
-    const phone = normalizePhone(el('[data-cmp-phone]')?.value);
-
-    if (!/^\+\d{8,15}$/.test(phone)) {
-      setLoginError(t('complaints.loginError'));
-      return;
-    }
-
-    setLoginError('');
-    if (button) {
-      button.disabled = true;
-    }
-
-    try {
-      const result = await helpers.startComplaintLogin(getClient(), phone, getLanguage());
-
-      if (result.rateLimited) {
-        setLoginError(t('complaints.rateLimited'));
-        return;
-      }
-
-      if (result.hasReservations === false) {
-        setLoginError(t('complaints.noReservations'));
-        return;
-      }
-
-      state.loginId = result.loginId || '';
-      hide(el('[data-cmp-phone-step]'));
-      show(el('[data-cmp-code-step]'));
-      el('[data-cmp-code]')?.focus();
-    } catch (error) {
-      setLoginError(isRateLimited(error) ? t('complaints.rateLimited') : t('complaints.loginError'));
-    } finally {
-      if (button) {
-        button.disabled = false;
-      }
-    }
+  function isCasuta() {
+    return state.category === 'casuta';
   }
 
-  async function handleVerify() {
-    const button = el('[data-cmp-verify]');
-    const code = String(el('[data-cmp-code]')?.value || '').replace(/\D/g, '').slice(0, 4);
-
-    if (!state.loginId || code.length !== 4) {
-      setLoginError(t('complaints.codeError'));
-      return;
+  // The cabin-number field only exists for "Căsuța" reports; it is required while
+  // shown and cleared when the guest switches to another category.
+  function syncRoomField() {
+    const field = el('[data-cmp-room-field]');
+    const input = el('[data-cmp-room]');
+    const casuta = isCasuta();
+    if (field) {
+      field.hidden = !casuta;
     }
-
-    setLoginError('');
-    if (button) {
-      button.disabled = true;
-    }
-
-    try {
-      const result = await helpers.verifyComplaintLogin(getClient(), {
-        loginId: state.loginId,
-        code,
-      });
-
-      state.complaintToken = result.complaintToken || '';
-      if (!state.complaintToken) {
-        setLoginError(t('complaints.codeError'));
-        return;
-      }
-
-      hide(el('[data-cmp-login]'));
-      show(el('[data-cmp-form]'));
-    } catch (error) {
-      setLoginError(isRateLimited(error) ? t('complaints.rateLimited') : t('complaints.codeError'));
-    } finally {
-      if (button) {
-        button.disabled = false;
+    if (input) {
+      input.required = casuta;
+      if (!casuta) {
+        input.value = '';
       }
     }
   }
@@ -158,7 +96,11 @@
       chip.classList.toggle('is-active', active);
       chip.setAttribute('aria-checked', String(active));
     });
+    syncRoomField();
     setFormError('');
+    if (isCasuta()) {
+      el('[data-cmp-room]')?.focus();
+    }
   }
 
   async function handleSubmit() {
@@ -167,14 +109,31 @@
     }
 
     const description = String(el('[data-cmp-description]')?.value || '').trim();
+    const room = String(el('[data-cmp-room]')?.value || '').trim();
+    const phoneRaw = normalizePhone(el('[data-cmp-phone]')?.value);
+    const phone = isValidPhone(phoneRaw) ? phoneRaw : '';
 
     if (!state.category) {
       setFormError(t('complaints.categoryRequired'));
       return;
     }
 
+    if (isCasuta() && !room) {
+      setFormError(t('complaints.roomRequired'));
+      el('[data-cmp-room]')?.focus();
+      return;
+    }
+
     if (!description) {
       setFormError(t('complaints.descriptionRequired'));
+      return;
+    }
+
+    // The phone is optional, but if the guest typed something that is not a valid
+    // number we stop rather than silently drop a callback number they expect us to use.
+    if (phoneRaw && phoneRaw !== '+' && !phone) {
+      setFormError(t('complaints.phoneInvalid'));
+      el('[data-cmp-phone]')?.focus();
       return;
     }
 
@@ -187,10 +146,10 @@
 
     try {
       await helpers.submitComplaint(getClient(), {
-        complaintToken: state.complaintToken,
         category: state.category,
         description,
-        isAnonymous: el('[data-cmp-anonymous]')?.checked === true,
+        roomNumber: isCasuta() ? room : '',
+        phone,
         language: getLanguage(),
       });
 
@@ -212,45 +171,40 @@
       chip.classList.remove('is-active');
       chip.setAttribute('aria-checked', 'false');
     });
-    const description = el('[data-cmp-description]');
-    if (description) {
-      description.value = '';
-    }
-    const anonymous = el('[data-cmp-anonymous]');
-    if (anonymous) {
-      anonymous.checked = false;
-    }
+    ['[data-cmp-description]', '[data-cmp-room]', '[data-cmp-phone]'].forEach((selector) => {
+      const node = el(selector);
+      if (node) {
+        node.value = '';
+      }
+    });
+    syncRoomField();
     setFormError('');
     hide(el('[data-cmp-success]'));
     show(el('[data-cmp-form]'));
   }
 
-  function updatePlaceholder() {
+  function updatePlaceholders() {
     const description = el('[data-cmp-description]');
     if (description) {
       description.placeholder = t('complaints.descriptionPlaceholder');
     }
+    const room = el('[data-cmp-room]');
+    if (room) {
+      room.placeholder = t('complaints.roomPlaceholder');
+    }
+    const phone = el('[data-cmp-phone]');
+    if (phone) {
+      phone.placeholder = t('complaints.phonePlaceholder');
+    }
   }
 
-  function onEnter(node, handler) {
-    node?.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        handler();
-      }
-    });
-  }
-
-  el('[data-cmp-start]')?.addEventListener('click', handleStart);
-  onEnter(el('[data-cmp-phone]'), handleStart);
-  el('[data-cmp-verify]')?.addEventListener('click', handleVerify);
-  onEnter(el('[data-cmp-code]'), handleVerify);
   app.querySelectorAll('[data-cmp-category]').forEach((chip) => {
     chip.addEventListener('click', () => selectCategory(chip.dataset.cmpCategory));
   });
   el('[data-cmp-submit]')?.addEventListener('click', handleSubmit);
   el('[data-cmp-again]')?.addEventListener('click', resetForAnother);
 
-  window.addEventListener('ecovila:languagechange', updatePlaceholder);
-  updatePlaceholder();
+  window.addEventListener('ecovila:languagechange', updatePlaceholders);
+  updatePlaceholders();
+  syncRoomField();
 })();

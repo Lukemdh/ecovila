@@ -2385,6 +2385,50 @@ email path shares the new label). Verified: `deno check` clean on all affected f
 
 ---
 
+### ADR-080 — Auth-free guest complaints: drop the OTP login + anonymity toggle, require a cabin number for căsuță reports, add an optional follow-up phone
+
+**Context.** The complaints page (ADR-068) gated every report behind a phone-OTP login
+(SMS code, restricted to phones with a paid reservation) and offered a "submit anonymously"
+toggle. The owner found the login too much friction for a feedback form and wanted any
+visitor to report a problem in one screen. With no login there is no verified identity, so
+the anonymity toggle became meaningless. Separately, "Căsuța" reports need to say *which*
+cabin, and staff wanted that inside the report text they already read.
+
+**Change.** The complaints flow is now unauthenticated. Removed the login card (phone +
+SMS-code steps) and the anonymity checkbox from `complaints.html`; the report form shows
+immediately. `complaint-submit` no longer requires a session token or `isAnonymous` — its
+only gate is the existing per-IP rate-limit bucket (`complaintSubmitIp`, 10 / 10 min, the
+same pattern as the public `create-reservation`). Selecting "Căsuța" reveals a **required**
+"Numărul căsuței" field; the server prefixes the cabin number into the stored description
+("Căsuța <n> — …") via a shared `composeCasutaDescription`, so the admin "Probleme" tab
+shows it with no schema change. A new **optional** phone field is the only identity a guest
+may leave: when present and matching a paid reservation it still attaches the first name +
+booking (`resolveIdentity`) so staff get a ☎ for follow-up; blank ⇒ a fully unattributed
+report (`is_anonymous` is always stored `false`, which the admin already renders as
+"Oaspete"). New shared helpers `normalizeComplaintRoom` / `normalizeOptionalPhone`;
+translations updated RO/RU/EN (login/anonymity keys removed, room + optional-phone keys
+added). The `/complaints → /complaints.html` rewrite already lives in `.htaccess` (ADR-068)
+— unchanged. The orphaned login subsystem is fully retired: the `complaint-login-start` /
+`complaint-login-verify` edge functions were deleted, the `complaint_sessions` table was
+dropped (migration `20260621120000_drop_complaint_sessions.sql`), and the dead session/code
+hashing helpers + the two `complaintLogin*` rate-limit buckets + their `config.toml` blocks
+were removed.
+
+**Status.** **Backend deployed to prod 2026-06-21** (project `mckchrviaawdxtsfytut`):
+`complaint-submit` redeployed (v4, auth-free), `complaint-login-start` + `complaint-login-verify`
+deleted, `complaint_sessions` dropped + migration history repaired. **Frontend bundled, not
+yet TopHost-uploaded** — asset token bumped site-wide to `?v=2026062101`, `dist/tophost`
+regenerated (incl. the `.htaccess` carrying the `/complaints` rewrite). Verified: 300 node +
+101 deno tests pass; browser preview confirmed the form renders without login, the cabin
+field toggles required-on-Căsuța, the validation chain, and the exact submit payload
+(`{category, description, roomNumber, phone, language}`). Remaining step: upload the frontend
++ `.htaccess` to TopHost. Files: `complaints.html`, `js/complaints.js`, `js/supabase.js`,
+`js/translations.js`, `css/complaints.css`, `supabase/functions/complaint-submit/index.ts`,
+`supabase/functions/_shared/complaints.ts`, `_shared/rateLimit.ts`, `config.toml`,
+`supabase/migrations/20260621120000_drop_complaint_sessions.sql`, tests.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

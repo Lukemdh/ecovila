@@ -972,41 +972,6 @@
     );
   }
 
-  async function startComplaintLogin(client, phone, language) {
-    if (!client?.functions?.invoke) {
-      throw new Error('Supabase Edge Functions are not available on this client.');
-    }
-
-    const result = await client.functions.invoke('complaint-login-start', {
-      body: { phone, language: language || 'ro' },
-    });
-
-    if (result.error) {
-      throw decorateInvokeError(result.error);
-    }
-
-    return result.data || {};
-  }
-
-  async function verifyComplaintLogin(client, input) {
-    if (!client?.functions?.invoke) {
-      throw new Error('Supabase Edge Functions are not available on this client.');
-    }
-
-    const result = await client.functions.invoke('complaint-login-verify', {
-      body: {
-        loginId: input?.loginId || '',
-        code: input?.code || '',
-      },
-    });
-
-    if (result.error) {
-      throw decorateInvokeError(result.error);
-    }
-
-    return result.data || {};
-  }
-
   async function submitComplaint(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -1014,10 +979,10 @@
 
     const result = await client.functions.invoke('complaint-submit', {
       body: {
-        complaintToken: input?.complaintToken || '',
         category: input?.category || '',
         description: input?.description || '',
-        isAnonymous: input?.isAnonymous === true,
+        roomNumber: input?.roomNumber || '',
+        phone: input?.phone || '',
         language: input?.language || 'ro',
       },
     });
@@ -1133,8 +1098,6 @@
     createReservationRequest,
     startReservationLookup,
     verifyReservationLookup,
-    startComplaintLogin,
-    verifyComplaintLogin,
     submitComplaint,
     fetchComplaints,
     markComplaintSolved,

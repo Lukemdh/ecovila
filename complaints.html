@@ -6,7 +6,7 @@
     <title>EcoVila | Sesizări</title>
     <meta
       name="description"
-      content="Ai întâmpinat o problemă la EcoVila? Autentifică-te cu numărul de telefon și lasă-ne un mesaj."
+      content="Ai întâmpinat o problemă la EcoVila? Spune-ne ce s-a întâmplat și încercăm să rezolvăm cât mai repede."
     >
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
@@ -17,11 +17,11 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="css/main.css?v=2026062003">
-    <link rel="stylesheet" href="css/checkout.css?v=2026062003">
-    <link rel="stylesheet" href="css/confirmation.css?v=2026062003">
-    <link rel="stylesheet" href="css/gestionare.css?v=2026062003">
-    <link rel="stylesheet" href="css/complaints.css?v=2026062003">
+    <link rel="stylesheet" href="css/main.css?v=2026062101">
+    <link rel="stylesheet" href="css/checkout.css?v=2026062101">
+    <link rel="stylesheet" href="css/confirmation.css?v=2026062101">
+    <link rel="stylesheet" href="css/gestionare.css?v=2026062101">
+    <link rel="stylesheet" href="css/complaints.css?v=2026062101">
     <meta name="robots" content="noindex">
   </head>
   <body>
@@ -49,49 +49,12 @@
         <div class="gm-hero">
           <h1 data-i18n="complaints.title">Ai o problemă?</h1>
           <p class="gm-hero__lead" data-i18n="complaints.lead">
-            Spune-ne ce nu a fost în regulă la EcoVila. Autentifică-te cu numărul de telefon folosit la rezervare.
+            Spune-ne ce nu a fost în regulă la EcoVila și încercăm să rezolvăm cât mai repede.
           </p>
         </div>
 
-        <!-- Login -->
-        <section class="cmp-card" data-cmp-login>
-          <div class="cmp-step" data-cmp-phone-step>
-            <label for="complaints-phone" data-i18n="complaints.phoneLabel">Număr de telefon</label>
-            <input
-              id="complaints-phone"
-              type="tel"
-              value="+373"
-              autocomplete="tel"
-              inputmode="tel"
-              data-cmp-phone
-            >
-            <p class="cmp-hint" data-i18n="complaints.phoneHint">Îți trimitem un cod prin SMS.</p>
-            <button class="editorial-button editorial-button--filled" type="button" data-cmp-start>
-              <span data-i18n="complaints.sendCode">Trimite codul</span>
-            </button>
-          </div>
-
-          <div class="cmp-step" data-cmp-code-step hidden>
-            <label for="complaints-code" data-i18n="complaints.codeLabel">Cod SMS</label>
-            <input
-              id="complaints-code"
-              type="text"
-              inputmode="numeric"
-              maxlength="4"
-              autocomplete="one-time-code"
-              data-cmp-code
-            >
-            <p class="cmp-hint" data-i18n="complaints.codeHint">Introdu codul din 4 cifre primit prin SMS.</p>
-            <button class="editorial-button editorial-button--filled" type="button" data-cmp-verify>
-              <span data-i18n="complaints.verify">Verifică</span>
-            </button>
-          </div>
-
-          <p class="booking-error cmp-error" data-cmp-login-error hidden></p>
-        </section>
-
         <!-- Complaint form -->
-        <section class="cmp-card" data-cmp-form hidden>
+        <section class="cmp-card" data-cmp-form>
           <h2 data-i18n="complaints.formTitle">Lasă-ne un mesaj</h2>
 
           <fieldset class="cmp-categories">
@@ -112,6 +75,19 @@
             </div>
           </fieldset>
 
+          <!-- Shown only when "Căsuța" is selected (toggled by complaints.js). -->
+          <label class="cmp-field" data-cmp-room-field hidden>
+            <span data-i18n="complaints.roomLabel">Numărul căsuței</span>
+            <input
+              type="text"
+              data-cmp-room
+              inputmode="numeric"
+              maxlength="40"
+              autocomplete="off"
+              placeholder="ex. 5"
+            >
+          </label>
+
           <label class="cmp-field">
             <span data-i18n="complaints.descriptionLabel">Descriere</span>
             <textarea
@@ -122,12 +98,16 @@
             ></textarea>
           </label>
 
-          <label class="cmp-checkbox">
-            <input type="checkbox" data-cmp-anonymous>
-            <span class="cmp-checkbox__copy">
-              <span data-i18n="complaints.anonymous">Vreau anonim</span>
-              <small data-i18n="complaints.anonymousHint">Nu îți vom afișa numele sau numărul.</small>
-            </span>
+          <label class="cmp-field">
+            <span data-i18n="complaints.phoneOptionalLabel">Telefon (opțional)</span>
+            <input
+              type="tel"
+              data-cmp-phone
+              autocomplete="tel"
+              inputmode="tel"
+              placeholder="+373 60 000 000"
+            >
+            <small class="cmp-hint" data-i18n="complaints.phoneOptionalHint">Lasă-l dacă vrei să te contactăm.</small>
           </label>
 
           <button class="editorial-button editorial-button--filled" type="button" data-cmp-submit>
@@ -189,10 +169,10 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/supabase-config.js?v=2026062003"></script>
-    <script src="js/supabase.js?v=2026062003"></script>
-    <script src="js/translations.js?v=2026062003"></script>
-    <script src="js/main.js?v=2026062003"></script>
-    <script src="js/complaints.js?v=2026062003"></script>
+    <script src="js/supabase-config.js?v=2026062101"></script>
+    <script src="js/supabase.js?v=2026062101"></script>
+    <script src="js/translations.js?v=2026062101"></script>
+    <script src="js/main.js?v=2026062101"></script>
+    <script src="js/complaints.js?v=2026062101"></script>
   </body>
 </html>

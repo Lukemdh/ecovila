@@ -130,41 +130,7 @@
   min-height: 120px;
 }
 
-.cmp-checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 20px;
-  cursor: pointer;
-}
-
-.cmp-checkbox input {
-  margin-top: 3px;
-  width: 18px;
-  height: 18px;
-  accent-color: #5F7A3A;
-  flex: none;
-}
-
-.cmp-checkbox__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.cmp-checkbox__copy > span {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.cmp-checkbox__copy small {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.cmp-card [data-cmp-submit],
-.cmp-card [data-cmp-start],
-.cmp-card [data-cmp-verify] {
+.cmp-card [data-cmp-submit] {
   width: 100%;
   justify-content: center;
 }

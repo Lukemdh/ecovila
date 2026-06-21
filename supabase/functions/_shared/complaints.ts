@@ -1,10 +1,6 @@
-import { requiredEnv } from './env.ts';
-import { createManageToken } from './reservationManage.ts';
-
 export const COMPLAINT_CATEGORIES = ['casuta', 'facilitati', 'personal', 'altceva'] as const;
 export type ComplaintCategory = (typeof COMPLAINT_CATEGORIES)[number];
 
-export const COMPLAINT_SESSION_TTL_MINUTES = 30;
 export const COMPLAINT_DESCRIPTION_MAX = 2000;
 
 export function isComplaintCategory(value: unknown): value is ComplaintCategory {
@@ -35,38 +31,35 @@ export function normalizeComplaintLanguage(value: unknown): 'ro' | 'ru' | 'en' {
   return language === 'ru' || language === 'en' ? language : 'ro';
 }
 
-export function createComplaintSessionToken(): string {
-  return createManageToken();
+export const COMPLAINT_ROOM_MAX = 40;
+
+/**
+ * Cabin number/label for a "casuta" complaint. Single line, trimmed, capped.
+ * Returns '' when nothing usable was provided so the caller can reject it.
+ */
+export function normalizeComplaintRoom(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, COMPLAINT_ROOM_MAX);
 }
 
 /**
- * Hash of the SMS login code. The `complaint_login_code` prefix means a code
- * minted here can NEVER satisfy reservation-lookup-verify (which hashes with a
- * different prefix), so reusing the reservation_lookup_codes storage table does
- * not let a complaint code be redeemed for a reservation manage token.
+ * Staff triage complaints in Romanian, so a casuta report bakes the cabin number
+ * straight into the description ("Căsuța <n> — …") instead of adding a column.
+ * The result is capped to the table's 2000-char bound; an extreme guest body is
+ * trimmed at the tail so the prefix always survives.
  */
-export function hashComplaintCode(
-  loginId: string,
-  code: string,
-  secret = requiredEnv('ECOVILA_CRON_SECRET'),
-): Promise<string> {
-  return sha256Hex(
-    ['complaint_login_code', loginId, normalizeComplaintCode(code), secret].join(':'),
-  );
+export function composeCasutaDescription(room: string, description: string): string {
+  const composed = `Căsuța ${room} — ${description}`;
+  return composed.length > COMPLAINT_DESCRIPTION_MAX
+    ? composed.slice(0, COMPLAINT_DESCRIPTION_MAX)
+    : composed;
 }
 
-export function hashComplaintSessionToken(
-  token: string,
-  secret = requiredEnv('ECOVILA_CRON_SECRET'),
-): Promise<string> {
-  return sha256Hex(['complaint_session_token', token, secret].join(':'));
-}
-
-export function normalizeComplaintCode(value: unknown): string {
-  return String(value || '').replace(/\D/g, '').slice(0, 4);
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+/**
+ * Optional follow-up phone left on the (now auth-free) complaint form. Returns a
+ * normalized +E.164-ish number, or null when blank/invalid — a bad value never
+ * blocks the complaint, it just means staff get no number to call back.
+ */
+export function normalizeOptionalPhone(value: unknown): string | null {
+  const phone = String(value ?? '').replace(/[\s().-]/g, '');
+  return /^\+\d{8,15}$/.test(phone) ? phone : null;
 }

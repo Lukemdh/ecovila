@@ -60,12 +60,6 @@ verify_jwt = true
 [functions.reservation-change-status]
 verify_jwt = true
 
-[functions.complaint-login-start]
-verify_jwt = true
-
-[functions.complaint-login-verify]
-verify_jwt = true
-
 [functions.complaint-submit]
 verify_jwt = true
 

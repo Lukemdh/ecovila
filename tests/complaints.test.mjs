@@ -24,6 +24,11 @@ describe('EcoVila complaints — database migration (ADR-068)', () => {
     assert.match(migration, /create table if not exists public\.complaint_sessions/);
   });
 
+  it('retires the orphaned complaint_sessions table in ADR-080', () => {
+    const drop = read('supabase/migrations/20260621120000_drop_complaint_sessions.sql');
+    assert.match(drop, /drop table if exists public\.complaint_sessions/);
+  });
+
   it('restricts categories and enforces true anonymity', () => {
     assert.match(migration, /category in \('casuta', 'facilitati', 'personal', 'altceva'\)/);
     assert.match(migration, /complaints_anonymous_identity_check/);
@@ -45,32 +50,19 @@ describe('EcoVila complaints — database migration (ADR-068)', () => {
 });
 
 describe('EcoVila complaints — edge functions', () => {
-  it('ships the four functions with verify_jwt', () => {
-    for (const fn of [
-      'complaint-login-start',
-      'complaint-login-verify',
-      'complaint-submit',
-      'send-checkin-welcome',
-    ]) {
+  it('ships complaint-submit + send-checkin-welcome with verify_jwt (login fns retired in ADR-080)', () => {
+    for (const fn of ['complaint-submit', 'send-checkin-welcome']) {
       assert.equal(exists(`supabase/functions/${fn}/index.ts`), true, `${fn} should exist`);
     }
+    // The OTP login functions were deleted when complaints went auth-free.
+    assert.equal(exists('supabase/functions/complaint-login-start/index.ts'), false);
+    assert.equal(exists('supabase/functions/complaint-login-verify/index.ts'), false);
 
     const config = read('supabase/config.toml');
-    for (const fn of [
-      'complaint-login-start',
-      'complaint-login-verify',
-      'complaint-submit',
-      'send-checkin-welcome',
-    ]) {
+    for (const fn of ['complaint-submit', 'send-checkin-welcome']) {
       assert.match(config, new RegExp(`\\[functions\\.${fn}\\]\\nverify_jwt = true`));
     }
-  });
-
-  it('gates login on a paid reservation and sends a localized lookup-code SMS', () => {
-    const start = read('supabase/functions/complaint-login-start/index.ts');
-    assert.match(start, /payment_status'?,?\s*'paid'/);
-    assert.match(start, /composeLookupCodeSms\(code, language\)/);
-    assert.match(start, /complaintLoginStartIp/);
+    assert.equal(/\[functions\.complaint-login-/.test(config), false);
   });
 
   it('localizes the OTP SMS for the reservation lookup flow too', () => {
@@ -78,19 +70,18 @@ describe('EcoVila complaints — edge functions', () => {
     assert.match(lookup, /composeLookupCodeSms\(code, language\)/);
     const supabase = read('js/supabase.js');
     assert.match(supabase, /reservation-lookup-start'[\s\S]*?language: language \|\| 'ro'/);
-    assert.match(supabase, /complaint-login-start'[\s\S]*?language: language \|\| 'ro'/);
   });
 
-  it('mints a complaint session only after a matching code', () => {
-    const verify = read('supabase/functions/complaint-login-verify/index.ts');
-    assert.match(verify, /hashComplaintCode/);
-    assert.match(verify, /complaint_sessions/);
-    assert.match(verify, /createComplaintSessionToken/);
-  });
-
-  it('drops identity for anonymous submissions', () => {
+  it('is auth-free, prefixes the cabin number for casuta and keeps the phone optional', () => {
     const submit = read('supabase/functions/complaint-submit/index.ts');
-    assert.match(submit, /isAnonymous/);
+    // The OTP session-token gate and the anonymity flag are both gone.
+    assert.equal(/complaintToken/.test(submit), false);
+    assert.equal(/isAnonymous/.test(submit), false);
+    // Casuta reports bake "Căsuța <n> — …" straight into the description.
+    assert.match(submit, /category === 'casuta'/);
+    assert.match(submit, /composeCasutaDescription/);
+    // An optional follow-up phone is the only identity a guest can leave.
+    assert.match(submit, /normalizeOptionalPhone/);
     assert.match(submit, /guest_phone: null, guest_first_name: null, reservation_id: null/);
   });
 
@@ -102,11 +93,10 @@ describe('EcoVila complaints — edge functions', () => {
     assert.match(welcome, /'checkin_welcome'/);
   });
 
-  it('registers complaint rate-limit buckets', () => {
+  it('registers the complaint-submit rate-limit bucket (login buckets retired in ADR-080)', () => {
     const rate = read('supabase/functions/_shared/rateLimit.ts');
-    assert.match(rate, /complaintLoginStartIp/);
-    assert.match(rate, /complaintLoginVerifyIp/);
     assert.match(rate, /complaintSubmitIp/);
+    assert.equal(/complaintLoginStartIp|complaintLoginVerifyIp/.test(rate), false);
   });
 
   it('keeps the welcome SMS copy in the notifications module', () => {
@@ -127,32 +117,36 @@ describe('EcoVila complaints — guest page', () => {
     assert.match(html, /css\/complaints\.css\?v=/);
   });
 
-  it('offers the four categories, a description and the anonymous toggle', () => {
+  it('offers the four categories, a cabin-number field, a description and an optional phone', () => {
     for (const category of ['casuta', 'facilitati', 'personal', 'altceva']) {
       assert.match(html, new RegExp(`data-cmp-category="${category}"`));
     }
+    assert.match(html, /data-cmp-room-field/);
+    assert.match(html, /data-cmp-room/);
     assert.match(html, /data-cmp-description/);
-    assert.match(html, /data-cmp-anonymous/);
+    assert.match(html, /data-cmp-phone/);
     assert.match(html, /data-cmp-submit/);
+    // The OTP login card and the anonymity toggle are gone — complaints are auth-free.
+    assert.equal(/data-cmp-anonymous/.test(html), false);
+    assert.equal(/data-cmp-login/.test(html), false);
   });
 
   it('stamps every local asset reference', () => {
     assert.deepEqual(findUnversionedAssetRefs(html), []);
   });
 
-  it('wires the front-end script to the edge-function helpers', () => {
+  it('wires the front-end script to the auth-free submit helper', () => {
     const js = read('js/complaints.js');
-    assert.match(js, /startComplaintLogin/);
-    assert.match(js, /verifyComplaintLogin/);
     assert.match(js, /submitComplaint/);
-    assert.match(js, /hasReservations === false/);
+    assert.match(js, /roomNumber:/);
+    assert.match(js, /isCasuta\(\)/);
+    // No OTP login flow anymore.
+    assert.equal(/startComplaintLogin|verifyComplaintLogin/.test(js), false);
   });
 
   it('exposes the helper functions from the Supabase wrapper', () => {
     const supabase = read('js/supabase.js');
     for (const fn of [
-      'startComplaintLogin',
-      'verifyComplaintLogin',
       'submitComplaint',
       'fetchComplaints',
       'markComplaintSolved',
@@ -170,9 +164,9 @@ describe('EcoVila complaints — guest page', () => {
     assert.match(translations, /'complaints\.cat\.casuta': 'Căsuța'/);
     assert.match(translations, /'complaints\.cat\.casuta': 'Домик'/);
     assert.match(translations, /'complaints\.cat\.casuta': 'Villa'/);
-    assert.match(translations, /'complaints\.anonymous': 'Vreau anonim'/);
-    assert.match(translations, /'complaints\.anonymous': 'Анонимно'/);
-    assert.match(translations, /'complaints\.anonymous': 'Stay anonymous'/);
+    assert.match(translations, /'complaints\.roomLabel': 'Numărul căsuței'/);
+    assert.match(translations, /'complaints\.roomLabel': 'Номер домика'/);
+    assert.match(translations, /'complaints\.roomLabel': 'Villa number'/);
   });
 
   it('serves the clean /complaints URL', () => {

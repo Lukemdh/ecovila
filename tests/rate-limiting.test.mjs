@@ -29,8 +29,6 @@ const RATE_LIMITED_FUNCTIONS = [
   'reservation-cancel',
   'reservation-extend-cash',
   'reservation-manage-details',
-  'complaint-login-start',
-  'complaint-login-verify',
   'complaint-submit',
 ];
 

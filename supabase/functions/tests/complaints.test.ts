@@ -65,39 +65,49 @@ Deno.test('complaint language normalizes to ro/ru/en', async () => {
   }
 });
 
-Deno.test('complaint code hash is deterministic and cannot be redeemed as a reservation code', async () => {
-  const { hashComplaintCode, hashComplaintSessionToken } = await import('../_shared/complaints.ts');
-  const { hashLookupCode } = await import('../_shared/reservationManage.ts');
+Deno.test('casuta complaints prefix the cabin number into the description', async () => {
+  const { normalizeComplaintRoom, composeCasutaDescription, COMPLAINT_DESCRIPTION_MAX } =
+    await import('../_shared/complaints.ts');
 
-  const a = await hashComplaintCode('login-1', '1234', 'secret');
-  const b = await hashComplaintCode('login-1', '1234', 'secret');
-  const c = await hashComplaintCode('login-1', '4321', 'secret');
-
-  if (a !== b) {
-    throw new Error('same complaint code should hash deterministically');
+  if (normalizeComplaintRoom('  5  ') !== '5') {
+    throw new Error('room should be trimmed');
   }
-  if (a === c) {
-    throw new Error('different codes should hash differently');
+  if (normalizeComplaintRoom('  A   2  ') !== 'A 2') {
+    throw new Error('internal whitespace should collapse to single spaces');
   }
-  if (a.includes('1234')) {
-    throw new Error('hash should not contain the plaintext code');
+  if (normalizeComplaintRoom('x'.repeat(60)).length !== 40) {
+    throw new Error('room should be capped at 40 chars');
   }
-
-  // Cross-redeem safety: the same loginId+code+secret must NOT match the
-  // reservation lookup hash, so a complaint code can never satisfy
-  // reservation-lookup-verify even though the storage table is shared.
-  const reservationHash = await hashLookupCode('login-1', '1234', 'secret');
-  if (a === reservationHash) {
-    throw new Error('complaint code hash must differ from the reservation lookup hash');
+  for (const blank of ['', '   ', null, undefined]) {
+    if (normalizeComplaintRoom(blank) !== '') {
+      throw new Error('blank room should normalize to an empty string');
+    }
   }
 
-  const tokenA = await hashComplaintSessionToken('token-x', 'secret');
-  const tokenB = await hashComplaintSessionToken('token-x', 'secret');
-  if (tokenA !== tokenB) {
-    throw new Error('session token should hash deterministically');
+  const composed = composeCasutaDescription('5', 'apa caldă nu funcționează');
+  if (!composed.startsWith('Căsuța 5 — ')) {
+    throw new Error('description should carry the "Căsuța <n> — " prefix');
   }
-  if (tokenA.includes('token-x')) {
-    throw new Error('session hash should not contain the plaintext token');
+  if (!composed.includes('apa caldă nu funcționează')) {
+    throw new Error('the guest text should follow the prefix');
+  }
+
+  const capped = composeCasutaDescription('5', 'x'.repeat(COMPLAINT_DESCRIPTION_MAX));
+  if (capped.length > COMPLAINT_DESCRIPTION_MAX) {
+    throw new Error('composed description must stay within the 2000-char bound');
+  }
+});
+
+Deno.test('optional follow-up phone normalizes or drops to null', async () => {
+  const { normalizeOptionalPhone } = await import('../_shared/complaints.ts');
+
+  if (normalizeOptionalPhone('+373 600 12 345') !== '+37360012345') {
+    throw new Error('a valid phone should have its separators stripped');
+  }
+  for (const blank of ['', '   ', '+', '+373', 'abc', '12345', null, undefined]) {
+    if (normalizeOptionalPhone(blank) !== null) {
+      throw new Error(`"${String(blank)}" should normalize to null`);
+    }
   }
 });
 

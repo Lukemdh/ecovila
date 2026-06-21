@@ -2,9 +2,11 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import {
   assertValidComplaintCategory,
-  hashComplaintSessionToken,
+  composeCasutaDescription,
   normalizeComplaintDescription,
   normalizeComplaintLanguage,
+  normalizeComplaintRoom,
+  normalizeOptionalPhone,
 } from '../_shared/complaints.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
@@ -13,18 +15,11 @@ import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdm
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
   insert(payload: unknown): QueryBuilder<T>;
-  update(payload: unknown): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
   single(): Promise<SupabaseQueryResult<T>>;
-};
-
-type SessionRow = {
-  token_hash: string;
-  phone: string;
-  expires_at: string;
 };
 
 type ReservationRow = {
@@ -40,35 +35,38 @@ Deno.serve(async (request) => {
     assertMethod(request, ['POST']);
     const body = await readJson(request);
 
-    const complaintToken = String(body?.complaintToken || '').trim();
-    if (!complaintToken) {
-      throw new HttpError(401, 'A valid complaint session is required.');
-    }
-
     const category = assertValidComplaintCategory(body?.category);
-    const description = normalizeComplaintDescription(body?.description);
     const language = normalizeComplaintLanguage(body?.language);
-    const isAnonymous = body?.isAnonymous === true;
+
+    // Validate the guest's own text first (1..2000), then prefix the cabin number
+    // for casuta reports so staff read "Căsuța <n> — …" with no extra column.
+    let description = normalizeComplaintDescription(body?.description);
+    if (category === 'casuta') {
+      const room = normalizeComplaintRoom(body?.roomNumber);
+      if (!room) {
+        throw new HttpError(400, 'A cabin number is required for a căsuța complaint.');
+      }
+      description = composeCasutaDescription(room, description);
+    }
 
     const client = createServiceClient();
+    // The complaint form is now unauthenticated, so the per-IP bucket is the only
+    // gate against spam — keep it ahead of the insert.
     await assertRateLimit(client, RATE_LIMITS.complaintSubmitIp, rateLimitIp(request));
 
-    const session = await findSession(client, complaintToken);
-    if (!session || new Date(session.expires_at).getTime() < Date.now()) {
-      throw new HttpError(401, 'Your complaint session has expired. Please sign in again.');
-    }
-
-    // Fully anonymous: never persist the identity. Otherwise attach the guest's
-    // first name and most-recent paid reservation for staff context.
-    const identity = isAnonymous
-      ? { guest_phone: null, guest_first_name: null, reservation_id: null }
-      : await resolveIdentity(client, session.phone);
+    // An optional follow-up phone is the only identity the guest may leave. When it
+    // matches a paid reservation we also attach the first name + booking so staff
+    // can call back; no phone => a fully unattributed report.
+    const phone = normalizeOptionalPhone(body?.phone);
+    const identity = phone
+      ? await resolveIdentity(client, phone)
+      : { guest_phone: null, guest_first_name: null, reservation_id: null };
 
     const { data, error } = await table<{ id: string }>(client, 'complaints')
       .insert({
         category,
         description,
-        is_anonymous: isAnonymous,
+        is_anonymous: false,
         language,
         ...identity,
       })
@@ -78,27 +76,11 @@ Deno.serve(async (request) => {
     if (error) throw new Error(error.message);
     if (!data?.id) throw new Error('Could not record the complaint.');
 
-    await client
-      .from('complaint_sessions')
-      .update({ last_used_at: new Date().toISOString() })
-      .eq('token_hash', session.token_hash);
-
     return jsonResponse({ ok: true, complaintId: data.id }, {}, request);
   } catch (error) {
     return errorResponse(error, request);
   }
 });
-
-async function findSession(client: SupabaseClient, token: string) {
-  const tokenHash = await hashComplaintSessionToken(token);
-  const { data, error } = await table<SessionRow>(client, 'complaint_sessions')
-    .select('token_hash, phone, expires_at')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data;
-}
 
 async function resolveIdentity(client: SupabaseClient, phone: string) {
   const { data, error } = await table<ReservationRow>(client, 'reservations')

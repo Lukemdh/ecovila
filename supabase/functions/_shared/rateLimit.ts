@@ -46,11 +46,8 @@ export const RATE_LIMITS = {
   // Analytics fan-out (outbound to the tracking provider). High-frequency by
   // design, so cap floods rather than normal use.
   trackEventIp: { bucket: 'track-event:ip', limit: 120, windowSeconds: MIN },
-  // Complaints login + submit (ADR-068). Same SMS / enumeration shape as the
-  // reservation lookup; per-phone is additionally capped at 5/10min inside
-  // complaint-login-start against reservation_lookup_codes.
-  complaintLoginStartIp: { bucket: 'complaint-login-start:ip', limit: 20, windowSeconds: TEN_MIN },
-  complaintLoginVerifyIp: { bucket: 'complaint-login-verify:ip', limit: 40, windowSeconds: TEN_MIN },
+  // Auth-free complaint submit (ADR-080). With no login, this per-IP bucket is
+  // the only spam gate in front of the public complaint-submit function.
   complaintSubmitIp: { bucket: 'complaint-submit:ip', limit: 10, windowSeconds: TEN_MIN },
 
   // --- Browser status polls (keyed by unguessable server UUIDs) -----------
