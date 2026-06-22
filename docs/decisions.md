@@ -2465,9 +2465,9 @@ phone), `admin/js/crm-sidebar.js` (staff add-reservation); server:
 `_shared/reservations.ts` (`hasValidPhoneLength`), `_shared/reservationManage.ts`
 (`assertValidPhone`, the lookup/manage guard), `_shared/complaints.ts`
 (`normalizeOptionalPhone`). The guest-facing error copy (`checkout.errorPhone`,
-`complaints.phoneInvalid`) now leads with "Include the country code — for a Moldovan
-number keep +373 (e.g. +373 60 120 220)" in RO/RU/EN instead of only describing
-digit counts.
+`complaints.phoneInvalid`) is a terse "Include the country code" in RO/RU/EN
+(the complaints variant keeps "…or leave the field empty" since that phone is
+optional), replacing the old digit-count description.
 
 **Status.** **Backend deployed to prod 2026-06-22** (project
 `mckchrviaawdxtsfytut`): all edge functions redeployed via
