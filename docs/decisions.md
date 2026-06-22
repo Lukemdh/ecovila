@@ -2437,6 +2437,59 @@ new test). Asset token re-bumped to `?v=2026062102`. Files: `css/complaints.css`
 
 ---
 
+### ADR-081 — Require a country code on every guest phone field (reject a bare national number that lost its "+373")
+
+**Context.** Guest phone inputs are pre-filled with the editable "+373" prefix. In
+practice many guests delete the "373" but keep the "+", then type their 8-digit
+Moldovan national number — producing values like "+60843453". Because Moldovan
+mobiles are 8 digits and start 6/7, "+60…" reads as a plausible foreign country
+code (Malaysia), and the validators waved it through: every phone guard fell back
+to a generic `^\+\d{8,15}$` for anything that wasn't +373/+40/+380, and 8 digits
+clears that floor. The reservation (or complaint / lookup) was then stored against
+an unreachable number, so SMS, MIA routing and staff call-backs silently failed.
+Deleting "+373" is itself legitimate — it means "I'm entering another country" — so
+the fix had to keep genuine foreign numbers working while catching the bare-national
+case.
+
+**Change.** The generic fallback is tightened from `^\+\d{8,15}$` to
+**`^\+[1-9]\d{9,14}$`** everywhere: the number must start with a non-zero country
+code (E.164 codes never start with 0) and carry 10–15 digits after the "+". The
+three served countries keep their exact-length branches (+373 → 8 national digits,
++40 / +380 → 9); only the "any other country" path changed. A bare Moldovan number
+with a stray "+" ("+60843453", 8 digits) and a national number that kept a leading
+zero ("+069…") are now rejected, while every realistic foreign number stays valid
+(US / RO / UA / RU / DE / FR / UK are all ≥ 11 digits). Applied identically across
+all eight copies of the guard — client: `js/checkout.js` (booking), `js/booking.js`
++ `js/anulare.js` (reservation lookup), `js/complaints.js` (optional follow-up
+phone), `admin/js/crm-sidebar.js` (staff add-reservation); server:
+`_shared/reservations.ts` (`hasValidPhoneLength`), `_shared/reservationManage.ts`
+(`assertValidPhone`, the lookup/manage guard), `_shared/complaints.ts`
+(`normalizeOptionalPhone`). The guest-facing error copy (`checkout.errorPhone`,
+`complaints.phoneInvalid`) now leads with "Include the country code — for a Moldovan
+number keep +373 (e.g. +373 60 120 220)" in RO/RU/EN instead of only describing
+digit counts.
+
+**Status.** **Backend deployed to prod 2026-06-22** (project
+`mckchrviaawdxtsfytut`): all edge functions redeployed via
+`supabase functions deploy`, so every bundle that transitively includes the three
+changed shared modules ships the tightened guard — the behaviour-affecting ones are
+`create-reservation`, `reservation-lookup-start` and `complaint-submit`, plus
+`confirm-reservation-payment` / `reservation-*` / `maib-*` / `send-reminders` that
+pull them in through `pricingGuard` / `bookingSettlement` / `reservationChanges`.
+**Frontend bundled, not yet TopHost-uploaded** — asset token bumped site-wide
+`?v=2026062102 → ?v=2026062201`, `dist/tophost` regenerated; this upload also
+carries the still-pending ADR-080 frontend. Verified: 301 node + 101 deno tests pass
+(new negative cases "+60843453" / "+069120220" locked in at every layer); browser
+preview on `/complaints.html` confirmed "+60843453" is blocked with the new
+country-code error while a valid "+37360120220" passes the phone gate. Files:
+`js/checkout.js`, `js/booking.js`, `js/anulare.js`, `js/complaints.js`,
+`admin/js/crm-sidebar.js`, `js/translations.js`,
+`supabase/functions/_shared/reservations.ts`, `_shared/reservationManage.ts`,
+`_shared/complaints.ts`, `supabase/functions/tests/reservationPhoneLength.test.ts`,
+`tests/checkout.test.mjs`, `tests/anulare.test.mjs`, + the site-wide `?v=` bump.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

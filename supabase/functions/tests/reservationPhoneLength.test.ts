@@ -13,9 +13,14 @@ Deno.test('hasValidPhoneLength enforces country-specific phone lengths', () => {
   assertEquals(hasValidPhoneLength('+380501234567'), true);
   assertEquals(hasValidPhoneLength('+38050123456'), false); // 8 digits
 
-  // Any other country keeps the generic E.164 length (8–15 digits).
+  // Any other country must be a full international number: non-zero country code
+  // plus the national part, 10–15 digits after the "+".
   assertEquals(hasValidPhoneLength('+15551234567'), true);
   assertEquals(hasValidPhoneLength('+1555123'), false);
+
+  // A bare national number that lost its country code must NOT pass as "foreign".
+  assertEquals(hasValidPhoneLength('+60843453'), false); // bare MD mobile with a stray "+"
+  assertEquals(hasValidPhoneLength('+069120220'), false); // a country code never starts with 0
 });
 
 function foreignReservation(guestPhone: string) {

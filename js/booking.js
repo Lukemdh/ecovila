@@ -1088,16 +1088,17 @@
   }
 
   // Country-specific phone length guard. Moldova (+373) numbers carry 8 national
-  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls
-  // back to the generic E.164 length (8–15 digits). Keep this in sync with the
-  // identical helper in checkout.js / anulare.js and the server reservations.ts
-  // guard.
+  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country must be a
+  // full international number: a non-zero country code plus the national part,
+  // 10–15 digits after the "+". That floor rejects a bare Moldovan number that lost
+  // its "+373" (e.g. "+60843453"). Keep this in sync with the identical helper in
+  // checkout.js / anulare.js and the server reservations.ts guard.
   function isValidGuestPhone(phone) {
     const value = String(phone || '');
     if (value.startsWith('+373')) return /^\+373\d{8}$/.test(value);
     if (value.startsWith('+380')) return /^\+380\d{9}$/.test(value);
     if (value.startsWith('+40')) return /^\+40\d{9}$/.test(value);
-    return /^\+\d{8,15}$/.test(value);
+    return /^\+[1-9]\d{9,14}$/.test(value);
   }
 
   function openReservationLookup() {

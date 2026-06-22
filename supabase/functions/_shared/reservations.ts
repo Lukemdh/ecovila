@@ -3,7 +3,11 @@ import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 export const CASH_EXPIRY_MINUTES = 30;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
+// Full international number: a non-zero country code plus the national part,
+// 10–15 digits after the "+". The non-zero lead and 10-digit floor reject a bare
+// Moldovan national number that lost its "+373" (e.g. "+60843453") instead of
+// accepting it as a "foreign" number — every country we serve needs ≥11.
+const INTERNATIONAL_PHONE_PATTERN = /^\+[1-9]\d{9,14}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const HTML_CONTROL_PATTERN = /[<>]/;
 const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
@@ -201,9 +205,9 @@ export function normalizeInternationalPhone(value: unknown) {
 }
 
 // Country-specific phone length guard. Moldova (+373) numbers carry 8 national
-// digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls back
-// to the generic E.164 length (8–15 digits). Keep this in sync with the identical
-// client helper in checkout.js / anulare.js / booking.js.
+// digits, Romania (+40) and Ukraine (+380) carry 9. Any other country must be a
+// full international number (see INTERNATIONAL_PHONE_PATTERN). Keep this in sync
+// with the identical client helper in checkout.js / anulare.js / booking.js.
 export function hasValidPhoneLength(phone: string): boolean {
   if (phone.startsWith('+373')) return /^\+373\d{8}$/.test(phone);
   if (phone.startsWith('+380')) return /^\+380\d{9}$/.test(phone);

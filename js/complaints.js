@@ -60,8 +60,11 @@
     return String(value || '').trim().replace(/[\s().-]/g, '');
   }
 
+  // A full international number: a non-zero country code plus the national part,
+  // 10–15 digits after the "+". Rejects a bare Moldovan number that lost its "+373"
+  // (e.g. "+60843453"). Matches the guest-entry guard in checkout.js / booking.js.
   function isValidPhone(value) {
-    return /^\+\d{8,15}$/.test(value);
+    return /^\+[1-9]\d{9,14}$/.test(value);
   }
 
   function isRateLimited(error) {

@@ -62,6 +62,8 @@ describe('EcoVila cancellation policy alignment', () => {
     assert.equal(isValidGuestPhone('+4072123456'), false); // +40 with 8 digits
     assert.equal(isValidGuestPhone('+38050123456'), false); // +380 with 8 digits
     assert.equal(isValidGuestPhone('+15551234567'), true); // generic international fallback
+    assert.equal(isValidGuestPhone('+60843453'), false); // bare MD number that lost its "+373"
+    assert.equal(isValidGuestPhone('+069120220'), false); // a country code never starts with 0
     assert.equal(isValidGuestPhone(undefined), false); // coerces without throwing
     assert.equal(isValidGuestPhone(null), false);
   });

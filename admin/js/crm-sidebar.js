@@ -9,7 +9,10 @@
     '4-11': 4,
     '12+': 12,
   });
-  const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
+  // Full international number: non-zero country code + national part, 10–15 digits
+  // after the "+". Staff local formats (069…, 69…) are coerced to +373 by
+  // normalizeStaffPhone first; this floor still rejects a bare "+60843453".
+  const INTERNATIONAL_PHONE_PATTERN = /^\+[1-9]\d{9,14}$/;
   const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   // Mirrors the normalization in the public reservation Edge Function so staff

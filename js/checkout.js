@@ -25,7 +25,11 @@
   const STORAGE_LANGUAGE = 'ecovila_language';
   const STORAGE_TRACKING_EVENT = 'ecovila_booking_tracking_event_id';
   const CASH_EXPIRY_MINUTES = 30;
-  const INTERNATIONAL_PHONE_PATTERN = /^\+\d{8,15}$/;
+  // A full international number: a non-zero country code followed by the national
+  // part, 10–15 digits after the "+". The non-zero lead and 10-digit floor reject a
+  // bare Moldovan national number that lost its "+373" (e.g. "+60843453") instead of
+  // waving it through as a "foreign" number — every country we serve needs ≥11.
+  const INTERNATIONAL_PHONE_PATTERN = /^\+[1-9]\d{9,14}$/;
   const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const PAYMENT_TYPES = new Set(['cash', 'card']);
   const SUPPORTED_LANGUAGES = new Set(['ro', 'ru', 'en']);
@@ -165,10 +169,10 @@
   }
 
   // Country-specific phone length guard. Moldova (+373) numbers carry 8 national
-  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country falls
-  // back to the generic E.164 length (8–15 digits). Keep this in sync with the
-  // identical helper in anulare.js / booking.js and the server reservations.ts
-  // guard.
+  // digits, Romania (+40) and Ukraine (+380) carry 9. Any other country must be a
+  // full international number (see INTERNATIONAL_PHONE_PATTERN). Keep this in sync
+  // with the identical helper in anulare.js / booking.js and the server
+  // reservations.ts guard.
   function isValidGuestPhone(phone) {
     const value = String(phone || '');
     if (value.startsWith('+373')) return /^\+373\d{8}$/.test(value);

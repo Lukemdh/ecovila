@@ -58,7 +58,10 @@ export function normalizePhone(value: unknown) {
 
 export function assertValidPhone(value: unknown) {
   const phone = normalizePhone(value);
-  if (!/^\+\d{8,15}$/.test(phone)) {
+  // Require a full international number: a non-zero country code plus the national
+  // part, 10–15 digits after the "+". Rejects a bare Moldovan number that lost its
+  // "+373" (e.g. "+60843453"). Mirrors the lookup guard in booking.js / anulare.js.
+  if (!/^\+[1-9]\d{9,14}$/.test(phone)) {
     throw new Error('Invalid phone number.');
   }
   return phone;

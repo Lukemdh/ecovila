@@ -238,6 +238,12 @@ describe('EcoVila Step 5 checkout', () => {
     // Other countries keep the generic international length rule.
     assert.equal(checkout.isValidGuestPhone('+15551234567'), true);
 
+    // A bare Moldovan number that lost its "+373" must not slip through as a
+    // "foreign" number: the country code is required (non-zero, 10–15 digits).
+    assert.equal(checkout.isValidGuestPhone('+60843453'), false); // bare MD mobile with a stray "+"
+    assert.equal(checkout.isValidGuestPhone('+069120220'), false); // a country code never starts with 0
+    assert.equal(checkout.isValidGuestPhone('+6012022'), false); // too short for any country code
+
     // Non-string / empty input is rejected without throwing.
     assert.equal(checkout.isValidGuestPhone(undefined), false);
     assert.equal(checkout.isValidGuestPhone(null), false);
