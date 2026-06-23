@@ -334,6 +334,40 @@ export function composeArrivalReminder(
 }
 
 /**
+ * Post-stay review request, sent the evening after checkout to guests for whom
+ * staff left no checkout note in situația zilnică. Email-only (sms: null): the
+ * nudge is a soft touch, so we never spend an SMS credit or feel pushy the day
+ * after a stay. One email per booking group, listing the accommodation + dates.
+ */
+export function composeReviewRequest(
+  reservation: NotificationReservation,
+  options: { siteUrl?: string; groupReservations?: NotificationReservation[] } = {},
+): NotificationMessage {
+  const language = reservationLanguage(reservation);
+  const group = options.groupReservations?.length ? options.groupReservations : [reservation];
+  const siteUrl = (options.siteUrl || 'https://ecovila.md').replace(/\/+$/, '');
+
+  const email = buildReviewRequestEmail({
+    lang: language as EmailLang,
+    firstName: titleCaseName(reservation.guest_first_name),
+    roomCopy: aggregateRoomLabel(group, language),
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+    siteUrl,
+  });
+
+  return {
+    sms: null,
+    email: {
+      to: reservation.guest_email,
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+    },
+  };
+}
+
+/**
  * Welcome SMS sent when staff mark a guest checked-in. SMS-only: the empty
  * email recipient makes sendEmail no-op (see providers.ts), so the dispatch +
  * dedup machinery is reused without sending an unwanted email.
@@ -950,6 +984,12 @@ const EMAIL_DIRECTIONS_LABEL: Record<EmailLang, string> = {
   ru: 'Как добраться',
   en: 'Get directions',
 };
+
+// Google review deep link for the post-stay review-request email (sent the evening
+// after checkout to guests for whom no checkout note was left in situația zilnică).
+// This is the EcoVila Google Business Profile "Get more reviews" short link, which
+// opens the star-rating dialog in one tap. Single swappable constant.
+const EMAIL_REVIEW_URL = 'https://g.page/r/CWbeI4q_8_a1EBM/review';
 
 // Localized accommodation-type names shown in every guest email. The room number
 // is intentionally not shown (owner decision) — guests see the type instead.
@@ -1734,6 +1774,139 @@ export function buildArrivalReminderEmail(args: {
     `${copy.labels.checkIn}: ${checkInValue}`,
     '',
     `${directionsLabel}: ${EMAIL_MAPS_URL}`,
+    '',
+    copy.info.title,
+    ...copy.info.lines,
+    `${copy.info.phoneLead} ${EMAIL_PHONE_DISPLAY}.`,
+    '',
+    copy.closing,
+  ].join('\n');
+
+  return { subject: copy.subject, text, html };
+}
+
+const REVIEW_COPY: Record<EmailLang, {
+  subject: string;
+  preheader: string;
+  tagline: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  intro: string;
+  labels: { accommodation: string; period: string };
+  cta: string;
+  info: { title: string; lines: string[]; phoneLead: string };
+  closing: string;
+  textDetails: string;
+}> = {
+  ro: {
+    subject: 'Cum a fost la EcoVila?',
+    preheader: 'Ne-ar plăcea să știm cum a fost — o recenzie durează un minut.',
+    tagline: 'Odihnă all-inclusive la Orheiul Vechi',
+    greeting: (name) => `Bună, ${name}!`,
+    greetingFallback: 'Bună!',
+    intro:
+      'Îți mulțumim că ai fost oaspetele nostru. Dacă ți-a plăcut, ne-ar ajuta enorm o recenzie pe Google — durează doar un minut.',
+    labels: { accommodation: 'Cazare', period: 'Sejur' },
+    cta: 'Lasă o recenzie',
+    info: {
+      title: 'Ceva nu a fost în regulă?',
+      lines: ['Spune-ne direct și rezolvăm — feedbackul tău ne ajută să fim mai buni.'],
+      phoneLead: 'Ne poți suna la',
+    },
+    closing: 'Îți mulțumim și te așteptăm din nou la EcoVila.',
+    textDetails: 'Detaliile sejurului',
+  },
+  ru: {
+    subject: 'Как прошёл отдых в EcoVila?',
+    preheader: 'Нам важно ваше мнение — отзыв займёт всего минуту.',
+    tagline: 'All-inclusive отдых в Орхеюл Векь',
+    greeting: (name) => `Здравствуйте, ${name}!`,
+    greetingFallback: 'Здравствуйте!',
+    intro:
+      'Спасибо, что были нашим гостем. Если вам понравилось, ваш отзыв на Google очень нам поможет — это займёт всего минуту.',
+    labels: { accommodation: 'Размещение', period: 'Период' },
+    cta: 'Оставить отзыв',
+    info: {
+      title: 'Что-то пошло не так?',
+      lines: ['Напишите нам напрямую — ваш отзыв помогает нам становиться лучше.'],
+      phoneLead: 'Звоните нам по номеру',
+    },
+    closing: 'Спасибо! Будем рады снова видеть вас в EcoVila.',
+    textDetails: 'Детали отдыха',
+  },
+  en: {
+    subject: 'How was your stay at EcoVila?',
+    preheader: 'We would love your feedback — a review takes just a minute.',
+    tagline: 'All-inclusive escape at Orheiul Vechi',
+    greeting: (name) => `Hi ${name}!`,
+    greetingFallback: 'Hello!',
+    intro:
+      'Thank you for staying with us. If you enjoyed it, a quick Google review would mean a lot — it only takes a minute.',
+    labels: { accommodation: 'Accommodation', period: 'Stay' },
+    cta: 'Leave a review',
+    info: {
+      title: 'Something not quite right?',
+      lines: ['Tell us directly — your feedback helps us do better.'],
+      phoneLead: 'Call us at',
+    },
+    closing: 'Thank you, and we hope to welcome you back to EcoVila.',
+    textDetails: 'Stay details',
+  },
+};
+
+export function buildReviewRequestEmail(args: {
+  lang: EmailLang;
+  firstName: string;
+  roomCopy: string;
+  checkIn: string;
+  checkOut: string;
+  siteUrl: string;
+}): { subject: string; text: string; html: string } {
+  // Built on the shared premium layout to match the confirmation/arrival emails;
+  // localized ro/ru/en with the informal "tu/te" address (like the arrival email).
+  // The single CTA opens the Google review page (EMAIL_REVIEW_URL).
+  const copy = REVIEW_COPY[args.lang];
+  const period = `${formatEmailDate(args.checkIn, args.lang)} – ${
+    formatEmailDate(args.checkOut, args.lang)
+  }`;
+  const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
+  const greetingHtml = args.firstName
+    ? copy.greeting(escapeHtml(args.firstName))
+    : copy.greetingFallback;
+
+  const rows: EmailRow[] = [
+    { label: copy.labels.accommodation, value: args.roomCopy },
+    { label: copy.labels.period, value: period },
+  ];
+
+  const html = renderReservationEmail({
+    lang: args.lang,
+    siteUrl: args.siteUrl,
+    preheader: copy.preheader,
+    tagline: copy.tagline,
+    badgeSymbol: '★',
+    badgeBg: EMAIL_COLORS.green,
+    heading: copy.subject,
+    greetingHtml,
+    intro: copy.intro,
+    rows,
+    primary: { label: copy.cta, url: EMAIL_REVIEW_URL },
+    info: copy.info,
+    closing: copy.closing,
+  });
+
+  const text = [
+    copy.subject,
+    '',
+    greetingText,
+    '',
+    copy.intro,
+    '',
+    copy.textDetails,
+    `${copy.labels.accommodation}: ${args.roomCopy}`,
+    `${copy.labels.period}: ${period}`,
+    '',
+    `${copy.cta}: ${EMAIL_REVIEW_URL}`,
     '',
     copy.info.title,
     ...copy.info.lines,

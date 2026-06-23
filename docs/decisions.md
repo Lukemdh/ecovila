@@ -2488,6 +2488,59 @@ country-code error while a valid "+37360120220" passes the phone gate. Files:
 `_shared/complaints.ts`, `supabase/functions/tests/reservationPhoneLength.test.ts`,
 `tests/checkout.test.mjs`, `tests/anulare.test.mjs`, + the site-wide `?v=` bump.
 
+### ADR-082 — Post-stay review-request email (Google review nudge the evening after checkout)
+
+**Context.** EcoVila collects no post-stay feedback and has no steady inflow of
+Google reviews. Staff already run situația zilnică (`admin/js/crm-daily.js`): when a
+guest is checked out, a dialog optionally captures a free-text `checkout_note` on
+`crm_daily_statuses`. A note means staff recorded something worth remembering (damage,
+a complaint, a special circumstance); a guest who left with **no** note had an
+uneventful — presumably good — stay. That is exactly the audience to ask for a public
+review, and exactly the guests we want pointed at Google rather than the ones with a
+known problem.
+
+**Change.** A dedicated, cron-triggered edge function `send-review-requests` emails a
+localized (ro/ru/en) Google-review nudge the evening after checkout.
+- **Eligibility** (pure, unit-tested in `_shared/reviewRequests.ts`): `check_out` =
+  yesterday (Europe/Chișinău), `payment_status='paid'`, not cancelled, at least one
+  room of the booking marked checked-out in situația zilnică (`checked_out_at` set),
+  and **no** room of the booking carrying a `checkout_note`. One email per booking
+  group (the owner reservation), email-only (no SMS), skipped silently when the
+  booking has no email on file. No-shows and unprocessed bookings are excluded.
+- **Timing** (`_shared/reminders.ts`): `shouldSendReviewRequests` gates the send to the
+  [18:30, 19:00) Chișinău window; `reviewRequestTargetDate` returns yesterday's local
+  date. `businessDateParts` is left unchanged (its test deep-equals the whole object).
+  The cron `ecovila-review-requests` fires every minute during UTC 15:00–16:59, which
+  brackets 18:30 local in both EET and EEST without a DST-specific expression — the
+  local-time gate lives in the function, which returns early (no DB work) outside the
+  window.
+- **Exactly-once**: dedup via `notification_events` (`event_type='review_request'`,
+  reusing `dispatchScheduledNotificationOnce`), so repeated ticks within the window
+  (which also give a transient provider failure a few retries) never double-send.
+- **Email** (`_shared/notifications.ts`: `composeReviewRequest` +
+  `buildReviewRequestEmail` + `REVIEW_COPY`): the shared premium layout (logo, green
+  star badge, accommodation-type + stay-dates card, informal "tu/te" address), a single
+  CTA to the EcoVila Google Business Profile "Get more reviews" short link
+  (`EMAIL_REVIEW_URL = https://g.page/r/CWbeI4q_8_a1EBM/review`, which opens the
+  star-rating dialog in one tap), and a "ceva nu a fost în regulă? sună-ne" card that
+  routes a dissatisfied guest to the phone (+373 60 120 220) instead of a public low
+  rating.
+
+**Status.** **Code complete, not yet deployed** (awaiting owner go-ahead, per the
+ship-to-prod sign-off rule). `deno test` 106 pass — new `tests/reviewRequests.test.ts`
+plus review-window / target-date cases in `tests/reminders.test.ts`; the function
+type-checks. The two product decisions are owner-confirmed: eligibility = "checked-out
+in situația zilnică + no note", and the g.page review link. **Deploy steps:**
+(1) `supabase functions deploy send-review-requests` (project `mckchrviaawdxtsfytut`;
+`verify_jwt=false` is already in `config.toml`); (2) schedule the cron from
+`migrations/20260623120000_review_request_cron.sql` against the live DB (history drifts
+from the repo). No frontend, no schema change. Existing functions are unaffected — the
+`notifications.ts` / `reminders.ts` additions are purely additive, so no other function
+needs a redeploy. Files: `supabase/functions/send-review-requests/index.ts`,
+`_shared/notifications.ts`, `_shared/reminders.ts`, `_shared/reviewRequests.ts`,
+`supabase/config.toml`, `supabase/migrations/20260623120000_review_request_cron.sql`,
+`supabase/functions/tests/reviewRequests.test.ts`, `tests/reminders.test.ts`.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

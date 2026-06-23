@@ -3,7 +3,9 @@ import {
   ARRIVAL_REMINDER_LOCAL_HOUR,
   arrivalReminderTargetDate,
   businessDateParts,
+  reviewRequestTargetDate,
   shouldSendArrivalReminders,
+  shouldSendReviewRequests,
 } from '../_shared/reminders.ts';
 
 Deno.test('arrival reminders are held overnight and released at 10:00 Europe/Chisinau', () => {
@@ -36,4 +38,25 @@ Deno.test('business date parts reflect Europe/Chisinau local time', () => {
   const parts = businessDateParts(new Date('2026-07-01T07:00:00Z'));
   assertEquals(parts.hour, ARRIVAL_REMINDER_LOCAL_HOUR);
   assertEquals(parts, { year: 2026, month: 7, day: 1, hour: 10 });
+});
+
+Deno.test('review requests fire only in the 18:30–19:00 Europe/Chisinau window', () => {
+  // Summer (EEST, UTC+3): 18:30 local == 15:30 UTC.
+  assertEquals(shouldSendReviewRequests(new Date('2026-07-01T15:29:00Z')), false);
+  assertEquals(shouldSendReviewRequests(new Date('2026-07-01T15:30:00Z')), true);
+  assertEquals(shouldSendReviewRequests(new Date('2026-07-01T15:59:00Z')), true);
+  assertEquals(shouldSendReviewRequests(new Date('2026-07-01T16:00:00Z')), false);
+
+  // Winter (EET, UTC+2): 18:30 local == 16:30 UTC, so the summer offset must not fire.
+  assertEquals(shouldSendReviewRequests(new Date('2026-01-15T15:30:00Z')), false);
+  assertEquals(shouldSendReviewRequests(new Date('2026-01-15T16:30:00Z')), true);
+  assertEquals(shouldSendReviewRequests(new Date('2026-01-15T17:00:00Z')), false);
+});
+
+Deno.test('review request target date is yesterday in Europe/Chisinau time', () => {
+  // 18:30 EEST on 2026-07-02 targets checkouts from 2026-07-01.
+  assertEquals(reviewRequestTargetDate(new Date('2026-07-02T15:30:00Z')), '2026-07-01');
+
+  // Start-of-month rollover.
+  assertEquals(reviewRequestTargetDate(new Date('2026-08-01T15:30:00Z')), '2026-07-31');
 });

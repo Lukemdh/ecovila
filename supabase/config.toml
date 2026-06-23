@@ -65,3 +65,6 @@ verify_jwt = true
 
 [functions.send-checkin-welcome]
 verify_jwt = true
+
+[functions.send-review-requests]
+verify_jwt = false
