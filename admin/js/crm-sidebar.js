@@ -5,8 +5,8 @@
   'use strict';
 
   const CHILD_BUCKET_AGES = Object.freeze({
-    '0-3': 3,
-    '4-11': 4,
+    '0-2': 2,
+    '3-11': 3,
     '12+': 12,
   });
   // Full international number: non-zero country code + national part, 10–15 digits
@@ -142,11 +142,11 @@
     return {
       actualAdults: normalized.adults,
       actualKids: normalized.kidsAges.length,
-      freeKids: childFeeAges.filter((age) => age >= 1 && age <= 3).length,
+      freeKids: childFeeAges.filter((age) => age >= 1 && age <= 2).length,
       chargeableKids: normalized.chargeableKids,
       teensAsAdults: normalized.teensAsAdults,
       billableAdults: normalized.adults + kidsChargedAsAdults + emptyAdultSlots,
-      billableKids: childFeeAges.filter((age) => age >= 4 && age <= 11).length,
+      billableKids: childFeeAges.filter((age) => age >= 3 && age <= 11).length,
       kidsChargedAsAdults,
       emptyAdultSlots,
       minimumAdults,

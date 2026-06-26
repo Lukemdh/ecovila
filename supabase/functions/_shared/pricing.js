@@ -18,7 +18,7 @@
   const DEFAULT_PREMIUM_NEXT_DAYS = [0];
   const CHILD_MIN_AGE = 1;
   const CHILD_MAX_AGE = 17;
-  const FREE_CHILD_MAX_AGE = 3;
+  const FREE_CHILD_MAX_AGE = 2;
   const CHILD_FEE_MAX_AGE = 11;
 
   const ROOM_TYPES = Object.freeze({

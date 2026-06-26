@@ -65,7 +65,7 @@ The product has two surfaces:
 - **Minimum-occupancy billing**: each unit bills a floor of adults regardless of actual
   party; kids can be promoted to adult rate to fill the floor. Implemented in
   `js/pricing.js` (`calculateBillableGuests`, `normalizeParty`).
-- **Child age tiers** (internal, not shown to guests): 1–3 free, 4–11 kid price, 12–17
+- **Child age tiers** (internal, not shown to guests): 1–2 free, 3–11 kid price, 12–17
   adult price but still counts as a child for capacity. See `js/pricing.js`
   (`FREE_CHILD_MAX_AGE`, `CHILD_FEE_MAX_AGE`).
 - **Night-based pricing**: tiers 1 / 2 / 3+ nights × `weekday` | `holiday` day type.

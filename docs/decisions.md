@@ -1449,7 +1449,7 @@ from code/history during the Phase 0 audit, not from a contemporaneous decision 
   guests so a tariff change since booking never leaks in. On payment the party (`adults`,
   `kids_ages`) is applied to the booking's rows **once** (claims `applied_at` atomically), the base
   `total_price` is **left immutable**, and a short localized SMS + email confirm the update. A zero
-  difference (only free 1–3-year-olds) is applied instantly with no payment. New edge functions
+  difference (only free 1–2-year-olds) is applied instantly with no payment. New edge functions
   `reservation-change-create` + `reservation-change-status`; `maib-callback` (card, signature-
   verified) and `maib-mia-callback` (MIA, re-reads MAIB authoritatively) gained a change branch.
   **Finance CRM** surfaces each paid difference as its own dated **"online plătit diferență"** line
@@ -2540,6 +2540,46 @@ needs a redeploy. Files: `supabase/functions/send-review-requests/index.ts`,
 `_shared/notifications.ts`, `_shared/reminders.ts`, `_shared/reviewRequests.ts`,
 `supabase/config.toml`, `supabase/migrations/20260623120000_review_request_cron.sql`,
 `supabase/functions/tests/reviewRequests.test.ts`, `tests/reminders.test.ts`.
+
+---
+
+### ADR-083 — Lower the free-child age ceiling from 3 to 2 (children aged 3 now pay the kid fee)
+
+- **Date:** 2026-06-27.
+- **Decision:** children are free only **through age 2** (was 3), owner-requested. The
+  internal billing bands are now **1–2 free · 3–11 kid fee · 12–17 adult fee** (12–17
+  still counts as a child for accommodation capacity).
+- **Change.** Single source of truth is `FREE_CHILD_MAX_AGE` in `js/pricing.js` (and its
+  byte-identical server copy `supabase/functions/_shared/pricing.js`), lowered `3 → 2`.
+  The public booking page is unaffected by design — it collects an exact age 1–17 and
+  shows no age-pricing copy, so a 3-year-old simply prices as a kid now; no guest-facing
+  string changed. `pricingGuard.ts` and the change/extend flow (`reservationChanges.ts`)
+  reuse the engine and follow automatically.
+- **CRM age buckets** had to move in lockstep, or a "free" staff pick would silently bill:
+  relabeled `0-3 → 0-2` (stores age 2) and `4-11 → 3-11` (stores age 3) in
+  `admin/js/crm-sidebar.js` + `admin/js/crm-daily.js`; `bucketValueForAge` threshold
+  `<=3 → <=2`; and the local staff price-preview literals in `crm-sidebar.js`
+  (`calculateStaffBillableGuests`: free `age<=3 → <=2`, billable `age>=4 → >=3`).
+- **Tests/docs.** `tests/booking-core.test.mjs` (free example retargeted 3→2 plus a new
+  assertion that age 3 now bills), `tests/admin-crm.test.mjs` (bucket round-trips + the
+  mixed-room floor total), `tests/booking-page.test.mjs` (brief regex),
+  `reservationChanges.test.ts` (comment). `ECOVILA_PROJECT_BRIEF.md` + `project-overview.md`
+  restated to the new bands. `node --test` 300/301 (the one red, `send-review-requests`
+  rate-limit classification, pre-exists this change), `deno test` 106/106.
+- **Data.** `kids_ages` stores exact integers (not bucket strings), so **no migration**:
+  existing settled bookings are not re-billed. A later change/extension recompute on a
+  booking that includes a 3-year-old will now add the kid fee for that child.
+- **Deploy.** Frontend cache-bust bumped `?v=2026062201 → ?v=2026062701` and
+  `dist/tophost` regenerated (rides with the still-un-uploaded ADR-080/081 bundle). No
+  Supabase migration. **Edge-function redeploy of the shared `pricing.js` is deferred
+  pending owner sign-off.**
+- **⚠ Sequencing risk (must coordinate go-live).** Until the edge functions are
+  redeployed, the **frontend/CRM engine** quotes age-3 as a kid fee while the **deployed
+  server price-guard** still treats age-3 as free. For a public card/MIA booking that
+  includes a 3-year-old, `pricingGuard` recomputes the authoritative total with the OLD
+  ceiling, finds it lower than the client total, and **rejects the booking** ("total does
+  not match current pricing"). So the frontend TopHost upload and the function redeploy
+  must ship together, not staggered. No 3-year-olds in flight ⇒ no impact.
 
 ---
 

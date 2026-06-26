@@ -6,8 +6,8 @@
 
   const DAILY_STATUS_TABLE = 'crm_daily_statuses';
   const CHILD_BUCKET_AGES = Object.freeze({
-    '0-3': 3,
-    '4-11': 4,
+    '0-2': 2,
+    '3-11': 3,
     '12+': 12,
   });
   const CHECK_ICON = `
@@ -52,11 +52,11 @@
 
   function bucketValueForAge(age) {
     const value = Number(age);
-    if (value <= 3) {
-      return '0-3';
+    if (value <= 2) {
+      return '0-2';
     }
     if (value <= 11) {
-      return '4-11';
+      return '3-11';
     }
     return '12+';
   }
@@ -445,7 +445,7 @@
     const count = Math.max(0, Number(kidsInput.value || 0));
     editor.childBuckets = editor.childBuckets.slice(0, count);
     while (editor.childBuckets.length < count) {
-      editor.childBuckets.push('4-11');
+      editor.childBuckets.push('3-11');
     }
 
     if (!count) {

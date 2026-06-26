@@ -466,12 +466,12 @@ describe('EcoVila Step 4 booking page', () => {
     assert.match(html, /<option value="1">1<\/option>/, 'child age selector should start at age 1');
     assert.match(html, /<option value="17">17<\/option>/, 'child age selector should include age 17');
     assert.doesNotMatch(html, /<option value="18">18<\/option>/, 'age 18 should not be selectable as a child');
-    assert.doesNotMatch(html, /0-3.*free/i, 'public booking UI should not explain hidden age pricing logic');
+    assert.doesNotMatch(html, /0-2.*free/i, 'public booking UI should not explain hidden age pricing logic');
 
-    assert.match(pricing, /freeChildAges/, 'pricing should track children aged 1-3 separately');
+    assert.match(pricing, /freeChildAges/, 'pricing should track children aged 1-2 separately');
     assert.match(pricing, /teenAges/, 'pricing should track children aged 12-17 separately');
     assert.match(brief, /Guests choose child ages from 1-17/i, 'brief should document the public selector range');
-    assert.match(brief, /1-3 years.*free/i, 'brief should document the private free-child pricing rule');
+    assert.match(brief, /1-2 years.*free/i, 'brief should document the private free-child pricing rule');
     assert.match(brief, /12-17 years.*adult price/i, 'brief should document adult-fee child pricing');
   });
 

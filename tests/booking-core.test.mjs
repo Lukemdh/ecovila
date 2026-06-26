@@ -150,7 +150,7 @@ describe('EcoVila Step 3 pricing core', () => {
     });
   });
 
-  it('keeps ages 1-3 free, bills ages 4-11 as children, and bills ages 12-17 as adult fee without adult classification', () => {
+  it('keeps ages 1-2 free, bills ages 3-11 as children, and bills ages 12-17 as adult fee without adult classification', () => {
     assert.deepEqual(pricing.calculateBillableGuests('small', { adults: 2, kidsAges: [12, 17] }), {
       actualAdults: 2,
       actualKids: 2,
@@ -168,7 +168,7 @@ describe('EcoVila Step 3 pricing core', () => {
 
     const billable = pricing.calculateBillableGuests('large', {
       adults: 2,
-      kidsAges: [3, 11, 12],
+      kidsAges: [2, 11, 12],
     });
 
     assert.deepEqual(billable, {
@@ -189,7 +189,7 @@ describe('EcoVila Step 3 pricing core', () => {
     const quote = pricing.calculateStayPrice({
       roomType: 'large',
       adults: 2,
-      kidsAges: [3, 11, 12],
+      kidsAges: [2, 11, 12],
       checkIn: '2026-05-18',
       checkOut: '2026-05-19',
       pricingTiers,
@@ -198,6 +198,11 @@ describe('EcoVila Step 3 pricing core', () => {
     });
 
     assert.equal(quote.total, 4400);
+
+    // Free ceiling lowered to 2: a 3-year-old now pays the child fee.
+    const withThree = pricing.calculateBillableGuests('large', { adults: 4, kidsAges: [3] });
+    assert.equal(withThree.freeKids, 0, 'a 3-year-old is no longer free');
+    assert.equal(withThree.billableKids, 1, 'a 3-year-old now pays the child fee');
   });
 
   it('uses total nights for the tier and the next morning for weekend or holiday rates', () => {

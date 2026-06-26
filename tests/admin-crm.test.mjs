@@ -1313,7 +1313,7 @@ describe('EcoVila Step 9 CRM', () => {
       { nights_tier: 1, day_type: 'holiday', adult_price: 1300, kid_price: 1000, effective_from: '2026-05-06' },
     ];
 
-    assert.deepEqual(Array.from(sidebar.bucketValuesToAges(['0-3', '4-11', '12+'])), [3, 4, 12]);
+    assert.deepEqual(Array.from(sidebar.bucketValuesToAges(['0-2', '3-11', '12+'])), [2, 3, 12]);
     assert.equal(
       sidebar.areSelectedRoomsAvailable({
         rooms,
@@ -1339,7 +1339,7 @@ describe('EcoVila Step 9 CRM', () => {
         rooms,
         roomNumbers: [3, 11],
         adults: 4,
-        kidsAges: [3, 4, 12],
+        kidsAges: [2, 4, 12],
         checkIn: '2026-05-18',
         checkOut: '2026-05-19',
         pricingTiers,
@@ -2159,19 +2159,19 @@ describe('EcoVila Step 9 CRM', () => {
       check_out: '2026-05-19',
       created_at: '2026-05-17T10:00:00Z',
       adults: 2,
-      kids_ages: [3, 12],
+      kids_ages: [2, 12],
       total_price: 3000,
       rooms: { id: 'room-1', number: 1, type: 'small' },
     };
 
-    assert.deepEqual(daily.kidsAgesToBuckets([3, 4, 12]), ['0-3', '4-11', '12+']);
-    assert.deepEqual(daily.bucketValuesToAges(['0-3', '4-11', '12+']), [3, 4, 12]);
+    assert.deepEqual(daily.kidsAgesToBuckets([2, 3, 12]), ['0-2', '3-11', '12+']);
+    assert.deepEqual(daily.bucketValuesToAges(['0-2', '3-11', '12+']), [2, 3, 12]);
     assert.equal(
       daily.calculateDailySupplement({
         reservations: [reservation],
         reservation,
         adults: 2,
-        childBuckets: ['0-3', '4-11'],
+        childBuckets: ['0-2', '3-11'],
         pricingTiers,
         holidays: [],
       }).supplement,
@@ -2183,7 +2183,7 @@ describe('EcoVila Step 9 CRM', () => {
         reservations: [reservation],
         reservation,
         adults: 1,
-        childBuckets: ['0-3'],
+        childBuckets: ['0-2'],
         pricingTiers,
         holidays: [],
       }).reimbursement,
@@ -2195,7 +2195,7 @@ describe('EcoVila Step 9 CRM', () => {
         reservations: [reservation],
         reservation,
         adults: 3,
-        childBuckets: ['0-3', '4-11', '12+'],
+        childBuckets: ['0-2', '3-11', '12+'],
         pricingTiers,
         holidays: [],
       }).supplement,
@@ -2206,7 +2206,7 @@ describe('EcoVila Step 9 CRM', () => {
       reservations: [reservation],
       reservation,
       adults: 2,
-      childBuckets: ['0-3', '12+'],
+      childBuckets: ['0-2', '12+'],
       extraDays: 1,
       pricingTiers,
       holidays: [],

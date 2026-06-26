@@ -111,7 +111,7 @@ Deno.test('quoteBookingChange charges only the added chargeable child', async ()
 
 Deno.test('quoteBookingChange returns a zero difference for a free infant', async () => {
   const { quoteBookingChange } = await import('../_shared/reservationChanges.ts');
-  // A 1–3-year-old is free, so the difference is 0 (applied instantly, no pay).
+  // A 1–2-year-old is free, so the difference is 0 (applied instantly, no pay).
   const quote = await quoteBookingChange(pricingClient(), {
     reservations: [reservationRow()],
     newAdults: 2,

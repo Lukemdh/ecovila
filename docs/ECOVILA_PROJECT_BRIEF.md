@@ -174,8 +174,8 @@ Available for business guests. **NOT bookable online.** Guests must call Diana t
 * Guests choose child ages from 1-17 in the public booking UI.
 * Private pricing logic:
 
-  * **1-3 years:** free
-  * **4-11 years:** kid price
+  * **1-2 years:** free
+  * **3-11 years:** kid price
   * **12-17 years:** adult price, while still counting as children for accommodation capacity
 * The public UI should not explain these internal pricing categories; it simply asks for each child's age.
 
