@@ -158,6 +158,22 @@
       : { titleKey: 'checkout.payCard' };
   }
 
+  // True when the phone carries a country code that is definitely not Moldova's
+  // +373. Online payment for those would land on the international card rail
+  // (punitive commission, and MIA is +373-only), and the in-person cash hold is
+  // unusable from abroad — so we disable both options and route the guest to
+  // contact us. Returns false while the prefix could still grow into "+373"
+  // ("+3", "+37") so a Moldovan number never trips the notice mid-typing, and
+  // false for a "+0…" typo (a bare MD number that lost its code) so that still
+  // surfaces as the country-code error instead (ADR-081).
+  function isForeignPhone(phone) {
+    const value = normalizeInternationalPhone(phone);
+    if (!value.startsWith('+') || value === '+') return false;
+    if (value.startsWith('+373')) return false;
+    if ('+373'.startsWith(value)) return false;
+    return /^\+[1-9]/.test(value);
+  }
+
   function normalizeGuestDetails(details) {
     return {
       firstName: trimText(details?.firstName),
@@ -579,15 +595,40 @@
       onlinePaymentTitle.textContent = t(onlinePaymentCopy.titleKey);
     }
 
+    // A foreign phone can pay neither online (international card commission) nor
+    // by the in-person cash hold from abroad, so both options are disabled and
+    // the guest is sent to the contact notice instead.
+    const foreign = isForeignPhone(guestPhone);
+
     documentRef.querySelectorAll('[data-payment-option]').forEach((button) => {
-      const isSelected = button.dataset.paymentOption === state.paymentType;
+      button.disabled = foreign;
+      button.classList.toggle('is-disabled', foreign);
+      button.setAttribute('aria-disabled', String(foreign));
+      const isSelected = !foreign && button.dataset.paymentOption === state.paymentType;
       button.classList.toggle('is-selected', isSelected);
       button.setAttribute('aria-pressed', String(isSelected));
     });
 
+    const internationalNotice = documentRef.querySelector('[data-international-notice]');
+    if (internationalNotice) {
+      internationalNotice.hidden = !foreign;
+    }
+
+    // A foreign guest has no online rail, so lock the submit and let the contact
+    // notice be the single call to action — also clear any stale form error so
+    // the two messages never stack.
+    const submitButton = documentRef.querySelector('[data-checkout-submit]');
+    if (submitButton) {
+      submitButton.disabled = foreign;
+      submitButton.classList.toggle('is-blocked', foreign);
+    }
+    if (foreign) {
+      showMessage('[data-checkout-error]', '');
+    }
+
     const disclaimer = documentRef.querySelector('[data-cash-disclaimer]');
     if (disclaimer) {
-      disclaimer.hidden = state.paymentType !== 'cash';
+      disclaimer.hidden = foreign || state.paymentType !== 'cash';
     }
   }
 
@@ -604,7 +645,16 @@
     showMessage('[data-checkout-error]', '');
     showMessage('[data-checkout-status]', '');
 
-    const guestValidation = validateGuestDetails(collectGuestDetails(form));
+    const details = collectGuestDetails(form);
+
+    // International guests have no available online rail; the disabled submit and
+    // the always-visible contact notice already say so. Defensive stop (the
+    // button is disabled) — never mint a session on the expensive card rail.
+    if (isForeignPhone(details.phone)) {
+      return;
+    }
+
+    const guestValidation = validateGuestDetails(details);
 
     if (!guestValidation.valid) {
       showMessage('[data-checkout-error]', t(guestValidation.errors[0]));
@@ -782,6 +832,7 @@
     getCashExpiry,
     getOnlinePaymentCopy,
     getPaymentRail,
+    isForeignPhone,
     getOrCreateTrackingEventId,
     getReservationIdsForPayment,
     buildConfirmationUrl,

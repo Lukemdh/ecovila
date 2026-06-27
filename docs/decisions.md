@@ -2583,6 +2583,52 @@ needs a redeploy. Files: `supabase/functions/send-review-requests/index.ts`,
 
 ---
 
+### ADR-084 — Block international (non-+373) bookings online; route them to phone/email
+
+**Context.** Online payment routes by phone country code (`getPaymentRail`, the +373→MIA
+integration): `+373` guests get the cheap MIA QR (~0.7% commission), everyone else falls
+on the maib international **card** rail, whose cross-border commission is punitive. The
+owner does not want to absorb that cost for foreign bookings and prefers to handle them
+by phone/email.
+
+**Decision.** At checkout, as soon as the entered phone carries a country code that is
+definitely **not** Moldova's +373, disable **both** payment options (online card *and*
+the in-person cash hold), lock the "Rezervă" button, and show a localized contact notice
+("…we're unable to process international bookings online… contact us at +37360120220 or
+rezervari@ecovila.md", RO/RU/EN) with tappable `tel:`/`mailto:` links. Cash is blocked
+too, not just the card: the cash flow is a 30-minute pay-at-the-Chișinău-office hold,
+unusable for a remote guest and would only create expiring junk holds — so foreign guests
+are routed entirely to manual contact (owner decision, 2026-06-27).
+
+**Detection (`isForeignPhone`, `js/checkout.js`).** Foreign = the normalized phone starts
+with "+", is not "+373…", and "+373" is not still a prefix of it (so "+3"/"+37" never flash
+the notice while a Moldovan number is mid-typing), and the country code is real (`^\+[1-9]`
+— a "+0…" typo, i.e. a bare MD number that lost its code, stays a country-code error per
+ADR-081, not an "international" block). +40 (RO) and +380 (UA) are intentionally blocked
+too; they also use the card rail.
+
+**Surface — frontend only.** `js/checkout.js` (detection + render/submit guards, exported
+for tests), `checkout.html` (notice element), `css/checkout.css` (disabled-option + notice
++ `not-allowed` submit cursor), `js/translations.js` (`checkout.intlBlockedLead` /
+`checkout.intlBlockedOr` ×3 langs). **No backend change:** the server already accepts
+whatever `paymentRail` the client sends, and the only two card-rail entry points are
+checkout selection (now blocked) and the confirmation-page "Continuă plata" retry — which
+only fires for an already-pending card reservation a foreign guest can no longer create.
+`gestionare.html` / admin never mint payments.
+
+**Tests/verify.** `tests/checkout.test.mjs` (+`isForeignPhone` matrix incl. the
+MD-in-progress and "+0…" edges, notice markup wiring). `node --test` 303/303,
+`deno test` 106/106. Browser-verified desktop + mobile: foreign → both options + submit
+greyed, single notice, links localize RO/RU/EN; "+37"/"+373" never trips it; reverting to
++373 re-enables everything.
+
+**Deploy.** Frontend cache-bust bump (`npm run bump:assets`, `?v=2026062701 → 2026062702`)
++ `dist/tophost` regen + owner TopHost upload — **pending owner sign-off** (not bumped yet,
+to keep the review diff focused). No Supabase migration, no edge-function redeploy, no
+sequencing risk.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

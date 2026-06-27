@@ -470,6 +470,38 @@
   line-height: 1.5;
 }
 
+/* ── Disabled payment option (international phone) ── */
+.co-payment__option:disabled,
+.co-payment__option.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.co-payment__option:disabled:hover,
+.co-payment__option.is-disabled:hover {
+  border-color: rgba(51, 47, 44, 0.16);
+}
+
+/* ── International "contact us" notice ── */
+.co-intl-notice {
+  margin: 0;
+  padding: 16px 18px;
+  color: #7B2E1D;
+  background: rgba(198, 107, 61, 0.12);
+  border: 1px solid rgba(198, 107, 61, 0.28);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.co-intl-notice a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
 .co-status {
   margin: 0;
   padding: 16px 18px;
@@ -686,6 +718,11 @@ body.co-modal-open {
   cursor: progress;
   opacity: 0.68;
   transform: none;
+}
+
+/* A foreign phone leaves no online rail, so the submit is blocked, not loading. */
+.co-submit.is-blocked:disabled {
+  cursor: not-allowed;
 }
 
 /* ── Reassurance note ── */

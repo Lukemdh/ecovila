@@ -151,6 +151,8 @@ describe('EcoVila Step 5 checkout', () => {
         'checkout.payMia',
         'checkout.payCard',
         'checkout.payCash',
+        'checkout.intlBlockedLead',
+        'checkout.intlBlockedOr',
         'checkout.cashDisclaimer',
         'checkout.reserve',
         'checkout.emptyTitle',
@@ -285,6 +287,46 @@ describe('EcoVila Step 5 checkout', () => {
     assert.deepEqual(checkout.getOnlinePaymentCopy('+40721234567'), {
       titleKey: 'checkout.payCard',
     });
+  });
+
+  it('flags non-+373 phones as foreign so online checkout can be blocked', () => {
+    const checkout = loadCheckout();
+
+    // Moldova, and a Moldovan number still being typed, are never foreign.
+    assert.equal(checkout.isForeignPhone('+37360123456'), false);
+    assert.equal(checkout.isForeignPhone('+373'), false);
+    assert.equal(checkout.isForeignPhone('+37'), false);
+    assert.equal(checkout.isForeignPhone('+3'), false);
+    assert.equal(checkout.isForeignPhone('+'), false);
+    assert.equal(checkout.isForeignPhone(''), false);
+    assert.equal(checkout.isForeignPhone(undefined), false);
+
+    // Real foreign country codes are blocked — Romania, Ukraine, US, Italy —
+    // even when the input arrives spaced/formatted.
+    assert.equal(checkout.isForeignPhone('+40721234567'), true);
+    assert.equal(checkout.isForeignPhone('+380501234567'), true);
+    assert.equal(checkout.isForeignPhone('+15551234567'), true);
+    assert.equal(checkout.isForeignPhone('+39'), true);
+    assert.equal(checkout.isForeignPhone('  +40 721 234 567 '), true);
+
+    // A bare MD number that lost its "+373" ("+0…") is a typo, not a foreign
+    // booking: it stays false so the country-code error surfaces (ADR-081).
+    assert.equal(checkout.isForeignPhone('+069120220'), false);
+  });
+
+  it('wires the international contact notice into the checkout page and script', () => {
+    const html = read('checkout.html');
+    const checkoutScript = read('js/checkout.js');
+
+    assert.match(html, /data-international-notice/, 'notice element hook should exist');
+    assert.match(html, /href="tel:\+37360120220"/, 'notice should expose a tap-to-call number');
+    assert.match(html, /href="mailto:rezervari@ecovila\.md"/, 'notice should expose a mailto link');
+
+    // The script toggles the notice, keys off isForeignPhone, and locks the
+    // submit button for foreign guests.
+    assert.match(checkoutScript, /data-international-notice/);
+    assert.match(checkoutScript, /isForeignPhone/);
+    assert.match(checkoutScript, /submitButton\.disabled = foreign/);
   });
 
   it('builds pending reservation payloads with client-side IDs and a 30 minute cash expiry', () => {
