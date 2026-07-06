@@ -52,6 +52,12 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   lt(column: string, value: unknown): QueryBuilder<T>;
 };
 
+// The shared SupabaseClient type only declares `from`; the runtime client also has
+// `rpc`. Same narrowing cast the rate limiter uses (_shared/rateLimit.ts).
+type RpcClient = {
+  rpc(fn: string, args: Record<string, unknown>): PromiseLike<SupabaseQueryResult<unknown>>;
+};
+
 Deno.serve(async (request) => {
   const cors = handleCors(request);
   if (cors) return cors;
@@ -122,25 +128,32 @@ Deno.serve(async (request) => {
     const openedExtras = buildOpenedRowFields(body);
     let roomChanged = false;
 
-    for (const row of groupRows) {
+    // Build every row's patch, then apply them all in ONE transaction
+    // (reschedule_reservation_group). A villa grabbed by a concurrent booking
+    // between the plan and the commit rolls the WHOLE move back (23P01) instead of
+    // leaving a multi-villa group half-moved. Each patch's key PRESENCE means
+    // "set it"; absent keys leave the stored value untouched (see the builders).
+    const patches = groupRows.map((row) => {
       const roomId = roomById.get(row.id) || row.room_id;
       if (roomId !== row.room_id) roomChanged = true;
-
-      const patch: Record<string, unknown> = { ...sharedFields, room_id: roomId };
+      const patch: Record<string, unknown> = { id: row.id, ...sharedFields, room_id: roomId };
       if (row.id === opened.id) Object.assign(patch, openedExtras);
+      return patch;
+    });
 
-      const { error } = await table(client, 'reservations').update(patch).eq('id', row.id);
-      if (error) {
-        // The DB exclusion constraint is the final backstop against a villa being
-        // grabbed between the plan and the write (23P01 = exclusion_violation).
-        if (String((error as { code?: string }).code) === '23P01') {
-          throw new HttpError(
-            409,
-            'Vila aleasă tocmai a fost ocupată pentru aceste date. Reîncearcă.',
-          );
-        }
-        throw new Error(error.message || 'Could not update the reservation.');
+    const { error } = await (client as RpcClient).rpc('reschedule_reservation_group', {
+      p_patches: patches,
+    });
+    if (error) {
+      // 23P01 = exclusion_violation: a villa was taken between the plan and the
+      // commit. The transaction already rolled back, so nothing moved — retry.
+      if (String((error as { code?: string }).code) === '23P01') {
+        throw new HttpError(
+          409,
+          'Una dintre vile tocmai a fost ocupată pentru aceste date. Reîncearcă.',
+        );
       }
+      throw new Error(error.message || 'Could not update the reservation.');
     }
 
     // Tell the guest only when the dates actually moved. Best-effort: the move is

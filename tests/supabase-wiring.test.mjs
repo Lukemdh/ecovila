@@ -140,4 +140,64 @@ describe('EcoVila live Supabase wiring', () => {
       ],
     );
   });
+
+  it('maps reschedule input to snake_case and returns the function result payload', async () => {
+    const { EcoVilaSupabase: helpers } = loadBrowserModule('js/supabase.js');
+    let sent = null;
+    const client = {
+      functions: {
+        invoke: async (name, options) => {
+          sent = { name, body: options?.body };
+          return { data: { ok: true, datesChanged: true, roomChanged: false }, error: null };
+        },
+      },
+    };
+
+    const result = await helpers.rescheduleReservation(client, {
+      reservationId: 'r1',
+      checkIn: '2027-03-28',
+      checkOut: '2027-03-29',
+      kidsAges: [2, 5],
+      guestFirstName: 'Denis',
+    });
+
+    assert.equal(sent.name, 'reservation-reschedule');
+    assert.equal(sent.body.check_in, '2027-03-28');
+    assert.equal(sent.body.check_out, '2027-03-29');
+    assert.deepEqual(sent.body.kids_ages, [2, 5]);
+    assert.equal(sent.body.guest_first_name, 'Denis');
+    assert.deepEqual(result, { ok: true, datesChanged: true, roomChanged: false });
+  });
+
+  it('surfaces the reschedule function error message (e.g. no free villa) to the caller', async () => {
+    const { EcoVilaSupabase: helpers } = loadBrowserModule('js/supabase.js');
+    const client = {
+      functions: {
+        invoke: async () => ({
+          data: null,
+          error: {
+            // The generic line Supabase puts on FunctionsHttpError.message, while
+            // the real message sits in the JSON body of the raw Response (context).
+            message: 'Edge Function returned a non-2xx status code',
+            context: {
+              status: 409,
+              json: async () => ({
+                error: 'Nu există nicio vilă de tip Căsuță mare liberă pentru 2027-03-28 – 2027-03-29.',
+              }),
+            },
+          },
+        }),
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        helpers.rescheduleReservation(client, {
+          reservationId: 'r1',
+          checkIn: '2027-03-28',
+          checkOut: '2027-03-29',
+        }),
+      /Nu există nicio vilă de tip Căsuță mare liberă/,
+    );
+  });
 });

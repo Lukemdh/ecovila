@@ -2691,6 +2691,54 @@ together, upload the frontend so real-Diana's browser reaches the now-live funct
 
 ---
 
+### ADR-087 — Make the staff reschedule atomic, and surface the "no free villa" reason in the dialog
+
+Two follow-ups to ADR-086's reschedule, closing its noted limitation.
+
+**Atomic move.** ADR-086 applied a multi-villa move as one PostgREST `UPDATE` per row
+(each auto-committed), so a villa grabbed by a concurrent booking mid-loop could leave a
+group half-moved. Now the Edge Function still *plans* the villas, then applies every row's
+patch through one transaction — a new `security definer` RPC `reschedule_reservation_group(
+p_patches jsonb)` (migration `20260706120000`). Any villa taken between plan and commit trips
+`reservations_no_room_overlap` (23P01), which aborts and rolls back the **whole** move —
+nothing changes, and the Function returns a 409 to retry. The RPC runs two phases inside the
+one transaction: (1) vacate every group row (`room_id → null` drops it from the exclusion
+constraint, whose predicate is `room_id is not null`) while writing the new dates + edited
+fields; (2) assign each row its planned room. Vacating first also fixes a swap/rotation edge
+case the per-row loop would have wrongly rejected — a booking can relocate *into* a room a
+sibling row is leaving. `room_id` is nullable so this is safe; both reservations triggers
+no-op for the service role (`enforce_angela_reservation_columns` gates only role `angela`;
+the `paid_at` trigger fires only on `payment_status`/`paid_at`, which the RPC never touches).
+Patch semantics mirror the Function's field builders: a key's PRESENCE means "set it", an
+absent key leaves the stored value untouched (never blanks a NOT NULL column). Execute is
+revoked from `public, anon, authenticated` and granted only to `service_role` (same lock-down
+as `rate_limit_hit`, ADR-060), so no logged-in client can call the raw mover and bypass the
+Function's auth + planning.
+
+**Surface the failure reason.** The "no free villa of that type for these dates" 409 *was*
+already returned, but Supabase's client puts a generic "Edge Function returned a non-2xx
+status code" on `error.message`; the real message lives in the response body at
+`error.context`, which `decorateInvokeError` never read — so the dialog showed the useless
+line. Added `readInvokeErrorDetail` (js/supabase.js) to pull the body's `error`/`message`, and
+wired `rescheduleReservation` to surface it. The edit dialog now shows the specific reason for
+both "nothing free" and "a villa was just taken — retry".
+
+**Surface.** Migration `supabase/migrations/20260706120000_reschedule_reservation_group_rpc.sql`;
+`reservation-reschedule/index.ts` (build patches → one `rpc()` call; `RpcClient` narrowing cast
+per rateLimit.ts); `js/supabase.js` (`readInvokeErrorDetail` + wired into `rescheduleReservation`).
+
+**Tests/verify.** `tests/supabase-wiring.test.mjs` (+ payload-mapping guard + error-surfacing
+test). `npm test` → node 307/307, deno 112/112. The migration's jsonb expressions
+(kids-array extraction, `?`, `nullif`, casts) were validated read-only against the live DB;
+the RPC was smoke-tested there with empty + no-match inputs (no data change).
+
+**Deploy.** LIVE in prod 2026-07-06: migration applied via `db query --linked` + `migration
+repair`; RPC verified `security definer`, execute = `{service_role}` only; `reservation-
+reschedule` redeployed **v2**. Frontend (`js/supabase.js`) rides the still-un-uploaded ADR-086
+bundle under `?v=2026070601` — no new bump — **pending owner TopHost upload**.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

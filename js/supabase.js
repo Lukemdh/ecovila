@@ -99,6 +99,27 @@
     return error;
   }
 
+  // A Supabase FunctionsHttpError's `.message` is only the generic "Edge Function
+  // returned a non-2xx status code"; the real, user-facing message the function
+  // sent lives in the JSON body at `error.context` (the raw Response). Read it so
+  // callers can surface e.g. "Nu există nicio vilă … liberă pentru …" instead of
+  // the meaningless status line. Returns '' when there is no readable body.
+  async function readInvokeErrorDetail(error) {
+    const context = error?.context;
+    if (!context || typeof context.json !== 'function') {
+      return '';
+    }
+    try {
+      // Clone so we never consume a body another handler might still read.
+      const source = typeof context.clone === 'function' ? context.clone() : context;
+      const body = await source.json();
+      return String(body?.error || body?.message || '');
+    } catch (_error) {
+      // Body missing, not JSON, or already consumed — fall back to the raw error.
+      return '';
+    }
+  }
+
   function createSupabaseClient(config, library, options) {
     const supabaseLibrary = library || defaultRoot.supabase;
 
@@ -306,6 +327,15 @@
     });
 
     if (result.error) {
+      // Surface the function's own message (e.g. "no free villa of that type for
+      // these dates", or "a villa was just taken — retry") so the edit dialog
+      // shows why the move failed instead of a generic status line.
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
       throw decorateInvokeError(result.error);
     }
 
