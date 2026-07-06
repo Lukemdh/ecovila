@@ -446,10 +446,10 @@
       return false;
     }
 
-    if (state.addAvailabilityEnd && date >= state.addAvailabilityEnd) {
-      return false;
-    }
-
+    // No upper bound on how far ahead staff can book. Occupancy is loaded for the
+    // next ~2 years (ADD_RESERVATION_LOOKAHEAD_DAYS), so availability is accurate
+    // within that window; past it the picker shows dates as free (optimistic) and
+    // the DB exclusion constraint rejects the rare far-future clash on submit.
     if (checkIn && !checkOut && date > checkIn) {
       return areSelectedRoomsAvailable({
         rooms: state.rooms || [],

@@ -175,7 +175,15 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
   it('does not rate-limit staff-only or cron-secret functions', () => {
     // These are gated by requireStaffRole / requireSharedSecret; adding a limiter
     // would be redundant and could throttle legitimate back-office bursts.
-    for (const name of ['confirm-reservation-payment', 'maib-refund', 'send-sms', 'send-email']) {
+    for (
+      const name of [
+        'confirm-reservation-payment',
+        'maib-refund',
+        'send-sms',
+        'send-email',
+        'reservation-reschedule',
+      ]
+    ) {
       assert.match(fn(name), /requireStaffRole/, `${name} should stay staff-gated`);
     }
   });
@@ -193,6 +201,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'send-sms',
       'send-email',
       'reservation-cancel-notify',
+      'reservation-reschedule',
       'send-checkin-welcome',
       // cron-secret gated
       'expire-cash-reservations',

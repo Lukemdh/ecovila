@@ -939,6 +939,31 @@ export function bookingChangeSms(input: {
   return `Rezervarea ta a fost actualizata. Acum include ${guests}.${tail}`;
 }
 
+// Staff reschedule SMS: sent when Diana moves a paid/pending booking to new
+// dates from the CRM. Mirrors bookingConfirmationSms's "date (13.00) - date
+// (10.00)" shape so the guest reads a familiar line. Kept within one segment for
+// RO/EN (<=160 GSM-7) and RU (<=140 UCS-2); the lengths are asserted in
+// tests/reservationReschedule.test.ts so an edit that overflows fails CI.
+export function reservationRescheduleSms(input: {
+  language: string;
+  checkIn: string;
+  checkOut: string;
+}) {
+  const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
+  const checkIn = formatSmsDate(input.checkIn, language);
+  const checkOut = formatSmsDate(input.checkOut, language);
+
+  if (language === 'ru') {
+    return `Ваша бронь перенесена: ${checkIn} (13.00) - ${checkOut} (10.00). Ждём вас в EcoVila!`;
+  }
+
+  if (language === 'en') {
+    return `Your reservation was moved: ${checkIn} (13.00) - ${checkOut} (10.00). See you at EcoVila!`;
+  }
+
+  return `Rezervarea dvs a fost mutata: ${checkIn} (13.00) - ${checkOut} (10.00). Va asteptam la EcoVila!`;
+}
+
 function arrivalReminderSms(language: string) {
   if (language === 'ru') {
     return 'Ждем вас завтра в EcoVila! Заезд и доступ на территорию с 13.00. Вопросы: 060120220';

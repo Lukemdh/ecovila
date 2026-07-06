@@ -4,9 +4,20 @@
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
 
-  const ADD_RESERVATION_LOOKAHEAD_DAYS = 365;
+  // How far ahead the "add reservation" form loads occupancy so the mini date
+  // picker can show real availability. This is a data-load horizon, NOT a booking
+  // cap: staff may pick any future date (see isAddDateSelectable). Within this
+  // window availability is authoritative; beyond it the picker is optimistic and
+  // the DB exclusion constraint (reservations_no_room_overlap) is the backstop.
+  const ADD_RESERVATION_LOOKAHEAD_DAYS = 365 * 2;
   const CALENDAR_BUFFER_MONTHS = 1;
   const CALENDAR_EDGE_DAYS = 7;
+  // Wait for horizontal scrolling to settle before shifting the loaded month
+  // window, so an in-flight reload never yanks the calendar mid-gesture.
+  const CALENDAR_EXTEND_DEBOUNCE_MS = 160;
+  // After we programmatically reposition the scroll (reload/jump), ignore the
+  // synthetic scroll it triggers so it cannot immediately re-extend the window.
+  const CALENDAR_EXTEND_SUPPRESS_MS = 500;
   const DELETE_CONFIRMATIONS = [
     'Sigur vrei să ștergi această rezervare?',
     'Ești absolut sigur că vrei să ștergi această rezervare?',
@@ -72,9 +83,22 @@
     return formatted.charAt(0).toUpperCase() + formatted.slice(1);
   }
 
+  // Memoized: --crm-day-column-width is a fixed 136px with no responsive override,
+  // and this is read on every scroll event. Caching the first valid read avoids a
+  // getComputedStyle (style recalc) per scroll frame. Falls back to 136 without
+  // caching if the stylesheet has not applied yet, so a later call can retry.
+  let _cachedColumnWidth = 0;
   function calendarColumnWidth() {
+    if (_cachedColumnWidth) {
+      return _cachedColumnWidth;
+    }
     const rootStyles = root.getComputedStyle?.(root.document.documentElement);
-    return Number.parseFloat(rootStyles?.getPropertyValue('--crm-day-column-width')) || 136;
+    const parsed = Number.parseFloat(rootStyles?.getPropertyValue('--crm-day-column-width'));
+    if (parsed > 0) {
+      _cachedColumnWidth = parsed;
+      return parsed;
+    }
+    return 136;
   }
 
   function buildCalendarWindowDates(focusDate) {
@@ -141,6 +165,7 @@
     }
 
     const restore = () => {
+      state.suppressExtendUntil = Date.now() + CALENDAR_EXTEND_SUPPRESS_MS;
       calendar.scrollLeft = Math.max(0, state.calendarScrollLeft);
       updateCalendarMonthFromScroll(state);
     };
@@ -510,7 +535,105 @@
     if (deleteButton) {
       deleteButton.onclick = readOnly ? null : () => deleteReservation(reservation);
     }
+
+    const editError = qs('[data-edit-error]', dialog);
+    if (editError) {
+      editError.textContent = '';
+      editError.hidden = true;
+    }
+    const editorForm = qs('[data-reservation-editor]', dialog);
+    if (editorForm) {
+      editorForm.onsubmit = (event) => handleReservationEditSubmit(event, reservation, dialog, readOnly);
+    }
     dialog.showModal?.();
+  }
+
+  // "Salvează modificări": persists the dialog edits. A date change routes through
+  // the reservation-reschedule function, which keeps the villa when it is still
+  // free, relocates to a free same-type villa otherwise, or rejects the move when
+  // none is free (shown inline). The guest is texted when the dates actually move.
+  function handleReservationEditSubmit(event, reservation, dialog, readOnly) {
+    event.preventDefault();
+    // method="dialog": the "Închide" (cancel) button and Enter just close it.
+    if (readOnly || event.submitter?.value !== 'save') {
+      dialog.close?.('cancel');
+      return;
+    }
+    saveReservationEdit(reservation, dialog);
+  }
+
+  async function saveReservationEdit(reservation, dialog) {
+    const context = activeState?.context;
+    if (!context?.client) {
+      return;
+    }
+
+    const editError = qs('[data-edit-error]', dialog);
+    const showEditError = (message) => {
+      if (!editError) return;
+      editError.textContent = message || '';
+      editError.hidden = !message;
+    };
+    showEditError('');
+
+    const checkIn = qs('[data-edit-check-in]', dialog).value;
+    const checkOut = qs('[data-edit-check-out]', dialog).value;
+    if (!checkIn || !checkOut) {
+      showEditError('Completează datele de check-in și check-out.');
+      return;
+    }
+    if (checkOut <= checkIn) {
+      showEditError('Check-out trebuie să fie după check-in.');
+      return;
+    }
+
+    const fullName = String(qs('[data-edit-name]', dialog).value || '').trim();
+    const parts = fullName ? fullName.split(/\s+/) : [];
+
+    const saveButton = qs('[data-save-reservation]', dialog);
+    if (saveButton) saveButton.disabled = true;
+
+    try {
+      const result = await root.EcoVilaSupabase.rescheduleReservation(context.client, {
+        reservationId: reservation.id,
+        bookingGroupId: reservation.booking_group_id,
+        checkIn,
+        checkOut,
+        adults: Number(qs('[data-edit-adults]', dialog).value || 0),
+        kidsAges: parseKidsAges(qs('[data-edit-kids-ages]', dialog).value),
+        guestFirstName: parts.length ? parts[0] : reservation.guest_first_name,
+        guestLastName: parts.length > 1 ? parts.slice(1).join(' ') : reservation.guest_last_name,
+        guestPhone: String(qs('[data-edit-phone]', dialog).value || '').trim(),
+        notes: String(qs('[data-edit-notes]', dialog).value || ''),
+      });
+      dialog.close?.('save');
+      context.setAlert?.(describeRescheduleResult(result));
+      await activeState.reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Modificările nu au putut fi salvate.';
+      showEditError(message.slice(0, 200));
+    } finally {
+      if (saveButton) saveButton.disabled = false;
+    }
+  }
+
+  function parseKidsAges(value) {
+    return String(value || '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .map((part) => Number(part));
+  }
+
+  function describeRescheduleResult(result) {
+    if (!result || result.datesChanged === false) {
+      return 'Modificările au fost salvate.';
+    }
+    const villa = result.roomChanged && result.roomNumber ? ` Vila nouă: ${result.roomNumber}.` : '';
+    if (result.smsSent) {
+      return `Rezervarea a fost mutată.${villa} Clientul a fost anunțat prin SMS.`;
+    }
+    return `Rezervarea a fost mutată.${villa} SMS-ul către client nu a putut fi trimis — anunță-l manual.`;
   }
 
   async function deleteReservation(reservation) {
@@ -641,6 +764,7 @@
       return;
     }
 
+    state.suppressExtendUntil = Date.now() + CALENDAR_EXTEND_SUPPRESS_MS;
     calendar.scrollLeft = Math.max(0, index * calendarColumnWidth());
     updateCalendarMonthFromScroll(state);
   }
@@ -648,6 +772,12 @@
   function maybeExtendCalendarWindow(context, state) {
     const calendar = qs('[data-reservation-calendar]');
     if (!calendar || state.isLoading) {
+      return;
+    }
+
+    // Ignore the synthetic scroll fired by our own repositioning (reload/jump),
+    // otherwise landing near an edge would instantly re-extend the window.
+    if (state.suppressExtendUntil && Date.now() < state.suppressExtendUntil) {
       return;
     }
 
@@ -727,6 +857,9 @@
       calendarScrollLeft: 0,
       currentVisibleDate: today,
       isLoading: false,
+      // Debounce timer + cooldown for the scroll-driven month-window extension.
+      extendTimer: null,
+      suppressExtendUntil: 0,
       rooms: [],
       reservations: [],
       todayReservations: [],
@@ -769,8 +902,18 @@
     });
     qs('[data-show-cancelled]')?.addEventListener('change', () => renderCalendar(context, state));
     qs('[data-reservation-calendar]')?.addEventListener('scroll', () => {
+      // The month label tracks the scroll live (cheap). Shifting the loaded window
+      // is a network reload + full grid rebuild, so defer it until scrolling has
+      // settled — this is what stops the calendar from stuttering or snapping back
+      // mid-gesture (and mid-momentum on trackpads).
       updateCalendarMonthFromScroll(state);
-      maybeExtendCalendarWindow(context, state);
+      if (state.extendTimer) {
+        root.clearTimeout(state.extendTimer);
+      }
+      state.extendTimer = root.setTimeout(() => {
+        state.extendTimer = null;
+        maybeExtendCalendarWindow(context, state);
+      }, CALENDAR_EXTEND_DEBOUNCE_MS);
     }, { passive: true });
     qsa('[data-collapse-sidebar]').forEach((button) => {
       button.addEventListener('click', () => {

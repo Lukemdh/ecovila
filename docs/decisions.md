@@ -2629,6 +2629,68 @@ sequencing risk.
 
 ---
 
+### ADR-086 — CRM reservation management: ship the reschedule move, remove the 1-year advance-booking wall, and de-jank calendar scrolling
+
+Three fixes to the staff dashboard, reported together (reschedule was fully built in
+ADR-054's shadow but never deployed; the other two are new). They ship as one commit
+because the reschedule wiring and the scroll fix both live in `admin/js/crm-dashboard.js`
+and cannot be cleanly separated.
+
+**1 — Reschedule (move a booking to new dates) was built but undeployed.** The edit
+dialog's "Salvează modificări" calls `client.functions.invoke('reservation-reschedule')`,
+but that edge function had never been deployed — so the gateway 404'd without CORS headers,
+the browser's `fetch` rejected, and the dialog showed *"Failed to send a request to the Edge
+Function."* **Decision:** deploy the function as-is; the code was production-ready. It reuses
+`orderRoomsByTightestWindow` (ADR-054) so a moved booking keeps its villa when still free,
+else takes the tightest-window free villa of the **same type**, else the whole move is
+rejected (409, nothing written). All group rows move together; the guest gets a localized
+one-segment SMS only when the dates actually change (best-effort — a failed SMS never undoes
+the move). `requireStaffRole(['diana'])`, rate-limit-exempt (staff-gated), DB exclusion
+constraint `reservations_no_room_overlap` (23P01) as the final anti-double-book backstop.
+*Known limitation:* the per-row updates are not one transaction, so a multi-villa group
+could partial-move if a concurrent booking steals a planned villa mid-write — negligible on
+a single-operator CRM, and single-villa bookings (the common case) carry zero such risk.
+
+**2 — The "add reservation" form capped selectable dates at 1 year out.** The mini date
+picker hard-disabled any date `>= today + 365` (`isAddDateSelectable`), because occupancy
+was only loaded for that window and unknown dates must not show as "free." **Decision:**
+remove the hard wall entirely and widen the occupancy load to ~2 years
+(`ADD_RESERVATION_LOOKAHEAD_DAYS = 365 * 2`). Staff may now pick **any** future date;
+availability is authoritative within the loaded window, optimistic beyond it, and the same
+23P01 exclusion constraint (already surfaced with a friendly "tocmai au fost rezervate"
+message + reload) guarantees no far-future double-booking. Pricing is open-ended forward, so
+far-future nights price correctly — no "total = 0" wall.
+
+**3 — Calendar horizontal scrolling stuttered / snapped back.** The scroll handler fired an
+async network reload + full grid teardown-and-rebuild **synchronously on every scroll
+frame** when near an edge, then force-set `scrollLeft` — fighting trackpad momentum and
+yanking the view back mid-gesture. **Decision:** debounce the month-window extension so the
+reload runs only after scrolling settles (`CALENDAR_EXTEND_DEBOUNCE_MS = 160`); add a
+cooldown (`CALENDAR_EXTEND_SUPPRESS_MS = 500`) so our own repositioning can't instantly
+re-trigger an extend; memoize the `--crm-day-column-width` read to drop a `getComputedStyle`
+style-recalc per scroll frame. The live month label still tracks the scroll instantly.
+
+**Surface.** Backend (deployed): `supabase/functions/reservation-reschedule/index.ts`,
+`_shared/reservationReschedule.ts` (pure planner, unit-tested), `_shared/notifications.ts`
+(`reservationRescheduleSms`), `config.toml` (`verify_jwt = true`). Frontend:
+`js/supabase.js` (`rescheduleReservation` client, camelCase→snake_case), `admin/dashboard.html`
++ `css/crm.css` (inline edit-error), `admin/js/crm-dashboard.js` (edit-submit wiring; picker
+horizon; scroll debounce/suppress/memoize), `admin/js/crm-sidebar.js` (drop the date wall).
+
+**Tests/verify.** `supabase/functions/tests/reservationReschedule.test.ts` (planner keep/
+relocate/reject, multi-villa no-double-assign, SMS ≤1 segment ×3 langs ×12 months) +
+`tests/rate-limiting.test.mjs` (reschedule classified staff-gated + limiter-exempt) +
+`tests/admin-crm.test.mjs` (unlimited-advance + debounced-scroll regression guards).
+`npm test` → node 305/305, deno 112/112. Post-deploy smoke: OPTIONS preflight on the live
+function returns 200 with `access-control-allow-origin` (the header the old 404 lacked).
+
+**Deploy.** `reservation-reschedule` deployed to prod (v1, 2026-07-06). Frontend cache-bust
+bump `?v=2026062702 → 2026070601` + `dist/tophost` regenerated — **pending owner TopHost
+upload.** No migration. Because the frontend reschedule wiring and the live function ship
+together, upload the frontend so real-Diana's browser reaches the now-live function.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

@@ -281,6 +281,37 @@
     return result.data || {};
   }
 
+  // Staff "Salvează modificări": moves a booking to new dates (keeping the villa
+  // when free, else the tightest-window free villa of the same type — or a 409 if
+  // none) and texts the guest when the dates change. Server-side so the SMS and
+  // the same-type availability check stay authoritative (see reservation-reschedule).
+  async function rescheduleReservation(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-reschedule', {
+      body: {
+        reservationId: input?.reservationId || '',
+        bookingGroupId: input?.bookingGroupId || '',
+        check_in: input?.checkIn || '',
+        check_out: input?.checkOut || '',
+        adults: input?.adults,
+        kids_ages: input?.kidsAges,
+        guest_first_name: input?.guestFirstName,
+        guest_last_name: input?.guestLastName,
+        guest_phone: input?.guestPhone,
+        notes: input?.notes,
+      },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
   async function startReservationLookup(client, phone, language) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -1095,6 +1126,7 @@
     fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
     notifyReservationCancellation,
+    rescheduleReservation,
     createReservationRequest,
     startReservationLookup,
     verifyReservationLookup,

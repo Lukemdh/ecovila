@@ -1660,6 +1660,30 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(calendarElement.scrollLeft, 1840);
   });
 
+  it('lets staff book unlimited months ahead while loading real availability for the next two years', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    const sidebarJs = read('admin/js/crm-sidebar.js');
+
+    // Occupancy is fetched ~2 years out (accurate window), no longer just one year.
+    assert.match(dashboardJs, /ADD_RESERVATION_LOOKAHEAD_DAYS\s*=\s*365\s*\*\s*2/);
+    assert.doesNotMatch(dashboardJs, /ADD_RESERVATION_LOOKAHEAD_DAYS\s*=\s*365\s*;/);
+    // The 1-year wall was this gate: dates past the loaded window were unselectable.
+    // It is gone — staff may pick any future date; the DB exclusion constraint is
+    // the backstop for the rare far-future clash beyond the loaded window.
+    assert.doesNotMatch(sidebarJs, /date\s*>=\s*state\.addAvailabilityEnd/);
+  });
+
+  it('defers the scroll-driven month-window extension until scrolling settles', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+
+    // The expensive window shift (reload + grid rebuild) is scheduled on a debounce
+    // timer instead of firing synchronously on every scroll event, and a cooldown
+    // ignores the synthetic scroll our own repositioning triggers.
+    assert.match(dashboardJs, /extendTimer\s*=\s*root\.setTimeout/);
+    assert.match(dashboardJs, /CALENDAR_EXTEND_DEBOUNCE_MS/);
+    assert.match(dashboardJs, /suppressExtendUntil/);
+  });
+
   it('keeps calendar room rows numeric-only and omits room labels inside reservation blocks', () => {
     const dashboardJs = read('admin/js/crm-dashboard.js');
     const css = read('css/crm.css');
