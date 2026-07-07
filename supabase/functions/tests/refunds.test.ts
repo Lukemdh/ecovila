@@ -14,6 +14,19 @@ Deno.test('interpretMaibRefundResponse treats result.status OK as completed', ()
   assertEquals(verdict.refundId, '42');
 });
 
+Deno.test('interpretMaibRefundResponse treats CREATED as completed (MIA instant refund success)', () => {
+  // MAIB reports a successful MIA refund as result.status CREATED; the money
+  // settles immediately (verified against the maibmerchants statement, ADR-094).
+  const verdict = interpretMaibRefundResponse({
+    ok: true,
+    result: { status: 'CREATED', refundId: 'r-mia-1' },
+  });
+  assertEquals(verdict.completed, true);
+  assertEquals(verdict.alreadyRefunded, false);
+  assertEquals(verdict.providerStatus, 'CREATED');
+  assertEquals(verdict.refundId, 'r-mia-1');
+});
+
 Deno.test('interpretMaibRefundResponse treats REVERSED as already refunded, not a new completion', () => {
   const verdict = interpretMaibRefundResponse({
     ok: true,

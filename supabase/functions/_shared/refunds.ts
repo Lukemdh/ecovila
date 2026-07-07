@@ -1,7 +1,8 @@
 // MAIB refund engine (ADR-088). Every refund goes through attemptBookingRefund,
 // which (a) reads the provider's result.status instead of trusting the HTTP
-// layer — MAIB documents OK ("successfully refunded") and REVERSED ("previously
-// refunded; repeated refunds are not allowed"), and anything else means the
+// layer — a refund is confirmed on OK, on CREATED (MIA instant refunds report
+// CREATED — verified against the maibmerchants statement, ADR-094), or on REVERSED
+// ("previously refunded; repeated refunds are not allowed"). Anything else means the
 // money has NOT been confirmed moved (e.g. the merchant settlement account had
 // insufficient funds) — and (b) leaves every unresolved refund as a
 // requested/processing/failed maib_refunds row that the reconcile-refunds cron
@@ -82,7 +83,15 @@ export function interpretMaibRefundResponse(raw: unknown): MaibRefundInterpretat
   const refundId = String(result.refundId ?? body.refundId ?? '').trim() || null;
 
   return {
-    completed: providerStatus === '' || providerStatus === 'OK',
+    // MIA instant (bank-transfer) refunds report result.status CREATED on success:
+    // the credit-transfer is created and settles immediately (verified against the
+    // maibmerchants statement — Vera/Alina refunds, ADR-094). Treating CREATED as
+    // unconfirmed parked every real MIA refund as "processing" and fired a false
+    // "refund not finalized" staff alert. OK is the card/other success; REVERSED
+    // means a refund already executed; anything else (or a thrown provider error)
+    // stays a retryable row.
+    completed: providerStatus === '' || providerStatus === 'OK' ||
+      providerStatus === 'CREATED',
     alreadyRefunded: providerStatus === 'REVERSED',
     providerStatus,
     refundId,

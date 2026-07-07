@@ -2966,6 +2966,35 @@ vestigial (redirected away) and can be retired in a later cleanup.
 
 ---
 
+### ADR-094 — MAIB reports a successful MIA refund as `CREATED`; treat it as completed (was firing false "refund failed" alerts)
+
+**Date:** 2026-07-07.
+
+**Problem (found in prod).** ADR-088's `interpretMaibRefundResponse` only accepted `result.status`
+`OK` (or an empty status) as a completed refund; everything else was parked as `processing`, which
+fires a staff **"Restituire nefinalizată"** email and keeps retrying. But MAIB reports a successful
+**MIA** (instant bank-transfer) refund as `result.status = "CREATED"` — the credit-transfer is
+created and settles immediately. So every real MIA refund was mis-read as unconfirmed: the row stuck
+at `processing`, the payment never flipped to `refunded`, and the owner got a **false failure email**.
+
+Confirmed live: the two ADR-093 remediation refunds — Vera (12,200 MDL) and Alina (3,000 MDL) —
+executed at 15:30 UTC (the maibmerchants statement shows both `(R)` transfers **Paid** to the guests'
+IBANs, plus MAIB interbank commissions), yet the engine emailed "refund not finalized". An older,
+genuinely-succeeded refund row in the DB also carried `result.status: "Created"`, corroborating that
+`CREATED` is the success shape, not a pending one.
+
+**Decision.** `interpretMaibRefundResponse` now treats `CREATED` as completed alongside `OK` and the
+legacy empty status. `REVERSED` still means already-refunded; `FAILED`/`PENDING`/`DECLINED`/error (and
+any thrown provider error) still stay retryable rows. The two stranded rows were reconciled by hand
+(refunds → `succeeded`, payments → `refunded`, `refunded_at` = the 15:30 execution time) to match the
+bank statement and stop the retry/alert loop.
+
+**Surface.** `supabase/functions/_shared/refunds.ts` (`interpretMaibRefundResponse`) +
+`tests/refunds.test.ts` (adds a `CREATED → completed` case). deno 118/118. Shared module → **all 25
+functions redeployed**. Backend-only; no migration, no frontend, no TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,
