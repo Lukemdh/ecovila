@@ -564,7 +564,7 @@ function createSecureToken() {
 function composePaymentConfirmation(
   reservation: PaymentReservationRow,
   groupReservations: PaymentReservationRow[],
-  cancellationToken: string,
+  _cancellationToken: string,
   siteUrl: string,
   manageToken: string,
 ) {
@@ -575,7 +575,10 @@ function composePaymentConfirmation(
   const roomCopy = aggregateRoomLabel(group, lang);
   const totalPrice = group.reduce((sum, row) => sum + Number(row.total_price || 0), 0);
   const confirmationLink = confirmationUrl(siteUrl, reservation.id, manageToken);
-  const cancelLink = `${siteUrl}/anulare.html?token=${encodeURIComponent(cancellationToken)}`;
+  // Route to the OTP self-management lookup (rezervari.html) so cancellation runs
+  // through reservation-cancel and refunds; anulare.html redirects here too. The
+  // legacy token link cancelled a paid booking without refunding (ADR-088 gap).
+  const cancelLink = `${siteUrl}/rezervari.html#reservation-lookup-title`;
   const firstName = titleCaseName(reservation.guest_first_name || '');
   const fullName = titleCaseName(
     `${reservation.guest_first_name || ''} ${reservation.guest_last_name || ''}`,

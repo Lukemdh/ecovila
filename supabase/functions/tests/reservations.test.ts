@@ -227,7 +227,11 @@ Deno.test('composeBookingConfirmation keeps links in email and sends full stay S
   assertEquals(message.sms.message.includes('https://ecovila.md/anulare.html'), false);
   assertEquals(message.email.to, 'ana@example.md');
   assertIncludes(message.email.html, 'https://ecovila.md/confirmare.html?id=reservation-a');
-  assertIncludes(message.email.text, 'Anulare 20 zile+:');
+  assertIncludes(message.email.text, 'Gestionează rezervarea:');
+  assertIncludes(
+    message.email.text,
+    'https://ecovila.md/rezervari.html#reservation-lookup-title',
+  );
 });
 
 Deno.test('composeBookingConfirmation keeps SMS inside one segment where possible', async () => {

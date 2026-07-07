@@ -2905,6 +2905,67 @@ regenerated. Frontend-only — **no backend deploy; ships with the pending owner
 
 ---
 
+### ADR-093 — The confirmation-email cancel link cancelled a paid booking without refunding; route it through the refunding self-management flow
+
+**Date:** 2026-07-07.
+
+**Problem (found in prod).** There are two guest cancellation paths, and only one refunds:
+- **Email „Anulează" button → `anulare.html?token=…` → `cancel_reservation_by_token` RPC** (SECURITY
+  DEFINER, migration `20260613090000`): flips the row to `cancelled` + `cancellation_reason =
+  'guest_request'`, marks the `cancellation_tokens` row `used`, and shows the guest a "you'll be
+  refunded" note (`anulare.js` `updateRefundNote`) — but issues **no MAIB refund**. Nothing sweeps
+  it: `reconcile-refunds` only retries existing `maib_refunds` rows, and this path never creates one.
+- **OTP self-management `rezervari.html` → `gestionare.html` → `reservation-cancel` Edge Function:**
+  cancels **and** refunds (with the ADR-088 reconcile loop).
+
+The ADR-088..091 refund hardening only fixed the second path. The confirmation email sends guests to
+the **first** one (`notifications.ts` + `bookingSettlement.ts` both built `/anulare.html?token=…`), so
+any guest who cancelled from their email was cancelled without a refund. Surfaced while investigating
+a missing refund; a full-DB sweep (`maib_payments` paid + unrefunded ∩ fully-cancelled group) found
+**exactly two** affected guests — Vera F. (group `eb1e39a0…`, 12,200 MDL) and Alina O. (group
+`94717de1…`, 3,000 MDL), both MIA, both `cancellation_tokens.used = true`. All other cancelled-paid
+groups were either properly refunded (11) or office/cash (34).
+
+**Decision.**
+1. **`anulare.html` now redirects** (inline `<head>` script, before any resource loads) to
+   `rezervari.html#reservation-lookup-title` — the OTP lookup that enters the refunding
+   `reservation-cancel` flow. This also **rescues already-sent emails**, which all point at
+   `anulare.html`.
+2. **Both confirmation-email builders** (`notifications.ts`, `bookingSettlement.ts`) now point the
+   cancel button at that same lookup and relabel it **„Gestionează rezervarea"** (ru „Управление
+   бронированием", en „Manage reservation").
+
+`gestionare.html` cannot be linked directly: it is deep-link only (needs `id` + a 30-min-TTL `manage`
+token, no OTP fallback → error page on a link opened days later). `rezervari.html`'s phone-OTP lookup
+is the robust entry to the refunding cancel.
+
+**Remediation of the two stranded refunds.** Seeded a `maib_refunds` row (`status = 'requested'`) for
+each pay id so the deployed `reconcile-refunds` cron (`*/30`) executes them on its next tick —
+idempotent by construction (MAIB allows one refund per payment; a retry of an executed refund returns
+REVERSED). Not auto-healed by the cron otherwise, because the email-link path never created a refund
+row to reconcile.
+
+**Why not preserve one-click cancel.** A one-click refunding cancel from the email is possible (a new
+`reservation-cancel-by-token` function using the `cancellation_token`), but the owner chose the
+lower-risk route: funnel into the existing OTP flow. Trade-off accepted — cancelling now costs a
+phone-OTP step. `confirmare.html` (the email's primary button) already routes its manage/cancel
+through `gestionare.html` → `reservation-cancel` and never calls the no-refund RPC, so it does not
+leak money (its manage link does dead-end on a late open, a separate UX nit).
+
+**Surface.** `anulare.html` (frontend), `supabase/functions/_shared/notifications.ts` +
+`bookingSettlement.ts` (shared → touches every function that sends the confirmation email),
+`tests/reservations.test.ts` (asserts the new label + lookup URL). node 308/308 + deno 117/117.
+Browser-verified: `anulare.html?token=…` redirects to `rezervari.html#reservation-lookup-title`. No
+asset `?v=` bump (inline-HTML redirect; no fingerprinted asset changed); dist/tophost regenerated.
+
+**Deploy.** The **frontend redirect (`anulare.html`) is the actual fix and ships alone** via the owner
+TopHost upload. The **backend relabel needs the functions redeployed** (shared-module change) — purely
+cosmetic since the redirect already makes the old URL moot, so it can ride the next redeploy. The
+legacy `cancellation_tokens` + `cancel_reservation_by_token` RPC + `anulare.html` page are now
+vestigial (redirected away) and can be retired in a later cleanup.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

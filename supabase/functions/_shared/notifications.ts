@@ -158,9 +158,11 @@ export function composeBookingConfirmation(
   // villa is listed and the per-villa prices are summed back to the full total.
   const group = options.groupReservations?.length ? options.groupReservations : [reservation];
   const roomCopy = aggregateRoomLabel(group, language);
-  const cancellationLink = `${options.siteUrl}/anulare.html?token=${
-    encodeURIComponent(options.cancellationToken)
-  }`;
+  // Route to the OTP self-management lookup (rezervari.html), whose cancel runs
+  // through the reservation-cancel Edge Function and refunds properly. The legacy
+  // anulare.html link cancelled a paid booking WITHOUT refunding (ADR-088 gap);
+  // anulare.html now redirects here too, so already-sent emails are rescued.
+  const cancellationLink = `${options.siteUrl}/rezervari.html#reservation-lookup-title`;
   const confirmationLink = confirmationUrl(options.siteUrl, reservation.id, options.manageToken);
   const firstName = titleCaseName(reservation.guest_first_name);
   const fullName = titleCaseName(
@@ -1411,8 +1413,8 @@ const CONFIRM_COPY: Record<EmailLang, {
       total: 'Total',
     },
     cta: 'Vezi rezervarea',
-    cancel: 'Anulează rezervarea',
-    cancelTextLabel: 'Anulare 20 zile+',
+    cancel: 'Gestionează rezervarea',
+    cancelTextLabel: 'Gestionează rezervarea',
     info: {
       title: 'Accesul pe teritoriu este permis după ora 13:00.',
       lines: ['Check-in de la 13:00.', 'Check-out până la 10:00.'],
@@ -1438,8 +1440,8 @@ const CONFIRM_COPY: Record<EmailLang, {
       total: 'Итого',
     },
     cta: 'Открыть бронь',
-    cancel: 'Отменить бронь',
-    cancelTextLabel: 'Отмена (от 20 дней)',
+    cancel: 'Управление бронированием',
+    cancelTextLabel: 'Управление бронированием',
     info: {
       title: 'Доступ на территорию открыт после 13:00.',
       lines: ['Заезд с 13:00.', 'Выезд до 10:00.'],
@@ -1465,8 +1467,8 @@ const CONFIRM_COPY: Record<EmailLang, {
       total: 'Total',
     },
     cta: 'View reservation',
-    cancel: 'Cancel reservation',
-    cancelTextLabel: 'Cancellation (20+ days)',
+    cancel: 'Manage reservation',
+    cancelTextLabel: 'Manage reservation',
     info: {
       title: 'Access to the property opens after 13:00.',
       lines: ['Check-in from 13:00.', 'Check-out until 10:00.'],

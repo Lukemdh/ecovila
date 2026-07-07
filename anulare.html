@@ -3,6 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--
+      Route all confirmation-email cancel links into the self-management lookup.
+      The legacy /anulare.html flow (cancel_reservation_by_token RPC) cancelled a
+      paid booking WITHOUT issuing the MAIB refund; cancelling via the OTP lookup
+      (rezervari.html -> reservation-cancel Edge Function) refunds correctly. This
+      also rescues already-sent emails, which all point here. Runs before any other
+      resource loads so the old page never renders.
+    -->
+    <script>window.location.replace('rezervari.html#reservation-lookup-title');</script>
     <title>EcoVila | Anulare rezervare</title>
     <meta
       name="description"
