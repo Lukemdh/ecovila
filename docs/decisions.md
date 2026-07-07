@@ -2877,6 +2877,34 @@ edge functions incl. new `reconcile-refunds`, `ECOVILA_ALERT_EMAIL` secret, TopH
 
 ---
 
+### ADR-092 — Paginate CRM reservation fetches so a >1000-row window is never truncated (blank-August calendar bug)
+
+**Problem (reported in prod).** The dashboard calendar showed August reservations as blank
+unless you navigated to August with the month arrows. Root cause: `fetchAdminReservations`
+(js/supabase.js) issued a single PostgREST request with no pagination, and PostgREST caps a
+response at 1000 rows. The June–August window held **1,345** reservations (June 302, July 595,
+August 448 — inflated by 487 accumulated cancelled/abandoned holds, which the calendar fetches so
+the "arată anulate" toggle can render them). Ordered by `check_in` ascending, June+July filled the
+first 897 rows and only ~100 of August's 448 fit under the cap; the rest were silently dropped, so
+the tail month rendered blank. Re-centring on August via the arrows shifted it into the first 1000
+rows, which is why the arrows "fixed" it.
+
+**Decision.** Add `unwrapAllSupabaseRows(buildQuery)` — pages through `.range(from, from+999)`
+until a short page returns, so the complete set comes back regardless of volume. `buildQuery`
+yields a fresh builder each call (a PostgREST builder is single-use once awaited) and every paged
+query now carries a deterministic total order (`id` tiebreaks the primary sort) so a row on a page
+boundary is never skipped or duplicated. Applied to all three unbounded reservation fetches:
+`fetchAdminReservations` (calendar window + today strip + the 2-year add-reservation availability
+scan, which was even more truncated) and — because the same cap would silently UNDER-REPORT
+revenue — `fetchFinanceReservations` and `fetchFinanceBookedReservations`.
+
+**Surface.** `js/supabase.js` only (frontend). Test: `tests/admin-crm.test.mjs` pages a synthetic
+1345-row window and asserts all rows return in order with `[[0,999],[1000,1999]]` range calls and
+an `id` tiebreak. node 308/308 + deno 117/117. Assets bumped **?v=2026070702**, dist/tophost
+regenerated. Frontend-only — **no backend deploy; ships with the pending owner TopHost upload.**
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

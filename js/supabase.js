@@ -155,6 +155,29 @@
     return result.data || [];
   }
 
+  // PostgREST returns at most ~1000 rows per request. A busy multi-month
+  // calendar window (or the 2-year add-reservation availability scan) exceeds
+  // that, and the surplus — always the tail of the ordering — was silently
+  // dropped, so the last month rendered blank until you re-centred it. Page
+  // through with .range() until a short page arrives so the full set is
+  // returned regardless of volume. `buildQuery` must yield a FRESH builder each
+  // call (a PostgREST builder is single-use once awaited) with a deterministic
+  // total ordering, or a row on a page boundary could be skipped or repeated.
+  const SUPABASE_PAGE_SIZE = 1000;
+
+  async function unwrapAllSupabaseRows(buildQuery) {
+    const rows = [];
+    for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+      const page = await unwrapSupabaseResult(
+        buildQuery().range(from, from + SUPABASE_PAGE_SIZE - 1),
+      );
+      rows.push(...page);
+      if (page.length < SUPABASE_PAGE_SIZE) {
+        return rows;
+      }
+    }
+  }
+
   function applyDateRange(query, startDate, endDate) {
     let nextQuery = query;
 
@@ -416,49 +439,56 @@
   }
 
   function fetchAdminReservations(client, options) {
-    let query = client
-      .from('reservations')
-      .select(
-        [
-          'id',
-          'booking_group_id',
-          'room_id',
-          'guest_first_name',
-          'guest_last_name',
-          'guest_phone',
-          'guest_email',
-          'guest_language',
-          'check_in',
-          'check_out',
-          'adults',
-          'kids_ages',
-          'total_price',
-          'towel_cards_issued',
-          'payment_type',
-          'payment_status',
-          'room_explicitly_selected',
-          'conference_room',
-          'notes',
-          'cash_expires_at',
-          'cash_extended',
-          'created_by',
-          'created_at',
-          'cancelled_at',
-          'cancellation_reason',
-          'rooms(id, number, type)',
-        ].join(', '),
-      )
-      .order('check_in', { ascending: true });
+    const buildQuery = () => {
+      let query = client
+        .from('reservations')
+        .select(
+          [
+            'id',
+            'booking_group_id',
+            'room_id',
+            'guest_first_name',
+            'guest_last_name',
+            'guest_phone',
+            'guest_email',
+            'guest_language',
+            'check_in',
+            'check_out',
+            'adults',
+            'kids_ages',
+            'total_price',
+            'towel_cards_issued',
+            'payment_type',
+            'payment_status',
+            'room_explicitly_selected',
+            'conference_room',
+            'notes',
+            'cash_expires_at',
+            'cash_extended',
+            'created_by',
+            'created_at',
+            'cancelled_at',
+            'cancellation_reason',
+            'rooms(id, number, type)',
+          ].join(', '),
+        )
+        // check_in is not unique, so add id as a tiebreaker for a stable total
+        // order across paged .range() requests (no skipped/duplicated rows).
+        .order('check_in', { ascending: true })
+        .order('id', { ascending: true });
 
-    if (options?.startDate) {
-      query = query.gt('check_out', options.startDate);
-    }
+      if (options?.startDate) {
+        query = query.gt('check_out', options.startDate);
+      }
 
-    if (options?.endDate) {
-      query = query.lt('check_in', options.endDate);
-    }
+      if (options?.endDate) {
+        query = query.lt('check_in', options.endDate);
+      }
 
-    return unwrapSupabaseResult(query);
+      return query;
+    };
+
+    return unwrapAllSupabaseRows(buildQuery);
   }
 
   function fetchPendingCashReservations(client) {
@@ -474,39 +504,46 @@
   }
 
   function fetchFinanceReservations(client, options) {
-    let query = client
-      .from('reservations')
-      .select(
-        [
-          'id',
-          'booking_group_id',
-          'room_id',
-          'check_in',
-          'check_out',
-          'total_price',
-          'payment_type',
-          'payment_status',
-          'paid_at',
-          'cancelled_at',
-          'rooms(id, number, type)',
-        ].join(', '),
-      )
-      .eq('payment_status', 'paid')
-      .is('cancelled_at', null);
+    // Paginated: a wide finance range can exceed one PostgREST page, and a
+    // truncated tail would silently UNDER-REPORT revenue. id tiebreaks the
+    // primary sort for stable paging.
+    const buildQuery = () => {
+      let query = client
+        .from('reservations')
+        .select(
+          [
+            'id',
+            'booking_group_id',
+            'room_id',
+            'check_in',
+            'check_out',
+            'total_price',
+            'payment_type',
+            'payment_status',
+            'paid_at',
+            'cancelled_at',
+            'rooms(id, number, type)',
+          ].join(', '),
+        )
+        .eq('payment_status', 'paid')
+        .is('cancelled_at', null);
 
-    if (options?.mode === 'paid') {
-      query = query
-        .gte('paid_at', `${options.rangeStart}T00:00:00.000Z`)
-        .lt('paid_at', `${options.rangeEnd}T00:00:00.000Z`)
-        .order('paid_at', { ascending: true });
-    } else {
-      query = query
-        .gt('check_out', options?.rangeStart)
-        .lt('check_in', options?.rangeEnd)
-        .order('check_in', { ascending: true });
-    }
+      if (options?.mode === 'paid') {
+        query = query
+          .gte('paid_at', `${options.rangeStart}T00:00:00.000Z`)
+          .lt('paid_at', `${options.rangeEnd}T00:00:00.000Z`)
+          .order('paid_at', { ascending: true });
+      } else {
+        query = query
+          .gt('check_out', options?.rangeStart)
+          .lt('check_in', options?.rangeEnd)
+          .order('check_in', { ascending: true });
+      }
 
-    return unwrapSupabaseResult(query);
+      return query.order('id', { ascending: true });
+    };
+
+    return unwrapAllSupabaseRows(buildQuery);
   }
 
   // "Today" in the CRM is the Moldova (Europe/Chisinau) calendar day, but
@@ -559,42 +596,48 @@
   function fetchFinanceBookedReservations(client, options) {
     const rangeStart = options?.rangeStart;
     const rangeEnd = options?.rangeEnd;
-    let query = client
-      .from('reservations')
-      .select(
-        [
-          'id',
-          'booking_group_id',
-          'room_id',
-          'guest_first_name',
-          'guest_last_name',
-          'check_in',
-          'check_out',
-          'adults',
-          'kids_ages',
-          'total_price',
-          'payment_type',
-          'payment_status',
-          'paid_at',
-          'created_at',
-          'cancelled_at',
-          'rooms(id, number, type)',
-        ].join(', '),
-      )
-      // Show every booking created in the day, including ones paid then
-      // cancelled/refunded (rendered as "anulată"); drop only never-paid
-      // abandoned/expired holds, which would just be noise.
-      .or('paid_at.not.is.null,and(payment_status.neq.cancelled,cancelled_at.is.null)');
+    // Paginated (see fetchFinanceReservations): a wide range would otherwise be
+    // truncated and under-count bookings. id tiebreaks created_at for paging.
+    const buildQuery = () => {
+      let query = client
+        .from('reservations')
+        .select(
+          [
+            'id',
+            'booking_group_id',
+            'room_id',
+            'guest_first_name',
+            'guest_last_name',
+            'check_in',
+            'check_out',
+            'adults',
+            'kids_ages',
+            'total_price',
+            'payment_type',
+            'payment_status',
+            'paid_at',
+            'created_at',
+            'cancelled_at',
+            'rooms(id, number, type)',
+          ].join(', '),
+        )
+        // Show every booking created in the day, including ones paid then
+        // cancelled/refunded (rendered as "anulată"); drop only never-paid
+        // abandoned/expired holds, which would just be noise.
+        .or('paid_at.not.is.null,and(payment_status.neq.cancelled,cancelled_at.is.null)');
 
-    if (rangeStart) {
-      query = query.gte('created_at', chisinauDayStartUtc(rangeStart));
-    }
+      if (rangeStart) {
+        query = query.gte('created_at', chisinauDayStartUtc(rangeStart));
+      }
 
-    if (rangeEnd) {
-      query = query.lt('created_at', chisinauDayStartUtc(rangeEnd));
-    }
+      if (rangeEnd) {
+        query = query.lt('created_at', chisinauDayStartUtc(rangeEnd));
+      }
 
-    return unwrapSupabaseResult(query.order('created_at', { ascending: true }));
+      return query.order('created_at', { ascending: true }).order('id', { ascending: true });
+    };
+
+    return unwrapAllSupabaseRows(buildQuery);
   }
 
   function updateReservation(client, reservationId, values) {

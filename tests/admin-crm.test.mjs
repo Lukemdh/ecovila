@@ -2464,6 +2464,58 @@ describe('EcoVila Step 9 CRM', () => {
     assert.doesNotMatch(css, /crm-photo-drag-handle/i);
   });
 
+  it('pages through admin reservations so a >1000-row window is never truncated', async () => {
+    const { EcoVilaSupabase: helpers } = loadAdminModule('js/supabase.js');
+
+    // 1345 rows across the window — like the real June–August prod window that
+    // rendered August blank because PostgREST caps a single response at 1000.
+    const allRows = Array.from({ length: 1345 }, (_, index) => ({
+      id: `res-${String(index).padStart(4, '0')}`,
+    }));
+    const rangeCalls = [];
+    const orderColumns = [];
+
+    // Minimal PostgREST builder: records .order() columns and serves .range()
+    // slices, mirroring the real 1000-row page cap.
+    function makeBuilder() {
+      const builder = {
+        select: () => builder,
+        gt: () => builder,
+        lt: () => builder,
+        gte: () => builder,
+        is: () => builder,
+        or: () => builder,
+        eq: () => builder,
+        order: (column) => {
+          orderColumns.push(column);
+          return builder;
+        },
+        range: (from, to) => {
+          rangeCalls.push([from, to]);
+          const slice = allRows.slice(from, Math.min(to + 1, from + 1000));
+          return Promise.resolve({ data: slice, error: null });
+        },
+      };
+      return builder;
+    }
+    const client = { from: () => makeBuilder() };
+
+    const rows = await helpers.fetchAdminReservations(client, {
+      startDate: '2026-06-01',
+      endDate: '2026-09-01',
+    });
+
+    // Every row returned, in order, with no duplicates or gaps.
+    assert.equal(rows.length, 1345);
+    assert.equal(rows[0].id, 'res-0000');
+    assert.equal(rows[1344].id, 'res-1344');
+    assert.equal(new Set(rows.map((row) => row.id)).size, 1345);
+    // Two pages: [0,999] then [1000,1999].
+    assert.deepEqual(rangeCalls, [[0, 999], [1000, 1999]]);
+    // A deterministic tiebreaker (id) must back the primary sort for stable paging.
+    assert.ok(orderColumns.includes('id'), 'id should tiebreak the ordering');
+  });
+
   it('uploads new CRM photos as inserts so storage RLS does not require overwrite permissions', async () => {
     const { EcoVilaSupabase: helpers } = loadAdminModule('js/supabase.js');
     let capturedUpload;
