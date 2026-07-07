@@ -15,6 +15,10 @@ verify_jwt = true
 [functions.expire-cash-reservations]
 verify_jwt = false
 
+# Cron-secret gated (requireSharedSecret), invoked by pg_cron — no JWT (ADR-088).
+[functions.reconcile-refunds]
+verify_jwt = false
+
 [functions.send-reminders]
 verify_jwt = false
 
