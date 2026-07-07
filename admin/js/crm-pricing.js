@@ -392,6 +392,32 @@
   async function savePrices(context) {
     const rows = collectPricingRows(root.document);
 
+    // A mis-tabbed empty input becomes Number('') = 0, and a 0-MDL tariff would
+    // be honored by the live booking engine AND by the server price guard. Kid
+    // price may legitimately be 0; the adult price never.
+    const invalid = rows.find((row) =>
+      !Number.isFinite(row.adult_price) || row.adult_price <= 0 ||
+      !Number.isFinite(row.kid_price) || row.kid_price < 0
+    );
+    if (invalid) {
+      context.setAlert(
+        `Preț invalid pentru ${invalid.nights_tier} ${invalid.nights_tier === 1 ? 'noapte' : 'nopți'} / ${invalid.day_type}: prețul de adult trebuie să fie > 0.`,
+      );
+      return;
+    }
+
+    // Tariffs are looked up by stay date, so a past effective date re-quotes
+    // past stays on any recalculation (e.g. Situația zilnică edits).
+    const effectiveFrom = rows[0]?.effective_from || '';
+    if (effectiveFrom && effectiveFrom < todayISO()) {
+      const approved = root.confirm?.(
+        `Data "valabil din" (${effectiveFrom}) este în trecut — tarifele se aplică retroactiv la recalculări. Continui?`,
+      );
+      if (!approved) {
+        return;
+      }
+    }
+
     await root.EcoVilaSupabase.insertPricingRows(context.client, rows);
     await loadPricing(context);
     context.setAlert('');

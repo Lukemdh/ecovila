@@ -21,6 +21,7 @@ import {
   normalizeMaibMiaPaymentStatus,
   refundMaibPayment,
 } from './maib.ts';
+import { interpretMaibRefundResponse } from './refunds.ts';
 import { sendEmail, sendSms } from './providers.ts';
 import {
   aggregateRoomLabel,
@@ -522,12 +523,19 @@ export type ChangeRefundResult = {
   changeId: string;
   amount: number;
   refundId: string | null;
+  // Confirmed by the provider (status OK / REVERSED). false leaves the change
+  // row 'paid' + unrefunded so the reconcile-refunds cron re-attempts it.
+  ok: boolean;
+  providerStatus?: string;
+  error?: string;
 };
 
 // Refund every paid "add guests" difference for a booking group as its own MAIB
 // transaction (alongside the original booking refund). Idempotent: rows already
-// refunded are skipped, so a retried cancellation never double-refunds. The
-// caller refunds only when the cancellation itself is refund-eligible.
+// refunded are skipped, so a retried cancellation never double-refunds — and
+// per-change tolerant: one failed difference never blocks the others or the
+// caller's own refund/cancellation (ADR-088). The caller refunds only when the
+// cancellation itself is refund-eligible.
 export async function refundPaidChanges(
   client: SupabaseClient,
   bookingGroupId: string,
@@ -552,12 +560,40 @@ export async function refundPaidChanges(
       continue;
     }
 
-    const refund = (await refundMaibPayment(providerPayId, amount, reason)) as
-      & Record<string, unknown>
-      & { result?: { refundId?: unknown }; refundId?: unknown };
-    const refundId = String(refund?.result?.refundId ?? refund?.refundId ?? '').trim() || null;
-    const now = new Date().toISOString();
+    let refund: Record<string, unknown>;
+    try {
+      refund = (await refundMaibPayment(providerPayId, amount, reason)) as Record<string, unknown>;
+    } catch (refundError) {
+      const message = refundError instanceof Error ? refundError.message : 'Refund failed.';
+      console.error('Change difference refund failed — left for reconcile-refunds', {
+        changeId: change.id,
+        bookingGroupId,
+        message,
+      });
+      results.push({ changeId: change.id, amount, refundId: null, ok: false, error: message });
+      continue;
+    }
 
+    const verdict = interpretMaibRefundResponse(refund);
+    if (!verdict.completed && !verdict.alreadyRefunded) {
+      // Accepted but unconfirmed (e.g. insufficient settlement funds): the row
+      // must stay 'paid' so the retry loop can finish the job later.
+      console.error('Change difference refund unconfirmed — left for reconcile-refunds', {
+        changeId: change.id,
+        bookingGroupId,
+        providerStatus: verdict.providerStatus,
+      });
+      results.push({
+        changeId: change.id,
+        amount,
+        refundId: verdict.refundId,
+        ok: false,
+        providerStatus: verdict.providerStatus,
+      });
+      continue;
+    }
+
+    const now = new Date().toISOString();
     const { error: updateError } = await table(client, 'reservation_changes')
       .update({ status: 'refunded', refunded_at: now, refund_payload: refund, updated_at: now })
       .eq('id', change.id)
@@ -565,7 +601,7 @@ export async function refundPaidChanges(
 
     if (updateError) throw new Error(updateError.message);
 
-    results.push({ changeId: change.id, amount, refundId });
+    results.push({ changeId: change.id, amount, refundId: verdict.refundId, ok: true });
   }
 
   return results;

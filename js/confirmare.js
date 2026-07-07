@@ -119,6 +119,29 @@
     }
   }
 
+  /**
+   * Drop the pending reservation persisted by checkout once its booking is
+   * observed in a terminal state (paid/cancelled), so recovery paths and
+   * purchase tracking can never read a stale blob later. Only clears when the
+   * blob belongs to the reservation on screen — an unrelated booking's pending
+   * state is left untouched.
+   */
+  function clearSettledPendingReservation(reservationId) {
+    const pending = readStorage(STORAGE_PENDING);
+    if (!pending) return;
+
+    const ids = Array.isArray(pending.reservationIds) ? pending.reservationIds : [];
+    if (pending.primaryReservationId !== reservationId && !ids.includes(reservationId)) {
+      return;
+    }
+
+    try {
+      root.localStorage?.removeItem(STORAGE_PENDING);
+    } catch {
+      // ignore
+    }
+  }
+
   // ── Formatting ──────────────────────────────────────────────────────────────
 
   function formatDate(dateStr, options) {
@@ -176,8 +199,9 @@
 
     try {
       const target = pricing.parseISODate(checkIn).getTime();
-      const now = new Date();
-      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      // "Today" is the Europe/Chisinau business day (see pricing.todayISO), not
+      // the viewer's local calendar day.
+      const today = pricing.parseISODate(pricing.todayISO()).getTime();
       return Math.round((target - today) / (24 * 60 * 60 * 1000));
     } catch {
       return null;
@@ -542,6 +566,7 @@
         const details = await loadManagedReservation(reservationId, manageToken);
         _context = { details, reservationId, manageToken };
         showCelebration(details, reservationId, manageToken);
+        clearSettledPendingReservation(reservationId);
         return;
       }
 
@@ -553,6 +578,7 @@
         } else {
           showCancelledState();
         }
+        clearSettledPendingReservation(reservationId);
         return;
       }
     } catch {
@@ -590,11 +616,13 @@
       } else {
         showCancelledState();
       }
+      clearSettledPendingReservation(reservationId);
       return;
     }
 
     if (summary.paymentStatus === 'paid') {
       showCelebration(details, reservationId, manageToken);
+      clearSettledPendingReservation(reservationId);
       return;
     }
 

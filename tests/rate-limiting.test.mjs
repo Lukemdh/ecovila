@@ -205,6 +205,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'send-checkin-welcome',
       // cron-secret gated
       'expire-cash-reservations',
+      'reconcile-refunds',
       'send-reminders',
       'send-review-requests',
     ]);

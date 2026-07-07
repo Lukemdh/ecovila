@@ -424,8 +424,18 @@
   }
 
   async function saveCheckIn(context, state, reservation) {
-    await saveIssuedTowelCards(context, state, reservation, guestCount(reservation));
-    await saveDailyStatus(context, state, reservation, { checked_in_at: new Date().toISOString() });
+    // The DB writes must surface their failure — a silent catch used to make a
+    // failed check-in look done. The welcome SMS stays fire-and-forget.
+    try {
+      await saveIssuedTowelCards(context, state, reservation, guestCount(reservation));
+      await saveDailyStatus(context, state, reservation, {
+        checked_in_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'eroare necunoscută';
+      context.setAlert(`Check-in-ul nu a putut fi salvat: ${message.slice(0, 160)}`);
+      return;
+    }
     // Welcome + complaints-link SMS (ADR-068). Fire-and-forget so a provider
     // hiccup never makes the (already saved) check-in look failed; the server
     // dedups on the booking group, so re-checking-in safely retries.
@@ -555,17 +565,43 @@
       throw new Error('Camerele nu sunt disponibile pentru zilele extra selectate.');
     }
 
+    // The stored total may be a manually negotiated price; overwriting it with
+    // the recomputed one must be a conscious staff decision, not a side effect.
+    if (Math.round(quote.total) !== Math.round(quote.existingTotal)) {
+      const approved = root.confirm?.(
+        `Totalul rezervării va fi recalculat: ${context.formatMDL(quote.existingTotal)} → ${context.formatMDL(quote.total)}. Continui?`,
+      );
+      if (!approved) {
+        return;
+      }
+    }
+
     const cards = quote.adults + quote.kidsAges.length;
     const split = root.EcoVilaCrmSidebar?.splitTotalPrice
       ? root.EcoVilaCrmSidebar.splitTotalPrice(quote.total, quote.group.length)
       : [quote.total];
-    await Promise.all(quote.group.map((reservation, index) => root.EcoVilaSupabase.updateReservation(context.client, reservation.id, {
-      adults: quote.adults,
-      check_out: quote.checkOut,
-      kids_ages: quote.kidsAges,
-      total_price: split[index] || 0,
-      towel_cards_issued: cards,
-    })));
+    // Sequential, stop-on-first-failure: a Promise.all could half-apply the
+    // group (one villa extended, another blocked by the no-overlap constraint)
+    // with no way to tell staff which rows moved.
+    for (let index = 0; index < quote.group.length; index += 1) {
+      const reservation = quote.group[index];
+      try {
+        await root.EcoVilaSupabase.updateReservation(context.client, reservation.id, {
+          adults: quote.adults,
+          check_out: quote.checkOut,
+          kids_ages: quote.kidsAges,
+          total_price: split[index] || 0,
+          towel_cards_issued: cards,
+        });
+      } catch (error) {
+        const roomLabel = root.EcoVilaCrmCalendar.roomLabel(reservation);
+        const message = error instanceof Error ? error.message : 'eroare necunoscută';
+        throw new Error(
+          `${roomLabel} nu a putut fi actualizată (${message.slice(0, 120)}). ` +
+            `Vilele de dinaintea ei au fost actualizate; cele de după — NU. Verifică în calendar.`,
+        );
+      }
+    }
     await loadDaily(context, state);
   }
 
@@ -611,11 +647,18 @@
         dialog.close?.('cancel');
         return;
       }
+      const saveButton = event.submitter;
+      if (saveButton?.disabled) {
+        return;
+      }
+      if (saveButton) saveButton.disabled = true;
       try {
         await saveDailyGuestEdit(context, state);
         dialog.close?.('save');
       } catch (error) {
         context.setAlert(error?.message || 'Oaspeții nu au putut fi actualizați.');
+      } finally {
+        if (saveButton) saveButton.disabled = false;
       }
     };
 
@@ -628,20 +671,45 @@
     const form = qs('[data-checkout-note-form]');
     const note = qs('[data-checkout-note]');
     if (!dialog || !form || !note) {
-      saveDailyStatus(context, state, reservation, { checked_out_at: new Date().toISOString() });
+      saveDailyStatus(context, state, reservation, { checked_out_at: new Date().toISOString() })
+        .catch((error) => reportCheckoutSaveError(context, error));
       return;
     }
 
     note.value = '';
-    form.onsubmit = (event) => {
+    form.onsubmit = async (event) => {
       event.preventDefault();
-      dialog.close();
-      saveDailyStatus(context, state, reservation, {
-        checked_out_at: new Date().toISOString(),
-        checkout_note: note.value.trim() || null,
-      });
+      if (event.submitter?.value !== 'save') {
+        dialog.close?.('cancel');
+        return;
+      }
+      const submitButton = event.submitter;
+      if (submitButton?.disabled) {
+        return;
+      }
+      if (submitButton) submitButton.disabled = true;
+      // Save BEFORE closing: a failed upsert used to vanish with the dialog,
+      // silently losing both the checkout mark and the note — and with them the
+      // ADR-082 review-request gate. On failure the dialog stays open so staff
+      // can retry.
+      try {
+        await saveDailyStatus(context, state, reservation, {
+          checked_out_at: new Date().toISOString(),
+          checkout_note: note.value.trim() || null,
+        });
+        dialog.close();
+      } catch (error) {
+        reportCheckoutSaveError(context, error);
+      } finally {
+        if (submitButton) submitButton.disabled = false;
+      }
     };
     dialog.showModal?.();
+  }
+
+  function reportCheckoutSaveError(context, error) {
+    const message = error instanceof Error ? error.message : 'eroare necunoscută';
+    context.setAlert(`Check-out-ul nu a putut fi salvat: ${message.slice(0, 160)}`);
   }
 
   function renderSection(context, state, container, reservations, statuses, type) {

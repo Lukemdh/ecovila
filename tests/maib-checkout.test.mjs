@@ -257,8 +257,13 @@ describe('EcoVila Maib Checkout integration', () => {
     );
     assert.match(
       callback,
-      /processedAt: terminal \? now : null/,
-      'non-terminal callbacks should not be marked processed/idempotently final',
+      /processedAt: terminal && status !== 'paid' \? now : null/,
+      'non-terminal callbacks stay unprocessed; paid rows are stamped only AFTER settlement (ADR-089)',
+    );
+    assert.match(
+      callback,
+      /markPaymentProcessed\(client, paymentRowId/,
+      'a settled paid callback must stamp processed_at so retries can short-circuit',
     );
     assert.match(
       callback,

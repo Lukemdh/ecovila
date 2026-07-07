@@ -23,3 +23,24 @@ shasum -a 256 js/vendor/qrcode.js                   # must match the SHA-256 abo
 
 Keep this file byte-identical to upstream (do not edit it locally) so the diff
 check stays meaningful. If you bump the version, update the version + SHA-256 here.
+
+## supabase.js
+
+- **Library:** `@supabase/supabase-js` (UMD build)
+- **Version:** 2.110.1
+- **License:** MIT
+- **Source:** npm `@supabase/supabase-js@2.110.1`, file `dist/umd/supabase.js`
+- **SHA-256:** `739d338edbd73a3390df5f97dfc142979e79520ec20c59653a1593fb9f6e33f5`
+- **Used by:** every public page and the CRM (`admin/`), replacing the previous
+  un-pinned `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2` tag (ADR-091):
+  a floating-major CDN script with no SRI ran with full staff-session power in
+  the CRM, so one poisoned release would have owned the dashboard.
+
+To re-verify or update:
+
+```sh
+npm pack @supabase/supabase-js@2.110.1
+tar xzf supabase-supabase-js-2.110.1.tgz
+diff package/dist/umd/supabase.js js/vendor/supabase.js   # must be identical
+shasum -a 256 js/vendor/supabase.js                       # must match the SHA-256 above
+```

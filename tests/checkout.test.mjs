@@ -24,6 +24,16 @@ function loadCheckout() {
   return require('../js/checkout.js');
 }
 
+// Stored selections are rejected when their check-in is already in the past
+// (ADR-090), so fixtures compute stay dates relative to the real clock.
+function isoDaysFromNow(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+const FUTURE_CHECK_IN = isoDaysFromNow(30);
+const FUTURE_CHECK_OUT = isoDaysFromNow(32);
+const FUTURE_NIGHT_OUT = isoDaysFromNow(31);
+
 describe('EcoVila Step 5 checkout', () => {
   it('creates the checkout page files and loads the booking dependencies', () => {
     for (const file of ['checkout.html', 'js/checkout.js', 'css/checkout.css']) {
@@ -35,7 +45,9 @@ describe('EcoVila Step 5 checkout', () => {
     assert.match(html, /data-checkout-app/, 'checkout app hook should exist');
     assert.match(html, /css\/main\.css/, 'checkout page should use the shared public design system');
     assert.match(html, /css\/checkout\.css/, 'checkout page should use checkout styles');
-    assert.match(html, /@supabase\/supabase-js@2/, 'checkout page should load Supabase JS v2 from CDN');
+    // Vendored, version-pinned build (ADR-091) — never a floating-major CDN tag.
+    assert.match(html, /src="js\/vendor\/supabase\.js(?:\?v=[^"]*)?"/, 'checkout page should load the vendored Supabase JS');
+    assert.doesNotMatch(html, /cdn\.jsdelivr\.net/, 'checkout page must not load scripts from a CDN');
 
     for (const script of [
       'js/translations.js',
@@ -172,8 +184,8 @@ describe('EcoVila Step 5 checkout', () => {
     const checkout = loadCheckout();
     const validSelection = {
       type: 'small',
-      checkIn: '2026-06-01',
-      checkOut: '2026-06-03',
+      checkIn: FUTURE_CHECK_IN,
+      checkOut: FUTURE_CHECK_OUT,
       adults: 2,
       kidsAges: [5],
       units: 1,
@@ -187,9 +199,20 @@ describe('EcoVila Step 5 checkout', () => {
     };
 
     assert.equal(checkout.validateCheckoutSelection(validSelection).valid, true);
-    assert.equal(checkout.validateCheckoutSelection({ ...validSelection, checkOut: '2026-06-01' }).valid, false);
+    assert.equal(checkout.validateCheckoutSelection({ ...validSelection, checkOut: FUTURE_CHECK_IN }).valid, false);
     assert.equal(checkout.validateCheckoutSelection({ ...validSelection, adults: 0 }).valid, false);
     assert.equal(checkout.validateCheckoutSelection({ ...validSelection, roomIds: [] }).valid, false);
+
+    // A stored selection whose check-in has already passed (a tab reopened days
+    // later) must be rejected — it could never be reserved (ADR-090).
+    assert.equal(
+      checkout.validateCheckoutSelection({
+        ...validSelection,
+        checkIn: '2026-06-01',
+        checkOut: '2026-06-03',
+      }).valid,
+      false,
+    );
   });
 
   it('validates guest details, international phone format, email, and GDPR consent', () => {
@@ -335,8 +358,8 @@ describe('EcoVila Step 5 checkout', () => {
     const payloads = checkout.buildReservationPayloads(
       {
         type: 'small',
-        checkIn: '2026-06-01',
-        checkOut: '2026-06-03',
+        checkIn: FUTURE_CHECK_IN,
+        checkOut: FUTURE_CHECK_OUT,
         adults: 2,
         kidsAges: [5],
         roomIds: ['room-a', 'room-b'],
@@ -374,8 +397,8 @@ describe('EcoVila Step 5 checkout', () => {
       guest_phone: '+37360123456',
       guest_email: 'ana@example.md',
       guest_language: 'ro',
-      check_in: '2026-06-01',
-      check_out: '2026-06-03',
+      check_in: FUTURE_CHECK_IN,
+      check_out: FUTURE_CHECK_OUT,
       adults: 2,
       kids_ages: [5],
       total_price: 2601,
@@ -390,13 +413,13 @@ describe('EcoVila Step 5 checkout', () => {
     });
   });
 
-  it('uses the language captured on the booking selection for reservation payloads', () => {
+  it('prefers the current page language over the stored selection language', () => {
     const checkout = loadCheckout();
     const payloads = checkout.buildReservationPayloads(
       {
         type: 'hotel',
-        checkIn: '2026-06-05',
-        checkOut: '2026-06-06',
+        checkIn: FUTURE_CHECK_IN,
+        checkOut: FUTURE_NIGHT_OUT,
         adults: 2,
         kidsAges: [],
         roomIds: ['hotel-16'],
@@ -418,7 +441,10 @@ describe('EcoVila Step 5 checkout', () => {
       },
     );
 
-    assert.equal(payloads[0].guest_language, 'ru');
+    // Notifications follow the language the guest reads at checkout (here the
+    // environment default 'ro'), not the language stored with the booking-page
+    // selection; the stored value is only a fallback (ADR-090).
+    assert.equal(payloads[0].guest_language, 'ro');
   });
 
   it('builds card reservations as pending without a cash expiry', () => {
@@ -426,8 +452,8 @@ describe('EcoVila Step 5 checkout', () => {
     const payloads = checkout.buildReservationPayloads(
       {
         type: 'hotel',
-        checkIn: '2026-06-05',
-        checkOut: '2026-06-06',
+        checkIn: FUTURE_CHECK_IN,
+        checkOut: FUTURE_NIGHT_OUT,
         adults: 2,
         kidsAges: [],
         roomIds: ['hotel-16'],

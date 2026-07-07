@@ -179,6 +179,11 @@
 
     if (!btn || !phoneInput) return;
 
+    // The Enter key on the phone input calls this directly, so a disabled
+    // button (request in flight, or cancellation not available online) must
+    // also block this path.
+    if (btn.disabled) return;
+
     const rawPhone = phoneInput.value;
     const normalizedPhone = normalizeInternationalPhone(rawPhone);
 
@@ -202,9 +207,10 @@
 
       switch (result) {
         case 'cancelled':
-          // Store success flag so refreshing the page still shows success
+          // Store the cancelled token so refreshing the page still shows
+          // success — but only for this reservation's link, never another's.
           try {
-            root.sessionStorage?.setItem(SESSION_KEY, '1');
+            root.sessionStorage?.setItem(SESSION_KEY, token);
             root.sessionStorage?.setItem(
               SESSION_REFUND_KEY,
               isRefundEligible(activeReservation?.check_in, new Date(), activeReservation?.created_at)
@@ -370,16 +376,18 @@
   // ── Init ────────────────────────────────────────────────────────────────────
 
   async function init() {
-    // If success was already stored in session (e.g., user refreshed after cancel)
+    const token = getCancellationToken();
+
+    // If success was already stored in session (e.g., user refreshed after
+    // cancel). The stored value is the cancelled token, so a different
+    // reservation's link opened in the same tab never shows a fake success.
     try {
-      if (root.sessionStorage?.getItem(SESSION_KEY)) {
+      if (token && root.sessionStorage?.getItem(SESSION_KEY) === token) {
         showState('[data-anulare-success]');
         refreshRefundNotesForCurrentState();
         return;
       }
     } catch { /* ignore */ }
-
-    const token = getCancellationToken();
 
     if (!token) {
       showState('[data-anulare-not-found]');

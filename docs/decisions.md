@@ -2739,6 +2739,144 @@ bundle under `?v=2026070601` — no new bump — **pending owner TopHost upload*
 
 ---
 
+### ADR-088 — Refunds are only "done" when MAIB confirms them: status parsing, reconcile-and-retry cron, and cancel/refund decoupling
+
+**Problem (reported in prod).** A guest cancelled and never received the money. `refundMaibPayment`
+treated any 2xx `ok:true` response as a completed refund, but MAIB models refunds with their own
+`result.status` (`OK` = refunded, `REVERSED` = already refunded once before; anything else —
+e.g. when the merchant settlement account lacks funds — means the money did NOT move). We recorded
+`succeeded`, flipped the payment to `refunded`, emailed the guest "refunded", and nothing ever
+re-checked. Failed refund rows were write-only. A synchronous MAIB rejection instead 500'd the whole
+guest cancellation, leaving the booking active and the guest at risk of falling out of the 20-day window.
+
+**Decision.**
+1. `_shared/refunds.ts` — the single refund engine. `interpretMaibRefundResponse` reads
+   `result.status` (`OK`/absent → completed, `REVERSED` → already-refunded, anything else →
+   unresolved). `attemptBookingRefund` records every attempt on `maib_refunds`
+   (requested/processing/succeeded/failed + attempts/last_attempt_at/confirmed_at/alerted_at) and
+   only marks the payment `refunded` on provider confirmation.
+2. **New cron `reconcile-refunds`** (every 30 min, shared-secret gated, migration
+   `20260707100000`): re-attempts every unresolved refund. MAIB permits ONE refund per payment, so a
+   retry of an executed refund returns `REVERSED` and resolves the row — the loop can never pay twice.
+   The insufficient-funds case now heals itself as soon as the account is topped up. Also sweeps paid
+   "add guests" differences left unrefunded on refund-cancelled bookings.
+3. **Cancellation is decoupled from the refund**: `reservation-cancel` cancels the booking even when
+   the refund leg fails, queues the refund for reconciliation, and returns `refundPending: true`.
+   The CRM delete flow was reordered to cancel FIRST, refund second (refunding before a failed cancel
+   left money returned + booking active).
+4. **Staff alerts** (`_shared/alerts.ts`, email to new secret `ECOVILA_ALERT_EMAIL`): fired on every
+   unresolved refund (re-alert every 6h), on `REVERSED`-resolution (verify in the maibmerchants
+   panel), and by the ADR-089 manual-review paths. Unconfigured → console.error only, never breaks flow.
+5. Adjacent fixes: `reservation-cancel` refund lookup now filters `status in ('paid','refunded')`
+   (a newer abandoned session row could shadow the paid one → guest 409'd forever) and proceeds when
+   the payment is already `refunded` (refunded-but-active stranding). `maib-refund` refuses a partial
+   refund after a completed one with an explicit 409 instead of a fake success (unique `pay_id` row +
+   MAIB's one-refund rule made the remainder silently unrefundable). `refundPaidChanges` is now
+   per-change tolerant and status-aware — an unconfirmed difference stays `paid` for the cron.
+
+**Surface.** `_shared/refunds.ts`, `_shared/alerts.ts`, `reconcile-refunds/` (new);
+`reservation-cancel`, `maib-refund`, `_shared/reservationChanges.ts`; migration
+`20260707100000_refund_reconciliation.sql` (status widening + retry columns + cron schedule);
+`admin/js/crm-dashboard.js` (delete reorder). NEW SECRET: `ECOVILA_ALERT_EMAIL`.
+
+### ADR-089 — Settlement crash-safety, one live MAIB session per booking group, and honest staff confirmation
+
+**Problems (audit).** (1) Both rails flipped `maib_payments` terminal-paid BEFORE settling the
+reservations and every retry short-circuited on the row's status alone — one transient error in that
+gap and MAIB's retries all returned `duplicate:true`, the 5-minute cron cancelled the pending rows,
+and a charged booking silently vanished. (2) `maib-create-payment` was check-then-act: two
+concurrent calls minted two payable MAIB sessions; a guest paying both produced a second capture
+that settled silently on the already-paid rows — an undetected double charge. (3) A terminal
+`failed` callback permanently blocked a later `paid` result for the same checkout. (4)
+`confirm-reservation-payment` never checked its UPDATE's row count: confirming in the same second
+the cron expired the hold sent the guest a confirmation SMS for a cancelled booking.
+
+**Decision.**
+1. `processed_at` is stamped only AFTER settlement succeeds (both rails; `markPaymentProcessed`).
+   A paid-but-unprocessed row is the crash marker: callbacks/polls re-run the (idempotent)
+   settlement instead of short-circuiting, and a per-minute cron backstop in
+   `expire-cash-reservations` (`settleUnprocessedPaidPayments`, 2-min grace) finishes any
+   settlement whose process died — running BEFORE the expiry steps so the booking is never released.
+2. Duplicate guard short-circuits only `paid && processed_at`; a late `paid` now supersedes a
+   recorded `failed`/`cancelled`.
+3. Migration `20260707101000`: partial unique index `maib_payments (booking_group_id) where status
+   in ('created','pending')` (+ historical stale-row cleanup). The insert race's loser cancels its
+   own just-minted session (MIA QR cancelled at MAIB) and returns the winner's session.
+   `findReusablePayment` is rail-aware (a card caller can no longer receive a MIA QR as payUrl) and
+   a superseded MIA QR is cancelled at MAIB regardless of the requested rail.
+4. Suspected double capture (a different paid/refunded payment already exists for the group) is
+   never settled: the row is flagged `manual_review` (new column) + staff alert; the same
+   transition-gated alerting covers "charged but no reservation could be reinstated".
+5. `confirm-reservation-payment` selects the UPDATE's row ids and notifies/tracks only genuinely
+   paid rows; zero → 409 telling staff the hold expired first.
+6. Hygiene: callback catch now logs; cron's stale-session cleanup runs every tick, is scoped away
+   from attempt-grace-protected rows; `markReservationsInProgress` re-asserts `pending`.
+
+**Surface.** `maib-callback`, `_shared/miaReconcile.ts`, `_shared/bookingSettlement.ts`
+(`findOtherPaidPayment`/`markPaymentManualReview`/`markPaymentProcessed`), `maib-create-payment`,
+`expire-cash-reservations`, `confirm-reservation-payment`; migration
+`20260707101000_maib_payments_live_session_guard.sql`.
+
+### ADR-090 — Booking-input hardening: past-date guard, server-generated group ids, capacity check, single-use OTP, normalized rate-limit keys
+
+Server: `_shared/reservations.ts` rejects a check-in before the Europe/Chisinau business day
+(a stale checkout tab could previously create AND pay for an already-started stay — no client or
+server guard existed) and always generates `booking_group_id` server-side (a caller who learned a
+victim's group UUID could inject a row and hijack group-keyed notifications).
+`_shared/pricingGuard.ts` enforces party-fits-units via the shared engine's `getUnitsNeeded`
+(bounded raw counts first). `reservation-lookup-verify` consumes the OTP on first success
+(`verified_at` claim-once), so a correct code can't be replayed within its TTL to mint unlimited
+manage tokens. `create-reservation` keys the per-phone rate limit on the NORMALIZED phone.
+
+Frontend (same ADR): checkout rejects past check-in selections; the booking calendar clamps
+forward navigation to the availability fetch horizon (today+210d — months beyond it rendered as
+falsely free while staff now book 2 years out); anulare's success flag is token-scoped (a second
+cancel link in the same tab showed fake success); Enter-key paths respect disabled buttons (each
+Enter used to send a real OTP SMS); gestionare wires cash actions idempotently, guards concurrent
+cancellation, generation-guards the card poll chain, and confirms hold expiry with the server
+before the "expirat" overlay; confirmare computes "today" in Europe/Chisinau; notifications follow
+the guest's CURRENT page language; the stale `ecovila_pending_reservation` blob is cleared once
+its booking reaches a terminal state; calendar aria-labels use localized dates; plata-mia keeps
+the loading panel until a status fetch succeeds and adopts refreshed expiries.
+
+**Surface.** `_shared/reservations.ts`, `_shared/pricingGuard.ts`, `reservation-lookup-verify`,
+`create-reservation`; `js/checkout.js`, `js/booking.js`, `js/anulare.js`, `js/gestionare.js`,
+`js/confirmare.js`, `js/plata-mia.js`.
+
+### ADR-091 — CRM hardening: atomic room swap RPC, checked writes, vendored supabase-js, localStorage sessions
+
+1. **Atomic swap** — migration `20260707120000_swap_reservation_rooms.sql`: `security definer` RPC
+   (vacate-then-assign in one transaction, ADR-087 pattern; in-function diana-only role check since
+   the CRM calls it as `authenticated`). The old two-UPDATE swap could NEVER swap date-overlapping
+   stays (both tripped the exclusion constraint, both errors discarded) and could half-apply.
+   Drag/drop now checks every `{ error }`, surfaces 23P01 as "camera este ocupată", blocks
+   multi-villa block drags and cross-type drops (no repricing), and the swap dialog only closes
+   after a real attempt.
+2. **Checked money/state writes** — `markPaid`/`sendPaymentConfirmation` disable during flight +
+   surface failures; daily guest-edit saves sequentially with stop-on-failure reporting, asks
+   confirmation before overwriting a (possibly negotiated) total, and disables its submit;
+   checkout-note saves BEFORE closing the dialog (a silent failure also mis-gated the ADR-082
+   review email); photo uploads isolate per-file failures and deletion asks confirmation; the
+   pricing form rejects adult prices ≤ 0 (a mis-tabbed save published 0-MDL tariffs the live
+   engine honored) and confirms past effective dates; add-reservation guards double-submit.
+3. **Vendored supabase-js** — `js/vendor/supabase.js` (`@supabase/supabase-js@2.110.1` UMD,
+   SHA-256 in `js/vendor/README.md`) replaces the un-pinned no-SRI jsdelivr tag on all 13 pages:
+   a poisoned floating-major release would have run with full staff-session power.
+4. **CRM sessions moved from cookies to localStorage** — the `Path=/admin` cookies sent 90-day
+   staff tokens to the static host's access logs on every request. Legacy cookie sessions migrate
+   on first read (nobody is logged out), then the cookies are deleted.
+
+**Surface.** `admin/js/crm-dashboard.js`, `crm-daily.js`, `crm-photos.js`, `crm-pricing.js`,
+`crm-sidebar.js`, `crm-auth.js`, `admin/dashboard.html`; all public HTML + `js/vendor/`;
+migration `20260707120000_swap_reservation_rooms.sql`.
+
+**Tests (ADR-088..091).** `npm test` → node 307/307 + deno 117/117 (new
+`tests/refunds.test.ts` pins the refund-status interpretation; reservation/checkout/CRM tests
+updated to the new invariants). **Deploy: NOT yet — pending owner sign-off** (3 migrations, all
+edge functions incl. new `reconcile-refunds`, `ECOVILA_ALERT_EMAIL` secret, TopHost upload).
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

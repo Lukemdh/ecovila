@@ -1,0 +1,298 @@
+// MAIB refund engine (ADR-088). Every refund goes through attemptBookingRefund,
+// which (a) reads the provider's result.status instead of trusting the HTTP
+// layer — MAIB documents OK ("successfully refunded") and REVERSED ("previously
+// refunded; repeated refunds are not allowed"), and anything else means the
+// money has NOT been confirmed moved (e.g. the merchant settlement account had
+// insufficient funds) — and (b) leaves every unresolved refund as a
+// requested/processing/failed maib_refunds row that the reconcile-refunds cron
+// retries until it succeeds. MAIB allows exactly one refund per payment, so the
+// retry loop is safe by construction: re-attempting an already-executed refund
+// returns REVERSED, which resolves the row instead of paying twice.
+import { refundMaibPayment } from './maib.ts';
+import { sendStaffAlert } from './alerts.ts';
+import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
+
+type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
+  select(columns: string): QueryBuilder<T>;
+  insert(payload: unknown): Promise<SupabaseQueryResult>;
+  update(payload: unknown): QueryBuilder<T>;
+  upsert(payload: unknown, options?: Record<string, unknown>): Promise<SupabaseQueryResult>;
+  eq(column: string, value: unknown): QueryBuilder<T>;
+  in(column: string, value: unknown[]): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  gt(column: string, value: unknown): QueryBuilder<T>;
+  lt(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
+  limit(count: number): QueryBuilder<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
+};
+
+export type MaibRefundRow = {
+  pay_id: string;
+  booking_group_id: string;
+  amount?: number | string | null;
+  currency?: string | null;
+  status?: string | null;
+  reason?: string | null;
+  response_payload?: Record<string, unknown> | null;
+  provider_status?: string | null;
+  attempts?: number | null;
+  alerted_at?: string | null;
+  created_at?: string | null;
+};
+
+export type MaibRefundInterpretation = {
+  completed: boolean;
+  alreadyRefunded: boolean;
+  providerStatus: string;
+  refundId: string | null;
+};
+
+export type RefundAttemptOutcome = {
+  // true only when the provider confirmed the refund (status OK, or REVERSED —
+  // an earlier refund already executed). false means unresolved: the row stays
+  // requested/processing/failed and the reconcile cron retries it.
+  ok: boolean;
+  alreadyRefunded?: boolean;
+  providerStatus?: string;
+  refundId?: string | null;
+  payload?: Record<string, unknown>;
+  error?: string;
+};
+
+type RefundResponseBody = Record<string, unknown> & {
+  result?: {
+    refundId?: string | number | null;
+    status?: string | null;
+    statusMessage?: string | null;
+  };
+  refundId?: string | number | null;
+  status?: string | null;
+};
+
+// A response with no status field at all is treated as completed: that was the
+// pre-ADR-088 behavior for every refund that genuinely worked, and demoting it
+// to "processing" would park every refund in limbo if the provider ever omits
+// the field. The reconcile cron only ever touches rows that are NOT succeeded,
+// so this default cannot resurrect a resolved refund.
+export function interpretMaibRefundResponse(raw: unknown): MaibRefundInterpretation {
+  const body = (raw && typeof raw === 'object' ? raw : {}) as RefundResponseBody;
+  const result = body.result && typeof body.result === 'object' ? body.result : {};
+  const providerStatus = String(result.status ?? body.status ?? '').trim().toUpperCase();
+  const refundId = String(result.refundId ?? body.refundId ?? '').trim() || null;
+
+  return {
+    completed: providerStatus === '' || providerStatus === 'OK',
+    alreadyRefunded: providerStatus === 'REVERSED',
+    providerStatus,
+    refundId,
+  };
+}
+
+export async function findRefundRow(client: SupabaseClient, payId: string) {
+  const { data, error } = await table<MaibRefundRow>(client, 'maib_refunds')
+    .select(
+      'pay_id, booking_group_id, amount, currency, status, reason, response_payload, provider_status, attempts, alerted_at, created_at',
+    )
+    .eq('pay_id', payId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Record that a refund is owed without calling MAIB — used when the flow that
+// should have refunded crashed before reaching the provider, so the reconcile
+// cron picks the row up on its next tick. Never demotes a succeeded row.
+export async function queueRefundForReconciliation(
+  client: SupabaseClient,
+  input: {
+    payId: string;
+    bookingGroupId: string;
+    amount: number;
+    currency?: string;
+    reason: string;
+    source: string;
+  },
+) {
+  const existing = await findRefundRow(client, input.payId);
+  if (existing?.status === 'succeeded') {
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await table(client, 'maib_refunds')
+    .upsert({
+      pay_id: input.payId,
+      booking_group_id: input.bookingGroupId,
+      amount: input.amount,
+      currency: input.currency || 'MDL',
+      status: existing?.status === 'processing' ? 'processing' : 'requested',
+      reason: input.reason,
+      request_payload: { amount: input.amount, reason: input.reason, source: input.source },
+      updated_at: now,
+    }, { onConflict: 'pay_id' });
+
+  if (error) throw new Error(error.message);
+  return await findRefundRow(client, input.payId);
+}
+
+export async function attemptBookingRefund(
+  client: SupabaseClient,
+  input: {
+    payId: string;
+    providerPayId: string;
+    bookingGroupId: string;
+    amount: number;
+    currency?: string;
+    reason: string;
+    source: string;
+  },
+): Promise<RefundAttemptOutcome> {
+  const existing = await findRefundRow(client, input.payId);
+  if (existing?.status === 'succeeded') {
+    return { ok: true, payload: existing.response_payload || {} };
+  }
+
+  const attempts = Number(existing?.attempts || 0) + 1;
+  const now = new Date().toISOString();
+  const { error: upsertError } = await table(client, 'maib_refunds')
+    .upsert({
+      pay_id: input.payId,
+      booking_group_id: input.bookingGroupId,
+      amount: input.amount,
+      currency: input.currency || 'MDL',
+      status: 'requested',
+      reason: input.reason,
+      request_payload: { amount: input.amount, reason: input.reason, source: input.source },
+      attempts,
+      last_attempt_at: now,
+      updated_at: now,
+    }, { onConflict: 'pay_id' });
+
+  if (upsertError) throw new Error(upsertError.message);
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = (await refundMaibPayment(input.providerPayId, input.amount, input.reason)) as Record<
+      string,
+      unknown
+    >;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Refund failed.';
+    await updateRefundRow(client, input.payId, {
+      status: 'failed',
+      error_message: message,
+      updated_at: new Date().toISOString(),
+    });
+    return { ok: false, error: message };
+  }
+
+  const verdict = interpretMaibRefundResponse(raw);
+  const doneAt = new Date().toISOString();
+
+  if (verdict.completed || verdict.alreadyRefunded) {
+    await updateRefundRow(client, input.payId, {
+      status: 'succeeded',
+      response_payload: raw,
+      provider_refund_id: verdict.refundId,
+      provider_status: verdict.providerStatus || null,
+      confirmed_at: doneAt,
+      error_message: null,
+      updated_at: doneAt,
+    });
+    await markPaymentRefunded(client, input.payId, raw, doneAt);
+    return {
+      ok: true,
+      alreadyRefunded: verdict.alreadyRefunded,
+      providerStatus: verdict.providerStatus,
+      refundId: verdict.refundId,
+      payload: raw,
+    };
+  }
+
+  // MAIB acknowledged the request but did not confirm the money moved (a
+  // non-OK result.status — the insufficient-settlement-funds shape). Keep the
+  // row unresolved so the cron retries, and never mark the payment refunded.
+  await updateRefundRow(client, input.payId, {
+    status: 'processing',
+    response_payload: raw,
+    provider_status: verdict.providerStatus || null,
+    error_message: null,
+    updated_at: doneAt,
+  });
+  return {
+    ok: false,
+    providerStatus: verdict.providerStatus,
+    refundId: verdict.refundId,
+    payload: raw,
+  };
+}
+
+// Staff alert for an unresolved (or REVERSED-resolved) refund, stamped on the
+// row so the reconcile cron repeats it on a slow cadence instead of every tick.
+export async function alertRefundProblem(
+  client: SupabaseClient,
+  input: {
+    payId: string;
+    bookingGroupId: string;
+    amount: number | string | null | undefined;
+    reason: string;
+    detail: string;
+    source: string;
+  },
+) {
+  const result = await sendStaffAlert('Restituire nefinalizată', [
+    `O restituire MAIB nu s-a finalizat și necesită atenție.`,
+    `Booking group: ${input.bookingGroupId}`,
+    `Pay ID: ${input.payId}`,
+    `Sumă: ${input.amount ?? '?'} MDL`,
+    `Motiv restituire: ${input.reason}`,
+    `Detaliu: ${input.detail}`,
+    `Sursă: ${input.source}`,
+    '',
+    'Sistemul reîncearcă automat la fiecare 30 de minute. Dacă contul de decontare',
+    'nu are fonduri suficiente, alimentează-l — restituirea se va finaliza singură.',
+    'Verifică și panoul maibmerchants pentru starea exactă a plății.',
+  ]);
+
+  await updateRefundRow(client, input.payId, {
+    alerted_at: new Date().toISOString(),
+  }).catch((error) => console.error('Could not stamp refund alerted_at', error));
+
+  return result;
+}
+
+async function updateRefundRow(
+  client: SupabaseClient,
+  payId: string,
+  values: Record<string, unknown>,
+) {
+  const { error } = await table(client, 'maib_refunds')
+    .update(values)
+    .eq('pay_id', payId);
+
+  if (error) throw new Error(error.message);
+}
+
+async function markPaymentRefunded(
+  client: SupabaseClient,
+  payId: string,
+  raw: Record<string, unknown>,
+  now: string,
+) {
+  const { error } = await table(client, 'maib_payments')
+    .update({
+      status: 'refunded',
+      refund_payload: raw,
+      refunded_at: now,
+      updated_at: now,
+    })
+    .eq('pay_id', payId);
+
+  if (error) throw new Error(error.message);
+}
+
+function table<T = unknown>(client: SupabaseClient, name: string) {
+  return client.from(name) as QueryBuilder<T>;
+}

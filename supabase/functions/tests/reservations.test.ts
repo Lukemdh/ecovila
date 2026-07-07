@@ -22,10 +22,21 @@ Deno.test('buildReservationRows normalizes cash reservations with a server-side 
     { now: new Date('2026-05-08T07:00:00.000Z') },
   );
 
+  // The client-supplied booking_group_id must be IGNORED (ADR-090): the group
+  // id is always server-generated so a caller can never inject rows into
+  // another booking's group.
+  const generatedGroupId = String(rows[0].booking_group_id || '');
+  if (generatedGroupId === '00000000-0000-4000-8000-000000000001') {
+    throw new Error('Client booking_group_id must not be honored.');
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(generatedGroupId)) {
+    throw new Error('booking_group_id should be a server-generated UUID.');
+  }
+
   assertEquals(rows, [
     {
       id: 'reservation-a',
-      booking_group_id: '00000000-0000-4000-8000-000000000001',
+      booking_group_id: generatedGroupId,
       room_id: 'room-a',
       guest_first_name: 'Ana',
       guest_last_name: 'Munteanu',
@@ -147,8 +158,27 @@ Deno.test('buildReservationRows rejects unsafe guest-created reservation fields'
         kids_ages: [],
         total_price: 5200,
         payment_type: 'cash',
-      }]),
+      }], { now: new Date('2026-05-08T07:00:00.000Z') }),
     'Guest names cannot include HTML control characters.',
+  );
+
+  // New guard (ADR-090): a stay whose check-in already passed is rejected.
+  assertThrows(
+    () =>
+      buildReservationRows([{
+        room_id: 'room-a',
+        guest_first_name: 'Ana',
+        guest_last_name: 'Munteanu',
+        guest_phone: '+37360123456',
+        guest_email: 'ana@example.md',
+        check_in: '2026-06-01',
+        check_out: '2026-06-03',
+        adults: 2,
+        kids_ages: [],
+        total_price: 5200,
+        payment_type: 'cash',
+      }], { now: new Date('2026-07-01T07:00:00.000Z') }),
+    'Check-in date is already in the past.',
   );
 });
 

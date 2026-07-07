@@ -107,7 +107,12 @@ export function buildReservationRows(inputs: ReservationInput[], options: { now?
   }
 
   const now = options.now || new Date();
-  const bookingGroupId = inputs[0].booking_group_id || crypto.randomUUID();
+  // Always server-generated: all rows of a multi-villa booking arrive in one
+  // request, so there is no legitimate reason for the public caller to pick the
+  // group id — and honoring one would let a caller who learned another
+  // booking's group id inject a row into that group (hijacking group-keyed
+  // notifications and aggregation).
+  const bookingGroupId = crypto.randomUUID();
 
   return inputs.map((input) => normalizeReservationInput(input, now, bookingGroupId));
 }
@@ -261,6 +266,12 @@ function normalizeReservationInput(input: ReservationInput, now: Date, bookingGr
   if (checkOut <= checkIn) {
     throw new Error('Check-out must be after check-in.');
   }
+  // A stale checkout tab (or a direct API call) must not create — let alone
+  // charge — a stay whose check-in already passed. Same-day check-in stays
+  // allowed; "today" is the Europe/Chisinau business day (ADR-090).
+  if (checkIn < chisinauTodayISO(now)) {
+    throw new Error('Check-in date is already in the past.');
+  }
 
   const kidsAges = normalizeKidsAges(input.kids_ages);
   const phone = normalizeInternationalPhone(input.guest_phone);
@@ -391,6 +402,27 @@ function optionalTrackingValue(value: unknown) {
   }
 
   return normalized.slice(0, 500);
+}
+
+// The business day in Europe/Chisinau (mirrors reservationChanges.chisinauToday;
+// duplicated locally to keep this low-level module free of higher-level imports).
+function chisinauTodayISO(now: Date) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Chisinau',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const value = (type: string) => parts.find((part) => part.type === type)?.value;
+    const year = value('year');
+    const month = value('month');
+    const day = value('day');
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch (_error) {
+    // No tz data: fall back to UTC.
+  }
+  return now.toISOString().slice(0, 10);
 }
 
 function isoDate(value: unknown, message: string) {

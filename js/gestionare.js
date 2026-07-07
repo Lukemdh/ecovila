@@ -22,6 +22,9 @@
   let _timerInterval = null;
   let _cardPollTimeout = null;
   let _cardPollAttempts = 0;
+  // Bumped whenever card-status polling is cleared or restarted; a poll chain
+  // whose generation no longer matches stops rescheduling itself.
+  let _cardPollGeneration = 0;
   let _expiresAt = 0;
   let _managedContext = null;
   let _purchaseTracked = false;
@@ -492,17 +495,20 @@
   }
 
   function wireCashActions(reservationId, manageToken) {
+    // onclick assignment (not addEventListener) keeps re-renders — e.g. the
+    // language-change rerun of renderManagedReservation — from stacking
+    // duplicate handlers, mirroring renderManagePanel.
     const extendBtn = el('[data-extend-btn]');
-    extendBtn?.addEventListener('click', () => handleExtend(reservationId, manageToken));
+    if (extendBtn) extendBtn.onclick = () => handleExtend(reservationId, manageToken);
 
     const cancelBtn = el('[data-cancel-btn]');
-    cancelBtn?.addEventListener('click', showCancelConfirm);
+    if (cancelBtn) cancelBtn.onclick = showCancelConfirm;
 
     const cancelYes = el('[data-cancel-yes]');
-    cancelYes?.addEventListener('click', () => handleConfirmCancel(reservationId, manageToken));
+    if (cancelYes) cancelYes.onclick = () => handleConfirmCancel(reservationId, manageToken);
 
     const cancelNo = el('[data-cancel-no]');
-    cancelNo?.addEventListener('click', hideCancelConfirm);
+    if (cancelNo) cancelNo.onclick = hideCancelConfirm;
   }
 
   function renderManagePanel(summary, payment, reservationId, manageToken) {
@@ -639,6 +645,10 @@
   }
 
   function clearCardStatusPolling() {
+    // Bumping the generation also strands any poll whose fetch is still in
+    // flight — it can no longer reschedule itself after being superseded.
+    _cardPollGeneration += 1;
+
     if (_cardPollTimeout !== null) {
       root.clearTimeout?.(_cardPollTimeout);
       _cardPollTimeout = null;
@@ -653,18 +663,22 @@
       return;
     }
 
-    scheduleCardStatusPoll(reservationId, manageToken);
+    scheduleCardStatusPoll(reservationId, manageToken, _cardPollGeneration);
   }
 
-  function scheduleCardStatusPoll(reservationId, manageToken) {
-    if (_cardPollAttempts >= CARD_STATUS_POLL_LIMIT || !root.setTimeout) {
+  function scheduleCardStatusPoll(reservationId, manageToken, generation) {
+    if (generation !== _cardPollGeneration || _cardPollAttempts >= CARD_STATUS_POLL_LIMIT || !root.setTimeout) {
       return;
     }
 
-    _cardPollTimeout = root.setTimeout(() => pollCardReservationStatus(reservationId, manageToken), CARD_STATUS_POLL_MS);
+    _cardPollTimeout = root.setTimeout(() => pollCardReservationStatus(reservationId, manageToken, generation), CARD_STATUS_POLL_MS);
   }
 
-  async function pollCardReservationStatus(reservationId, manageToken) {
+  async function pollCardReservationStatus(reservationId, manageToken, generation) {
+    if (generation !== _cardPollGeneration) {
+      return;
+    }
+
     _cardPollTimeout = null;
     _cardPollAttempts += 1;
 
@@ -673,6 +687,12 @@
       const rows = await supabaseHelpers.fetchPendingReservationStatus(client, { reservationId, manageToken });
       const serverStatus = rows?.[0] || null;
       const paymentType = serverStatus?.payment_type || 'card';
+
+      // A newer chain took over while the fetch was in flight; let it own the
+      // rendering and the rescheduling.
+      if (generation !== _cardPollGeneration) {
+        return;
+      }
 
       if (serverStatus) {
         showContentState(paymentType, serverStatus);
@@ -736,6 +756,33 @@
 
     if (remaining === 0) {
       clearInterval(_timerInterval);
+      confirmExpiryWithServer();
+    }
+  }
+
+  // The client clock declared the hold dead, but only the server is
+  // authoritative — a fast device clock used to strand guests on "expirat"
+  // while their hold was still valid (plata-mia already re-checks at zero).
+  // If the server says the hold is alive, adopt its deadline and keep counting;
+  // on any doubt the overlay still shows (the cron cancels within the minute).
+  async function confirmExpiryWithServer() {
+    try {
+      const client = supabaseHelpers.getSupabaseClient();
+      const rows = await supabaseHelpers.fetchPendingReservationStatus(client, {
+        reservationId: getReservationId(),
+        manageToken: getManageToken(),
+      });
+      const status = rows?.[0];
+      if (
+        status?.payment_status === 'pending' &&
+        status.cash_expires_at &&
+        new Date(status.cash_expires_at).getTime() > Date.now()
+      ) {
+        startCountdown(status.cash_expires_at, status.cash_extended);
+        return;
+      }
+      showExpiredOverlay(status?.payment_status === 'cancelled');
+    } catch {
       showExpiredOverlay(false);
     }
   }
@@ -810,7 +857,9 @@
 
   async function handleConfirmCancel(reservationId, manageToken) {
     const yesBtn = el('[data-cancel-yes]');
-    if (!yesBtn) return;
+    // A disabled button means a cancellation is already in flight; never start
+    // a second concurrent one.
+    if (!yesBtn || yesBtn.disabled) return;
 
     yesBtn.disabled = true;
     setBtnText(yesBtn, t('confirmare.cancelling'));

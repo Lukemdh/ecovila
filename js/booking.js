@@ -127,6 +127,13 @@
       .slice(0, 10);
   }
 
+  function maxCalendarMonth() {
+    // Availability is only fetched for [today, today + LOOKAHEAD_DAYS] (see
+    // loadBookingData), so months past that horizon would render as falsely
+    // free. Forward navigation is clamped to the month containing the horizon.
+    return firstOfMonth(pricing.addDays(todayISO(), LOOKAHEAD_DAYS));
+  }
+
   function createFallbackRooms() {
     return Object.values(pricing.ROOM_TYPES).flatMap((config) => {
       return config.roomNumbers.map((number) => ({
@@ -533,9 +540,11 @@
     const grid = document.querySelector('[data-calendar-grid]');
     const shell = document.querySelector('[data-date-picker-shell]');
     const calendarElement = document.querySelector('[data-booking-calendar]');
+    const nextButton = document.querySelector('[data-calendar-next]');
     shell.classList.toggle('is-calendar-open', state.calendarOpen);
     calendarElement.setAttribute('aria-hidden', String(!state.calendarOpen));
     title.textContent = formatMonth(state.currentMonth);
+    if (nextButton) nextButton.disabled = state.currentMonth >= maxCalendarMonth();
     grid.innerHTML = '';
 
     const monthStart = pricing.parseISODate(state.currentMonth);
@@ -578,7 +587,7 @@
       );
       button.setAttribute(
         'aria-label',
-        unavailable ? `${date}, ${t('booking.calendarUnavailable')}` : date,
+        unavailable ? `${formatDate(date)}, ${t('booking.calendarUnavailable')}` : formatDate(date),
       );
       button.addEventListener('click', () => selectDate(date));
       grid.appendChild(button);
@@ -1020,6 +1029,7 @@
     const grid = wrapper.querySelector('[data-soldout-grid]');
     const title = wrapper.querySelector('[data-soldout-month]');
     const prevButton = wrapper.querySelector('[data-soldout-prev]');
+    const nextButton = wrapper.querySelector('[data-soldout-next]');
     const intro = document.querySelector('[data-soldout-intro]');
 
     intro.textContent = state.soldoutCheckIn
@@ -1028,6 +1038,7 @@
 
     title.textContent = formatMonth(state.soldoutMonth);
     prevButton.disabled = state.soldoutMonth <= firstOfMonth(todayISO());
+    if (nextButton) nextButton.disabled = state.soldoutMonth >= maxCalendarMonth();
     grid.innerHTML = '';
 
     const monthStart = pricing.parseISODate(state.soldoutMonth);
@@ -1064,7 +1075,7 @@
       button.classList.toggle('is-range-start', isPendingCheckIn);
       button.setAttribute(
         'aria-label',
-        unavailable ? `${date}, ${t('booking.calendarUnavailable')}` : date,
+        unavailable ? `${formatDate(date)}, ${t('booking.calendarUnavailable')}` : formatDate(date),
       );
       button.addEventListener('click', () => selectSoldoutDate(type, date));
       grid.appendChild(button);
@@ -1132,6 +1143,13 @@
 
   async function startReservationLookup() {
     const button = document.querySelector('[data-lookup-start]');
+
+    // The Enter key on the phone input calls this directly, so a request that
+    // is already in flight (button disabled) must not send a second OTP SMS.
+    if (button?.disabled) {
+      return;
+    }
+
     const phoneInput = document.querySelector('[data-lookup-phone]');
     const phone = normalizeLookupPhone(phoneInput?.value);
 
@@ -1232,6 +1250,13 @@
 
   async function verifyReservationLookup() {
     const button = document.querySelector('[data-lookup-verify]');
+
+    // Same Enter-key path as startReservationLookup: never stack a second
+    // verification attempt while one is still in flight.
+    if (button?.disabled) {
+      return;
+    }
+
     const codeInput = document.querySelector('[data-lookup-code]');
     const code = String(codeInput?.value || '').replace(/\D/g, '').slice(0, 4);
 
@@ -1276,7 +1301,9 @@
     });
 
     document.querySelector('[data-calendar-next]').addEventListener('click', () => {
-      state.currentMonth = addMonths(state.currentMonth, 1);
+      const latest = maxCalendarMonth();
+      const candidate = addMonths(state.currentMonth, 1);
+      state.currentMonth = candidate > latest ? latest : candidate;
       renderCalendar();
     });
 
@@ -1288,7 +1315,9 @@
     });
 
     document.querySelector('[data-soldout-next]').addEventListener('click', () => {
-      state.soldoutMonth = addMonths(state.soldoutMonth, 1);
+      const latest = maxCalendarMonth();
+      const candidate = addMonths(state.soldoutMonth, 1);
+      state.soldoutMonth = candidate > latest ? latest : candidate;
       renderSoldoutCalendar(state.activeSoldoutType);
     });
 

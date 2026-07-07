@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026070601">
+    <link rel="stylesheet" href="../css/crm.css?v=2026070701">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -285,6 +285,7 @@
                 <input type="date" data-edit-check-out>
               </label>
             </div>
+            <p class="crm-note">Prețul nu se recalculează automat la mutare — ajustează-l din Situația zilnică dacă e nevoie.</p>
             <div class="crm-form-grid crm-form-grid--two">
               <label class="crm-field">
                 <span>Adulți</span>
@@ -334,7 +335,10 @@
             </label>
             <menu class="crm-dialog-actions">
               <button class="crm-button" value="cancel">Anulează</button>
-              <button class="crm-button crm-button--primary" value="confirm" data-confirm-swap>Confirmă</button>
+              <!-- type="button": în form method="dialog" un submit ar închide dialogul
+                   chiar și când cuvântul de confirmare e greșit; JS-ul îl închide doar
+                   după o încercare reală de schimb. -->
+              <button class="crm-button crm-button--primary" type="button" data-confirm-swap>Confirmă</button>
             </menu>
           </form>
         </dialog>
@@ -771,21 +775,21 @@
       </section>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../js/supabase-config.js?v=2026070601"></script>
-    <script src="../js/supabase.js?v=2026070601"></script>
-    <script src="../js/pricing.js?v=2026070601"></script>
-    <script src="../js/calendar.js?v=2026070601"></script>
-    <script src="js/crm-calendar.js?v=2026070601"></script>
-    <script src="js/crm-sidebar.js?v=2026070601"></script>
-    <script src="js/crm-dashboard.js?v=2026070601"></script>
-    <script src="js/crm-finance.js?v=2026070601"></script>
-    <script src="js/crm-daily.js?v=2026070601"></script>
-    <script src="js/crm-towels.js?v=2026070601"></script>
-    <script src="js/crm-photos.js?v=2026070601"></script>
-    <script src="js/crm-pricing.js?v=2026070601"></script>
-    <script src="js/crm-complaints.js?v=2026070601"></script>
-    <script src="js/crm-auth.js?v=2026070601"></script>
-    <script src="js/crm-app.js?v=2026070601"></script>
+    <script src="../js/vendor/supabase.js?v=2026070701"></script>
+    <script src="../js/supabase-config.js?v=2026070701"></script>
+    <script src="../js/supabase.js?v=2026070701"></script>
+    <script src="../js/pricing.js?v=2026070701"></script>
+    <script src="../js/calendar.js?v=2026070701"></script>
+    <script src="js/crm-calendar.js?v=2026070701"></script>
+    <script src="js/crm-sidebar.js?v=2026070701"></script>
+    <script src="js/crm-dashboard.js?v=2026070701"></script>
+    <script src="js/crm-finance.js?v=2026070701"></script>
+    <script src="js/crm-daily.js?v=2026070701"></script>
+    <script src="js/crm-towels.js?v=2026070701"></script>
+    <script src="js/crm-photos.js?v=2026070701"></script>
+    <script src="js/crm-pricing.js?v=2026070701"></script>
+    <script src="js/crm-complaints.js?v=2026070701"></script>
+    <script src="js/crm-auth.js?v=2026070701"></script>
+    <script src="js/crm-app.js?v=2026070701"></script>
   </body>
 </html>

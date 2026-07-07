@@ -2,7 +2,10 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, jsonResponse, readJson } from '../_shared/http.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
-import { createReservationsWithTokens } from '../_shared/reservations.ts';
+import {
+  createReservationsWithTokens,
+  normalizeInternationalPhone,
+} from '../_shared/reservations.ts';
 import { assignAutomaticRooms } from '../_shared/roomAssignment.ts';
 import { verifyReservationGroupPricing } from '../_shared/pricingGuard.ts';
 import { assertRateLimits, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
@@ -23,10 +26,12 @@ Deno.serve(async (request) => {
 
     // A pending reservation holds inventory, so an unauthenticated flood here is
     // an inventory-denial vector. Bound it per IP and per guest phone (ADR-060).
-    const guestPhone = String(
+    // The phone is normalized BEFORE keying the bucket — otherwise "060...",
+    // "+37360..." and spaced variants of one number each get their own budget.
+    const guestPhone = normalizeInternationalPhone(
       (Array.isArray(reservations) ? reservations[0]?.guest_phone : reservations?.guest_phone) ||
         '',
-    ).trim();
+    );
     await assertRateLimits(client, [
       { rule: RATE_LIMITS.createReservationIp, key: rateLimitIp(request) },
       { rule: RATE_LIMITS.createReservationPhone, key: guestPhone },

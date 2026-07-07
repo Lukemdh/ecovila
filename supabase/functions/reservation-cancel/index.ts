@@ -1,6 +1,10 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
-import { refundMaibPayment } from '../_shared/maib.ts';
+import {
+  alertRefundProblem,
+  attemptBookingRefund,
+  queueRefundForReconciliation,
+} from '../_shared/refunds.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import {
@@ -139,24 +143,76 @@ Deno.serve(async (request) => {
 
     const payment = await findMaibPayment(client, summary.bookingGroupId);
     let refundResult = null;
+    let refundPending = false;
     let differenceRefunds: ChangeRefundResult[] = [];
 
     if (paidCard && refundable) {
-      if (!payment || payment.status !== 'paid') {
+      if (!payment) {
         throw new HttpError(409, 'The MAIB payment is not ready for refund.');
       }
 
-      // Reverse any paid "add guests" differences FIRST, then the original
-      // booking payment — each as its own MAIB transaction. Order matters: if a
-      // difference refund fails, the original payment is still 'paid', so a
-      // retry passes the guard above and re-runs cleanly (both refundPaidChanges
-      // and createRefund are idempotent — already-refunded rows are skipped).
-      // Refunding the original first would flip it to 'refunded' and the retry
-      // would then 409 here, stranding the booking active with the difference
-      // unrefunded. All run before the reservations are marked cancelled so any
-      // failure surfaces as an error and leaves the booking retryable.
-      differenceRefunds = await refundPaidChanges(client, summary.bookingGroupId, 'guest_request');
-      refundResult = await createRefund(client, payment, summary.bookingGroupId);
+      // An in-window cancellation must never be blocked by the refund leg
+      // (ADR-088): if MAIB declines or errors — e.g. the settlement account has
+      // insufficient funds — the booking is still cancelled, the refund is left
+      // as an unresolved maib_refunds row for the reconcile-refunds cron to
+      // retry, and staff are alerted. Blocking here used to 500 the whole
+      // cancellation, and a guest who gave up could silently fall out of the
+      // 20-day refund window. Differences ("add guests") are reversed first,
+      // each as its own MAIB transaction; both legs are idempotent and MAIB
+      // allows one refund per payment, so retries can never double-refund.
+      try {
+        differenceRefunds = await refundPaidChanges(
+          client,
+          summary.bookingGroupId,
+          'guest_request',
+        );
+        refundPending = differenceRefunds.some((refund) => !refund.ok);
+
+        const outcome = await attemptBookingRefund(client, {
+          payId: payment.pay_id,
+          providerPayId: payment.provider_payment_id || payment.pay_id,
+          bookingGroupId: summary.bookingGroupId,
+          amount: Number(payment.amount || 0),
+          currency: payment.currency || 'MDL',
+          reason: 'guest_request',
+          source: 'reservation-cancel',
+        });
+
+        if (outcome.ok) {
+          refundResult = (outcome.payload as MaibRefundProviderResponse)?.result ||
+            outcome.payload || {};
+        } else {
+          refundPending = true;
+        }
+      } catch (error) {
+        refundPending = true;
+        console.error('Guest cancellation refund failed — queued for reconciliation', {
+          bookingGroupId: summary.bookingGroupId,
+          payId: payment.pay_id,
+          message: error instanceof Error ? error.message : 'Refund failed.',
+        });
+      }
+
+      if (refundPending) {
+        await queueRefundForReconciliation(client, {
+          payId: payment.pay_id,
+          bookingGroupId: summary.bookingGroupId,
+          amount: Number(payment.amount || 0),
+          currency: payment.currency || 'MDL',
+          reason: 'guest_request',
+          source: 'reservation-cancel',
+        }).catch((queueError) =>
+          console.error('Could not queue refund for reconciliation', queueError)
+        );
+        await alertRefundProblem(client, {
+          payId: payment.pay_id,
+          bookingGroupId: summary.bookingGroupId,
+          amount: payment.amount,
+          reason: 'guest_request',
+          detail: 'Anulare de către oaspete — restituirea nu s-a confirmat la prima încercare.',
+          source: 'reservation-cancel',
+        }).catch((alertError) => console.error('Refund alert failed', alertError));
+      }
     }
 
     const now = new Date().toISOString();
@@ -183,6 +239,7 @@ Deno.serve(async (request) => {
         ok: true,
         status: 'cancelled',
         refunded: Boolean(refundResult),
+        refundPending,
         refundable,
         refundReason: refundEligibilityReason({
           checkIn: summary.checkIn,
@@ -416,95 +473,19 @@ function providerError(error: unknown) {
 }
 
 async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {
+  // Only a payment that actually captured money can be refunded. Without the
+  // status filter, a newer abandoned session row (pending/cancelled) for the
+  // same group would shadow the paid one and 409 a legitimate refund forever.
   const { data, error } = await table<MaibPaymentRow>(client, 'maib_payments')
     .select('pay_id, provider_payment_id, amount, currency, status, refund_payload, refunded_at')
     .eq('booking_group_id', bookingGroupId)
+    .in('status', ['paid', 'refunded'])
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   return data || null;
-}
-
-async function createRefund(
-  client: SupabaseClient,
-  payment: MaibPaymentRow,
-  bookingGroupId: string,
-) {
-  const existing = await findExistingRefund(client, payment.pay_id);
-  if (existing?.status === 'succeeded') {
-    return existing.response_payload || {};
-  }
-
-  const amount = Number(payment.amount || 0);
-  const reason = 'guest_request';
-  const now = new Date().toISOString();
-
-  const { error: insertError } = await table(client, 'maib_refunds')
-    .upsert({
-      pay_id: payment.pay_id,
-      booking_group_id: bookingGroupId,
-      amount,
-      currency: 'MDL',
-      status: 'requested',
-      reason,
-      request_payload: { amount, reason },
-      updated_at: now,
-    }, { onConflict: 'pay_id' });
-
-  if (insertError) throw new Error(insertError.message);
-
-  try {
-    const providerPayId = payment.provider_payment_id || payment.pay_id;
-    const refund = await refundMaibPayment(
-      providerPayId,
-      amount,
-      reason,
-    ) as MaibRefundProviderResponse;
-    const providerRefundId = String(refund?.result?.refundId || refund?.refundId || '').trim() ||
-      null;
-
-    await table(client, 'maib_refunds')
-      .update({
-        status: 'succeeded',
-        response_payload: refund,
-        provider_refund_id: providerRefundId,
-        error_message: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('pay_id', payment.pay_id);
-
-    await table(client, 'maib_payments')
-      .update({
-        status: 'refunded',
-        refund_payload: refund,
-        refunded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('pay_id', payment.pay_id);
-
-    return refund?.result || refund;
-  } catch (error) {
-    await table(client, 'maib_refunds')
-      .update({
-        status: 'failed',
-        error_message: error instanceof Error ? error.message : 'Refund failed.',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('pay_id', payment.pay_id);
-    throw error;
-  }
-}
-
-async function findExistingRefund(client: SupabaseClient, payId: string) {
-  const { data, error } = await table<MaibRefundRow>(client, 'maib_refunds')
-    .select('status, response_payload')
-    .eq('pay_id', payId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data;
 }
 
 function table<T = unknown>(client: SupabaseClient, name: string) {

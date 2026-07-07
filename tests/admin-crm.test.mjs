@@ -727,10 +727,14 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(auth, /signInWithPassword\(\{\s*email:\s*normalizeCrmLoginIdentifier\(loginIdentifier\)/s);
   });
 
-  it('uses cookie-backed Supabase auth storage for admin sessions', async () => {
+  it('uses localStorage-backed Supabase auth storage and migrates legacy cookie sessions', async () => {
     const calls = [];
     const cookieWrites = [];
-    let cookieJar = '';
+    // A legacy pre-ADR-091 cookie session: it must migrate to localStorage and
+    // be deleted, never written back — cookies rode the Cookie header to the
+    // static host's access logs on every /admin request.
+    let cookieJar = 'ecovila_crm_auth_sb-legacy-token=%7B%22access_token%22%3A%22old%22%7D';
+    const localStore = new Map();
     const session = {
       user: {
         app_metadata: { role: 'diana' },
@@ -746,20 +750,22 @@ describe('EcoVila Step 9 CRM', () => {
       set cookie(value) {
         cookieWrites.push(value);
         const [pair] = String(value).split(';');
-        const [name, nextValue] = pair.split('=');
+        const [name] = pair.split('=');
         if (String(value).includes('Max-Age=0')) {
           cookieJar = cookieJar
             .split('; ')
             .filter((cookie) => !cookie.startsWith(`${name}=`))
             .join('; ');
-          return;
         }
-        cookieJar = cookieJar
-          .split('; ')
-          .filter(Boolean)
-          .filter((cookie) => !cookie.startsWith(`${name}=`))
-          .concat(`${name}=${nextValue}`)
-          .join('; ');
+      },
+    };
+    const localStorageRef = {
+      getItem: (key) => (localStore.has(key) ? localStore.get(key) : null),
+      setItem: (key, value) => localStore.set(key, String(value)),
+      removeItem: (key) => localStore.delete(key),
+      key: (index) => [...localStore.keys()][index] ?? null,
+      get length() {
+        return localStore.size;
       },
     };
     const client = {
@@ -770,6 +776,7 @@ describe('EcoVila Step 9 CRM', () => {
     };
     const { EcoVilaCrmAuth: auth } = loadAdminModule('admin/js/crm-auth.js', {
       document: documentRef,
+      localStorage: localStorageRef,
       location: { href: '' },
       EcoVilaSupabase: {
         getSupabaseClient(options) {
@@ -781,18 +788,27 @@ describe('EcoVila Step 9 CRM', () => {
 
     const result = await auth.requireSession();
     const storage = calls[0].authStorage;
-    storage.setItem('sb-admin-auth-token', '{"access_token":"access","refresh_token":"refresh"}');
 
     assert.equal(result.role, 'diana');
     assert.equal(calls.length, 1);
-    assert.equal(typeof storage.getItem, 'function');
+
+    // New sessions live in localStorage only — no cookie write may carry them.
+    storage.setItem('sb-admin-auth-token', '{"access_token":"access","refresh_token":"refresh"}');
     assert.equal(storage.getItem('sb-admin-auth-token'), '{"access_token":"access","refresh_token":"refresh"}');
-    assert.match(cookieWrites.at(-1), /Path=\/admin/);
-    assert.match(cookieWrites.at(-1), /SameSite=Lax/);
+    assert.equal(localStore.get('ecovila_crm_auth_sb-admin-auth-token'), '{"access_token":"access","refresh_token":"refresh"}');
+    assert.ok(
+      cookieWrites.every((write) => !write.includes('access_token') || write.includes('Max-Age=0')),
+      'session tokens must never be written into cookies',
+    );
+
+    // The legacy cookie migrates on first read and is deleted afterwards.
+    assert.equal(storage.getItem('sb-legacy-token'), '{"access_token":"old"}');
+    assert.equal(localStore.get('ecovila_crm_auth_sb-legacy-token'), '{"access_token":"old"}');
+    assert.ok(cookieWrites.some((write) => write.startsWith('ecovila_crm_auth_sb-legacy-token=') && write.includes('Max-Age=0')));
+    assert.ok(!cookieJar.includes('sb-legacy-token'), 'legacy cookie should be gone');
 
     storage.removeItem('sb-admin-auth-token');
     assert.equal(storage.getItem('sb-admin-auth-token'), null);
-    assert.match(cookieWrites.at(-1), /Max-Age=0/);
   });
 
   it('keeps tabs usable in the local no-config dashboard and narrow app browser', () => {
@@ -966,7 +982,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(totalField.textContent, 'Preț total: 8600 MDL');
   });
 
-  it('asks for two Romanian confirmations and refunds paid MAIB bookings before CRM deletion', async () => {
+  it('asks for two Romanian confirmations and cancels BEFORE refunding paid MAIB bookings', async () => {
     const elements = new Map();
     const dialog = createFakeElement('dialog');
     dialog.showModal = () => {};
@@ -1056,10 +1072,14 @@ describe('EcoVila Step 9 CRM', () => {
       'Sigur vrei să ștergi această rezervare?',
       'Ești absolut sigur că vrei să ștergi această rezervare?',
     ]);
-    assert.equal(operations[0][0], 'refund');
-    assert.equal(operations[0][1].bookingGroupId, 'group-paid-card');
-    assert.equal(operations[0][1].reason, 'crm_cancellation');
-    assert.deepEqual(operations.slice(1).map((item) => item[0]), ['cancel-group', 'notify', 'reload']);
+    // Cancel FIRST, refund SECOND (ADR-088): refunding before a cancel that
+    // then fails would return the money while the booking stays active. A
+    // refund that fails after the cancel is queued server-side and retried by
+    // the reconcile-refunds cron.
+    assert.deepEqual(operations.map((item) => item[0]), ['cancel-group', 'refund', 'notify', 'reload']);
+    const refund = operations.find((item) => item[0] === 'refund');
+    assert.equal(refund[1].bookingGroupId, 'group-paid-card');
+    assert.equal(refund[1].reason, 'crm_cancellation');
     const notify = operations.find((item) => item[0] === 'notify');
     assert.equal(notify[1].bookingGroupId, 'group-paid-card');
     assert.equal(notify[1].reservationId, 'reservation-paid-card');

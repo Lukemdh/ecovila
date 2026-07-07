@@ -112,6 +112,32 @@ export async function verifyReservationGroupPricing(
     throw new HttpError(400, 'All rooms in a booking must be of the same accommodation type.');
   }
 
+  // The party must physically fit the booked units. The browser enforces this
+  // in the stepper UI, but a direct API call could book (and correctly pay for)
+  // 30 adults in one villa. Raw counts are bounded BEFORE getUnitsNeeded — a
+  // linear scan over the adult count — so a forged party can't spin it either
+  // (mirrors reservationChanges.quoteBookingChange, ADR-090).
+  const partyPricing = pricing as unknown as {
+    ROOM_TYPES: Record<string, { maxAdults?: number; maxKids?: number }>;
+    getUnitsNeeded?: (roomType: string, party: { adults: number; kidsAges: unknown[] }) => number;
+  };
+  const typeConfig = partyPricing.ROOM_TYPES[roomType] || {};
+  const capacityAdults = rows.length * Number(typeConfig.maxAdults || 0);
+  const capacityGuests = rows.length *
+    (Number(typeConfig.maxAdults || 0) + Number(typeConfig.maxKids || 0));
+  const kidsCount = Array.isArray(first.kids_ages) ? first.kids_ages.length : 0;
+  const partyDoesNotFit = first.adults > capacityAdults ||
+    kidsCount > capacityGuests ||
+    (typeof partyPricing.getUnitsNeeded === 'function' &&
+      partyPricing.getUnitsNeeded(roomType, {
+          adults: first.adults,
+          kidsAges: first.kids_ages || [],
+        }) > rows.length);
+
+  if (partyDoesNotFit) {
+    throw new HttpError(400, 'The selected party does not fit in the chosen accommodation.');
+  }
+
   const [pricingTiers, holidays] = await Promise.all([
     fetchPricingTiers(client),
     fetchHolidays(client),

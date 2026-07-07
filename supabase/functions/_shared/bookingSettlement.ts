@@ -101,6 +101,62 @@ const RESERVATION_COLUMNS =
 // a late paid result — guest- or staff-cancelled bookings stay cancelled.
 const REINSTATABLE_CANCELLATION_REASONS = ['maib_session_expired', 'maib_payment_not_started'];
 
+// A second captured payment for a booking group that already has a different
+// paid/refunded payment is a suspected double charge: it must never settle
+// silently. Both rails consult this before settling (ADR-089).
+export async function findOtherPaidPayment(
+  client: SupabaseClient,
+  bookingGroupId: string,
+  excludePayId: string,
+): Promise<{ pay_id: string; status: string } | null> {
+  const { data, error } = await table<Array<{ pay_id: string; status: string }>>(
+    client,
+    'maib_payments',
+  )
+    .select('pay_id, status')
+    .eq('booking_group_id', bookingGroupId)
+    .in('status', ['paid', 'refunded']);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []).find((payment) => payment.pay_id !== excludePayId) || null;
+}
+
+// Flip manual_review exactly once; returns true only on the false→true
+// transition so callers can gate their staff alert on it (a status poll or a
+// provider retry would otherwise re-alert every few seconds).
+export async function markPaymentManualReview(
+  client: SupabaseClient,
+  payId: string,
+): Promise<boolean> {
+  const { data, error } = await table<Array<{ pay_id: string }>>(client, 'maib_payments')
+    .update({ manual_review: true, updated_at: new Date().toISOString() })
+    .eq('pay_id', payId)
+    .eq('manual_review', false)
+    .select('pay_id');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Boolean(data && data.length);
+}
+
+// Stamped only AFTER settlement succeeds (ADR-089): a payment row that is
+// terminal-paid but unprocessed means "money captured, booking not yet
+// settled", and both the duplicate guards and the cron backstop key off it.
+export async function markPaymentProcessed(client: SupabaseClient, payId: string, now: string) {
+  const { error } = await table(client, 'maib_payments')
+    .update({ processed_at: now, updated_at: now })
+    .eq('pay_id', payId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function findOnlineReservationsForBookingGroup(
   client: SupabaseClient,
   bookingGroupId: string,

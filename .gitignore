@@ -14,6 +14,7 @@ coverage/
 # Local recovery/source archives; do not commit raw hosting backups.
 Archive.zip
 docs/old php/
+Landing/
 
 # Supabase CLI local link state
 supabase/.temp/

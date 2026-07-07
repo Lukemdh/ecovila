@@ -252,11 +252,20 @@
     }
 
     qs(`[data-photo-upload="${section.slug}"]`, existing)?.addEventListener('change', (event) => {
-      uploadFiles(context, section, Array.from(event.target.files || []), ordered.length);
+      uploadFiles(context, section, Array.from(event.target.files || []), ordered.length)
+        .catch((error) => {
+          console.error('Photo upload flow failed', error);
+          showPhotoToast('Încărcarea pozelor a eșuat. Reîncarcă pagina și încearcă din nou.');
+        });
     });
 
     existing.querySelectorAll('[data-remove-photo]').forEach((button) => {
-      button.addEventListener('click', () => removePhoto(context, button.dataset.removePhoto));
+      button.addEventListener('click', () => {
+        removePhoto(context, button.dataset.removePhoto).catch((error) => {
+          console.error('Photo delete flow failed', error);
+          showPhotoToast('Ștergerea a eșuat. Reîncarcă pagina și încearcă din nou.');
+        });
+      });
     });
 
     wirePhotoReordering(context, section, ordered, existing);
@@ -311,29 +320,53 @@
   }
 
   async function uploadFiles(context, section, files, currentCount) {
+    // Per-file isolation: one bad file (too large, storage hiccup) must not
+    // silently abort the rest of the batch — it used to die as an unhandled
+    // rejection mid-loop with zero feedback.
+    const failed = [];
     for (const [index, file] of files.entries()) {
-      const prepared = await prepareUpload(file);
-      const storagePath = `${section.slug}/${Date.now()}-${index}.${prepared.extension}`;
-      const upload = await root.EcoVilaSupabase.uploadCrmPhoto(context.client, storagePath, prepared.blob, {
-        contentType: prepared.contentType,
-      });
-      if (upload.error) {
-        throw upload.error;
+      try {
+        const prepared = await prepareUpload(file);
+        const storagePath = `${section.slug}/${Date.now()}-${index}.${prepared.extension}`;
+        const upload = await root.EcoVilaSupabase.uploadCrmPhoto(context.client, storagePath, prepared.blob, {
+          contentType: prepared.contentType,
+        });
+        if (upload.error) {
+          throw upload.error;
+        }
+        await root.EcoVilaSupabase.insertCrmPhoto(context.client, {
+          section_id: section.id,
+          storage_path: storagePath,
+          alt_text: section.label,
+          sort_order: currentCount + index + 1,
+          status: 'draft',
+          created_by: context.session.user.id,
+        });
+      } catch (error) {
+        console.error('Photo upload failed', { file: file?.name, error });
+        failed.push(file?.name || `fișierul ${index + 1}`);
       }
-      await root.EcoVilaSupabase.insertCrmPhoto(context.client, {
-        section_id: section.id,
-        storage_path: storagePath,
-        alt_text: section.label,
-        sort_order: currentCount + index + 1,
-        status: 'draft',
-        created_by: context.session.user.id,
-      });
     }
     await loadPhotos(context);
+    if (failed.length) {
+      showPhotoToast(`Nu s-au putut încărca: ${failed.join(', ')}`);
+    }
   }
 
   async function removePhoto(context, photoId) {
-    await root.EcoVilaSupabase.deleteCrmPhoto(context.client, photoId);
+    // Deleting is one click on a live gallery — require a confirmation. (The
+    // delete is DB-row-only, so the file stays recoverable in storage, but the
+    // photo still vanishes from the site at the next publish.)
+    if (!root.confirm?.('Ștergi această fotografie din galerie?')) {
+      return;
+    }
+    try {
+      await root.EcoVilaSupabase.deleteCrmPhoto(context.client, photoId);
+    } catch (error) {
+      console.error('Photo delete failed', error);
+      showPhotoToast('Fotografia nu a putut fi ștearsă. Încearcă din nou.');
+      return;
+    }
     await loadPhotos(context);
   }
 

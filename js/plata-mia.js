@@ -21,6 +21,7 @@
   let _pollTimeout = null;
   let _pollAttempts = 0;
   let _countdownTimer = null;
+  let _countdownDeadline = 0;
   let _qrRendered = false;
   let _terminal = false;
 
@@ -67,6 +68,31 @@
       return JSON.parse(root.localStorage?.getItem(key) || 'null');
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Drop the pending reservation persisted by checkout once this booking's MIA
+   * session ends without a payment (expired/failed), so recovery paths can
+   * never resurrect the dead hold. The paid path is left to the confirmation
+   * page, which still needs the blob for purchase tracking before it clears
+   * it. Only clears when the blob belongs to this booking — never for a change
+   * payment or another booking's pending state.
+   */
+  function clearSettledPendingReservation(context) {
+    if (context.changeId) return;
+
+    const pending = readStorage(STORAGE_PENDING);
+    if (!pending) return;
+
+    const matchesGroup = Boolean(context.bookingGroupId) && pending.bookingGroupId === context.bookingGroupId;
+    const matchesReservation = Boolean(context.reservationId) && pending.primaryReservationId === context.reservationId;
+    if (!matchesGroup && !matchesReservation) return;
+
+    try {
+      root.localStorage?.removeItem(STORAGE_PENDING);
+    } catch {
+      // ignore
     }
   }
 
@@ -145,7 +171,7 @@
   }
 
   function startCountdown(expiresAt) {
-    if (_countdownTimer || !expiresAt) {
+    if (!expiresAt) {
       return;
     }
 
@@ -153,6 +179,15 @@
     if (!Number.isFinite(deadline)) {
       return;
     }
+
+    // A later poll can return a refreshed session with a new deadline; adopt
+    // it instead of counting down to the stale one.
+    if (_countdownTimer !== null && deadline === _countdownDeadline) {
+      return;
+    }
+
+    stopCountdown();
+    _countdownDeadline = deadline;
 
     const node = el('[data-mia-countdown]');
     if (node) {
@@ -262,6 +297,7 @@
         return true;
       case 'expired':
       case 'failed':
+        clearSettledPendingReservation(context);
         showExpired();
         return true;
       case 'not_found':
@@ -327,9 +363,9 @@
         schedulePoll(context);
       }
     } catch (_error) {
-      // If the very first call fails we still show the pay panel and let the
-      // poller retry; the QR may simply be a moment behind.
-      showOnly('[data-mia-pay]');
+      // The very first call failed, so there is no QR or amount to show yet.
+      // Keep the loading panel up and let the poller retry — the pay panel is
+      // only revealed once a fetch actually returns the session (see poll).
       schedulePoll(context);
     }
 

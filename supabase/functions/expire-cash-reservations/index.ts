@@ -2,6 +2,13 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, jsonResponse, requireSharedSecret } from '../_shared/http.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
+  findOnlineReservationsForBookingGroup,
+  markPaymentManualReview,
+  markPaymentProcessed,
+  settleBookingGroupAsPaid,
+} from '../_shared/bookingSettlement.ts';
+import { sendStaffAlert } from '../_shared/alerts.ts';
+import {
   composeExpiredCashCancellation,
   dispatchScheduledNotificationOnce,
   mapNotificationOwners,
@@ -141,6 +148,9 @@ Deno.serve(async (request) => {
     );
 
     const notificationResults = await notifyExpiredReservations(client, cancelledReservations);
+    // Backstop BEFORE releasing holds: a payment MAIB confirmed but whose
+    // settlement crashed mid-way must settle here, not be expired below.
+    const settledBackstop = await settleUnprocessedPaidPayments(client, now);
     const expiredMaibSessions = await expireStaleMaibSessions(client, now);
 
     return jsonResponse(
@@ -148,6 +158,7 @@ Deno.serve(async (request) => {
         expired: cancelledIds.length,
         reservationIds: cancelledIds,
         notificationResults,
+        settledBackstop,
         expiredMaibSessions,
       },
       {},
@@ -164,12 +175,83 @@ async function expireStaleMaibSessions(
 ): Promise<MaibSessionExpiryResult> {
   const expiredInFlightIds = await expireInFlightMaibSessions(client, now);
   const orphanedIds = await expireUnstartedCardReservations(client, now);
+  await expireStaleMaibPaymentRows(client, now);
 
   return {
     expired: expiredInFlightIds.length + orphanedIds.length,
     reservationIds: [...expiredInFlightIds, ...orphanedIds],
     orphaned: orphanedIds.length,
   };
+}
+
+// Crash-recovery backstop (ADR-089): both rails stamp maib_payments 'paid'
+// BEFORE settling and processed_at only AFTER. A row stuck paid-but-unprocessed
+// means the settlement died mid-way — finish it here (settlement is idempotent;
+// the reinstate path undoes a premature expiry). The 2-minute grace skips rows
+// whose settlement is genuinely still in flight.
+const UNPROCESSED_PAID_GRACE_MINUTES = 2;
+
+async function settleUnprocessedPaidPayments(client: SupabaseClient, now: string) {
+  const threshold = new Date(
+    new Date(now).getTime() - UNPROCESSED_PAID_GRACE_MINUTES * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await table<Array<{ pay_id: string; booking_group_id: string }>>(
+    client,
+    'maib_payments',
+  )
+    .select('pay_id, booking_group_id')
+    .eq('status', 'paid')
+    .eq('manual_review', false)
+    .is('processed_at', null)
+    .lt('updated_at', threshold);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const results: Array<{ payId: string; matched: number; requiresManualReview: boolean }> = [];
+
+  for (const payment of data || []) {
+    try {
+      const reservations = await findOnlineReservationsForBookingGroup(
+        client,
+        payment.booking_group_id,
+      );
+      const settlement = await settleBookingGroupAsPaid(client, {
+        bookingGroupId: payment.booking_group_id,
+        reservations,
+        now: new Date().toISOString(),
+        source: 'expire-cron-backstop',
+      });
+
+      if (settlement.requiresManualReview) {
+        const transitioned = await markPaymentManualReview(client, payment.pay_id);
+        if (transitioned) {
+          await sendStaffAlert('Plată încasată fără rezervare — restituire manuală', [
+            `Plata ${payment.pay_id} (booking group ${payment.booking_group_id}) este`,
+            `confirmată de MAIB, dar nicio rezervare nu a putut fi confirmată nici la`,
+            `reluarea automată. Oaspetele a plătit fără să aibă cazare — restituie plata`,
+            `din CRM și contactează-l.`,
+          ]).catch((alertError) => console.error('Backstop alert failed', alertError));
+        }
+      } else {
+        await markPaymentProcessed(client, payment.pay_id, new Date().toISOString());
+      }
+
+      results.push({
+        payId: payment.pay_id,
+        matched: settlement.matched,
+        requiresManualReview: settlement.requiresManualReview,
+      });
+    } catch (settleError) {
+      console.error('Backstop settlement failed', {
+        payId: payment.pay_id,
+        message: settleError instanceof Error ? settleError.message : 'settle failed',
+      });
+    }
+  }
+
+  return results;
 }
 
 async function findGroupsWithRecentPaymentAttempt(client: SupabaseClient, now: string) {
@@ -213,31 +295,35 @@ async function expireInFlightMaibSessions(client: SupabaseClient, now: string) {
     .filter((reservation) => !protectedGroups.has(reservation.booking_group_id))
     .map((reservation) => reservation.id);
 
-  const ids = await cancelPendingReservations(client, expirableIds, {
+  return await cancelPendingReservations(client, expirableIds, {
     payment_status: 'cancelled',
     payment_in_progress: false,
     payment_session_expires_at: null,
     cancelled_at: now,
     cancellation_reason: 'maib_session_expired',
   });
+}
 
-  if (!ids.length) {
-    return [];
-  }
-
-  const { error: paymentUpdateError } = await table(client, 'maib_payments')
+// Retire expired maib_payments session rows. Runs on every tick (not only when
+// a reservation expired the same minute) and spares rows inside the attempt
+// grace so a group whose guest is mid-payment isn't shown "expired" a minute
+// early. Never touches paid/refunded rows.
+async function expireStaleMaibPaymentRows(client: SupabaseClient, now: string) {
+  const graceThreshold = new Date(
+    new Date(now).getTime() - ATTEMPT_GRACE_MINUTES * 60 * 1000,
+  ).toISOString();
+  const { error } = await table(client, 'maib_payments')
     .update({
       status: 'cancelled',
       updated_at: now,
     })
     .in('status', ['created', 'pending'])
-    .lt('expires_at', now);
+    .lt('expires_at', now)
+    .lt('created_at', graceThreshold);
 
-  if (paymentUpdateError) {
-    throw new Error(paymentUpdateError.message);
+  if (error) {
+    throw new Error(error.message);
   }
-
-  return ids;
 }
 
 async function expireUnstartedCardReservations(client: SupabaseClient, now: string) {

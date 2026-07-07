@@ -50,6 +50,7 @@ type ReusablePaymentRow = {
   amount?: number | string | null;
   expires_at?: string | null;
   status?: string | null;
+  payment_rail?: string | null;
 };
 
 type PaymentSessionInsert = {
@@ -116,16 +117,21 @@ Deno.serve(async (request) => {
 
     if (existingPayment?.checkout_url) {
       // Only hand back a previous session when it was created for the exact
-      // amount owed now; otherwise the guest would pay a stale total.
-      if (Number(existingPayment.amount) === amount) {
+      // amount owed now AND on the same rail — a card caller must never receive
+      // a MIA QR url as its payUrl (or vice-versa).
+      if (
+        Number(existingPayment.amount) === amount &&
+        (existingPayment.payment_rail || 'card') === paymentRail
+      ) {
         return json(request, reusedResponse(paymentRail, existingPayment, responseContext));
       }
 
-      // A MIA QR for a stale amount is independently payable, so cancel it at
-      // MAIB before minting a fresh one; the card checkout is harmless to leave.
-      if (paymentRail === 'mia') {
+      // A superseded MIA QR is independently payable at MAIB, so cancel it
+      // there whenever the STALE session is a MIA one — regardless of which
+      // rail is being requested now; the card checkout is harmless to leave.
+      if (existingPayment.payment_rail === 'mia') {
         try {
-          await cancelMaibMiaQr(existingPayment.pay_id, 'amount_changed');
+          await cancelMaibMiaQr(existingPayment.pay_id, 'superseded');
         } catch (error) {
           console.error('Could not cancel stale MIA QR', error);
         }
@@ -153,7 +159,7 @@ Deno.serve(async (request) => {
         createdAt: now.toISOString(),
       });
 
-    await insertPaymentSession(client, {
+    const inserted = await insertPaymentSession(client, {
       payId: session.payId,
       bookingGroupId,
       primaryReservationId,
@@ -164,6 +170,31 @@ Deno.serve(async (request) => {
       raw: session.raw,
       expiresAt,
     });
+
+    if (!inserted) {
+      // Lost the one-live-session-per-group race (ADR-089): a concurrent call
+      // inserted its session first. Retire the session just minted (a MIA QR is
+      // independently payable, so cancel it at MAIB) and hand back the winner's
+      // — both callers end up on the same single payable session.
+      if (paymentRail === 'mia') {
+        try {
+          await cancelMaibMiaQr(session.payId, 'superseded');
+        } catch (error) {
+          console.error('Could not cancel racing MIA QR', error);
+        }
+      }
+
+      const winner = await findReusablePayment(client, bookingGroupId);
+      if (
+        winner?.checkout_url &&
+        Number(winner.amount) === amount &&
+        (winner.payment_rail || 'card') === paymentRail
+      ) {
+        return json(request, reusedResponse(paymentRail, winner, responseContext));
+      }
+
+      throw new HttpError(409, 'Another payment attempt is already in progress. Please retry.');
+    }
     await markReservationsInProgress(
       client,
       reservations.map((reservation) => reservation.id),
@@ -376,7 +407,7 @@ async function expireStalePayment(client: SupabaseClient, payId: string) {
 
 async function findReusablePayment(client: SupabaseClient, bookingGroupId: string) {
   const { data, error } = await table<ReusablePaymentRow>(client, 'maib_payments')
-    .select('pay_id, checkout_url, amount, expires_at, status')
+    .select('pay_id, checkout_url, amount, expires_at, status, payment_rail')
     .eq('booking_group_id', bookingGroupId)
     .in('status', ['created', 'pending'])
     .gt('expires_at', new Date().toISOString())
@@ -391,6 +422,8 @@ async function findReusablePayment(client: SupabaseClient, bookingGroupId: strin
   return data;
 }
 
+// Returns false when the one-live-session-per-group unique index rejects the
+// insert — i.e. a concurrent call already holds the live session (ADR-089).
 async function insertPaymentSession(client: SupabaseClient, session: PaymentSessionInsert) {
   const { error } = await table(client, 'maib_payments')
     .insert({
@@ -408,8 +441,13 @@ async function insertPaymentSession(client: SupabaseClient, session: PaymentSess
     });
 
   if (error) {
+    if ((error as { code?: string }).code === '23505') {
+      return false;
+    }
     throw new Error(error.message);
   }
+
+  return true;
 }
 
 async function markReservationsInProgress(
@@ -417,12 +455,15 @@ async function markReservationsInProgress(
   reservationIds: string[],
   expiresAt: string,
 ) {
+  // Re-assert pending so a reservation the expiry cron cancelled between the
+  // payable SELECT and this UPDATE never gets a stale in-progress flag.
   const { error } = await table(client, 'reservations')
     .update({
       payment_in_progress: true,
       payment_session_expires_at: expiresAt,
     })
-    .in('id', reservationIds);
+    .in('id', reservationIds)
+    .eq('payment_status', 'pending');
 
   if (error) {
     throw new Error(error.message);

@@ -6,8 +6,12 @@
 import { getMaibMiaPaymentByOrderId, normalizeMaibMiaPaymentStatus } from './maib.ts';
 import {
   findOnlineReservationsForBookingGroup,
+  findOtherPaidPayment,
+  markPaymentManualReview,
+  markPaymentProcessed,
   settleBookingGroupAsPaid,
 } from './bookingSettlement.ts';
+import { sendStaffAlert } from './alerts.ts';
 import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
@@ -60,9 +64,16 @@ export async function reconcileMiaBookingGroup(
     currency: row.currency || 'MDL',
   };
 
-  // Already settled: nothing to re-check.
+  // Fully settled (processed_at is stamped only AFTER settlement): nothing to
+  // re-check. A paid-but-unprocessed row means the process died between the
+  // MAIB confirmation and the reservations update — finish the settlement now
+  // instead of short-circuiting, or the booking would be silently lost to the
+  // expiry cron while the guest holds a "paid" screen (ADR-089).
   if (row.status === 'paid' || row.status === 'refunded') {
-    return { status: 'paid', ...base };
+    if (row.processed_at) {
+      return { status: 'paid', ...base };
+    }
+    return await settleConfirmedMiaPayment(client, row, bookingGroupId, source, base);
   }
 
   // Authoritative check against MAIB. A lookup failure must not flip the booking
@@ -99,11 +110,51 @@ export async function reconcileMiaBookingGroup(
     return { status: 'pending', amountMismatch: true, ...base };
   }
 
+  // Suspected double charge: another payment of this group already captured
+  // money (e.g. the guest paid by card in a second tab). Flag for manual
+  // review instead of settling on top of it (ADR-089).
+  const otherPaid = await findOtherPaidPayment(client, bookingGroupId, row.pay_id);
+  if (otherPaid) {
+    const now = new Date().toISOString();
+    await markMiaPaymentPaid(client, row.pay_id, miaPayment.payId, miaPayment.raw, now);
+    const transitioned = await markPaymentManualReview(client, row.pay_id);
+    console.error('MIA capture for a group with another paid payment — not settled', {
+      bookingGroupId,
+      payId: row.pay_id,
+      otherPayId: otherPaid.pay_id,
+    });
+    if (transitioned) {
+      await sendStaffAlert('Posibilă plată dublă (MIA) — verifică și restituie', [
+        `Booking group ${bookingGroupId} are deja plata ${otherPaid.pay_id} (${otherPaid.status}),`,
+        `dar MAIB confirmă și o încasare MIA pe ${row.pay_id}.`,
+        `Oaspetele a plătit probabil de două ori — verifică în panoul maibmerchants`,
+        `și restituie încasarea suplimentară din CRM.`,
+      ]).catch((alertError) => console.error('Double-capture alert failed', alertError));
+      await markPaymentProcessed(client, row.pay_id, new Date().toISOString());
+    }
+    return { status: 'paid', requiresManualReview: true, matched: 0, ...base };
+  }
+
   const now = new Date().toISOString();
   // Record the executed payId in provider_payment_id so the existing refund flow
   // (which calls /v2/payments/{payId}/refund) targets the right payment.
+  // processed_at is NOT stamped here — only after the settlement succeeds.
   await markMiaPaymentPaid(client, row.pay_id, miaPayment.payId, miaPayment.raw, now);
 
+  return await settleConfirmedMiaPayment(client, row, bookingGroupId, source, base);
+}
+
+// The MAIB side is already proven paid; flip the reservations, then stamp the
+// payment row processed. Shared by the fresh-confirmation path and the
+// paid-but-unprocessed recovery path.
+async function settleConfirmedMiaPayment(
+  client: SupabaseClient,
+  row: MiaPaymentRow,
+  bookingGroupId: string,
+  source: string,
+  base: Omit<MiaReconcileResult, 'status'>,
+): Promise<MiaReconcileResult> {
+  const now = new Date().toISOString();
   const reservations = await findOnlineReservationsForBookingGroup(client, bookingGroupId);
   const settlement = await settleBookingGroupAsPaid(client, {
     bookingGroupId,
@@ -115,11 +166,21 @@ export async function reconcileMiaBookingGroup(
   if (settlement.requiresManualReview) {
     console.error(
       'MIA paid settled no reservation — guest was charged, manual refund review required',
-      { bookingGroupId, payId: miaPayment.payId },
+      { bookingGroupId, payId: row.pay_id },
     );
+    const transitioned = await markPaymentManualReview(client, row.pay_id);
+    if (transitioned) {
+      await sendStaffAlert('Plată MIA încasată fără rezervare — restituire manuală', [
+        `MAIB a confirmat plata MIA pentru booking group ${bookingGroupId} (pay ${row.pay_id}),`,
+        `dar nicio rezervare nu a putut fi confirmată (camera a fost re-rezervată după`,
+        `expirarea hold-ului). Oaspetele a plătit fără să aibă cazare — restituie plata`,
+        `din CRM și contactează-l.`,
+      ]).catch((alertError) => console.error('Manual-review alert failed', alertError));
+    }
     return { status: 'paid', requiresManualReview: true, matched: 0, ...base };
   }
 
+  await markPaymentProcessed(client, row.pay_id, new Date().toISOString());
   return { status: 'paid', matched: settlement.matched, ...base };
 }
 
@@ -169,12 +230,13 @@ async function markMiaPaymentPaid(
   raw: Record<string, unknown>,
   now: string,
 ) {
+  // Deliberately leaves processed_at null: "paid but unprocessed" is the
+  // crash-recovery marker that makes reconciliation re-run the settlement.
   const { error } = await table(client, 'maib_payments')
     .update({
       status: 'paid',
       provider_payment_id: miaPayId || null,
       callback_payload: { mia_payment: raw },
-      processed_at: now,
       updated_at: now,
     })
     .eq('pay_id', payId);

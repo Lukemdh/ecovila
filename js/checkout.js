@@ -234,6 +234,13 @@
 
     try {
       pricing.enumerateNights(selection.checkIn, selection.checkOut);
+
+      // A stored selection can outlive its own dates (e.g. a tab reopened days
+      // later); a past check-in could never be reserved, so treat it like any
+      // other invalid selection and let the standard empty state show.
+      if (pricing.toISODate(selection.checkIn) < pricing.todayISO()) {
+        errors.push('checkout.errorSelection');
+      }
     } catch (error) {
       errors.push('checkout.errorSelection');
     }
@@ -306,7 +313,11 @@
     const priceParts = splitTotalPrice(selection.totalPrice, roomIds.length);
     const cashExpiresAt = paymentType === 'cash' ? getCashExpiry(now) : null;
     const guest = guestValidation.guest;
-    const guestLanguage = normalizeLanguage(selection.language || getLanguage());
+    // Notifications should follow the language the guest is reading right now,
+    // not the one the booking page happened to be in when the selection was
+    // stored — a guest who switches language on checkout expects emails/SMS in
+    // the new language. The stored selection language is only a fallback.
+    const guestLanguage = normalizeLanguage(getLanguage() || selection.language);
 
     return roomIds.map((roomId, index) => {
       const payload = {

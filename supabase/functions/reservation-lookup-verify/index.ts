@@ -73,10 +73,23 @@ Deno.serve(async (request) => {
       throw new HttpError(401, 'Invalid verification code.');
     }
 
-    await client
-      .from('reservation_lookup_codes')
+    // Consume the code: claiming verified_at only while it is still null makes
+    // the code single-use, so a correct code cannot be replayed within its TTL
+    // to mint additional manage tokens (ADR-090). The .is() filter also makes
+    // two concurrent submissions race safely — exactly one wins.
+    const { data: claimed, error: claimError } = await table<Array<{ id: string }>>(
+      client,
+      'reservation_lookup_codes',
+    )
       .update({ verified_at: new Date().toISOString() })
-      .eq('id', lookupId);
+      .eq('id', lookupId)
+      .is('verified_at', null)
+      .select('id');
+
+    if (claimError) throw new Error(claimError.message);
+    if (!claimed || !claimed.length) {
+      throw new HttpError(401, 'Invalid or expired verification code.');
+    }
 
     const token = createManageToken();
     const tokenHash = await hashManageToken(token);

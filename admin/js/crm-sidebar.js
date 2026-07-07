@@ -717,6 +717,14 @@
 
       addForm?.addEventListener('submit', async (event) => {
         event.preventDefault();
+        // A double-click used to race two inserts — the loser hit the room
+        // no-overlap constraint and showed the misleading "tocmai au fost
+        // rezervate" alert about its own twin.
+        const submitButton = addForm.querySelector('button[type="submit"]');
+        if (submitButton?.disabled) {
+          return;
+        }
+        if (submitButton) submitButton.disabled = true;
         try {
           const validationError = validateAddForm(state, addForm, addController.formState);
           if (validationError) {
@@ -742,6 +750,8 @@
             return;
           }
           context.setAlert(error?.message || 'Rezervarea nu a putut fi adăugată.');
+        } finally {
+          if (submitButton) submitButton.disabled = false;
         }
       });
     }

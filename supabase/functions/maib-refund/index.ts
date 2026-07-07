@@ -7,7 +7,11 @@ import {
   readJson,
   requireStaffRole,
 } from '../_shared/http.ts';
-import { refundMaibPayment } from '../_shared/maib.ts';
+import {
+  alertRefundProblem,
+  attemptBookingRefund,
+  findRefundRow,
+} from '../_shared/refunds.ts';
 import { refundPaidChanges } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 
@@ -64,14 +68,20 @@ Deno.serve(async (request) => {
     // A partial refund touches only the requested amount.
     const refundDifferences = requestedAmount === null;
 
-    const existing = await findExistingRefund(client, payment.pay_id);
+    const existing = await findRefundRow(client, payment.pay_id);
     if (existing?.status === 'succeeded') {
-      // The original was already refunded on an earlier attempt. Still settle any
-      // outstanding differences (refundPaidChanges is idempotent) so a retry after
-      // a mid-way failure finishes the job.
-      const differenceRefunds = refundDifferences
-        ? await refundPaidChanges(client, refundBookingGroupId, reason)
-        : [];
+      // MAIB allows exactly ONE refund per payment. A retried FULL refund is
+      // idempotent (return the recorded result and still settle any outstanding
+      // differences), but a new PARTIAL amount after a completed refund cannot
+      // ever execute — say so instead of returning a fake success (ADR-088).
+      if (requestedAmount !== null) {
+        throw new HttpError(
+          409,
+          'Această plată a fost deja restituită — MAIB permite o singură restituire per plată.',
+        );
+      }
+
+      const differenceRefunds = await refundPaidChanges(client, refundBookingGroupId, reason);
       return jsonResponse(
         { ok: true, result: existing.response_payload || {}, differenceRefunds },
         {},
@@ -79,55 +89,41 @@ Deno.serve(async (request) => {
       );
     }
 
-    await upsertRefundRequest(client, {
+    const outcome = await attemptBookingRefund(client, {
       payId: payment.pay_id,
+      providerPayId: payment.provider_payment_id || payment.pay_id,
       bookingGroupId: refundBookingGroupId,
       amount,
       currency: payment.currency || 'MDL',
       reason,
+      source: 'maib-refund',
     });
 
-    const providerPayId = payment.provider_payment_id || payment.pay_id;
+    if (!outcome.ok) {
+      // Unconfirmed (declined, non-OK status, or provider error). The row stays
+      // unresolved for the reconcile-refunds cron; staff are alerted now.
+      await alertRefundProblem(client, {
+        payId: payment.pay_id,
+        bookingGroupId: refundBookingGroupId,
+        amount,
+        reason,
+        detail: outcome.error ||
+          `Răspuns MAIB fără confirmare (status: ${outcome.providerStatus || 'necunoscut'}).`,
+        source: 'maib-refund',
+      }).catch((alertError) => console.error('Refund alert failed', alertError));
 
-    let refund;
-    try {
-      refund = await refundMaibPayment(providerPayId, amount, reason);
-    } catch (error) {
-      await markRefundFailed(client, payment.pay_id, error);
-      throw error;
-    }
-
-    const now = new Date().toISOString();
-    const providerRefundId = String(refund?.result?.refundId || refund?.refundId || '').trim() ||
-      null;
-
-    const { error: refundError } = await client
-      .from('maib_refunds')
-      .update({
-        status: 'succeeded',
-        response_payload: refund,
-        provider_refund_id: providerRefundId,
-        error_message: null,
-        updated_at: now,
-      })
-      .eq('pay_id', payment.pay_id);
-
-    if (refundError) {
-      throw new Error(refundError.message);
-    }
-
-    const { error: paymentError } = await client
-      .from('maib_payments')
-      .update({
-        status: 'refunded',
-        refund_payload: refund,
-        refunded_at: now,
-        updated_at: now,
-      })
-      .eq('pay_id', payment.pay_id);
-
-    if (paymentError) {
-      throw new Error(paymentError.message);
+      return jsonResponse(
+        {
+          ok: false,
+          pending: true,
+          providerStatus: outcome.providerStatus || null,
+          error: outcome.error || null,
+          message:
+            'Restituirea nu s-a confirmat încă — sistemul o reîncearcă automat la 30 de minute.',
+        },
+        {},
+        request,
+      );
     }
 
     const differenceRefunds = refundDifferences
@@ -135,7 +131,12 @@ Deno.serve(async (request) => {
       : [];
 
     return jsonResponse(
-      { ok: true, result: refund?.result || refund, differenceRefunds },
+      {
+        ok: true,
+        result: (outcome.payload as Record<string, unknown>)?.result || outcome.payload,
+        alreadyRefunded: Boolean(outcome.alreadyRefunded),
+        differenceRefunds,
+      },
       {},
       request,
     );
@@ -192,64 +193,6 @@ async function findPayment(
   }
 
   return byProviderId;
-}
-
-async function findExistingRefund(client: ServiceClient, payId: string) {
-  const { data, error } = await client
-    .from('maib_refunds')
-    .select('status, response_payload')
-    .eq('pay_id', payId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
-}
-
-async function upsertRefundRequest(
-  client: ServiceClient,
-  input: {
-    payId: string;
-    bookingGroupId: string;
-    amount: number;
-    currency: string;
-    reason: string;
-  },
-) {
-  const now = new Date().toISOString();
-  const { error } = await client
-    .from('maib_refunds')
-    .upsert({
-      pay_id: input.payId,
-      booking_group_id: input.bookingGroupId,
-      amount: input.amount,
-      currency: input.currency,
-      status: 'requested',
-      reason: input.reason,
-      request_payload: { amount: input.amount, reason: input.reason, source: 'crm' },
-      updated_at: now,
-    }, { onConflict: 'pay_id' });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-async function markRefundFailed(client: ServiceClient, payId: string, error: unknown) {
-  const { error: updateError } = await client
-    .from('maib_refunds')
-    .update({
-      status: 'failed',
-      error_message: error instanceof Error ? error.message : 'Refund failed.',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('pay_id', payId);
-
-  if (updateError) {
-    throw new Error(updateError.message);
-  }
 }
 
 function optionalString(value: unknown) {

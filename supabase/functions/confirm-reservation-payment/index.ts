@@ -109,32 +109,59 @@ Deno.serve(async (request) => {
       .filter((reservation) => reservation.payment_status === 'pending')
       .map((reservation) => reservation.id);
 
+    const confirmedIds = new Set<string>();
     if (pendingIds.length) {
       // Re-assert pending inside the UPDATE so a reservation the expiry cron
       // cancelled between this function's SELECT and UPDATE is left untouched.
-      const { error } = await table(client, 'reservations')
+      const { data: updatedRows, error } = await table<Array<{ id: string }>>(
+        client,
+        'reservations',
+      )
         .update({ payment_status: 'paid', cash_expires_at: null, paid_at: now })
         .in('id', pendingIds)
         .eq('payment_status', 'pending')
-        .is('cancelled_at', null);
+        .is('cancelled_at', null)
+        .select('id');
 
       if (error) {
         throw new Error(error.message);
       }
+
+      for (const row of updatedRows || []) {
+        confirmedIds.add(row.id);
+      }
+    }
+
+    // Only rows that are genuinely paid may drive the confirmation SMS/email
+    // and purchase tracking. If the expiry cron cancelled everything between
+    // the SELECT and the UPDATE, telling staff "paid" (and texting the guest a
+    // confirmation) would hide that the booking no longer exists (ADR-089).
+    const settledReservations = reservations.filter(
+      (reservation) =>
+        reservation.payment_status === 'paid' || confirmedIds.has(reservation.id),
+    );
+
+    if (!settledReservations.length) {
+      throw new HttpError(
+        409,
+        'The reservation was cancelled before the payment could be confirmed (the hold expired). Check the calendar and re-add the booking if the guest paid at the office.',
+      );
     }
 
     const [notificationResults, trackingResult] = await Promise.all([
-      notifyPaidReservations(client, reservations),
-      dispatchPurchaseTrackingOnce(client, reservations, { source: 'confirm-reservation-payment' }),
+      notifyPaidReservations(client, settledReservations),
+      dispatchPurchaseTrackingOnce(client, settledReservations, {
+        source: 'confirm-reservation-payment',
+      }),
     ]);
 
     return jsonResponse(
       {
         ok: true,
         status: 'paid',
-        matched: ids.length,
-        updated: pendingIds.length,
-        reservationIds: ids,
+        matched: settledReservations.length,
+        updated: confirmedIds.size,
+        reservationIds: settledReservations.map((reservation) => reservation.id),
         notificationResults,
         trackingResult,
       },

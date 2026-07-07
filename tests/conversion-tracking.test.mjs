@@ -99,7 +99,7 @@ describe('EcoVila consent-gated conversion tracking foundation', () => {
     assert.match(trackingShared, /sha256Hex/);
     assert.match(trackingShared, /dispatchPurchaseTrackingOnce/);
     assert.match(bookingSettlement, /dispatchPurchaseTrackingOnce\(client,\s*paidReservations/);
-    assert.match(cashConfirmation, /dispatchPurchaseTrackingOnce\(client,\s*reservations/);
+    assert.match(cashConfirmation, /dispatchPurchaseTrackingOnce\(client,\s*settledReservations/);
     assert.match(migrations, /create table if not exists public\.tracking_events/i);
     assert.match(migrations, /unique \(event_name, event_id\)/i);
     assert.doesNotMatch(trackingShared, /console\.(log|info|error)\([^)]*guest_(email|phone)|event_source_url:\s*`[^`]*guest/i);

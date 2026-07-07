@@ -230,7 +230,7 @@
 
     if (!readOnly) {
       list.querySelectorAll('[data-mark-paid]').forEach((button) => {
-        button.addEventListener('click', () => markPaid(context, button.dataset.markPaid, button.dataset.markPaidGroup));
+        button.addEventListener('click', () => markPaid(context, button.dataset.markPaid, button.dataset.markPaidGroup, button));
       });
     }
   }
@@ -443,10 +443,37 @@
     }
   }
 
+  // The exclusion constraint reservations_no_room_overlap rejects a move into an
+  // occupied room with SQLSTATE 23P01 (supabase-js reports it via { error }, it
+  // does not throw). P0001 carries the swap RPC's own raise messages.
+  function isRoomConflictError(error) {
+    return error?.code === '23P01' || String(error?.message || '').includes('reservations_no_room_overlap');
+  }
+
   async function handleDrop(context, state, event, cell) {
     const reservationId = event.dataTransfer?.getData('text/plain');
     const reservation = state.reservations.find((item) => item.id === reservationId);
     if (!reservation) {
+      return;
+    }
+
+    // A multi-villa booking renders one draggable card per villa but the drag
+    // payload only carries that card's row, so a drop would silently split the
+    // group across rooms. Those bookings are moved from the edit dialog instead.
+    const groupSize = state.reservations.filter((item) => {
+      return item.booking_group_id === reservation.booking_group_id && !root.EcoVilaCrmCalendar.isCancelled(item);
+    }).length;
+    if (groupSize > 1) {
+      context.setAlert('Rezervările cu mai multe vile se mută din dialogul de editare.');
+      return;
+    }
+
+    // Dropping on a row of another villa type would change what the guest booked
+    // without any repricing — block it instead of applying it silently.
+    const sourceRoom = state.rooms.find((room) => room.id === reservation.room_id);
+    const targetRoom = state.rooms.find((room) => room.id === cell.dataset.roomId);
+    if (sourceRoom && targetRoom && sourceRoom.type !== targetRoom.type) {
+      context.setAlert('Nu poți muta rezervarea pe alt tip de cazare — prețul nu se recalculează automat.');
       return;
     }
 
@@ -459,26 +486,55 @@
       dialog?.showModal?.();
       const input = qs('[data-swap-confirm]', dialog);
       const confirm = qs('[data-confirm-swap]', dialog);
+      if (input) {
+        input.value = '';
+      }
       confirm.onclick = async () => {
+        // Wrong confirmation word: alert and keep the dialog open (the button is
+        // type="button", so the method="dialog" form cannot auto-close it).
         if (input.value.trim() !== 'schimba') {
           context.setAlert('Tastează schimba pentru confirmare.');
           return;
         }
-        await swapRooms(context, reservation, targetReservation);
+        confirm.disabled = true;
+        try {
+          await swapRooms(context, reservation, targetReservation);
+        } finally {
+          confirm.disabled = false;
+          dialog?.close?.('confirm');
+        }
       };
       return;
     }
 
-    await context.client
+    const { error } = await context.client
       .from('reservations')
       .update({ room_id: cell.dataset.roomId })
       .eq('id', reservation.id);
+    if (error) {
+      context.setAlert(isRoomConflictError(error)
+        ? 'Mutarea nu a reușit: camera este ocupată în acel interval.'
+        : `Mutarea nu a reușit: ${String(error.message || 'eroare necunoscută').slice(0, 180)}`);
+    }
     await state.reload();
   }
 
   async function swapRooms(context, left, right) {
-    await context.client.from('reservations').update({ room_id: right.room_id }).eq('id', left.id);
-    await context.client.from('reservations').update({ room_id: left.room_id }).eq('id', right.id);
+    // Atomic server-side swap (vacate-then-assign in one transaction). Two plain
+    // UPDATEs can never swap date-overlapping stays — the first one always trips
+    // the reservations_no_room_overlap exclusion constraint — and a third-party
+    // conflict could half-apply the swap. The RPC rolls the whole swap back.
+    const { error } = await context.client.rpc('swap_reservation_rooms', {
+      left_id: left.id,
+      right_id: right.id,
+    });
+    if (error) {
+      context.setAlert(isRoomConflictError(error)
+        ? 'Schimbarea nu a reușit: camera este ocupată în acel interval.'
+        : `Schimbarea nu a reușit: ${String(error.message || 'eroare necunoscută').slice(0, 180)}`);
+    } else {
+      context.setAlert('');
+    }
     await activeState?.reload?.();
   }
 
@@ -514,7 +570,7 @@
     if (sendConfirmation) {
       const canSendConfirmation = !readOnly && reservation.payment_type === 'cash' && reservation.payment_status === 'paid';
       sendConfirmation.hidden = !canSendConfirmation;
-      sendConfirmation.onclick = canSendConfirmation ? () => sendPaymentConfirmation(reservation) : null;
+      sendConfirmation.onclick = canSendConfirmation ? () => sendPaymentConfirmation(reservation, sendConfirmation) : null;
     }
 
     // Read-only roles (Angela) open the dialog to inspect a reservation, but the
@@ -648,14 +704,11 @@
       return;
     }
 
+    // Cancel FIRST, refund SECOND. Refunding before a cancel that then fails
+    // would leave the money returned while the booking stays active — the worse
+    // failure mode. A refund that fails after the cancel is recorded server-side
+    // and retried by the refund-reconciliation cron.
     try {
-      if (reservation.payment_type === 'card' && reservation.payment_status === 'paid') {
-        await root.EcoVilaSupabase.refundMaibPaymentRequest(context.client, {
-          bookingGroupId: reservation.booking_group_id,
-          reason: 'crm_cancellation',
-        });
-      }
-
       const cancellation = {
         payment_status: 'cancelled',
         cancelled_at: new Date().toISOString(),
@@ -671,48 +724,89 @@
       } else {
         await root.EcoVilaSupabase.updateReservation(context.client, reservation.id, cancellation);
       }
-
-      // Best-effort: tell the guest their reservation was cancelled. The
-      // cancellation already succeeded, so a failed notification must not undo it.
-      let alert = '';
-      try {
-        await root.EcoVilaSupabase.notifyReservationCancellation(context.client, {
-          bookingGroupId: reservation.booking_group_id,
-          reservationId: reservation.id,
-        });
-      } catch (notifyError) {
-        alert = 'Rezervarea a fost anulată, dar notificarea către client nu a putut fi trimisă.';
-      }
-
-      context.setAlert?.(alert);
-      await activeState.reload();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Anularea a eșuat.';
       context.setAlert?.(`Rezervarea nu a fost anulată: ${message.slice(0, 180)}`);
+      return;
+    }
+
+    let alert = '';
+    if (reservation.payment_type === 'card' && reservation.payment_status === 'paid') {
+      try {
+        await root.EcoVilaSupabase.refundMaibPaymentRequest(context.client, {
+          bookingGroupId: reservation.booking_group_id,
+          reason: 'crm_cancellation',
+        });
+      } catch (refundError) {
+        alert = 'Rezervarea a fost anulată, dar restituirea NU s-a finalizat — va fi reîncercată automat; verifică tab-ul plăți.';
+      }
+    }
+
+    // Best-effort: tell the guest their reservation was cancelled. The
+    // cancellation already succeeded, so a failed notification must not undo it.
+    try {
+      await root.EcoVilaSupabase.notifyReservationCancellation(context.client, {
+        bookingGroupId: reservation.booking_group_id,
+        reservationId: reservation.id,
+      });
+    } catch (notifyError) {
+      alert = alert
+        ? `${alert} Notificarea către client nu a putut fi trimisă.`
+        : 'Rezervarea a fost anulată, dar notificarea către client nu a putut fi trimisă.';
+    }
+
+    context.setAlert?.(alert);
+    await activeState.reload();
+  }
+
+  // Money action: the button is disabled while the Edge Function runs (a double
+  // click would double-invoke) and a failed invoke is surfaced instead of dying
+  // as an unhandled rejection with zero staff feedback.
+  async function markPaid(context, reservationId, bookingGroupId, button) {
+    if (button) {
+      button.disabled = true;
+    }
+    try {
+      const result = await root.EcoVilaSupabase.confirmReservationPayment(context.client, {
+        reservationId,
+        bookingGroupId,
+      });
+      await activeState?.reload?.();
+      showPaymentConfirmationResult(activeState?.context || context, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
+      (activeState?.context || context)?.setAlert?.(`Plata nu a fost confirmată: ${message.slice(0, 180)}`);
+    } finally {
+      if (button) {
+        button.disabled = false;
+      }
     }
   }
 
-  async function markPaid(context, reservationId, bookingGroupId) {
-    const result = await root.EcoVilaSupabase.confirmReservationPayment(context.client, {
-      reservationId,
-      bookingGroupId,
-    });
-    await activeState?.reload?.();
-    showPaymentConfirmationResult(activeState?.context || context, result);
-  }
-
-  async function sendPaymentConfirmation(reservation) {
+  async function sendPaymentConfirmation(reservation, button) {
     const context = activeState?.context;
     if (!context) {
       return;
     }
 
-    const result = await root.EcoVilaSupabase.confirmReservationPayment(context.client, {
-      reservationId: reservation.id,
-      bookingGroupId: reservation.booking_group_id,
-    });
-    await activeState?.reload?.();
-    showPaymentConfirmationResult(context, result);
+    if (button) {
+      button.disabled = true;
+    }
+    try {
+      const result = await root.EcoVilaSupabase.confirmReservationPayment(context.client, {
+        reservationId: reservation.id,
+        bookingGroupId: reservation.booking_group_id,
+      });
+      await activeState?.reload?.();
+      showPaymentConfirmationResult(context, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
+      context.setAlert?.(`SMS-ul de confirmare nu a fost trimis: ${message.slice(0, 180)}`);
+    } finally {
+      if (button) {
+        button.disabled = false;
+      }
+    }
   }
 
   function showPaymentConfirmationResult(context, result) {

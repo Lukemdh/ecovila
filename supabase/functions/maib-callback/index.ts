@@ -11,9 +11,13 @@ import {
 } from '../_shared/maib.ts';
 import {
   findOnlineReservationsForBookingGroup,
+  findOtherPaidPayment,
+  markPaymentManualReview,
+  markPaymentProcessed,
   type PaymentReservationRow,
   settleBookingGroupAsPaid,
 } from '../_shared/bookingSettlement.ts';
+import { sendStaffAlert } from '../_shared/alerts.ts';
 import {
   findChangeById,
   findChangeByPayId,
@@ -90,7 +94,12 @@ Deno.serve(async (request) => {
     const client = createServiceClient();
     const payment = await findPayment(client, { payId, providerPaymentId, orderId });
 
-    if (payment?.processed_at && ['paid', 'failed', 'cancelled'].includes(payment.status)) {
+    // Short-circuit ONLY a fully processed paid payment (settlement included —
+    // processed_at is stamped after settling, see below). A failed/cancelled
+    // record deliberately does NOT short-circuit: if MAIB ever delivers a later
+    // "paid" result for the same checkout (a retry on the hosted page), the
+    // capture must supersede the failure, not be dropped (ADR-089).
+    if (payment?.processed_at && payment.status === 'paid') {
       return jsonResponse({ ok: true, duplicate: true, status: payment.status }, {}, request);
     }
 
@@ -117,7 +126,13 @@ Deno.serve(async (request) => {
     // manual review instead of being trusted.
     const status = amountMismatch ? 'pending' : reportedStatus;
     const terminal = isMaibCallbackTerminalStatus(status);
+    const paymentRowId = payment?.pay_id || payId || providerPaymentId || '';
 
+    // A paid result is only stamped processed_at AFTER the settlement below
+    // succeeds. If the process dies between "row says paid" and "reservations
+    // settled", the provider's retry (or the per-minute cron backstop) passes
+    // the duplicate guard and finishes the settlement instead of dropping it —
+    // previously the booking was silently lost to the expiry cron (ADR-089).
     await upsertPaymentCallback(client, {
       existingPayId: payment?.pay_id,
       payId: payId || payment?.pay_id || providerPaymentId,
@@ -125,7 +140,7 @@ Deno.serve(async (request) => {
       bookingGroupId,
       status,
       payload,
-      processedAt: terminal ? now : null,
+      processedAt: terminal && status !== 'paid' ? now : null,
       updatedAt: now,
       reservations,
     });
@@ -160,6 +175,36 @@ Deno.serve(async (request) => {
     }
 
     if (status === 'paid') {
+      // Suspected double charge: a DIFFERENT payment of this group already
+      // captured money. Never settle silently on top of it — flag for manual
+      // review (refund of the extra capture) and alert staff (ADR-089).
+      const otherPaid = paymentRowId
+        ? await findOtherPaidPayment(client, bookingGroupId, paymentRowId)
+        : null;
+      if (otherPaid) {
+        const transitioned = paymentRowId
+          ? await markPaymentManualReview(client, paymentRowId)
+          : false;
+        console.error('Maib paid callback for a group with another paid payment — not settled', {
+          ...callbackContext,
+          otherPayId: otherPaid.pay_id,
+        });
+        if (transitioned) {
+          await sendStaffAlert('Posibilă plată dublă — verifică și restituie', [
+            `Booking group ${bookingGroupId} are deja plata ${otherPaid.pay_id} (${otherPaid.status}),`,
+            `dar MAIB a confirmat încă o încasare pe ${paymentRowId}.`,
+            `Oaspetele a plătit probabil de două ori — verifică în panoul maibmerchants`,
+            `și restituie încasarea suplimentară din CRM.`,
+          ]).catch((alertError) => console.error('Double-capture alert failed', alertError));
+          await markPaymentProcessed(client, paymentRowId, new Date().toISOString());
+        }
+        return jsonResponse(
+          { ok: true, status: 'duplicate_capture', requiresManualReview: true },
+          {},
+          request,
+        );
+      }
+
       const settlement = await settleBookingGroupAsPaid(client, {
         bookingGroupId,
         reservations,
@@ -172,11 +217,26 @@ Deno.serve(async (request) => {
           'Maib paid callback settled no reservation — guest was charged, manual refund review required',
           callbackContext,
         );
+        const transitioned = paymentRowId
+          ? await markPaymentManualReview(client, paymentRowId)
+          : false;
+        if (transitioned) {
+          await sendStaffAlert('Plată încasată fără rezervare — restituire manuală', [
+            `MAIB a confirmat plata pentru booking group ${bookingGroupId} (pay ${paymentRowId}),`,
+            `dar nicio rezervare nu a putut fi confirmată (camera a fost re-rezervată după`,
+            `expirarea hold-ului). Oaspetele a plătit fără să aibă cazare — restituie plata`,
+            `din CRM și contactează-l.`,
+          ]).catch((alertError) => console.error('Manual-review alert failed', alertError));
+        }
         return jsonResponse(
           { ok: true, status: 'paid', matched: 0, requiresManualReview: true },
           {},
           request,
         );
+      }
+
+      if (paymentRowId) {
+        await markPaymentProcessed(client, paymentRowId, new Date().toISOString());
       }
 
       console.info('Maib callback processed', {
@@ -217,6 +277,12 @@ Deno.serve(async (request) => {
 
     return jsonResponse({ ok: true, status, matched: reservations.length }, {}, request);
   } catch (error) {
+    // The original failure used to vanish into a bare 500 — if it happened
+    // after the payment row was written, nobody could tell why a paid booking
+    // never settled.
+    console.error('Maib callback failed', {
+      message: error instanceof Error ? error.message : 'Unexpected error.',
+    });
     return errorResponse(error, request);
   }
 });

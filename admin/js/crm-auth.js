@@ -8,7 +8,6 @@
   const DASHBOARD_PATH = 'dashboard.html';
   const STAFF_USERNAME_DOMAIN = 'crm.ecovila.local';
   const AUTH_COOKIE_PREFIX = 'ecovila_crm_auth_';
-  const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 90;
   const AUTH_COOKIE_PATH = '/admin';
 
   function getHelpers() {
@@ -46,20 +45,6 @@
     }
   }
 
-  function cookieSecurityFlag(documentRef) {
-    // Session cookies must never travel over plain HTTP in production; the
-    // flag is skipped only for local non-HTTPS development hosts.
-    return documentRef?.location?.protocol === 'http:' ? '' : '; Secure';
-  }
-
-  function writeCookie(documentRef, name, value) {
-    if (!documentRef) {
-      return;
-    }
-
-    documentRef.cookie = `${name}=${encodeURIComponent(value)}; Path=${AUTH_COOKIE_PATH}; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax${cookieSecurityFlag(documentRef)}`;
-  }
-
   function removeCookie(documentRef, name) {
     if (!documentRef) {
       return;
@@ -76,24 +61,79 @@
       .forEach((name) => removeCookie(documentRef, name));
   }
 
-  function createCookieAuthStorage(documentRef) {
+  function storageName(key) {
+    return `${AUTH_COOKIE_PREFIX}${String(key || 'session')}`;
+  }
+
+  // localStorage-backed session storage (ADR-091). The previous cookie storage
+  // was scoped Path=/admin, so 90-day-refreshable staff tokens rode the Cookie
+  // header to the static web host on EVERY /admin request and sat in its access
+  // logs; localStorage never leaves the browser. A legacy cookie session is
+  // migrated on first read (so nobody is logged out by the switch), then the
+  // cookie is deleted.
+  function createLocalAuthStorage(documentRef, storageRef) {
     return {
       getItem(key) {
-        return readCookie(documentRef, cookieName(key));
+        let value = null;
+        try {
+          value = storageRef?.getItem(storageName(key)) ?? null;
+        } catch (error) {
+          value = null;
+        }
+        if (value !== null) {
+          return value;
+        }
+
+        const legacy = readCookie(documentRef, cookieName(key));
+        if (legacy !== null) {
+          try {
+            storageRef?.setItem(storageName(key), legacy);
+          } catch (error) {
+            // Storage may be unavailable (private mode); the cookie value still
+            // authenticates this page view.
+          }
+          removeCookie(documentRef, cookieName(key));
+        }
+        return legacy;
       },
       setItem(key, value) {
-        writeCookie(documentRef, cookieName(key), String(value || ''));
+        try {
+          storageRef?.setItem(storageName(key), String(value || ''));
+        } catch (error) {
+          // ignore — a failed persist only shortens the session to this tab
+        }
       },
       removeItem(key) {
+        try {
+          storageRef?.removeItem(storageName(key));
+        } catch (error) {
+          // ignore
+        }
         removeCookie(documentRef, cookieName(key));
       },
     };
   }
 
+  function clearCrmAuthStorage(documentRef, storageRef) {
+    clearCrmAuthCookies(documentRef);
+    try {
+      const doomed = [];
+      for (let index = 0; index < (storageRef?.length || 0); index += 1) {
+        const name = storageRef.key(index);
+        if (name && name.startsWith(AUTH_COOKIE_PREFIX)) {
+          doomed.push(name);
+        }
+      }
+      doomed.forEach((name) => storageRef.removeItem(name));
+    } catch (error) {
+      // ignore
+    }
+  }
+
   async function getClient() {
     return getHelpers().getSupabaseClient({
       root,
-      authStorage: createCookieAuthStorage(root.document),
+      authStorage: createLocalAuthStorage(root.document, root.localStorage),
     });
   }
 
@@ -126,7 +166,7 @@
     const session = await getSession(client);
 
     if (!session) {
-      clearCrmAuthCookies(root.document);
+      clearCrmAuthStorage(root.document, root.localStorage);
       root.location.href = LOGIN_PATH;
       return null;
     }
@@ -134,7 +174,7 @@
     const role = getRole(session);
     if (!['diana', 'angela'].includes(role)) {
       await client.auth.signOut();
-      clearCrmAuthCookies(root.document);
+      clearCrmAuthStorage(root.document, root.localStorage);
       root.location.href = LOGIN_PATH;
       return null;
     }
@@ -193,7 +233,7 @@
 
   async function signOut(client) {
     await client.auth.signOut();
-    clearCrmAuthCookies(root.document);
+    clearCrmAuthStorage(root.document, root.localStorage);
     root.location.href = LOGIN_PATH;
   }
 
@@ -206,7 +246,7 @@
     getSession,
     initLogin,
     normalizeCrmLoginIdentifier,
-    createCookieAuthStorage,
+    createLocalAuthStorage,
     requireSession,
     signOut,
   };
