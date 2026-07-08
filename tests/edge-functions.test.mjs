@@ -365,6 +365,9 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
     const scheduled = read('supabase/functions/scheduled-refunds/index.ts');
     assert.match(scheduled, /Deno\.serve\(/);
     assert.match(scheduled, /requireStaffRole\(request, \['diana'\]\)/);
+    // Exposes the real refunded-groups truth for the Finance cancellations view.
+    assert.match(scheduled, /refunded-groups/);
+    assert.match(scheduled, /function refundedBookingGroups/);
     assert.match(
       read('supabase/config.toml'),
       /\[functions\.scheduled-refunds\][\s\S]*?verify_jwt = true/i,

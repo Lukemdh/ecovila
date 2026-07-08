@@ -325,6 +325,25 @@
     return Array.isArray(result.data?.refunds) ? result.data.refunds : [];
   }
 
+  // Booking groups whose money was actually returned (real refund record) — the
+  // truth the Finance cancellations view uses instead of the unreliable
+  // cancellation_reason string. Diana-only, service-role server-side.
+  async function fetchRefundedGroups(client) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('scheduled-refunds', {
+      body: { action: 'refunded-groups' },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return Array.isArray(result.data?.groups) ? result.data.groups : [];
+  }
+
   async function controlScheduledRefund(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -1290,6 +1309,7 @@
     fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
     fetchScheduledRefunds,
+    fetchRefundedGroups,
     controlScheduledRefund,
     notifyReservationCancellation,
     rescheduleReservation,

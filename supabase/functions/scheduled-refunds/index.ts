@@ -86,6 +86,15 @@ Deno.serve(async (request) => {
       return jsonResponse({ ok: true, refunds: await listScheduledRefunds(client) }, {}, request);
     }
 
+    if (action === 'refunded-groups') {
+      // Booking groups whose money was actually returned. The CRM can't read the
+      // RLS-locked payment tables, and cancellation_reason is an unreliable proxy
+      // (the CRM cancel stamps 'Anulat din CRM', the guest card path
+      // 'guest_request_refunded', etc.), so the Finance tab asks here for the
+      // truth to decide which cancellations are "rambursat".
+      return jsonResponse({ ok: true, groups: await refundedBookingGroups(client) }, {}, request);
+    }
+
     const payId = optionalString(body?.payId);
     const bookingGroupId = optionalString(body?.bookingGroupId);
     if (!payId && !bookingGroupId) {
@@ -231,6 +240,30 @@ async function releaseNow(client: SupabaseClient, payId: string) {
   );
 
   return { ok: true, status: 'succeeded', differenceRefunds };
+}
+
+// Union of the two authoritative "money returned" signals: a payment marked
+// refunded (attemptBookingRefund's success path + manual reconciliation) and a
+// succeeded refund row. Either alone is enough to call the group refunded.
+async function refundedBookingGroups(client: SupabaseClient): Promise<string[]> {
+  const groups = new Set<string>();
+  const [payments, refunds] = await Promise.all([
+    table<{ booking_group_id: string | null }[]>(client, 'maib_payments')
+      .select('booking_group_id')
+      .eq('status', 'refunded'),
+    table<{ booking_group_id: string | null }[]>(client, 'maib_refunds')
+      .select('booking_group_id')
+      .eq('status', 'succeeded'),
+  ]);
+  if (payments.error) throw new Error(payments.error.message);
+  if (refunds.error) throw new Error(refunds.error.message);
+  for (const row of payments.data || []) {
+    if (row.booking_group_id) groups.add(row.booking_group_id);
+  }
+  for (const row of refunds.data || []) {
+    if (row.booking_group_id) groups.add(row.booking_group_id);
+  }
+  return [...groups];
 }
 
 async function payIdForGroup(client: SupabaseClient, bookingGroupId: string) {

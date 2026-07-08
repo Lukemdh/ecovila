@@ -3027,8 +3027,22 @@ rambursat / cash·fără rambursare / fără rambursare).
 `renderCancellations`), `admin/dashboard.html`, `css/crm.css`, `tests/admin-crm.test.mjs`.
 Frontend-only — no migration, no function. node 311, browser-verified.
 
-**Caveat.** "Sumă rambursată" counts a refund at cancel time (initiated), not bank-settled — ADR-096's
-60h cooldown widens that gap, and its staff-cancel path resets the marker so the box self-corrects.
+**Refund detection (corrected 2026-07-08).** The original heuristic — a cancellation is "refunded" iff
+`cancellation_reason === 'guest_request_refunded'` — was wrong: that string is only set by the guest
+card path, while the **CRM staff cancel** stamps `'Anulat din CRM'` and refunds separately (via
+`maib-refund`). In prod, 5 of 14 actually-refunded bookings therefore read "fără rambursare." Fixed by
+taking the truth from the **real refund record** server-side: the new `scheduled-refunds`
+`refunded-groups` action returns the union of `maib_payments.status='refunded'` and
+`maib_refunds.status='succeeded'` booking groups (diana-only; the CRM can't read those RLS-locked
+tables), and the Finance tab marks a cancellation refunded by membership in that set — `cancellation_reason`
+is no longer consulted. The cancellations list is also now **refunded-only** (cash/office/kept-money
+cancellations are excluded, per owner request), and the green/red left rail + status colouring were
+dropped for a plain card. `js/supabase.js` `fetchRefundedGroups`; `admin/js/crm-finance.js`
+`groupCancellationRows(rows, refundedGroupIds)` + refunded-only render; `css/crm.css` rail removed.
+
+**Caveat.** "Sumă rambursată" reflects money the provider actually returned (refund record), so a
+still-pending 60h-cooldown refund (ADR-096) is NOT counted here — it lives in the "Restituiri
+programate" panel until the cron pays it out, then appears as refunded.
 
 ---
 

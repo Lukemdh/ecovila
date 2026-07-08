@@ -7,7 +7,6 @@
   const MODE_NIGHTS = 'nights';
   const MODE_PAID = 'paid';
   const COMMERCIAL_PAYMENT_TYPES = new Set(['cash', 'card', 'mia']);
-  const ONLINE_PAYMENT_TYPES = new Set(['card', 'mia']);
   // Commission lost on a cancelled-and-refunded online booking = the ~0.7% MAIB
   // took on the inbound payment (wasted, since the booking netted nothing) PLUS
   // MAIB's interbank payout fee to refund the guest. That payout fee is a flat
@@ -621,17 +620,6 @@
     return card;
   }
 
-  function isOnlinePayment(paymentType) {
-    return ONLINE_PAYMENT_TYPES.has(paymentType || '');
-  }
-
-  // A refund only happened when an online (card/mia) booking was cancelled inside
-  // the refund window: the reservation-cancel flow stamps 'guest_request_refunded'
-  // in that single case (a kept, out-of-window cancellation stays 'guest_request').
-  function isCancellationRefunded(row) {
-    return isOnlinePayment(row?.paymentType) && row?.cancellationReason === 'guest_request_refunded';
-  }
-
   function guestName(reservation) {
     const first = String(reservation?.guest_first_name || '').trim();
     const last = String(reservation?.guest_last_name || '').trim();
@@ -664,7 +652,14 @@
       .sort((left, right) => String(right.cancelledAt).localeCompare(String(left.cancelledAt)));
   }
 
-  function groupCancellationRows(rows) {
+  // refundedGroupIds is the authoritative set of booking-group ids whose money was
+  // actually returned (from the server's real refund records). It is the ONLY
+  // source of truth for `refunded` — cancellation_reason is unreliable (the CRM
+  // cancel stamps 'Anulat din CRM', the guest card path 'guest_request_refunded',
+  // and refunds also happen out-of-band), which is why refunded bookings used to
+  // show "fără rambursare".
+  function groupCancellationRows(rows, refundedGroupIds) {
+    const refunded = refundedGroupIds instanceof Set ? refundedGroupIds : new Set(refundedGroupIds || []);
     const groups = new Map();
     const order = [];
 
@@ -687,6 +682,7 @@
         return {
           key,
           villas,
+          bookingGroupId: primary.bookingGroupId,
           // A group cancels as a unit, so total_price sums across its villa rows.
           totalPrice: villas.reduce((sum, villa) => sum + Number(villa.totalPrice || 0), 0),
           adults: primary.adults,
@@ -698,14 +694,17 @@
           cancellationReason: primary.cancellationReason,
           paymentType: primary.paymentType,
           guestName: primary.guestName,
-          refunded: isCancellationRefunded(primary),
+          refunded: refunded.has(primary.bookingGroupId),
         };
       })
       .sort((left, right) => String(right.cancelledAt).localeCompare(String(left.cancelledAt)));
   }
 
   function summarizeCancellationRows(input) {
-    const groups = groupCancellationRows(normalizeCancellationRows(input?.rows || []));
+    const groups = groupCancellationRows(
+      normalizeCancellationRows(input?.rows || []),
+      input?.refundedGroupIds,
+    );
     let refundedTotal = 0;
     // The payout fee is tiered per refund, so it is summed per group (one refund
     // transfer per booking group) rather than derived from the total.
@@ -766,8 +765,10 @@
   }
 
   function renderCancellations(context, state) {
-    const summary = summarizeCancellationRows({ rows: state.cancellationRows });
-    setText('[data-finance-cancelled-count]', summary.count);
+    const summary = summarizeCancellationRows({
+      rows: state.cancellationRows,
+      refundedGroupIds: state.refundedGroupIds,
+    });
     setText('[data-finance-commission-lost]', formatMDL(context, summary.commissionLost));
     setText('[data-finance-refunded-total]', formatMDL(context, summary.refundedTotal));
 
@@ -778,7 +779,14 @@
       return;
     }
 
-    const groups = groupCancellationRows(normalizeCancellationRows(state.cancellationRows));
+    // Only genuinely-refunded cancellations belong here — cash/office and any
+    // kept-money cancellation carry no refund and are excluded (owner request).
+    const groups = groupCancellationRows(
+      normalizeCancellationRows(state.cancellationRows),
+      state.refundedGroupIds,
+    ).filter((group) => group.refunded);
+
+    setText('[data-finance-cancelled-count]', groups.length);
     if (count) {
       count.textContent = String(groups.length);
     }
@@ -788,9 +796,6 @@
     groups.forEach((group) => {
       const card = root.document.createElement('article');
       card.className = 'crm-finance-booked-card crm-finance-cancel-card';
-      if (group.refunded) {
-        card.classList.add('crm-finance-cancel-card--refunded');
-      }
 
       if (group.villas.length === 1) {
         const villa = group.villas[0];
@@ -953,6 +958,18 @@
     });
   }
 
+  function fetchRefundedGroupsSafe(context) {
+    // The refunded-groups truth source (real refund records). On any failure the
+    // set is empty, so the cancellations list shows nothing rather than wrong data.
+    if (typeof root.EcoVilaSupabase.fetchRefundedGroups !== 'function') {
+      return Promise.resolve([]);
+    }
+    return root.EcoVilaSupabase.fetchRefundedGroups(context.client).catch((error) => {
+      console.error('Could not load refunded groups', error);
+      return [];
+    });
+  }
+
   async function loadFinance(context, state) {
     syncControls(context, state);
     const financeOptions = {
@@ -964,32 +981,35 @@
     const loadChanges = state.mode === MODE_PAID;
     // Cancellations are keyed by cancelled_at, orthogonal to the Nopți/Încasări
     // mode, so they always load for the selected range (today or a wider span).
-    const [rows, bookedDayRows, changeRows, cancellationRows, scheduledRefunds] = await Promise.all([
-      root.EcoVilaSupabase.fetchFinanceReservations(context.client, financeOptions),
-      shouldLoadBookedDay
-        ? root.EcoVilaSupabase.fetchFinanceBookedReservations(context.client, {
-            rangeStart: state.rangeStart,
-            rangeEnd: state.rangeEnd,
-          })
-        : Promise.resolve([]),
-      loadChanges
-        ? root.EcoVilaSupabase.fetchFinanceChangePayments(context.client, {
-            rangeStart: state.rangeStart,
-            rangeEnd: state.rangeEnd,
-          })
-        : Promise.resolve([]),
-      root.EcoVilaSupabase.fetchFinanceCancellations(context.client, {
-        rangeStart: state.rangeStart,
-        rangeEnd: state.rangeEnd,
-      }),
-      // Pending refunds are not range-scoped — always the full current list.
-      fetchScheduledRefundsSafe(context),
-    ]);
+    const [rows, bookedDayRows, changeRows, cancellationRows, scheduledRefunds, refundedGroups] =
+      await Promise.all([
+        root.EcoVilaSupabase.fetchFinanceReservations(context.client, financeOptions),
+        shouldLoadBookedDay
+          ? root.EcoVilaSupabase.fetchFinanceBookedReservations(context.client, {
+              rangeStart: state.rangeStart,
+              rangeEnd: state.rangeEnd,
+            })
+          : Promise.resolve([]),
+        loadChanges
+          ? root.EcoVilaSupabase.fetchFinanceChangePayments(context.client, {
+              rangeStart: state.rangeStart,
+              rangeEnd: state.rangeEnd,
+            })
+          : Promise.resolve([]),
+        root.EcoVilaSupabase.fetchFinanceCancellations(context.client, {
+          rangeStart: state.rangeStart,
+          rangeEnd: state.rangeEnd,
+        }),
+        // Pending refunds + refunded-group truth are not range-scoped — always full.
+        fetchScheduledRefundsSafe(context),
+        fetchRefundedGroupsSafe(context),
+      ]);
     state.rows = rows || [];
     state.bookedDayRows = bookedDayRows || [];
     state.changeRows = changeRows || [];
     state.cancellationRows = cancellationRows || [];
     state.scheduledRefunds = scheduledRefunds || [];
+    state.refundedGroupIds = new Set(refundedGroups || []);
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
       changeRows: state.changeRows,
@@ -1109,6 +1129,7 @@
       changeRows: [],
       cancellationRows: [],
       scheduledRefunds: [],
+      refundedGroupIds: new Set(),
     };
     activeFinance = { context, state };
 

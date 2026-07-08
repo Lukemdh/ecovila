@@ -299,8 +299,11 @@ describe('EcoVila Step 9 CRM', () => {
     // Refund-cooldown CRM controls (ADR-096).
     assert.match(helpers, /function fetchScheduledRefunds/);
     assert.match(helpers, /function controlScheduledRefund/);
+    assert.match(helpers, /function fetchRefundedGroups/);
     assert.match(helpers, /'scheduled-refunds'/);
     assert.match(finance, /function renderScheduledRefunds/);
+    // Refunded state comes from the real refund record, not cancellation_reason.
+    assert.match(finance, /refundedGroupIds/);
   });
 
   it('summarizes finance rows by overlapping nights and keeps din oficiu separate', () => {
@@ -437,6 +440,9 @@ describe('EcoVila Step 9 CRM', () => {
   it('summarizes cancellations by count, refunded total, and tiered refund-fee commission lost', () => {
     const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
     const summary = finance.summarizeCancellationRows({
+      // "refunded" is the real refund record (server truth), NOT cancellation_reason:
+      // only these two groups had their money returned.
+      refundedGroupIds: new Set(['grp-card', 'grp-mia']),
       rows: [
         {
           id: 'card-refunded',
@@ -567,14 +573,18 @@ describe('EcoVila Step 9 CRM', () => {
       },
     ];
 
-    const groups = finance.groupCancellationRows(finance.normalizeCancellationRows(rawRows));
+    const refundedGroupIds = new Set(['grp-multi']);
+    const groups = finance.groupCancellationRows(
+      finance.normalizeCancellationRows(rawRows),
+      refundedGroupIds,
+    );
     assert.equal(groups.length, 1);
     assert.equal(groups[0].villas.length, 2);
     assert.equal(groups[0].totalPrice, 8000);
     assert.equal(groups[0].refunded, true);
     assert.equal(groups[0].guestName, 'Ion Popescu');
 
-    const summary = finance.summarizeCancellationRows({ rows: rawRows });
+    const summary = finance.summarizeCancellationRows({ rows: rawRows, refundedGroupIds });
     assert.equal(summary.count, 1);
     assert.equal(summary.refundedTotal, 8000);
     // 0.7% inbound on the 8000 group + a flat 20 MDL payout fee (sub-10k) = 56 + 20.
@@ -598,16 +608,64 @@ describe('EcoVila Step 9 CRM', () => {
     });
 
     // The owner's real case: a 12,200 refund carried a flat 40 MDL payout fee.
-    const big = finance.summarizeCancellationRows({ rows: [refundedRow('big', 12200)] });
+    const big = finance.summarizeCancellationRows({
+      rows: [refundedRow('big', 12200)],
+      refundedGroupIds: new Set(['big']),
+    });
     assert.equal(big.commissionLost, 125); // round(0.007 * 12200 + 40)
 
     // Exactly at the 10k threshold still takes the 40 MDL tier.
-    const edge = finance.summarizeCancellationRows({ rows: [refundedRow('edge', 10000)] });
+    const edge = finance.summarizeCancellationRows({
+      rows: [refundedRow('edge', 10000)],
+      refundedGroupIds: new Set(['edge']),
+    });
     assert.equal(edge.commissionLost, 110); // round(0.007 * 10000 + 40)
 
     // Under 10k takes the 20 MDL tier.
-    const small = finance.summarizeCancellationRows({ rows: [refundedRow('small', 3000)] });
+    const small = finance.summarizeCancellationRows({
+      rows: [refundedRow('small', 3000)],
+      refundedGroupIds: new Set(['small']),
+    });
     assert.equal(small.commissionLost, 41); // round(0.007 * 3000 + 20)
+  });
+
+  it('marks refunded by the real refund record, not cancellation_reason', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const row = (id, reason) => ({
+      id,
+      booking_group_id: id,
+      check_in: '2026-08-16',
+      check_out: '2026-08-17',
+      total_price: 3000,
+      payment_type: 'card',
+      payment_status: 'cancelled',
+      paid_at: '2026-07-01T10:00:00.000Z',
+      cancelled_at: '2026-07-05T17:14:00.000Z',
+      cancellation_reason: reason,
+      rooms: { number: 6, type: 'small' },
+    });
+
+    // A CRM-cancelled booking (reason 'Anulat din CRM') that WAS refunded now shows
+    // as refunded — the bug where these read "fără rambursare".
+    const crm = finance.groupCancellationRows(
+      finance.normalizeCancellationRows([row('crm', 'Anulat din CRM')]),
+      new Set(['crm']),
+    );
+    assert.equal(crm[0].refunded, true);
+
+    // Conversely, a 'guest_request_refunded' reason with NO real refund is NOT refunded.
+    const reasonOnly = finance.groupCancellationRows(
+      finance.normalizeCancellationRows([row('reason-only', 'guest_request_refunded')]),
+      new Set(),
+    );
+    assert.equal(reasonOnly[0].refunded, false);
+
+    // Only the group with a real refund feeds the refunded total.
+    const summary = finance.summarizeCancellationRows({
+      rows: [row('crm', 'Anulat din CRM'), row('reason-only', 'guest_request_refunded')],
+      refundedGroupIds: new Set(['crm']),
+    });
+    assert.equal(summary.refundedTotal, 3000);
   });
 
   it('normalizes one-day finance booked rows without cancelled reservations', () => {

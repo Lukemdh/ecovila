@@ -1693,23 +1693,6 @@ h2 {
   color: #8a4535;
 }
 
-/* A clay left rail marks a cancellation; refunded ones flip to moss so the owner
-   can scan which refunds were already handled. */
-.crm-finance-cancel-card {
-  border-left: 3px solid rgba(150, 70, 50, 0.42);
-}
-
-.crm-finance-cancel-card .crm-finance-booked-status {
-  color: #8a4535;
-}
-
-.crm-finance-cancel-card--refunded {
-  border-left-color: rgba(92, 122, 82, 0.5);
-}
-
-.crm-finance-cancel-card--refunded .crm-finance-booked-status {
-  color: #4d6b41;
-}
 
 .crm-panel[data-panel="daily"] .crm-daily-grid {
   gap: 20px;
