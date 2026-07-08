@@ -3010,8 +3010,13 @@ by `cancelled_at` in the Chișinău calendar day (same UTC-boundary conversion a
 
 Three tracking boxes (owner spec):
 - **Anulări** — count of cancelled booking groups in the period.
-- **Pierdut pe comisioane** — 1.4% of the refunded amount (MAIB charges ~0.7% on the inbound card
-  payment and ~0.7% again on the refund, so a cancelled-and-refunded online booking loses ~1.4%).
+- **Pierdut pe comisioane** — the ~0.7% MAIB took on the inbound payment (wasted, since the booking
+  netted nothing) plus MAIB's interbank payout fee to refund the guest. **Corrected 2026-07-08:** that
+  payout fee is a flat TIER, not a percentage — a real 12,200 MDL refund cost exactly 40.00 MDL, and no
+  clean percentage yields that. Owner's rates: **20 MDL under 10,000, 40 MDL at/above 10,000**, charged
+  once per refund. So the box = `0.7% × refundedTotal + Σ payout-fee-per-refund` (the earlier "1.4% of
+  the refunded amount" was replaced). The descriptive helper paragraph under the heading was removed at
+  the owner's request.
 - **Sumă rambursată** — total of the online (`guest_request_refunded`) booking-group totals.
 
 Plus a per-cancellation card list (guest · villa · stay · amount · Anulat: `<when>` · refund badge:

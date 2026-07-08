@@ -8,11 +8,23 @@
   const MODE_PAID = 'paid';
   const COMMERCIAL_PAYMENT_TYPES = new Set(['cash', 'card', 'mia']);
   const ONLINE_PAYMENT_TYPES = new Set(['card', 'mia']);
-  // MAIB charges ~0.7% on the inbound card payment and ~0.7% again on the refund,
-  // so a cancelled-and-refunded online booking costs the merchant ~1.4% of the
-  // amount in commissions that bought nothing. Applied only to actually-refunded
-  // online cancellations (see summarizeCancellationRows).
-  const COMMISSION_RATE = 0.014;
+  // Commission lost on a cancelled-and-refunded online booking = the ~0.7% MAIB
+  // took on the inbound payment (wasted, since the booking netted nothing) PLUS
+  // MAIB's interbank payout fee to refund the guest. That payout fee is a flat
+  // tier, NOT a percentage (owner's MAIB rates, confirmed against a maibmerchants
+  // statement — a 12,200 refund cost exactly 40 MDL): 20 MDL under 10,000 MDL,
+  // 40 MDL at/above 10,000 MDL, charged once per refund. Applied only to
+  // actually-refunded online cancellations (see summarizeCancellationRows).
+  const INBOUND_COMMISSION_RATE = 0.007;
+  const REFUND_FEE_TIER_THRESHOLD = 10000;
+  const REFUND_FEE_UNDER_THRESHOLD = 20;
+  const REFUND_FEE_AT_OR_OVER_THRESHOLD = 40;
+
+  function refundTransferFee(amount) {
+    return Number(amount || 0) >= REFUND_FEE_TIER_THRESHOLD
+      ? REFUND_FEE_AT_OR_OVER_THRESHOLD
+      : REFUND_FEE_UNDER_THRESHOLD;
+  }
   const ROOM_TYPE_LABELS = Object.freeze({
     small: 'Căsuță mică',
     large: 'Căsuță mare',
@@ -695,9 +707,13 @@
   function summarizeCancellationRows(input) {
     const groups = groupCancellationRows(normalizeCancellationRows(input?.rows || []));
     let refundedTotal = 0;
+    // The payout fee is tiered per refund, so it is summed per group (one refund
+    // transfer per booking group) rather than derived from the total.
+    let refundFees = 0;
     groups.forEach((group) => {
       if (group.refunded) {
         refundedTotal += group.totalPrice;
+        refundFees += refundTransferFee(group.totalPrice);
       }
     });
     refundedTotal = roundMoney(refundedTotal);
@@ -706,7 +722,7 @@
       // One cancelled booking (across however many villas) counts once.
       count: groups.length,
       refundedTotal,
-      commissionLost: roundMoney(refundedTotal * COMMISSION_RATE),
+      commissionLost: roundMoney(refundedTotal * INBOUND_COMMISSION_RATE + refundFees),
     };
   }
 

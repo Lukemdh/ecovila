@@ -434,7 +434,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.roomTypeTotals.hotel, 5000);
   });
 
-  it('summarizes cancellations by count, refunded total, and 1.4% commission lost', () => {
+  it('summarizes cancellations by count, refunded total, and tiered refund-fee commission lost', () => {
     const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
     const summary = finance.summarizeCancellationRows({
       rows: [
@@ -523,7 +523,9 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.count, 5);
     // Only the two refunded online bookings feed the refunded + commission totals.
     assert.equal(summary.refundedTotal, 7500);
-    assert.equal(summary.commissionLost, 105);
+    // 0.7% inbound on 7500 = 52.5, plus a flat 20 MDL payout fee on each of the two
+    // sub-10k refunds (5000 + 2500) = 40 -> round(92.5) = 93.
+    assert.equal(summary.commissionLost, 93);
   });
 
   it('groups a multi-villa cancellation once and sums the whole-booking refund', () => {
@@ -575,7 +577,37 @@ describe('EcoVila Step 9 CRM', () => {
     const summary = finance.summarizeCancellationRows({ rows: rawRows });
     assert.equal(summary.count, 1);
     assert.equal(summary.refundedTotal, 8000);
-    assert.equal(summary.commissionLost, 112);
+    // 0.7% inbound on the 8000 group + a flat 20 MDL payout fee (sub-10k) = 56 + 20.
+    assert.equal(summary.commissionLost, 76);
+  });
+
+  it('applies the tiered flat refund payout fee: 20 MDL under 10k, 40 MDL at/over 10k', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const refundedRow = (id, total) => ({
+      id,
+      booking_group_id: id,
+      check_in: '2026-07-20',
+      check_out: '2026-07-22',
+      total_price: total,
+      payment_type: 'mia',
+      payment_status: 'cancelled',
+      paid_at: '2026-07-01T10:00:00.000Z',
+      cancelled_at: '2026-07-08T09:00:00.000Z',
+      cancellation_reason: 'guest_request_refunded',
+      rooms: { number: 1, type: 'small' },
+    });
+
+    // The owner's real case: a 12,200 refund carried a flat 40 MDL payout fee.
+    const big = finance.summarizeCancellationRows({ rows: [refundedRow('big', 12200)] });
+    assert.equal(big.commissionLost, 125); // round(0.007 * 12200 + 40)
+
+    // Exactly at the 10k threshold still takes the 40 MDL tier.
+    const edge = finance.summarizeCancellationRows({ rows: [refundedRow('edge', 10000)] });
+    assert.equal(edge.commissionLost, 110); // round(0.007 * 10000 + 40)
+
+    // Under 10k takes the 20 MDL tier.
+    const small = finance.summarizeCancellationRows({ rows: [refundedRow('small', 3000)] });
+    assert.equal(small.commissionLost, 41); // round(0.007 * 3000 + 20)
   });
 
   it('normalizes one-day finance booked rows without cancelled reservations', () => {
