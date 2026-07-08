@@ -993,6 +993,31 @@ function checkinWelcomeSms(language: string) {
   return 'Bun venit la EcoVila! Va dorim o odihna placuta. Daca aveti careva probleme, incercam sa le solutionam - ecovila.md/complaints';
 }
 
+// Staff alert SMS when a guest submits a new problem (ADR-097). Romanian and
+// diacritic-free so it stays one GSM-7 segment (ADR-072); the free-text complaint
+// is deliberately NOT included — staff open the CRM Probleme tab to read it. For a
+// casuta report the cabin number rides along; an optional guest callback phone is
+// shown when left, else "Fara telefon oaspete".
+const COMPLAINT_SMS_LABELS: Record<string, string> = {
+  casuta: 'Casuta',
+  facilitati: 'Facilitati',
+  personal: 'Personal',
+  altceva: 'Altceva',
+};
+
+export function complaintStaffAlertSms(input: {
+  category: string;
+  roomNumber?: string | null;
+  phone?: string | null;
+}): string {
+  const label = COMPLAINT_SMS_LABELS[input.category] || 'Altceva';
+  const room = input.category === 'casuta' && input.roomNumber
+    ? `, casuta ${String(input.roomNumber).trim()}`
+    : '';
+  const phonePart = input.phone ? `Tel oaspete: ${input.phone}` : 'Fara telefon oaspete';
+  return `Problema noua la EcoVila: ${label}${room}. ${phonePart}. Detalii in CRM > Probleme.`;
+}
+
 export type EmailLang = 'ro' | 'ru' | 'en';
 
 const EMAIL_PHONE_DISPLAY = '+373 60 120 220';

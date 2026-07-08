@@ -153,3 +153,38 @@ Deno.test('check-in welcome SMS is localized, links the complaints page, and sta
     throw new Error('each language should produce a distinct welcome SMS');
   }
 });
+
+Deno.test('complaintStaffAlertSms builds a diacritic-free single-segment staff alert (ADR-097)', async () => {
+  const { complaintStaffAlertSms } = await import('../_shared/notifications.ts');
+
+  const casuta = complaintStaffAlertSms({ category: 'casuta', roomNumber: '7', phone: '+37360111222' });
+  if (casuta !== 'Problema noua la EcoVila: Casuta, casuta 7. Tel oaspete: +37360111222. Detalii in CRM > Probleme.') {
+    throw new Error(`unexpected casuta alert: ${casuta}`);
+  }
+
+  const facilities = complaintStaffAlertSms({ category: 'facilitati', phone: null });
+  if (facilities !== 'Problema noua la EcoVila: Facilitati. Fara telefon oaspete. Detalii in CRM > Probleme.') {
+    throw new Error(`unexpected facilities alert: ${facilities}`);
+  }
+
+  // Only casuta carries the cabin; other categories never do.
+  const personal = complaintStaffAlertSms({ category: 'personal', roomNumber: '9', phone: null });
+  if (personal.includes('casuta')) {
+    throw new Error('non-casuta alert must not include a cabin');
+  }
+
+  // Unknown category degrades to Altceva rather than leaking a raw value.
+  const unknown = complaintStaffAlertSms({ category: 'nope', phone: null });
+  if (!unknown.startsWith('Problema noua la EcoVila: Altceva.')) {
+    throw new Error(`unknown category should fall back to Altceva: ${unknown}`);
+  }
+
+  for (const message of [casuta, facilities, personal, unknown]) {
+    if (/[ăâîșțĂÂÎȘȚ]/.test(message)) {
+      throw new Error(`staff alert must be diacritic-free (GSM-7): ${message}`);
+    }
+    if (message.length > 160) {
+      throw new Error(`staff alert must fit one GSM-7 segment: ${message.length} chars`);
+    }
+  }
+});

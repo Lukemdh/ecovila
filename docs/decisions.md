@@ -3063,6 +3063,31 @@ rate-limit assertions. node 311 + deno 124. Browser-verified CRM panel.
 
 ---
 
+### ADR-097 — SMS staff alert on every new problem (complaints)
+
+**Date:** 2026-07-08.
+
+**Motivation.** A guest problem submitted via `/complaints` only landed in the CRM Probleme tab —
+staff had to be looking to notice it. The owner wanted an immediate push to two staff phones.
+
+**Decision.** After `complaint-submit` records a complaint, it sends a Romanian, diacritic-free SMS
+(one GSM-7 segment, per ADR-072) to the staff numbers **+373 69 669 638** and **+373 69 899 799**.
+The lean form is deliberate — category + cabin (for a căsuța) + the guest's optional callback phone,
+but NOT the free-text complaint (which can be long or Cyrillic and would push the message to multiple
+UCS-2 segments); staff open the CRM to read it. Example:
+`Problema noua la EcoVila: Casuta, casuta 7. Tel oaspete: +37360111222. Detalii in CRM > Probleme.`
+
+Recipients are baked-in defaults, overridable with a comma-separated `ECOVILA_COMPLAINT_SMS` secret.
+The send is awaited (so the edge runtime doesn't drop it) but wrapped in `Promise.allSettled`, so a bad
+number or an SMS-provider hiccup logs and is swallowed — it never fails the already-recorded complaint.
+
+**Surface.** `_shared/notifications.ts` (`complaintStaffAlertSms`), `complaint-submit/index.ts`
+(recipients + best-effort send after insert), `tests/complaints.test.ts` (+1 deno: exact text,
+diacritic-free, ≤160 chars, cabin-only-for-casuta, unknown→Altceva). Backend-only — no migration, no
+frontend, no TopHost upload. deno 125.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,
