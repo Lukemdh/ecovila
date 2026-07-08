@@ -2,8 +2,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import {
   alertRefundProblem,
-  attemptBookingRefund,
-  queueRefundForReconciliation,
+  scheduleBookingRefund,
 } from '../_shared/refunds.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
@@ -13,8 +12,6 @@ import {
   isRefundEligible,
   refundEligibilityReason,
 } from '../_shared/reservationManage.ts';
-import { refundPaidChanges } from '../_shared/reservationChanges.ts';
-import type { ChangeRefundResult } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   aggregateRoomLabel,
@@ -74,18 +71,6 @@ type MaibPaymentRow = {
   refunded_at?: string | null;
 };
 
-type MaibRefundRow = {
-  status?: string | null;
-  response_payload?: Record<string, unknown> | null;
-};
-
-type MaibRefundProviderResponse = Record<string, unknown> & {
-  result?: {
-    refundId?: string | number | null;
-  };
-  refundId?: string | number | null;
-};
-
 type CancellationNotificationResult = {
   reservationId: string;
   sent: boolean;
@@ -141,75 +126,48 @@ Deno.serve(async (request) => {
       );
     }
 
-    const payment = await findMaibPayment(client, summary.bookingGroupId);
-    let refundResult = null;
-    let refundPending = false;
-    let differenceRefunds: ChangeRefundResult[] = [];
+    const payment = paidCard && refundable
+      ? await findMaibPayment(client, summary.bookingGroupId)
+      : null;
+    let refundScheduled = false;
+    let refundEta: string | null = null;
 
     if (paidCard && refundable) {
       if (!payment) {
         throw new HttpError(409, 'The MAIB payment is not ready for refund.');
       }
 
-      // An in-window cancellation must never be blocked by the refund leg
-      // (ADR-088): if MAIB declines or errors — e.g. the settlement account has
-      // insufficient funds — the booking is still cancelled, the refund is left
-      // as an unresolved maib_refunds row for the reconcile-refunds cron to
-      // retry, and staff are alerted. Blocking here used to 500 the whole
-      // cancellation, and a guest who gave up could silently fall out of the
-      // 20-day refund window. Differences ("add guests") are reversed first,
-      // each as its own MAIB transaction; both legs are idempotent and MAIB
-      // allows one refund per payment, so retries can never double-refund.
+      // Cooldown (ADR-096): do NOT move the money now. Record the refund as a
+      // scheduled maib_refunds row (eligible_at = now + 60h) and let the
+      // reconcile-refunds cron pay it out once the window elapses — any paid
+      // "add guests" difference is swept by the same cron on the same clock, and
+      // staff can cancel or release the refund from the CRM in the meantime. The
+      // booking still cancels immediately below; only the payout waits. Scheduling
+      // is just a DB write, but if it fails the guest would never be refunded, so
+      // alert staff to intervene — and still cancel the booking.
       try {
-        differenceRefunds = await refundPaidChanges(
-          client,
-          summary.bookingGroupId,
-          'guest_request',
-        );
-        refundPending = differenceRefunds.some((refund) => !refund.ok);
-
-        const outcome = await attemptBookingRefund(client, {
+        const scheduled = await scheduleBookingRefund(client, {
           payId: payment.pay_id,
-          providerPayId: payment.provider_payment_id || payment.pay_id,
           bookingGroupId: summary.bookingGroupId,
           amount: Number(payment.amount || 0),
           currency: payment.currency || 'MDL',
           reason: 'guest_request',
           source: 'reservation-cancel',
         });
-
-        if (outcome.ok) {
-          refundResult = (outcome.payload as MaibRefundProviderResponse)?.result ||
-            outcome.payload || {};
-        } else {
-          refundPending = true;
-        }
+        refundScheduled = true;
+        refundEta = scheduled?.eligible_at || null;
       } catch (error) {
-        refundPending = true;
-        console.error('Guest cancellation refund failed — queued for reconciliation', {
+        console.error('Could not schedule guest refund', {
           bookingGroupId: summary.bookingGroupId,
           payId: payment.pay_id,
-          message: error instanceof Error ? error.message : 'Refund failed.',
+          message: error instanceof Error ? error.message : 'Schedule failed.',
         });
-      }
-
-      if (refundPending) {
-        await queueRefundForReconciliation(client, {
-          payId: payment.pay_id,
-          bookingGroupId: summary.bookingGroupId,
-          amount: Number(payment.amount || 0),
-          currency: payment.currency || 'MDL',
-          reason: 'guest_request',
-          source: 'reservation-cancel',
-        }).catch((queueError) =>
-          console.error('Could not queue refund for reconciliation', queueError)
-        );
         await alertRefundProblem(client, {
           payId: payment.pay_id,
           bookingGroupId: summary.bookingGroupId,
           amount: payment.amount,
           reason: 'guest_request',
-          detail: 'Anulare de către oaspete — restituirea nu s-a confirmat la prima încercare.',
+          detail: 'Programarea restituirii a eșuat — verifică și restituie manual din CRM.',
           source: 'reservation-cancel',
         }).catch((alertError) => console.error('Refund alert failed', alertError));
       }
@@ -238,15 +196,17 @@ Deno.serve(async (request) => {
       {
         ok: true,
         status: 'cancelled',
-        refunded: Boolean(refundResult),
-        refundPending,
+        // The money is never returned synchronously anymore — a refund-eligible
+        // cancellation schedules it (refundScheduled) and the cron pays out after
+        // the cooldown. refundEta is when that happens.
+        refunded: false,
+        refundScheduled,
+        refundEta,
         refundable,
         refundReason: refundEligibilityReason({
           checkIn: summary.checkIn,
           createdAt,
         }),
-        refund: refundResult,
-        differenceRefunds,
         notificationResults,
       },
       {},

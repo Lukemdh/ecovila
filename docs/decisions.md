@@ -2995,6 +2995,74 @@ functions redeployed**. Backend-only; no migration, no frontend, no TopHost uplo
 
 ---
 
+### ADR-095 — CRM Finance tab: cancellation tracking (count / commission lost / refunded) + per-cancellation list
+
+**Date:** 2026-07-08.
+
+**Motivation.** The owner had no at-a-glance view of cancellations. Requested: see the cancellations
+made on a chosen day, plus tracking boxes.
+
+**Decision.** A new "Anulări în perioada selectată" section in the Finance tab, driven by the existing
+date picker and independent of the Nopți/Încasări toggle. It counts only REAL cancellations — a
+reservation with both `cancelled_at` and `paid_at` set — so never-paid abandoned MAIB/cash holds
+(which also carry `cancelled_at`) are excluded as noise, matching the existing booked-day rule. Keyed
+by `cancelled_at` in the Chișinău calendar day (same UTC-boundary conversion as the booked-day fetch).
+
+Three tracking boxes (owner spec):
+- **Anulări** — count of cancelled booking groups in the period.
+- **Pierdut pe comisioane** — 1.4% of the refunded amount (MAIB charges ~0.7% on the inbound card
+  payment and ~0.7% again on the refund, so a cancelled-and-refunded online booking loses ~1.4%).
+- **Sumă rambursată** — total of the online (`guest_request_refunded`) booking-group totals.
+
+Plus a per-cancellation card list (guest · villa · stay · amount · Anulat: `<when>` · refund badge:
+rambursat / cash·fără rambursare / fără rambursare).
+
+**Surface.** `js/supabase.js` (`fetchFinanceCancellations`, paginated), `admin/js/crm-finance.js`
+(`normalizeCancellationRows` / `groupCancellationRows` / `summarizeCancellationRows` /
+`renderCancellations`), `admin/dashboard.html`, `css/crm.css`, `tests/admin-crm.test.mjs`.
+Frontend-only — no migration, no function. node 311, browser-verified.
+
+**Caveat.** "Sumă rambursată" counts a refund at cancel time (initiated), not bank-settled — ADR-096's
+60h cooldown widens that gap, and its staff-cancel path resets the marker so the box self-corrects.
+
+---
+
+### ADR-096 — 60-hour cooldown before guest refunds pay out, with staff cancel/release controls
+
+**Date:** 2026-07-08.
+
+**Motivation.** A guest self-service cancellation refunded the money the instant the booking was
+cancelled, leaving no window to catch a fraudulent or mistaken cancellation before the funds left the
+settlement account. The owner wanted a buffer: a refund initiated now should only pay out after 60h.
+
+**Decision.** Guest refunds are now SCHEDULED, not executed on the spot. `reservation-cancel` records
+a `maib_refunds` row with `eligible_at = now + 60h` (status `requested`) and does NOT call MAIB; the
+booking still cancels immediately, so the room is freed at once — only the money waits. The
+`reconcile-refunds` cron (every 30 min) is the sole executor and now fires only refunds whose
+`eligible_at` has elapsed (`NULL` = execute now: legacy rows + already-fired retries). Paid
+"add-guests" differences ride the same clock. Actual payout lands at 60h + ≤30 min. Staff/CRM refunds
+(`maib-refund`) are UNCHANGED — still immediate; the cooldown is guest-only.
+
+During the window the owner controls each pending refund from a new "Restituiri programate" panel in
+the Finance tab (new `scheduled-refunds` function, diana-only):
+- **Anulează restituirea** — abort a refund judged fraudulent/mistaken. The money stays; the booking's
+  `guest_request_refunded` marker resets to `guest_request` so the ADR-095 "Sumă rambursată" box
+  self-corrects. Allowed only while still `requested` with a future `eligible_at` (once the cron sends
+  it, cancellation is refused — money may be in flight).
+- **Eliberează acum** — pay out immediately via the existing refund engine (+ differences).
+
+Guests see "Rambursare programată — în ~60h (2–3 zile)" on the manage page (ro/ru/en).
+
+**Surface.** Migration `20260708120000_refund_cooldown.sql` (`eligible_at` column, `'cancelled'`
+status, due-time index). `_shared/refunds.ts` (`REFUND_COOLDOWN_HOURS = 60`, `scheduleBookingRefund`,
+`cancelScheduledRefund`; `attemptBookingRefund` stays the executor). `reservation-cancel`,
+`reconcile-refunds`, new `scheduled-refunds` (config.toml, verify_jwt=true, staff-gated). Frontend:
+`admin/dashboard.html`, `admin/js/crm-finance.js`, `js/supabase.js`, `js/gestionare.js`,
+`js/translations.js`, `css/crm.css`. Tests: `tests/refundCooldown.test.ts` (+6 deno) + node/edge/
+rate-limit assertions. node 311 + deno 124. Browser-verified CRM panel.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

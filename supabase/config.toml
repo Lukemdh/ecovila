@@ -75,3 +75,6 @@ verify_jwt = true
 
 [functions.send-review-requests]
 verify_jwt = false
+
+[functions.scheduled-refunds]
+verify_jwt = true

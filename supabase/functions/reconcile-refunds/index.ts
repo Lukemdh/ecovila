@@ -25,6 +25,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
   gt(column: string, value: unknown): QueryBuilder<T>;
+  or(filter: string): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
@@ -107,12 +108,17 @@ Deno.serve(async (request) => {
 
 async function findUnresolvedRefunds(client: SupabaseClient) {
   const oldestIso = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
   const { data, error } = await table<MaibRefundRow[]>(client, 'maib_refunds')
     .select(
-      'pay_id, booking_group_id, amount, currency, status, reason, provider_status, attempts, alerted_at, created_at',
+      'pay_id, booking_group_id, amount, currency, status, reason, provider_status, attempts, alerted_at, eligible_at, created_at',
     )
     .in('status', ['requested', 'processing', 'failed'])
     .gt('created_at', oldestIso)
+    // Refund cooldown (ADR-096): only execute rows whose window has elapsed. NULL
+    // eligible_at = execute now (legacy rows + already-fired retries); a future
+    // eligible_at is a scheduled guest refund still cooling down.
+    .or(`eligible_at.is.null,eligible_at.lte.${nowIso}`)
     .order('updated_at', { ascending: true })
     .limit(MAX_REFUNDS_PER_RUN);
 
@@ -241,11 +247,13 @@ async function sweepOrphanedChangeRefunds(
       continue;
     }
 
-    const { data: refundRow, error: refundError } = await table<{ pay_id: string }>(
+    const { data: refundRow, error: refundError } = await table<
+      { pay_id: string; status?: string | null; eligible_at?: string | null }
+    >(
       client,
       'maib_refunds',
     )
-      .select('pay_id')
+      .select('pay_id, status, eligible_at')
       .eq('booking_group_id', bookingGroupId)
       .limit(1)
       .maybeSingle();
@@ -254,6 +262,15 @@ async function sweepOrphanedChangeRefunds(
     if (!refundRow) {
       // The booking was never refund-cancelled (e.g. a live booking with a paid
       // change) — nothing to reverse.
+      continue;
+    }
+
+    // Cooldown (ADR-096): differences ride the group's refund clock. Don't sweep
+    // one whose main refund staff aborted, nor one still cooling down.
+    if (refundRow.status === 'cancelled') {
+      continue;
+    }
+    if (refundRow.eligible_at && new Date(refundRow.eligible_at).getTime() > Date.now()) {
       continue;
     }
 

@@ -306,6 +306,45 @@
     return result.data || {};
   }
 
+  // Refund cooldown controls (ADR-096). List the guest refunds still cooling down
+  // and let staff cancel or release-early one during the 60h window. Diana-only,
+  // enforced server-side by the scheduled-refunds function.
+  async function fetchScheduledRefunds(client) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('scheduled-refunds', {
+      body: { action: 'list' },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return Array.isArray(result.data?.refunds) ? result.data.refunds : [];
+  }
+
+  async function controlScheduledRefund(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('scheduled-refunds', {
+      body: {
+        action: input?.action || '',
+        payId: input?.payId || '',
+        bookingGroupId: input?.bookingGroupId || '',
+      },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
   async function notifyReservationCancellation(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -635,6 +674,58 @@
       }
 
       return query.order('created_at', { ascending: true }).order('id', { ascending: true });
+    };
+
+    return unwrapAllSupabaseRows(buildQuery);
+  }
+
+  function fetchFinanceCancellations(client, options) {
+    const rangeStart = options?.rangeStart;
+    const rangeEnd = options?.rangeEnd;
+    // Cancellations "made" in the selected day/range are keyed by cancelled_at
+    // (a UTC timestamp), converted from the Chisinau calendar day like the booked
+    // fetch converts created_at. We require paid_at so only REAL cancellations —
+    // bookings that carried money/confirmation before being cancelled — show up;
+    // never-paid abandoned MAIB/cash holds (also cancelled_at, but paid_at null)
+    // are dropped as noise. cancellation_reason distinguishes a refunded online
+    // cancellation ('guest_request_refunded') from a kept one ('guest_request').
+    // Paginated (see fetchFinanceReservations): a wide range would otherwise be
+    // truncated and under-count cancellations. id tiebreaks cancelled_at.
+    const buildQuery = () => {
+      let query = client
+        .from('reservations')
+        .select(
+          [
+            'id',
+            'booking_group_id',
+            'room_id',
+            'guest_first_name',
+            'guest_last_name',
+            'check_in',
+            'check_out',
+            'adults',
+            'kids_ages',
+            'total_price',
+            'payment_type',
+            'payment_status',
+            'paid_at',
+            'cancelled_at',
+            'cancellation_reason',
+            'rooms(id, number, type)',
+          ].join(', '),
+        )
+        .not('cancelled_at', 'is', null)
+        .not('paid_at', 'is', null);
+
+      if (rangeStart) {
+        query = query.gte('cancelled_at', chisinauDayStartUtc(rangeStart));
+      }
+
+      if (rangeEnd) {
+        query = query.lt('cancelled_at', chisinauDayStartUtc(rangeEnd));
+      }
+
+      return query.order('cancelled_at', { ascending: false }).order('id', { ascending: true });
     };
 
     return unwrapAllSupabaseRows(buildQuery);
@@ -1198,6 +1289,8 @@
     fetchFinanceChangePayments,
     fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
+    fetchScheduledRefunds,
+    controlScheduledRefund,
     notifyReservationCancellation,
     rescheduleReservation,
     createReservationRequest,
@@ -1221,6 +1314,7 @@
     fetchCrmPhotos,
     fetchDailyStatuses,
     fetchFinanceBookedReservations,
+    fetchFinanceCancellations,
     fetchFinanceReservations,
     fetchHolidays,
     fetchPendingCashReservations,

@@ -7,6 +7,12 @@
   const MODE_NIGHTS = 'nights';
   const MODE_PAID = 'paid';
   const COMMERCIAL_PAYMENT_TYPES = new Set(['cash', 'card', 'mia']);
+  const ONLINE_PAYMENT_TYPES = new Set(['card', 'mia']);
+  // MAIB charges ~0.7% on the inbound card payment and ~0.7% again on the refund,
+  // so a cancelled-and-refunded online booking costs the merchant ~1.4% of the
+  // amount in commissions that bought nothing. Applied only to actually-refunded
+  // online cancellations (see summarizeCancellationRows).
+  const COMMISSION_RATE = 0.014;
   const ROOM_TYPE_LABELS = Object.freeze({
     small: 'Căsuță mică',
     large: 'Căsuță mare',
@@ -603,6 +609,334 @@
     return card;
   }
 
+  function isOnlinePayment(paymentType) {
+    return ONLINE_PAYMENT_TYPES.has(paymentType || '');
+  }
+
+  // A refund only happened when an online (card/mia) booking was cancelled inside
+  // the refund window: the reservation-cancel flow stamps 'guest_request_refunded'
+  // in that single case (a kept, out-of-window cancellation stays 'guest_request').
+  function isCancellationRefunded(row) {
+    return isOnlinePayment(row?.paymentType) && row?.cancellationReason === 'guest_request_refunded';
+  }
+
+  function guestName(reservation) {
+    const first = String(reservation?.guest_first_name || '').trim();
+    const last = String(reservation?.guest_last_name || '').trim();
+    return `${first} ${last}`.trim();
+  }
+
+  function normalizeCancellationRows(rows) {
+    return (rows || [])
+      .filter((reservation) => Boolean(reservation?.id && reservation.cancelled_at && reservation.paid_at))
+      .map((reservation) => {
+        const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
+        return {
+          id: reservation.id,
+          bookingGroupId: reservation.booking_group_id || reservation.id || '',
+          roomNumber: Number(reservation.rooms?.number || reservation.room_number || 0),
+          roomType: reservation.rooms?.type || reservation.room_type || '',
+          checkIn: reservation.check_in || '',
+          checkOut: reservation.check_out || '',
+          nights: bookedNights(reservation),
+          adults: Number(reservation.adults || 0),
+          kids,
+          totalPrice: Number(reservation.total_price || 0),
+          paymentType: reservation.payment_type || '',
+          cancelledAt: reservation.cancelled_at || '',
+          cancellationReason: reservation.cancellation_reason || '',
+          guestName: guestName(reservation),
+        };
+      })
+      // Most recent cancellation first — the owner scans "what just got cancelled".
+      .sort((left, right) => String(right.cancelledAt).localeCompare(String(left.cancelledAt)));
+  }
+
+  function groupCancellationRows(rows) {
+    const groups = new Map();
+    const order = [];
+
+    (rows || []).forEach((row) => {
+      const key = row.bookingGroupId || `single:${row.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        order.push(key);
+      }
+      groups.get(key).push(row);
+    });
+
+    return order
+      .map((key) => {
+        const villas = groups
+          .get(key)
+          .slice()
+          .sort((left, right) => left.roomNumber - right.roomNumber);
+        const primary = villas[0];
+        return {
+          key,
+          villas,
+          // A group cancels as a unit, so total_price sums across its villa rows.
+          totalPrice: villas.reduce((sum, villa) => sum + Number(villa.totalPrice || 0), 0),
+          adults: primary.adults,
+          kids: primary.kids,
+          nights: primary.nights,
+          checkIn: primary.checkIn,
+          checkOut: primary.checkOut,
+          cancelledAt: primary.cancelledAt,
+          cancellationReason: primary.cancellationReason,
+          paymentType: primary.paymentType,
+          guestName: primary.guestName,
+          refunded: isCancellationRefunded(primary),
+        };
+      })
+      .sort((left, right) => String(right.cancelledAt).localeCompare(String(left.cancelledAt)));
+  }
+
+  function summarizeCancellationRows(input) {
+    const groups = groupCancellationRows(normalizeCancellationRows(input?.rows || []));
+    let refundedTotal = 0;
+    groups.forEach((group) => {
+      if (group.refunded) {
+        refundedTotal += group.totalPrice;
+      }
+    });
+    refundedTotal = roundMoney(refundedTotal);
+
+    return {
+      // One cancelled booking (across however many villas) counts once.
+      count: groups.length,
+      refundedTotal,
+      commissionLost: roundMoney(refundedTotal * COMMISSION_RATE),
+    };
+  }
+
+  function cancellationStatusLabel(group) {
+    if (group.refunded) {
+      return 'rambursat';
+    }
+
+    if (group.paymentType === 'office') {
+      return 'din oficiu';
+    }
+
+    if (group.paymentType === 'cash') {
+      return 'cash · fără rambursare';
+    }
+
+    return 'fără rambursare';
+  }
+
+  function buildCancellationSummary(context, data, titleText, metaText) {
+    const title = root.document.createElement('strong');
+    title.textContent = titleText;
+
+    const meta = root.document.createElement('span');
+    meta.textContent = metaText;
+
+    const stay = root.document.createElement('span');
+    stay.textContent = `${formatStayDate(context, data.checkIn)} - ${formatStayDate(context, data.checkOut)}`;
+
+    const total = root.document.createElement('span');
+    total.textContent = formatMDL(context, data.totalPrice);
+
+    const cancelledAt = root.document.createElement('span');
+    cancelledAt.textContent = `Anulat: ${formatCreatedAt(data.cancelledAt)}`;
+
+    const status = root.document.createElement('span');
+    status.className = 'crm-finance-booked-status';
+    status.textContent = cancellationStatusLabel(data);
+
+    return [title, meta, stay, total, cancelledAt, status];
+  }
+
+  function renderCancellations(context, state) {
+    const summary = summarizeCancellationRows({ rows: state.cancellationRows });
+    setText('[data-finance-cancelled-count]', summary.count);
+    setText('[data-finance-commission-lost]', formatMDL(context, summary.commissionLost));
+    setText('[data-finance-refunded-total]', formatMDL(context, summary.refundedTotal));
+
+    const list = qs('[data-finance-cancel-list]');
+    const empty = qs('[data-finance-cancel-empty]');
+    const count = qs('[data-finance-cancel-count]');
+    if (!list || !empty) {
+      return;
+    }
+
+    const groups = groupCancellationRows(normalizeCancellationRows(state.cancellationRows));
+    if (count) {
+      count.textContent = String(groups.length);
+    }
+    empty.hidden = groups.length > 0;
+    list.innerHTML = '';
+
+    groups.forEach((group) => {
+      const card = root.document.createElement('article');
+      card.className = 'crm-finance-booked-card crm-finance-cancel-card';
+      if (group.refunded) {
+        card.classList.add('crm-finance-cancel-card--refunded');
+      }
+
+      if (group.villas.length === 1) {
+        const villa = group.villas[0];
+        const villaText = villa.roomNumber ? `Vila #${villa.roomNumber}` : roomTypeLabel(villa.roomType);
+        const titleText = group.guestName || villaText;
+        const metaLead = group.guestName ? villaText : roomTypeLabel(villa.roomType);
+        const metaText = `${metaLead} · ${partyLabel(group)} · ${nightsLabel(group)}`;
+        card.append(...buildCancellationSummary(context, group, titleText, metaText));
+        list.appendChild(card);
+        return;
+      }
+
+      card.classList.add('crm-finance-booked-card--group');
+
+      const groupSummary = root.document.createElement('div');
+      groupSummary.className = 'crm-finance-booked-card__summary';
+      const titleText = group.guestName || villaCountLabel(group.villas.length);
+      const metaText = group.guestName
+        ? `${villaCountLabel(group.villas.length)} · ${partyLabel(group)} · ${nightsLabel(group)}`
+        : `${partyLabel(group)} · ${nightsLabel(group)}`;
+      groupSummary.append(...buildCancellationSummary(context, group, titleText, metaText));
+
+      card.append(groupSummary, buildBookedVillaBreakdown(context, group.villas));
+      list.appendChild(card);
+    });
+  }
+
+  function refundVillaLabel(refund) {
+    const villas = Array.isArray(refund.villas) ? refund.villas : [];
+    if (villas.length > 1) {
+      return villaCountLabel(villas.length);
+    }
+    const villa = villas[0];
+    if (villa?.number) {
+      return `Vila #${villa.number}`;
+    }
+    return roomTypeLabel(villa?.type || '');
+  }
+
+  function formatRefundEta(eligibleAt) {
+    const when = formatCreatedAt(eligibleAt);
+    const ms = new Date(eligibleAt).getTime() - Date.now();
+    if (!when || !Number.isFinite(ms)) {
+      return when || '--';
+    }
+    const hours = Math.max(0, Math.round(ms / 3600000));
+    return `${when} (în ~${hours}h)`;
+  }
+
+  async function handleScheduledRefundAction(context, state, refund, action, button) {
+    const confirmMessage = action === 'cancel'
+      ? 'Anulezi restituirea? Banii NU vor fi returnați oaspetelui (rezervarea rămâne anulată).'
+      : 'Eliberezi restituirea acum, înainte de expirarea perioadei de 60h?';
+    if (typeof root.confirm === 'function' && !root.confirm(confirmMessage)) {
+      return;
+    }
+
+    const buttons = qsa('button', button.closest?.('.crm-finance-scheduled-card') || root.document);
+    buttons.forEach((node) => {
+      node.disabled = true;
+    });
+
+    try {
+      await root.EcoVilaSupabase.controlScheduledRefund(context.client, {
+        action,
+        payId: refund.payId,
+        bookingGroupId: refund.bookingGroupId,
+      });
+      await loadFinance(context, state);
+    } catch (error) {
+      buttons.forEach((node) => {
+        node.disabled = false;
+      });
+      context.setAlert(error?.message || 'Acțiunea asupra restituirii nu s-a putut efectua.');
+    }
+  }
+
+  function buildScheduledRefundCard(context, state, refund) {
+    const card = root.document.createElement('article');
+    card.className = 'crm-finance-scheduled-card';
+
+    const info = root.document.createElement('div');
+    info.className = 'crm-finance-scheduled-card__info';
+
+    const villaText = refundVillaLabel(refund);
+    const title = root.document.createElement('strong');
+    title.textContent = refund.guestName || villaText;
+
+    const meta = root.document.createElement('span');
+    meta.textContent = `${villaText} · ${formatStayDate(context, refund.checkIn)} - ${
+      formatStayDate(context, refund.checkOut)
+    }`;
+
+    const amount = root.document.createElement('span');
+    amount.className = 'crm-finance-scheduled-card__amount';
+    amount.textContent = formatMDL(context, refund.amount);
+
+    const eta = root.document.createElement('span');
+    eta.className = 'crm-finance-scheduled-card__eta';
+    eta.textContent = `Se procesează: ${formatRefundEta(refund.eligibleAt)}`;
+
+    info.append(title, meta, amount, eta);
+
+    const actions = root.document.createElement('div');
+    actions.className = 'crm-finance-scheduled-card__actions';
+
+    const release = root.document.createElement('button');
+    release.type = 'button';
+    release.className = 'crm-button crm-button--small';
+    release.textContent = 'Eliberează acum';
+    release.addEventListener('click', () =>
+      handleScheduledRefundAction(context, state, refund, 'release', release));
+
+    const cancel = root.document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'crm-button crm-button--small crm-button--danger';
+    cancel.textContent = 'Anulează restituirea';
+    cancel.addEventListener('click', () =>
+      handleScheduledRefundAction(context, state, refund, 'cancel', cancel));
+
+    actions.append(release, cancel);
+    card.append(info, actions);
+    return card;
+  }
+
+  function renderScheduledRefunds(context, state) {
+    const section = qs('[data-finance-scheduled]');
+    const list = qs('[data-finance-scheduled-list]');
+    const empty = qs('[data-finance-scheduled-empty]');
+    const count = qs('[data-finance-scheduled-count]');
+    if (!section || !list) {
+      return;
+    }
+
+    const refunds = state.scheduledRefunds || [];
+    // Action-oriented panel: only surfaces when money is actually pending.
+    section.hidden = refunds.length === 0;
+    if (count) {
+      count.textContent = String(refunds.length);
+    }
+    if (empty) {
+      empty.hidden = refunds.length > 0;
+    }
+
+    list.innerHTML = '';
+    refunds.forEach((refund) => {
+      list.appendChild(buildScheduledRefundCard(context, state, refund));
+    });
+  }
+
+  function fetchScheduledRefundsSafe(context) {
+    // Never let the (diana-only) scheduled-refunds call break the finance load —
+    // a failure just leaves the panel empty.
+    if (typeof root.EcoVilaSupabase.fetchScheduledRefunds !== 'function') {
+      return Promise.resolve([]);
+    }
+    return root.EcoVilaSupabase.fetchScheduledRefunds(context.client).catch((error) => {
+      console.error('Could not load scheduled refunds', error);
+      return [];
+    });
+  }
+
   async function loadFinance(context, state) {
     syncControls(context, state);
     const financeOptions = {
@@ -612,7 +946,9 @@
     };
     const shouldLoadBookedDay = state.mode === MODE_PAID && isOneDayRange(state.rangeStart, state.rangeEnd);
     const loadChanges = state.mode === MODE_PAID;
-    const [rows, bookedDayRows, changeRows] = await Promise.all([
+    // Cancellations are keyed by cancelled_at, orthogonal to the Nopți/Încasări
+    // mode, so they always load for the selected range (today or a wider span).
+    const [rows, bookedDayRows, changeRows, cancellationRows, scheduledRefunds] = await Promise.all([
       root.EcoVilaSupabase.fetchFinanceReservations(context.client, financeOptions),
       shouldLoadBookedDay
         ? root.EcoVilaSupabase.fetchFinanceBookedReservations(context.client, {
@@ -626,10 +962,18 @@
             rangeEnd: state.rangeEnd,
           })
         : Promise.resolve([]),
+      root.EcoVilaSupabase.fetchFinanceCancellations(context.client, {
+        rangeStart: state.rangeStart,
+        rangeEnd: state.rangeEnd,
+      }),
+      // Pending refunds are not range-scoped — always the full current list.
+      fetchScheduledRefundsSafe(context),
     ]);
     state.rows = rows || [];
     state.bookedDayRows = bookedDayRows || [];
     state.changeRows = changeRows || [];
+    state.cancellationRows = cancellationRows || [];
+    state.scheduledRefunds = scheduledRefunds || [];
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
       changeRows: state.changeRows,
@@ -638,6 +982,8 @@
       rangeEnd: state.rangeEnd,
     }));
     renderBookedDayRows(context, state);
+    renderCancellations(context, state);
+    renderScheduledRefunds(context, state);
   }
 
   function setRange(context, state, rangeStart, rangeEnd) {
@@ -745,6 +1091,8 @@
       rows: [],
       bookedDayRows: [],
       changeRows: [],
+      cancellationRows: [],
+      scheduledRefunds: [],
     };
     activeFinance = { context, state };
 
@@ -818,11 +1166,14 @@
     addMonths,
     firstOfMonth,
     groupBookedDayRows,
+    groupCancellationRows,
     init,
     isClickInsideFinanceRangePicker,
     loadFinance,
     normalizeBookedDayRows,
+    normalizeCancellationRows,
     showToday,
+    summarizeCancellationRows,
     summarizeFinanceRows,
   };
 });

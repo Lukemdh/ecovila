@@ -358,4 +358,49 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       /Cancellation:\s+guest can cancel online when there are at least 7 calendar days before arrival/i,
     );
   });
+
+  it('schedules guest refunds behind a 60h cooldown with staff controls (ADR-096)', () => {
+    // New diana-only staff-controls function exists and is JWT-gated.
+    assert.ok(exists('supabase/functions/scheduled-refunds/index.ts'));
+    const scheduled = read('supabase/functions/scheduled-refunds/index.ts');
+    assert.match(scheduled, /Deno\.serve\(/);
+    assert.match(scheduled, /requireStaffRole\(request, \['diana'\]\)/);
+    assert.match(
+      read('supabase/config.toml'),
+      /\[functions\.scheduled-refunds\][\s\S]*?verify_jwt = true/i,
+    );
+
+    // Migration adds the due-time column and the 'cancelled' terminal status.
+    const migration = read('supabase/migrations/20260708120000_refund_cooldown.sql');
+    assert.match(migration, /add column if not exists eligible_at/i);
+    assert.match(migration, /'requested', 'processing', 'succeeded', 'failed', 'cancelled'/);
+
+    // The shared engine schedules (no MAIB call) and can abort a pending refund.
+    const refunds = read('supabase/functions/_shared/refunds.ts');
+    assert.match(refunds, /REFUND_COOLDOWN_HOURS = 60/);
+    assert.match(refunds, /export async function scheduleBookingRefund/);
+    assert.match(refunds, /export async function cancelScheduledRefund/);
+
+    // Guest cancel now SCHEDULES the refund instead of firing MAIB inline.
+    const cancel = read('supabase/functions/reservation-cancel/index.ts');
+    assert.match(cancel, /scheduleBookingRefund/);
+    assert.match(cancel, /refundScheduled/);
+    assert.doesNotMatch(
+      cancel,
+      /attemptBookingRefund/,
+      'guest cancel must not execute the refund immediately anymore',
+    );
+
+    // The reconcile cron only executes refunds whose cooldown has elapsed.
+    const reconcile = read('supabase/functions/reconcile-refunds/index.ts');
+    assert.match(reconcile, /eligible_at\.is\.null,eligible_at\.lte\./);
+
+    // Guest-facing "refund scheduled" copy is localized in ro/ru/en.
+    const translations = read('js/translations.js');
+    assert.equal(
+      (translations.match(/confirmare\.cancelledWithScheduledRefund/g) || []).length,
+      3,
+      'scheduled-refund note should exist in all three languages',
+    );
+  });
 });

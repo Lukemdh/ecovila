@@ -198,6 +198,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       // staff-gated
       'confirm-reservation-payment',
       'maib-refund',
+      'scheduled-refunds',
       'send-sms',
       'send-email',
       'reservation-cancel-notify',

@@ -13,6 +13,16 @@ import { refundMaibPayment } from './maib.ts';
 import { sendStaffAlert } from './alerts.ts';
 import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
+// Guest self-service refunds (ADR-096) are scheduled, not executed on the spot:
+// scheduleBookingRefund stamps eligible_at = now + this many hours, and the
+// reconcile-refunds cron pays them out only once that moment has passed. The
+// window lets staff cancel a fraudulent/mistaken refund, or release it early.
+export const REFUND_COOLDOWN_HOURS = 60;
+
+export function refundEligibleAtIso(now: Date = new Date()): string {
+  return new Date(now.getTime() + REFUND_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+}
+
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
   insert(payload: unknown): Promise<SupabaseQueryResult>;
@@ -39,6 +49,7 @@ export type MaibRefundRow = {
   provider_status?: string | null;
   attempts?: number | null;
   alerted_at?: string | null;
+  eligible_at?: string | null;
   created_at?: string | null;
 };
 
@@ -101,7 +112,7 @@ export function interpretMaibRefundResponse(raw: unknown): MaibRefundInterpretat
 export async function findRefundRow(client: SupabaseClient, payId: string) {
   const { data, error } = await table<MaibRefundRow>(client, 'maib_refunds')
     .select(
-      'pay_id, booking_group_id, amount, currency, status, reason, response_payload, provider_status, attempts, alerted_at, created_at',
+      'pay_id, booking_group_id, amount, currency, status, reason, response_payload, provider_status, attempts, alerted_at, eligible_at, created_at',
     )
     .eq('pay_id', payId)
     .maybeSingle();
@@ -144,6 +155,112 @@ export async function queueRefundForReconciliation(
 
   if (error) throw new Error(error.message);
   return await findRefundRow(client, input.payId);
+}
+
+// Schedule a guest refund for the cooldown (ADR-096) WITHOUT calling MAIB: record
+// the maib_refunds row as 'requested' with eligible_at = now + 60h, and let the
+// reconcile-refunds cron execute it once due. Idempotent and clock-stable — a
+// terminal row (succeeded/cancelled) is left alone, and an existing eligible_at is
+// preserved so re-initiating never pushes the payout later.
+export async function scheduleBookingRefund(
+  client: SupabaseClient,
+  input: {
+    payId: string;
+    bookingGroupId: string;
+    amount: number;
+    currency?: string;
+    reason: string;
+    source: string;
+  },
+): Promise<MaibRefundRow | null> {
+  const existing = await findRefundRow(client, input.payId);
+  if (existing?.status === 'succeeded' || existing?.status === 'cancelled') {
+    return existing;
+  }
+
+  const now = new Date();
+  const eligibleAt = existing?.eligible_at || refundEligibleAtIso(now);
+  const { error } = await table(client, 'maib_refunds')
+    .upsert({
+      pay_id: input.payId,
+      booking_group_id: input.bookingGroupId,
+      amount: input.amount,
+      currency: input.currency || 'MDL',
+      // A row already mid-flight (processing) keeps that state; a fresh schedule
+      // starts as requested. Either way the cron gates on eligible_at.
+      status: existing?.status === 'processing' ? 'processing' : 'requested',
+      reason: input.reason,
+      request_payload: {
+        amount: input.amount,
+        reason: input.reason,
+        source: input.source,
+        scheduled: true,
+      },
+      eligible_at: eligibleAt,
+      updated_at: now.toISOString(),
+    }, { onConflict: 'pay_id' });
+
+  if (error) throw new Error(error.message);
+  return (await findRefundRow(client, input.payId)) ?? null;
+}
+
+export type ScheduledRefundCancelResult =
+  | { ok: true; row: MaibRefundRow | null; alreadyCancelled?: boolean }
+  | { ok: false; reason: 'not_found' | 'already_refunded' | 'already_processing' };
+
+// Staff aborts a still-pending scheduled refund during the cooldown (ADR-096).
+// Only a row that has NOT yet fired is cancellable: status 'requested' with a
+// future eligible_at (the cron never sent it to MAIB). Once the cooldown elapses
+// and the cron moves it to processing/succeeded/failed, the money may be in
+// flight, so cancellation is refused. Terminal 'cancelled' is idempotent.
+export async function cancelScheduledRefund(
+  client: SupabaseClient,
+  payId: string,
+): Promise<ScheduledRefundCancelResult> {
+  const existing = await findRefundRow(client, payId);
+  if (!existing) {
+    return { ok: false, reason: 'not_found' };
+  }
+  if (existing.status === 'cancelled') {
+    return { ok: true, row: existing, alreadyCancelled: true };
+  }
+  if (existing.status === 'succeeded') {
+    return { ok: false, reason: 'already_refunded' };
+  }
+
+  const notYetDue = Boolean(
+    existing.eligible_at && new Date(existing.eligible_at).getTime() > Date.now(),
+  );
+  if (existing.status !== 'requested' || !notYetDue) {
+    return { ok: false, reason: 'already_processing' };
+  }
+
+  const now = new Date().toISOString();
+  // Guard the update on status='requested' so a cron tick that fires the refund
+  // between our read and write wins the race — we never cancel a sent refund.
+  const { error } = await table(client, 'maib_refunds')
+    .update({
+      status: 'cancelled',
+      error_message: 'Restituire anulată de personal în perioada de așteptare.',
+      updated_at: now,
+    })
+    .eq('pay_id', payId)
+    .eq('status', 'requested');
+
+  if (error) throw new Error(error.message);
+
+  // Keep the Finance "Sumă rambursată" box honest: the booking stays cancelled,
+  // but the money was NOT returned, so drop the "refunded" marker back to plain
+  // guest_request for the group. Best-effort — the abort already succeeded.
+  const { error: reasonError } = await table(client, 'reservations')
+    .update({ cancellation_reason: 'guest_request' })
+    .eq('booking_group_id', existing.booking_group_id)
+    .eq('cancellation_reason', 'guest_request_refunded');
+  if (reasonError) {
+    console.error('Could not reset cancellation_reason after refund cancel', reasonError);
+  }
+
+  return { ok: true, row: (await findRefundRow(client, payId)) ?? null };
 }
 
 export async function attemptBookingRefund(

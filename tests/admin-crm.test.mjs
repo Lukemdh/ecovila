@@ -149,6 +149,16 @@ function createFinanceDocument() {
   register('[data-finance-booked-count]', 'span');
   register('[data-finance-booked-list]', 'div');
   register('[data-finance-booked-empty]', 'p');
+  register('[data-finance-cancelled-count]', 'strong');
+  register('[data-finance-commission-lost]', 'strong');
+  register('[data-finance-refunded-total]', 'strong');
+  register('[data-finance-cancel-count]', 'strong');
+  register('[data-finance-cancel-list]', 'div');
+  register('[data-finance-cancel-empty]', 'p');
+  register('[data-finance-scheduled]', 'section');
+  register('[data-finance-scheduled-list]', 'div');
+  register('[data-finance-scheduled-empty]', 'p');
+  register('[data-finance-scheduled-count]', 'strong');
 
   return {
     document: {
@@ -237,6 +247,7 @@ describe('EcoVila Step 9 CRM', () => {
     const dashboard = read('admin/dashboard.html');
     const app = read('admin/js/crm-app.js');
     const helpers = read('js/supabase.js');
+    const finance = read('admin/js/crm-finance.js');
 
     for (const hook of [
       'data-panel="finance"',
@@ -261,6 +272,17 @@ describe('EcoVila Step 9 CRM', () => {
       'data-finance-booked-count',
       'data-finance-booked-list',
       'data-finance-booked-empty',
+      'data-finance-cancellations',
+      'data-finance-cancelled-count',
+      'data-finance-commission-lost',
+      'data-finance-refunded-total',
+      'data-finance-cancel-count',
+      'data-finance-cancel-list',
+      'data-finance-cancel-empty',
+      'data-finance-scheduled',
+      'data-finance-scheduled-list',
+      'data-finance-scheduled-empty',
+      'data-finance-scheduled-count',
       'js/crm-finance.js',
     ]) {
       assert.match(dashboard, new RegExp(hook), `${hook} should exist`);
@@ -270,7 +292,15 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(app, /EcoVilaCrmFinance\?\.showToday\?\.\(\)/);
     assert.match(helpers, /function fetchFinanceReservations/);
     assert.match(helpers, /function fetchFinanceBookedReservations/);
+    assert.match(helpers, /function fetchFinanceCancellations/);
     assert.match(helpers, /created_at/);
+    // Cancellations are keyed by cancelled_at and exclude never-paid abandoned holds.
+    assert.match(helpers, /cancelled_at/);
+    // Refund-cooldown CRM controls (ADR-096).
+    assert.match(helpers, /function fetchScheduledRefunds/);
+    assert.match(helpers, /function controlScheduledRefund/);
+    assert.match(helpers, /'scheduled-refunds'/);
+    assert.match(finance, /function renderScheduledRefunds/);
   });
 
   it('summarizes finance rows by overlapping nights and keeps din oficiu separate', () => {
@@ -402,6 +432,150 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.averageBookingValue, 3750);
     assert.equal(summary.roomTypeTotals.small, 2500);
     assert.equal(summary.roomTypeTotals.hotel, 5000);
+  });
+
+  it('summarizes cancellations by count, refunded total, and 1.4% commission lost', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const summary = finance.summarizeCancellationRows({
+      rows: [
+        {
+          id: 'card-refunded',
+          booking_group_id: 'grp-card',
+          check_in: '2026-07-20',
+          check_out: '2026-07-22',
+          total_price: 5000,
+          payment_type: 'card',
+          payment_status: 'cancelled',
+          paid_at: '2026-07-01T10:00:00.000Z',
+          cancelled_at: '2026-07-08T09:00:00.000Z',
+          cancellation_reason: 'guest_request_refunded',
+          rooms: { number: 3, type: 'small' },
+        },
+        {
+          id: 'mia-refunded',
+          booking_group_id: 'grp-mia',
+          check_in: '2026-07-25',
+          check_out: '2026-07-26',
+          total_price: 2500,
+          payment_type: 'mia',
+          payment_status: 'cancelled',
+          paid_at: '2026-07-02T10:00:00.000Z',
+          cancelled_at: '2026-07-08T11:00:00.000Z',
+          cancellation_reason: 'guest_request_refunded',
+          rooms: { number: 4, type: 'small' },
+        },
+        {
+          id: 'card-kept',
+          booking_group_id: 'grp-kept',
+          check_in: '2026-07-10',
+          check_out: '2026-07-11',
+          total_price: 3000,
+          payment_type: 'card',
+          payment_status: 'cancelled',
+          paid_at: '2026-07-03T10:00:00.000Z',
+          cancelled_at: '2026-07-08T12:00:00.000Z',
+          cancellation_reason: 'guest_request',
+          rooms: { number: 5, type: 'large' },
+        },
+        {
+          id: 'cash-cancelled',
+          booking_group_id: 'grp-cash',
+          check_in: '2026-07-14',
+          check_out: '2026-07-15',
+          total_price: 1000,
+          payment_type: 'cash',
+          payment_status: 'cancelled',
+          paid_at: '2026-07-04T10:00:00.000Z',
+          cancelled_at: '2026-07-08T13:00:00.000Z',
+          cancellation_reason: 'guest_request',
+          rooms: { number: 6, type: 'small' },
+        },
+        {
+          id: 'office-cancelled',
+          booking_group_id: 'grp-office',
+          check_in: '2026-07-16',
+          check_out: '2026-07-17',
+          total_price: 2000,
+          payment_type: 'office',
+          payment_status: 'cancelled',
+          paid_at: '2026-07-05T10:00:00.000Z',
+          cancelled_at: '2026-07-08T14:00:00.000Z',
+          cancellation_reason: 'guest_request',
+          rooms: { number: 7, type: 'hotel' },
+        },
+        {
+          id: 'abandoned-hold',
+          booking_group_id: 'grp-hold',
+          check_in: '2026-07-18',
+          check_out: '2026-07-19',
+          total_price: 4000,
+          payment_type: 'mia',
+          payment_status: 'cancelled',
+          paid_at: null,
+          cancelled_at: '2026-07-08T15:00:00.000Z',
+          cancellation_reason: 'maib_session_expired',
+          rooms: { number: 8, type: 'small' },
+        },
+      ],
+    });
+
+    // Never-paid abandoned holds are dropped; the five paid cancellations count.
+    assert.equal(summary.count, 5);
+    // Only the two refunded online bookings feed the refunded + commission totals.
+    assert.equal(summary.refundedTotal, 7500);
+    assert.equal(summary.commissionLost, 105);
+  });
+
+  it('groups a multi-villa cancellation once and sums the whole-booking refund', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const rawRows = [
+      {
+        id: 'villa-2',
+        booking_group_id: 'grp-multi',
+        check_in: '2026-07-28',
+        check_out: '2026-07-30',
+        adults: 4,
+        kids_ages: [],
+        total_price: 4000,
+        payment_type: 'card',
+        payment_status: 'cancelled',
+        paid_at: '2026-07-01T10:00:00.000Z',
+        cancelled_at: '2026-07-08T09:00:00.000Z',
+        cancellation_reason: 'guest_request_refunded',
+        guest_first_name: 'Ion',
+        guest_last_name: 'Popescu',
+        rooms: { number: 2, type: 'small' },
+      },
+      {
+        id: 'villa-1',
+        booking_group_id: 'grp-multi',
+        check_in: '2026-07-28',
+        check_out: '2026-07-30',
+        adults: 4,
+        kids_ages: [],
+        total_price: 4000,
+        payment_type: 'card',
+        payment_status: 'cancelled',
+        paid_at: '2026-07-01T10:00:00.000Z',
+        cancelled_at: '2026-07-08T09:00:00.000Z',
+        cancellation_reason: 'guest_request_refunded',
+        guest_first_name: 'Ion',
+        guest_last_name: 'Popescu',
+        rooms: { number: 1, type: 'small' },
+      },
+    ];
+
+    const groups = finance.groupCancellationRows(finance.normalizeCancellationRows(rawRows));
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].villas.length, 2);
+    assert.equal(groups[0].totalPrice, 8000);
+    assert.equal(groups[0].refunded, true);
+    assert.equal(groups[0].guestName, 'Ion Popescu');
+
+    const summary = finance.summarizeCancellationRows({ rows: rawRows });
+    assert.equal(summary.count, 1);
+    assert.equal(summary.refundedTotal, 8000);
+    assert.equal(summary.commissionLost, 112);
   });
 
   it('normalizes one-day finance booked rows without cancelled reservations', () => {
@@ -633,6 +807,18 @@ describe('EcoVila Step 9 CRM', () => {
           calls.push({ type: 'booked', ...options });
           return [];
         },
+        async fetchFinanceChangePayments(_client, options) {
+          calls.push({ type: 'changes', ...options });
+          return [];
+        },
+        async fetchFinanceCancellations(_client, options) {
+          calls.push({ type: 'cancellations', ...options });
+          return [];
+        },
+        async fetchScheduledRefunds() {
+          calls.push({ type: 'scheduled' });
+          return [];
+        },
       },
     });
 
@@ -669,6 +855,16 @@ describe('EcoVila Step 9 CRM', () => {
       }),
       'single-day Apply in incasari mode should load reservations booked during that day',
     );
+    assert.ok(
+      calls.some((call) => {
+        return call.type === 'cancellations' && call.rangeStart === '2026-06-06' && call.rangeEnd === '2026-06-07';
+      }),
+      'single-day Apply should load cancellations made during the selected day',
+    );
+    assert.ok(
+      calls.some((call) => call.type === 'scheduled'),
+      'finance load should also refresh the pending scheduled refunds list',
+    );
   });
 
   it('defaults the finance tab to today as a single-day range on load', async () => {
@@ -697,6 +893,9 @@ describe('EcoVila Step 9 CRM', () => {
           return [];
         },
         async fetchFinanceBookedReservations() {
+          return [];
+        },
+        async fetchFinanceCancellations() {
           return [];
         },
       },

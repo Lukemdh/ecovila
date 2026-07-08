@@ -620,11 +620,22 @@
       }
 
       setText('[data-confirmare-lead]', t('confirmare.cancelledTitle'));
-      setText('[data-managed-status]', t(result?.refunded ? 'confirmare.statusRefunded' : 'confirmare.statusCancelled'));
-      setText(
-        '[data-managed-refund-note]',
-        result?.refunded ? t('confirmare.cancelledWithRefund') : t('confirmare.cancelledWithoutRefund'),
-      );
+      // A refund-eligible cancellation now SCHEDULES the payout (ADR-096 60h
+      // cooldown) instead of returning the money on the spot, so tell the guest
+      // it's on the way rather than "no refund".
+      const refundScheduled = Boolean(result?.refundScheduled);
+      const statusKey = refundScheduled
+        ? 'confirmare.statusRefundScheduled'
+        : result?.refunded
+        ? 'confirmare.statusRefunded'
+        : 'confirmare.statusCancelled';
+      const noteKey = refundScheduled
+        ? 'confirmare.cancelledWithScheduledRefund'
+        : result?.refunded
+        ? 'confirmare.cancelledWithRefund'
+        : 'confirmare.cancelledWithoutRefund';
+      setText('[data-managed-status]', t(statusKey));
+      setText('[data-managed-refund-note]', t(noteKey));
 
       if (_managedContext?.details?.reservation) {
         _managedContext.details.reservation.paymentStatus = 'cancelled';

@@ -1538,6 +1538,179 @@ h2 {
   text-align: right;
 }
 
+/* Scheduled refunds (ADR-096): guest refunds inside the 60h cooldown, each with
+   "release now" / "cancel refund" controls. Clay accent = money pending action. */
+.crm-finance-scheduled {
+  border: 1px solid rgba(176, 139, 110, 0.5);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(240, 228, 210, 0.7), rgba(255, 253, 249, 0.92));
+  box-shadow: 0 10px 24px rgba(39, 48, 39, 0.06);
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 24px;
+}
+
+.crm-finance-scheduled[hidden] {
+  display: none;
+}
+
+.crm-finance-scheduled__header {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.crm-finance-scheduled__header h2 {
+  font-size: 2rem;
+}
+
+.crm-finance-scheduled__header p {
+  color: var(--crm-muted);
+  margin-top: 6px;
+  max-width: 660px;
+}
+
+.crm-finance-scheduled__header > strong {
+  align-items: center;
+  background: rgba(176, 139, 110, 0.18);
+  border: 1px solid rgba(176, 139, 110, 0.4);
+  border-radius: 999px;
+  color: #7a5a3c;
+  display: inline-flex;
+  font-size: 0.9rem;
+  justify-content: center;
+  min-width: 40px;
+  padding: 8px 12px;
+}
+
+.crm-finance-scheduled__list {
+  display: grid;
+  gap: 10px;
+}
+
+.crm-finance-scheduled-card {
+  align-items: center;
+  background: rgba(255, 253, 249, 0.9);
+  border: 1px solid rgba(176, 139, 110, 0.35);
+  border-left: 3px solid var(--crm-clay);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.crm-finance-scheduled-card__info {
+  display: grid;
+  gap: 4px;
+  min-width: 240px;
+}
+
+.crm-finance-scheduled-card__info strong {
+  color: var(--crm-ink);
+  font-weight: 800;
+}
+
+.crm-finance-scheduled-card__info span {
+  color: var(--crm-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.crm-finance-scheduled-card__info .crm-finance-scheduled-card__amount {
+  color: var(--crm-ink);
+  font-size: 0.95rem;
+}
+
+.crm-finance-scheduled-card__info .crm-finance-scheduled-card__eta {
+  color: #7a5a3c;
+}
+
+.crm-finance-scheduled-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Cancellation tracking: 3 metric boxes (count / commission lost / refunded) plus
+   the per-cancellation list, shown for the selected day or range. */
+.crm-finance-cancellations {
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: rgba(255, 253, 249, 0.88);
+  box-shadow: 0 10px 24px rgba(39, 48, 39, 0.06);
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+  padding: 24px;
+}
+
+.crm-finance-cancellations__intro {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.crm-finance-cancellations__intro h2 {
+  font-size: 2rem;
+}
+
+.crm-finance-cancellations__intro p {
+  color: var(--crm-muted);
+  margin-top: 6px;
+  max-width: 660px;
+}
+
+.crm-finance-cancellations__intro > strong {
+  align-items: center;
+  background: rgba(150, 70, 50, 0.1);
+  border: 1px solid rgba(150, 70, 50, 0.22);
+  border-radius: 999px;
+  color: #8a4535;
+  display: inline-flex;
+  font-size: 0.9rem;
+  justify-content: center;
+  min-width: 40px;
+  padding: 8px 12px;
+}
+
+.crm-finance-cancellations-summary {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.crm-finance-stat--cancel {
+  background: rgba(244, 233, 228, 0.72);
+  border-color: rgba(150, 70, 50, 0.2);
+}
+
+.crm-finance-stat--cancel strong {
+  color: #8a4535;
+}
+
+/* A clay left rail marks a cancellation; refunded ones flip to moss so the owner
+   can scan which refunds were already handled. */
+.crm-finance-cancel-card {
+  border-left: 3px solid rgba(150, 70, 50, 0.42);
+}
+
+.crm-finance-cancel-card .crm-finance-booked-status {
+  color: #8a4535;
+}
+
+.crm-finance-cancel-card--refunded {
+  border-left-color: rgba(92, 122, 82, 0.5);
+}
+
+.crm-finance-cancel-card--refunded .crm-finance-booked-status {
+  color: #4d6b41;
+}
+
 .crm-panel[data-panel="daily"] .crm-daily-grid {
   gap: 20px;
   min-height: calc(100vh - 236px);
