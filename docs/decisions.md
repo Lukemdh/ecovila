@@ -3107,6 +3107,35 @@ frontend, no TopHost upload. deno 125.
 
 ---
 
+### ADR-098 — Check-in/out times + house rules surfaced on the checkout page
+
+**Date:** 2026-07-16.
+
+**Motivation.** The house rules (no pets, no outside food or drinks, no portable speakers) and the
+check-in/check-out hours lived only in the FAQ and Terms & Conditions — a guest could pay without ever
+seeing them. The owner wanted them on the checkout page so expectations are set at the moment of
+booking, cutting day-of friction and disputes at arrival.
+
+**Decision.** Added a **"Bine de știut"** block at the foot of the checkout summary card (left column,
+so it is reviewed *before* the guest reaches the Pay button). It shows a Check-in (`de la 13:00`) →
+Check-out (`până la 10:00`) panel — the same 13:00/10:00 times already used in the FAQ, T&C, and the
+confirmation email/page — followed by the three prohibitions as separate, scannable rows each carrying
+a "prohibited" (circle-slash) glyph, matching the existing `confirmare.noPets` treatment. Copy is lifted
+verbatim from the existing FAQ answer (`faq.a5`), split into three lines rather than one sentence.
+Six new `checkout.*` i18n keys (`goodToKnowTitle`, `checkinHour`, `checkoutHour`, `ruleNoPets`,
+`ruleNoOutsideFood`, `ruleNoSpeakers`) × RO/RU/EN; the two time labels reuse the existing
+`booking.checkIn` / `booking.checkOut` keys. Presentational only — no JS logic, no backend, no
+pricing/validation change.
+
+**Surface.** `checkout.html` (block markup, `data-i18n`-driven, RO-first), `css/checkout.css`
+(`co-goodtoknow` / `co-rules` styles reusing the existing paper/cocoa/espresso tokens + the arrow motif
+from `confirmare`, plus a mobile tweak), `js/translations.js` (6 keys × 3 langs). Site-wide asset token
+bumped `?v=2026070803` → `?v=2026071601` (bundles the still-pending ADR-095/096 admin frontend under the
+new build). node 32 (checkout/asset-versioning/tophost) green; browser-verified desktop + mobile in
+RO/RU/EN, no console errors. Frontend-only — **REMAINING: owner TopHost upload**.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

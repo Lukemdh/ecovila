@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="css/main.css?v=2026070803">
-    <link rel="stylesheet" href="css/checkout.css?v=2026070803">
+    <link rel="stylesheet" href="css/main.css?v=2026071601">
+    <link rel="stylesheet" href="css/checkout.css?v=2026071601">
   </head>
   <body>
     <a class="skip-link" href="#checkout-page" data-i18n="access.skip">Sari la conținut</a>
@@ -123,6 +123,46 @@
             <div class="co-total">
               <span data-i18n="checkout.total">Total</span>
               <strong data-summary-total>--</strong>
+            </div>
+
+            <!-- Check-in / check-out hours + house rules to review before paying -->
+            <div class="co-goodtoknow">
+              <h3 data-i18n="checkout.goodToKnowTitle">Bine de știut</h3>
+
+              <div class="co-goodtoknow__times">
+                <div class="co-goodtoknow__time">
+                  <span class="co-goodtoknow__time-label" data-i18n="booking.checkIn">Check-in</span>
+                  <strong data-i18n="checkout.checkinHour">de la 13:00</strong>
+                </div>
+                <span class="co-goodtoknow__arrow" aria-hidden="true">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </span>
+                <div class="co-goodtoknow__time">
+                  <span class="co-goodtoknow__time-label" data-i18n="booking.checkOut">Check-out</span>
+                  <strong data-i18n="checkout.checkoutHour">până la 10:00</strong>
+                </div>
+              </div>
+
+              <ul class="co-rules">
+                <li class="co-rule">
+                  <span class="co-rule__icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.64" y1="5.64" x2="18.36" y2="18.36"/></svg>
+                  </span>
+                  <span data-i18n="checkout.ruleNoPets">Fără animale de companie</span>
+                </li>
+                <li class="co-rule">
+                  <span class="co-rule__icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.64" y1="5.64" x2="18.36" y2="18.36"/></svg>
+                  </span>
+                  <span data-i18n="checkout.ruleNoOutsideFood">Fără mâncare sau băuturi aduse din afară</span>
+                </li>
+                <li class="co-rule">
+                  <span class="co-rule__icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.64" y1="5.64" x2="18.36" y2="18.36"/></svg>
+                  </span>
+                  <span data-i18n="checkout.ruleNoSpeakers">Fără boxe portabile</span>
+                </li>
+              </ul>
             </div>
           </section>
 
@@ -313,14 +353,14 @@
         <button class="cookie-banner__save" type="button" data-cookie-choice="custom" data-i18n="cookie.save">Salvează opțiunile</button>
       </div>
     </div>
-    <script src="js/vendor/supabase.js?v=2026070803"></script>
-    <script src="js/supabase-config.js?v=2026070803"></script>
-    <script src="js/supabase.js?v=2026070803"></script>
-    <script src="js/tracking-config.js?v=2026070803"></script>
-    <script src="js/tracking.js?v=2026070803"></script>
-    <script src="js/translations.js?v=2026070803"></script>
-    <script src="js/pricing.js?v=2026070803"></script>
-    <script src="js/main.js?v=2026070803"></script>
-    <script src="js/checkout.js?v=2026070803"></script>
+    <script src="js/vendor/supabase.js?v=2026071601"></script>
+    <script src="js/supabase-config.js?v=2026071601"></script>
+    <script src="js/supabase.js?v=2026071601"></script>
+    <script src="js/tracking-config.js?v=2026071601"></script>
+    <script src="js/tracking.js?v=2026071601"></script>
+    <script src="js/translations.js?v=2026071601"></script>
+    <script src="js/pricing.js?v=2026071601"></script>
+    <script src="js/main.js?v=2026071601"></script>
+    <script src="js/checkout.js?v=2026071601"></script>
   </body>
 </html>
