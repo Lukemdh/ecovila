@@ -3193,11 +3193,29 @@ lost money, but two could mislead staff on a money flow and one under-reported r
    truncated group would render "fără rambursare". Paged on `pay_id` (unique ⇒ stable order), mirroring
    the ADR-092 pager.
 
-**Surface.** Backend: `_shared/refunds.ts`, `scheduled-refunds`, `reconcile-refunds`, `maib-refund`
-(all need redeploy). Frontend: `admin/js/crm-finance.js`, `js/supabase.js`; token `?v=2026071601` →
+**Surface.** Backend: `_shared/refunds.ts`, `scheduled-refunds`, `reconcile-refunds`, `maib-refund`.
+Frontend: `admin/js/crm-finance.js`, `js/supabase.js`; token `?v=2026071601` →
 `?v=2026071801`. Tests: `refundCooldown.test.ts` mock rewritten filter-aware (guarded updates evaluate
 eq/neq against the stored row; +2 race tests) and `admin-crm.test.mjs` (+1 change-transfer test,
 refunded-only count). node 314 + deno 127 green. No migration.
+
+**Deployed to prod 2026-07-18 19:37 UTC.** All 26 edge functions redeployed together (`supabase
+functions deploy`, project `mckchrviaawdxtsfytut`) rather than only the four touched ones — every
+function bundling `_shared/refunds.ts` (notably `reservation-cancel`) had to pick up the new claim
+logic in lockstep, or a stale bundle could still blind-upsert a cancelled refund back to life. Key
+versions: **maib-refund v20, reservation-cancel v26, reconcile-refunds v6, scheduled-refunds v3,
+complaint-submit v12**. Smoke-tested the auth gates (no money can move on a rejected call):
+`scheduled-refunds` and `maib-refund` 401 at the platform JWT gate, and `reconcile-refunds`
+(`verify_jwt=false`) 401s from its own `requireSharedSecret` — proving the newly deployed bundle
+actually executes. RLS re-verified for the new Finance query: `reservation_changes` is readable by
+`diana`/`angela` (ADR-057 policy), so `fetchRefundedChangeAmounts` works from the browser.
+
+**Sequencing.** Backend-first is safe here and carries no window of breakage: the frontend additions
+are either pure-PostgREST reads (`fetchRefundedChangeAmounts`) or surface a `{ok:false}` payload the
+function already returned before this change, and no action signature changed. Until the owner uploads
+`?v=2026071801`, the live CRM simply keeps the old (silent-release, differences-omitted) behaviour
+against the new backend. **REMAINING: owner TopHost upload** of the `?v=2026071801` frontend, which
+bundles the still-pending ADR-095/096/098 admin+guest frontend with this one.
 
 ---
 
