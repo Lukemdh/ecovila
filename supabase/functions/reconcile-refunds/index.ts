@@ -166,6 +166,12 @@ async function reconcileRefund(
     source: 'reconcile-refunds',
   });
 
+  if (!outcome.ok && outcome.cancelled) {
+    // Staff aborted the scheduled refund between our fetch and the execution
+    // claim — the abort is terminal, not a failure; no alert, no retry.
+    return { ...base, resolved: true, providerStatus: 'cancelled' };
+  }
+
   if (outcome.ok) {
     if (outcome.alreadyRefunded) {
       // REVERSED on a retry: MAIB reports a refund already exists for this

@@ -3009,7 +3009,9 @@ reservation with both `cancelled_at` and `paid_at` set — so never-paid abandon
 by `cancelled_at` in the Chișinău calendar day (same UTC-boundary conversion as the booked-day fetch).
 
 Three tracking boxes (owner spec):
-- **Anulări** — count of cancelled booking groups in the period.
+- **Anulări** — count of cancelled booking groups in the period. **Corrected 2026-07-18 (ADR-099):**
+  the whole view is refunded-only (see the refund-detection correction below), so the box counts the
+  REFUNDED cancellations in the period — the same set the card list shows — not every paid cancellation.
 - **Pierdut pe comisioane** — the ~0.7% MAIB took on the inbound payment (wasted, since the booking
   netted nothing) plus MAIB's interbank payout fee to refund the guest. **Corrected 2026-07-08:** that
   payout fee is a flat TIER, not a percentage — a real 12,200 MDL refund cost exactly 40.00 MDL, and no
@@ -3018,6 +3020,9 @@ Three tracking boxes (owner spec):
   the refunded amount" was replaced). The descriptive helper paragraph under the heading was removed at
   the owner's request.
 - **Sumă rambursată** — total of the online (`guest_request_refunded`) booking-group totals.
+  **Corrected 2026-07-18 (ADR-099):** the total also includes refunded "add guests" difference
+  transfers — `reservations.total_price` never contains a paid difference, and each difference
+  refunds as its own MAIB transfer carrying its own flat payout fee.
 
 Plus a per-cancellation card list (guest · villa · stay · amount · Anulat: `<when>` · refund badge:
 rambursat / cash·fără rambursare / fără rambursare).
@@ -3133,6 +3138,66 @@ from `confirmare`, plus a mobile tweak), `js/translations.js` (6 keys × 3 langs
 bumped `?v=2026070803` → `?v=2026071601` (bundles the still-pending ADR-095/096 admin frontend under the
 new build). node 32 (checkout/asset-versioning/tophost) green; browser-verified desktop + mobile in
 RO/RU/EN, no console errors. Frontend-only — **REMAINING: owner TopHost upload**.
+
+---
+
+### ADR-099 — Refund-cooldown QA hardening: atomic cancel/execute, honest release failures, complete refunded totals
+
+**Date:** 2026-07-18.
+
+**Motivation.** A post-deploy QA sweep of ADR-092..098 (own review + an independent GPT-5.6 pass, every
+finding verified against the code) found four real defects in the new refund-cooldown/Finance code. None
+lost money, but two could mislead staff on a money flow and one under-reported refunded totals.
+
+**Decisions.**
+
+1. **Cancel vs execute is now atomic** (`_shared/refunds.ts`). `attemptBookingRefund` used to open with
+   a blind `upsert(status='requested')` — a scheduled refund staff had just cancelled could be
+   resurrected by a concurrent "Eliberează acum" (release read `requested`, cancel landed, the upsert
+   overwrote `cancelled`, MAIB paid a refund staff explicitly aborted). The attempt now CLAIMS the row
+   with a guarded `UPDATE … WHERE pay_id=? AND status<>'cancelled' RETURNING`, refusing with a new
+   `cancelled: true` outcome when the abort won (0 rows matched; no MAIB call, insert only when no row
+   exists). The claim also stamps **`processing`** (not `requested`) before any MAIB call, so
+   `cancelScheduledRefund`'s `status='requested'` guard can never match a refund in flight — and that
+   guard is now **verified** (`RETURNING` + 0-rows ⇒ `already_processing`) instead of assumed, so a
+   cancel that lost the race reports the truth rather than "cancelled" while money moves.
+   `reconcile-refunds` treats a `cancelled` outcome as terminal (no false "Restituire nefinalizată"
+   alert); `scheduled-refunds` release answers 409. Escape hatch: **`maib-refund` passes
+   `allowCancelled: true`** — staff pressing "Restituie" after an abort is a deliberate decision to pay.
+
+2. **A failed release is loud and retried on the promised cadence** (`scheduled-refunds`,
+   `admin/js/crm-finance.js`). Releasing during the cooldown now **clears `eligible_at` before the
+   attempt** — the staff release ends the cooldown whatever MAIB answers, so a declined/unconfirmed
+   release is retried by the reconcile cron within ≤30 min (it used to stay parked until the original
+   60h stamp while the alert promised 30-minute retries). And the CRM no longer swallows the HTTP-200
+   `{ok:false, pending:true}` payload: the returned message is shown via `setAlert` instead of the card
+   silently vanishing as if the release had succeeded.
+
+3. **Refunded totals include refunded "add guests" transfers** (`js/supabase.js`
+   `fetchRefundedChangeAmounts`, `admin/js/crm-finance.js`). `reservations.total_price` never contains
+   a paid difference (the apply step only updates the party fields) and each difference refunds as its
+   own MAIB transfer with its own flat payout fee — so a 9,000 MDL booking with a refunded 1,500 MDL
+   add-guests payment really returns 10,500 MDL over two transfers (~114 MDL commission), where the
+   Finance tab showed 9,000 / 83. The cancellation groups now carry `changeAmounts`/`refundedAmount`
+   (Map fetched per cancelled group, best-effort), the boxes sum them, and each transfer takes its own
+   fee tier. The card amount shows the money actually returned.
+
+4. **"Anulări" box semantics settled: refunded-only is intended** (owner decision). The code showed the
+   refunded-only count while ADR-095's text and the unit test still described "all paid cancellations".
+   The doc and `tests/admin-crm.test.mjs` now match the code (`summarizeCancellationRows.count` counts
+   refunded groups; the dead all-cancellations count was removed).
+
+5. **`refunded-groups` is paginated** (`scheduled-refunds`). The two authoritative queries
+   (`maib_payments.status='refunded'` ∪ `maib_refunds.status='succeeded'`) were unpaginated and would
+   silently truncate at PostgREST's ~1000-row cap once the refund history outgrows one page — every
+   truncated group would render "fără rambursare". Paged on `pay_id` (unique ⇒ stable order), mirroring
+   the ADR-092 pager.
+
+**Surface.** Backend: `_shared/refunds.ts`, `scheduled-refunds`, `reconcile-refunds`, `maib-refund`
+(all need redeploy). Frontend: `admin/js/crm-finance.js`, `js/supabase.js`; token `?v=2026071601` →
+`?v=2026071801`. Tests: `refundCooldown.test.ts` mock rewritten filter-aware (guarded updates evaluate
+eq/neq against the stored row; +2 race tests) and `admin-crm.test.mjs` (+1 change-transfer test,
+refunded-only count). node 314 + deno 127 green. No migration.
 
 ---
 

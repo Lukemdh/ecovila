@@ -29,11 +29,13 @@ import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdm
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
+  update(payload: unknown): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   gt(column: string, value: unknown): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
+  range(from: number, to: number): QueryBuilder<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
 };
 
@@ -203,6 +205,16 @@ async function releaseNow(client: SupabaseClient, payId: string) {
     throw new HttpError(404, 'MAIB payment was not found.');
   }
 
+  // The staff release ends the cooldown whatever MAIB answers: clear eligible_at
+  // BEFORE the attempt so a declined/unconfirmed release is retried by the
+  // reconcile cron on its normal ≤30-min cadence. Leaving the future stamp in
+  // place parked a failed release until the original 60h elapsed, while the
+  // staff alert promised 30-minute retries (ADR-099).
+  const { error: clearError } = await table(client, 'maib_refunds')
+    .update({ eligible_at: null, updated_at: new Date().toISOString() })
+    .eq('pay_id', payId);
+  if (clearError) throw new Error(clearError.message);
+
   const amount = Number(refund.amount || payment.amount || 0);
   const outcome = await attemptBookingRefund(client, {
     payId: payment.pay_id,
@@ -213,6 +225,12 @@ async function releaseNow(client: SupabaseClient, payId: string) {
     reason: refund.reason || 'staff_release',
     source: 'scheduled-refunds:release',
   });
+
+  if (!outcome.ok && outcome.cancelled) {
+    // Staff aborted the refund in the instant between our status check and the
+    // execution claim — the abort wins and no money moved.
+    throw new HttpError(409, 'Această restituire a fost anulată și nu mai poate fi eliberată.');
+  }
 
   if (!outcome.ok) {
     await alertRefundProblem(client, {
@@ -245,22 +263,47 @@ async function releaseNow(client: SupabaseClient, payId: string) {
 // Union of the two authoritative "money returned" signals: a payment marked
 // refunded (attemptBookingRefund's success path + manual reconciliation) and a
 // succeeded refund row. Either alone is enough to call the group refunded.
+// Paged through PostgREST's ~1000-row cap (ADR-099): an unpaginated select
+// would silently truncate once the refund history outgrows one page, and every
+// truncated group would render "fără rambursare" in Finance. pay_id (unique)
+// gives the stable total order the pager needs.
+const REFUNDED_GROUPS_PAGE_SIZE = 1000;
+
+async function allBookingGroupIds(
+  build: () => QueryBuilder<{ booking_group_id: string | null }[]>,
+): Promise<Array<{ booking_group_id: string | null }>> {
+  const rows: Array<{ booking_group_id: string | null }> = [];
+  for (let from = 0; ; from += REFUNDED_GROUPS_PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + REFUNDED_GROUPS_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < REFUNDED_GROUPS_PAGE_SIZE) {
+      return rows;
+    }
+  }
+}
+
 async function refundedBookingGroups(client: SupabaseClient): Promise<string[]> {
   const groups = new Set<string>();
   const [payments, refunds] = await Promise.all([
-    table<{ booking_group_id: string | null }[]>(client, 'maib_payments')
-      .select('booking_group_id')
-      .eq('status', 'refunded'),
-    table<{ booking_group_id: string | null }[]>(client, 'maib_refunds')
-      .select('booking_group_id')
-      .eq('status', 'succeeded'),
+    allBookingGroupIds(() =>
+      table<{ booking_group_id: string | null }[]>(client, 'maib_payments')
+        .select('booking_group_id')
+        .eq('status', 'refunded')
+        .order('pay_id', { ascending: true })
+    ),
+    allBookingGroupIds(() =>
+      table<{ booking_group_id: string | null }[]>(client, 'maib_refunds')
+        .select('booking_group_id')
+        .eq('status', 'succeeded')
+        .order('pay_id', { ascending: true })
+    ),
   ]);
-  if (payments.error) throw new Error(payments.error.message);
-  if (refunds.error) throw new Error(refunds.error.message);
-  for (const row of payments.data || []) {
+  for (const row of payments) {
     if (row.booking_group_id) groups.add(row.booking_group_id);
   }
-  for (const row of refunds.data || []) {
+  for (const row of refunds) {
     if (row.booking_group_id) groups.add(row.booking_group_id);
   }
   return [...groups];

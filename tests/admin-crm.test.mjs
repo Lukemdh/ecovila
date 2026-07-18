@@ -525,8 +525,11 @@ describe('EcoVila Step 9 CRM', () => {
       ],
     });
 
-    // Never-paid abandoned holds are dropped; the five paid cancellations count.
-    assert.equal(summary.count, 5);
+    // The whole cancellations view is refunded-only (owner request, ADR-095
+    // corrected): of the five paid cancellations only the two with a real
+    // refund record count — kept-money, cash and office cancellations are out,
+    // and never-paid abandoned holds were never in.
+    assert.equal(summary.count, 2);
     // Only the two refunded online bookings feed the refunded + commission totals.
     assert.equal(summary.refundedTotal, 7500);
     // 0.7% inbound on 7500 = 52.5, plus a flat 20 MDL payout fee on each of the two
@@ -627,6 +630,58 @@ describe('EcoVila Step 9 CRM', () => {
       refundedGroupIds: new Set(['small']),
     });
     assert.equal(small.commissionLost, 41); // round(0.007 * 3000 + 20)
+  });
+
+  it('adds refunded add-guests transfers to the refunded total, each with its own payout fee', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const rows = [
+      {
+        id: 'with-change',
+        booking_group_id: 'grp-change',
+        check_in: '2026-07-20',
+        check_out: '2026-07-22',
+        total_price: 9000,
+        payment_type: 'card',
+        payment_status: 'cancelled',
+        paid_at: '2026-07-01T10:00:00.000Z',
+        cancelled_at: '2026-07-08T09:00:00.000Z',
+        cancellation_reason: 'guest_request_refunded',
+        rooms: { number: 3, type: 'small' },
+      },
+    ];
+    const refundedGroupIds = new Set(['grp-change']);
+    // A paid "add guests" difference is refunded as its OWN MAIB transfer —
+    // reservations.total_price never includes it (the apply step only updates
+    // the party fields), so the summary must add it on top (ADR-099).
+    const refundedChangesByGroup = new Map([['grp-change', [1500]]]);
+
+    const groups = finance.groupCancellationRows(
+      finance.normalizeCancellationRows(rows),
+      refundedGroupIds,
+      refundedChangesByGroup,
+    );
+    assert.equal(groups[0].refundedAmount, 10500);
+
+    const summary = finance.summarizeCancellationRows({
+      rows,
+      refundedGroupIds,
+      refundedChangesByGroup,
+    });
+    // 9000 stay + 1500 refunded difference actually went back to the guest.
+    assert.equal(summary.refundedTotal, 10500);
+    // 0.7% inbound on 10500 = 73.5, plus a flat 20 MDL payout fee on EACH
+    // sub-10k transfer (9000 main + 1500 difference) -> round(113.5) = 114.
+    assert.equal(summary.commissionLost, 114);
+
+    // Without a real refund record the change amounts contribute nothing.
+    const kept = finance.summarizeCancellationRows({
+      rows,
+      refundedGroupIds: new Set(),
+      refundedChangesByGroup,
+    });
+    assert.equal(kept.count, 0);
+    assert.equal(kept.refundedTotal, 0);
+    assert.equal(kept.commissionLost, 0);
   });
 
   it('marks refunded by the real refund record, not cancellation_reason', () => {

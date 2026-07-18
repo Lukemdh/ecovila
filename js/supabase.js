@@ -344,6 +344,29 @@
     return Array.isArray(result.data?.groups) ? result.data.groups : [];
   }
 
+  // Refunded "add guests" differences for a set of cancelled booking groups. A
+  // paid change is refunded as its OWN MAIB transfer when the booking refunds
+  // (refundPaidChanges), so the Finance cancellation totals must add these on
+  // top of the booking totals — reservations.total_price never includes a
+  // difference (the apply step only updates the party fields). ADR-099.
+  function fetchRefundedChangeAmounts(client, bookingGroupIds) {
+    const ids = Array.isArray(bookingGroupIds) ? bookingGroupIds.filter(Boolean) : [];
+    if (!ids.length) {
+      return Promise.resolve([]);
+    }
+
+    const buildQuery = () =>
+      client
+        .from('reservation_changes')
+        .select('id, booking_group_id, difference_amount')
+        .eq('status', 'refunded')
+        .gt('difference_amount', 0)
+        .in('booking_group_id', ids)
+        .order('id', { ascending: true });
+
+    return unwrapAllSupabaseRows(buildQuery);
+  }
+
   async function controlScheduledRefund(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -1310,6 +1333,7 @@
     refundMaibPaymentRequest,
     fetchScheduledRefunds,
     fetchRefundedGroups,
+    fetchRefundedChangeAmounts,
     controlScheduledRefund,
     notifyReservationCancellation,
     rescheduleReservation,

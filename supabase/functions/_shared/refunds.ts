@@ -29,6 +29,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   update(payload: unknown): QueryBuilder<T>;
   upsert(payload: unknown, options?: Record<string, unknown>): Promise<SupabaseQueryResult>;
   eq(column: string, value: unknown): QueryBuilder<T>;
+  neq(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
   gt(column: string, value: unknown): QueryBuilder<T>;
@@ -66,6 +67,9 @@ export type RefundAttemptOutcome = {
   // requested/processing/failed and the reconcile cron retries it.
   ok: boolean;
   alreadyRefunded?: boolean;
+  // true when the attempt was refused because staff cancelled the scheduled
+  // refund (ADR-096) — no MAIB call was made and no money moved.
+  cancelled?: boolean;
   providerStatus?: string;
   refundId?: string | null;
   payload?: Record<string, unknown>;
@@ -119,42 +123,6 @@ export async function findRefundRow(client: SupabaseClient, payId: string) {
 
   if (error) throw new Error(error.message);
   return data;
-}
-
-// Record that a refund is owed without calling MAIB — used when the flow that
-// should have refunded crashed before reaching the provider, so the reconcile
-// cron picks the row up on its next tick. Never demotes a succeeded row.
-export async function queueRefundForReconciliation(
-  client: SupabaseClient,
-  input: {
-    payId: string;
-    bookingGroupId: string;
-    amount: number;
-    currency?: string;
-    reason: string;
-    source: string;
-  },
-) {
-  const existing = await findRefundRow(client, input.payId);
-  if (existing?.status === 'succeeded') {
-    return existing;
-  }
-
-  const now = new Date().toISOString();
-  const { error } = await table(client, 'maib_refunds')
-    .upsert({
-      pay_id: input.payId,
-      booking_group_id: input.bookingGroupId,
-      amount: input.amount,
-      currency: input.currency || 'MDL',
-      status: existing?.status === 'processing' ? 'processing' : 'requested',
-      reason: input.reason,
-      request_payload: { amount: input.amount, reason: input.reason, source: input.source },
-      updated_at: now,
-    }, { onConflict: 'pay_id' });
-
-  if (error) throw new Error(error.message);
-  return await findRefundRow(client, input.payId);
 }
 
 // Schedule a guest refund for the cooldown (ADR-096) WITHOUT calling MAIB: record
@@ -236,18 +204,26 @@ export async function cancelScheduledRefund(
   }
 
   const now = new Date().toISOString();
-  // Guard the update on status='requested' so a cron tick that fires the refund
+  // Guard the update on status='requested' so an execution that claims the row
   // between our read and write wins the race — we never cancel a sent refund.
-  const { error } = await table(client, 'maib_refunds')
+  // The claim (attemptBookingRefund) moves the row to 'processing' before any
+  // MAIB call, so this can only match a row that has NOT fired. Verify a row was
+  // actually updated: 0 matches means the refund was claimed concurrently, and
+  // reporting "cancelled" then would be a lie (ADR-099).
+  const { data: cancelledRows, error } = await table<{ pay_id: string }[]>(client, 'maib_refunds')
     .update({
       status: 'cancelled',
       error_message: 'Restituire anulată de personal în perioada de așteptare.',
       updated_at: now,
     })
     .eq('pay_id', payId)
-    .eq('status', 'requested');
+    .eq('status', 'requested')
+    .select('pay_id');
 
   if (error) throw new Error(error.message);
+  if (!cancelledRows || !cancelledRows.length) {
+    return { ok: false, reason: 'already_processing' };
+  }
 
   // Keep the Finance "Sumă rambursată" box honest: the booking stays cancelled,
   // but the money was NOT returned, so drop the "refunded" marker back to plain
@@ -273,6 +249,11 @@ export async function attemptBookingRefund(
     currency?: string;
     reason: string;
     source: string;
+    // Only the deliberate staff refund path (maib-refund) may execute a refund
+    // whose scheduled row staff previously cancelled — pressing "Restituie" after
+    // an abort is an explicit decision to pay after all. Every other caller
+    // (reconcile cron, scheduled-refunds release) must respect the abort.
+    allowCancelled?: boolean;
   },
 ): Promise<RefundAttemptOutcome> {
   const existing = await findRefundRow(client, input.payId);
@@ -282,21 +263,45 @@ export async function attemptBookingRefund(
 
   const attempts = Number(existing?.attempts || 0) + 1;
   const now = new Date().toISOString();
-  const { error: upsertError } = await table(client, 'maib_refunds')
-    .upsert({
-      pay_id: input.payId,
-      booking_group_id: input.bookingGroupId,
-      amount: input.amount,
-      currency: input.currency || 'MDL',
-      status: 'requested',
-      reason: input.reason,
-      request_payload: { amount: input.amount, reason: input.reason, source: input.source },
-      attempts,
-      last_attempt_at: now,
-      updated_at: now,
-    }, { onConflict: 'pay_id' });
+  const claim = {
+    booking_group_id: input.bookingGroupId,
+    amount: input.amount,
+    currency: input.currency || 'MDL',
+    // 'processing' (not 'requested') from the moment the attempt is claimed:
+    // cancelScheduledRefund's guard only matches 'requested' rows, so a claimed
+    // attempt can never be "cancelled" while the MAIB call is in flight.
+    status: 'processing',
+    reason: input.reason,
+    request_payload: { amount: input.amount, reason: input.reason, source: input.source },
+    attempts,
+    last_attempt_at: now,
+    updated_at: now,
+  };
 
-  if (upsertError) throw new Error(upsertError.message);
+  if (existing) {
+    // Guarded claim instead of a blind upsert: a concurrent staff abort
+    // (status 'cancelled') must win — the old upsert resurrected the row to
+    // 'requested' and paid out a refund staff had just cancelled (ADR-099).
+    let query = table<{ pay_id: string }[]>(client, 'maib_refunds')
+      .update(claim)
+      .eq('pay_id', input.payId);
+    if (!input.allowCancelled) {
+      query = query.neq('status', 'cancelled');
+    }
+    const { data: claimed, error: claimError } = await query.select('pay_id');
+    if (claimError) throw new Error(claimError.message);
+    if (!claimed || !claimed.length) {
+      return {
+        ok: false,
+        cancelled: true,
+        error: 'Restituirea a fost anulată de personal — nu se mai execută.',
+      };
+    }
+  } else {
+    const { error: insertError } = await table(client, 'maib_refunds')
+      .insert({ pay_id: input.payId, ...claim });
+    if (insertError) throw new Error(insertError.message);
+  }
 
   let raw: Record<string, unknown>;
   try {

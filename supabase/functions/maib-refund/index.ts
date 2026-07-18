@@ -97,6 +97,10 @@ Deno.serve(async (request) => {
       currency: payment.currency || 'MDL',
       reason,
       source: 'maib-refund',
+      // Staff pressing "Restituie" is a deliberate decision to pay, even for a
+      // scheduled refund they previously aborted (ADR-096/099) — override the
+      // 'cancelled' guard that blocks every automatic execution path.
+      allowCancelled: true,
     });
 
     if (!outcome.ok) {

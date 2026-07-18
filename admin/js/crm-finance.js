@@ -658,8 +658,19 @@
   // cancel stamps 'Anulat din CRM', the guest card path 'guest_request_refunded',
   // and refunds also happen out-of-band), which is why refunded bookings used to
   // show "fără rambursare".
-  function groupCancellationRows(rows, refundedGroupIds) {
+  //
+  // refundedChangesByGroup maps a booking-group id to the refunded "add guests"
+  // difference amounts (each its own MAIB transfer, see fetchRefundedChangeAmounts).
+  // They ride on top of the booking total: reservations.total_price never includes
+  // a paid difference, so without them a cancelled booking with an add-guests
+  // payment under-reported the money actually returned (ADR-099).
+  function groupCancellationRows(rows, refundedGroupIds, refundedChangesByGroup) {
     const refunded = refundedGroupIds instanceof Set ? refundedGroupIds : new Set(refundedGroupIds || []);
+    // Duck-typed (not instanceof): the CRM tests construct the Map in another
+    // realm, where instanceof Map is false for a perfectly good Map.
+    const changesByGroup = typeof refundedChangesByGroup?.get === 'function'
+      ? refundedChangesByGroup
+      : new Map();
     const groups = new Map();
     const order = [];
 
@@ -679,12 +690,23 @@
           .slice()
           .sort((left, right) => left.roomNumber - right.roomNumber);
         const primary = villas[0];
+        // A group cancels as a unit, so total_price sums across its villa rows.
+        const totalPrice = villas.reduce((sum, villa) => sum + Number(villa.totalPrice || 0), 0);
+        const changeAmounts = (changesByGroup.get(primary.bookingGroupId) || [])
+          .map((amount) => Number(amount || 0))
+          .filter((amount) => amount > 0);
+        const isRefunded = refunded.has(primary.bookingGroupId);
         return {
           key,
           villas,
           bookingGroupId: primary.bookingGroupId,
-          // A group cancels as a unit, so total_price sums across its villa rows.
-          totalPrice: villas.reduce((sum, villa) => sum + Number(villa.totalPrice || 0), 0),
+          totalPrice,
+          // Refunded add-guests differences for the group; the money actually
+          // returned is the stay total plus these transfers.
+          changeAmounts,
+          refundedAmount: isRefunded
+            ? roundMoney(totalPrice + changeAmounts.reduce((sum, amount) => sum + amount, 0))
+            : 0,
           adults: primary.adults,
           kids: primary.kids,
           nights: primary.nights,
@@ -694,7 +716,7 @@
           cancellationReason: primary.cancellationReason,
           paymentType: primary.paymentType,
           guestName: primary.guestName,
-          refunded: refunded.has(primary.bookingGroupId),
+          refunded: isRefunded,
         };
       })
       .sort((left, right) => String(right.cancelledAt).localeCompare(String(left.cancelledAt)));
@@ -704,22 +726,30 @@
     const groups = groupCancellationRows(
       normalizeCancellationRows(input?.rows || []),
       input?.refundedGroupIds,
+      input?.refundedChangesByGroup,
     );
+    let refundedCount = 0;
     let refundedTotal = 0;
-    // The payout fee is tiered per refund, so it is summed per group (one refund
-    // transfer per booking group) rather than derived from the total.
+    // The payout fee is a flat tier charged once per MAIB transfer: the main
+    // booking refund is one transfer, and every refunded add-guests difference
+    // is another, so each carries its own fee at its own amount's tier.
     let refundFees = 0;
     groups.forEach((group) => {
       if (group.refunded) {
-        refundedTotal += group.totalPrice;
+        refundedCount += 1;
+        refundedTotal += group.refundedAmount;
         refundFees += refundTransferFee(group.totalPrice);
+        group.changeAmounts.forEach((amount) => {
+          refundFees += refundTransferFee(amount);
+        });
       }
     });
     refundedTotal = roundMoney(refundedTotal);
 
     return {
-      // One cancelled booking (across however many villas) counts once.
-      count: groups.length,
+      // The whole cancellations view is refunded-only (owner request, ADR-095
+      // corrected): one refunded booking (across however many villas) counts once.
+      count: refundedCount,
       refundedTotal,
       commissionLost: roundMoney(refundedTotal * INBOUND_COMMISSION_RATE + refundFees),
     };
@@ -752,7 +782,9 @@
     stay.textContent = `${formatStayDate(context, data.checkIn)} - ${formatStayDate(context, data.checkOut)}`;
 
     const total = root.document.createElement('span');
-    total.textContent = formatMDL(context, data.totalPrice);
+    // The list is refunded-only, so show the money actually returned — stay
+    // total plus any refunded add-guests transfers (ADR-099).
+    total.textContent = formatMDL(context, data.refundedAmount || data.totalPrice);
 
     const cancelledAt = root.document.createElement('span');
     cancelledAt.textContent = `Anulat: ${formatCreatedAt(data.cancelledAt)}`;
@@ -768,6 +800,7 @@
     const summary = summarizeCancellationRows({
       rows: state.cancellationRows,
       refundedGroupIds: state.refundedGroupIds,
+      refundedChangesByGroup: state.refundedChangesByGroup,
     });
     setText('[data-finance-commission-lost]', formatMDL(context, summary.commissionLost));
     setText('[data-finance-refunded-total]', formatMDL(context, summary.refundedTotal));
@@ -784,11 +817,12 @@
     const groups = groupCancellationRows(
       normalizeCancellationRows(state.cancellationRows),
       state.refundedGroupIds,
+      state.refundedChangesByGroup,
     ).filter((group) => group.refunded);
 
-    setText('[data-finance-cancelled-count]', groups.length);
+    setText('[data-finance-cancelled-count]', summary.count);
     if (count) {
-      count.textContent = String(groups.length);
+      count.textContent = String(summary.count);
     }
     empty.hidden = groups.length > 0;
     list.innerHTML = '';
@@ -859,12 +893,21 @@
     });
 
     try {
-      await root.EcoVilaSupabase.controlScheduledRefund(context.client, {
+      const result = await root.EcoVilaSupabase.controlScheduledRefund(context.client, {
         action,
         payId: refund.payId,
         bookingGroupId: refund.bookingGroupId,
       });
       await loadFinance(context, state);
+      // A release MAIB could not confirm answers HTTP 200 with ok:false (the row
+      // stays unresolved and the cron retries). Without surfacing it the card
+      // just vanished and the release looked successful (ADR-099).
+      if (result && result.ok === false) {
+        context.setAlert(
+          result.message ||
+            'Restituirea nu s-a confirmat încă — sistemul o reîncearcă automat la 30 de minute.',
+        );
+      }
     } catch (error) {
       buttons.forEach((node) => {
         node.disabled = false;
@@ -970,6 +1013,38 @@
     });
   }
 
+  // Refunded add-guests transfers for the cancelled groups, as a Map of
+  // booking_group_id -> [difference amounts]. Best-effort like the other refund
+  // lookups: a failure just means the totals fall back to the stay prices.
+  async function fetchRefundedChangesByGroupSafe(context, cancellationRows) {
+    const groupIds = [
+      ...new Set((cancellationRows || []).map((row) => row?.booking_group_id).filter(Boolean)),
+    ];
+    if (!groupIds.length || typeof root.EcoVilaSupabase.fetchRefundedChangeAmounts !== 'function') {
+      return new Map();
+    }
+
+    try {
+      const rows = await root.EcoVilaSupabase.fetchRefundedChangeAmounts(context.client, groupIds);
+      const byGroup = new Map();
+      (rows || []).forEach((row) => {
+        const groupId = row?.booking_group_id;
+        const amount = Number(row?.difference_amount || 0);
+        if (!groupId || !(amount > 0)) {
+          return;
+        }
+        if (!byGroup.has(groupId)) {
+          byGroup.set(groupId, []);
+        }
+        byGroup.get(groupId).push(amount);
+      });
+      return byGroup;
+    } catch (error) {
+      console.error('Could not load refunded change amounts', error);
+      return new Map();
+    }
+  }
+
   async function loadFinance(context, state) {
     syncControls(context, state);
     const financeOptions = {
@@ -1010,6 +1085,11 @@
     state.cancellationRows = cancellationRows || [];
     state.scheduledRefunds = scheduledRefunds || [];
     state.refundedGroupIds = new Set(refundedGroups || []);
+    // Depends on the cancellation rows just fetched, so it runs after the batch.
+    state.refundedChangesByGroup = await fetchRefundedChangesByGroupSafe(
+      context,
+      state.cancellationRows,
+    );
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
       changeRows: state.changeRows,
@@ -1130,6 +1210,7 @@
       cancellationRows: [],
       scheduledRefunds: [],
       refundedGroupIds: new Set(),
+      refundedChangesByGroup: new Map(),
     };
     activeFinance = { context, state };
 
