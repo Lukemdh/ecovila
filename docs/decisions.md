@@ -3379,13 +3379,65 @@ three accepted and recorded:
 11. *(accepted)* An INSERT that waits on an exclusion-constraint conflict longer than the chosen
     duration could commit already expired (transaction-stable `now()`); the next cron tick clears it.
 
-**Status: NOT deployed.** Backend = one migration (trigger + CHECK + 2 RPCs + cron) and five functions
+**Deploy — BACKEND LIVE prod 2026-07-19.** Migration `20260718210000_temporary_holds.sql` applied via
+`supabase db push --linked` (history was 1:1 aligned through 20260708120000, so plain push was safe —
+see the ADR-041 note), together with ADR-101's `20260719100000`. Verified live, not assumed:
+`ecovila-expire-temporary-holds` present and active in `cron.job` (every minute); both triggers on
+`reservations`; `confirm/release_temporary_hold` SECURITY DEFINER with grants to
+authenticated+service_role and `reschedule_reservation_group` back to service_role-only after the
+replace. Two **rollback probes** against prod: (1) an insert with a 10-minute client deadline and a
+smuggled `paid_at` came back `expiry_minutes=60, paid_at=NULL` — the trigger snapped to the 1h bucket
+from server time and forced paid_at null; (2) an `office+pending+NULL-deadline` insert was rejected by
+`reservations_live_hold_requires_deadline` (check_violation). Both transactions aborted by design —
+nothing persisted. All five functions deployed
 (`reservation-lookup-start`, `reservation-lookup-verify`, `reservation-manage-details`,
-`reservation-cancel`, `reservation-reschedule`). Frontend token
-bumped `?v=2026071801` → **`?v=2026071901`**, so this upload also carries the still-pending
-ADR-095/096/098/099 frontend. **Sequencing matters:** apply the migration and verify
-`cron.job` first, then deploy the functions, and only then upload the frontend — the hold checkbox
-must not exist in a browser before the DB can expire what it creates.
+`reservation-cancel`, `reservation-reschedule`) and smoke-tested: all 401 unauthenticated; with an
+anon JWT, lookup-start runs the new validation (`Invalid phone number.` — its 500-instead-of-400
+status is a pre-existing `_shared` quirk, flagged separately) and reschedule's staff-role gate
+rejects anon. **REMAINING: owner TopHost upload** of `?v=2026071901`, which also carries the
+still-pending ADR-095/096/098/099 frontend. Until then the live CRM simply doesn't offer the hold
+checkbox or the grid — the backend additions are inert without it (the sequencing constraint —
+DB-before-checkbox — is satisfied).
+
+---
+
+### ADR-101 — The reschedule RPC must refuse to "succeed" over vanished rows (ADR-087 follow-up)
+
+**Problem.** `reschedule_reservation_group` (ADR-087) applied each patch as an UPDATE guarded by
+`cancelled_at is null and payment_status in ('pending','paid')` and never checked row counts. If a
+row was cancelled between the Edge Function's read and the RPC call — a guest cancellation, the CRM
+delete, or (since ADR-100) the hold-expiry cron or a hold release — the UPDATE matched **zero rows**,
+the RPC returned void, and the CRM reported the move as done. The calendar then showed a move that
+never happened; for a partially-cancelled group the surviving rows moved while the dead ones kept the
+old dates. Found by the ADR-100 QA sweep (item 9's second half), fixed as its own ADR because it
+predates holds.
+
+**Decision.** Migration `20260719100000_reschedule_rpc_row_assert.sql` recreates the function with
+`get diagnostics … row_count` after every per-patch UPDATE in **both** phases; a zero-row patch
+raises `P0002`, rolling the whole move back — the same all-or-nothing contract the 23P01 path already
+had. (Phase 2 cannot actually miss — phase 1's UPDATE row-locks every row inside the same
+transaction — but the assert is a cheap invariant.) An independent GPT-5.6 checksum comparison
+confirmed the body is byte-identical to ADR-087's outside the asserts, and that duplicate patch ids
+cannot fire P0002 spuriously. `reservation-reschedule` maps P0002 to a retriable **409** («Rezervarea
+nu mai este activă — a fost anulată sau eliberată între timp»), surfaced in the dialog by the
+existing ADR-087 `readInvokeErrorDetail` path.
+
+**Also fixed here (ADR-100 QA item 9, first half):** the hold-SMS suppression was decided on the
+pre-move read, so a hold confirmed while the move was in flight — now a real booking — would have
+been moved silently. The function now re-reads the opened row's `payment_type/payment_status/
+cash_expires_at` after the commit and decides on fresh state. *Accepted residual:* the re-read is not
+commit-consistent — a confirm landing in the microseconds between RPC commit and re-read yields an
+SMS whose content is nevertheless correct (the just-confirmed booking's real new dates), and the
+suppress direction needs that same race plus a failed re-read; making it airtight would mean changing
+the RPC's return type (DROP + re-CREATE), which is not worth it for a benign outcome.
+
+**Tests.** +1 source-contract test in `admin-crm.test.mjs` (row-count asserts + P0002 predicates in
+the migration, the 409 mapping, and the post-move SMS decision); the existing "guest-facing rails"
+test updated for the new guard name. **node 338 + deno 127 green.** `deno check` clean.
+
+**Deployed to prod 2026-07-19** together with ADR-100's backend (same `db push` + function deploy,
+verified above). No frontend change — the CRM already surfaces function-provided 409 messages, so the
+asset token stays `?v=2026071901`.
 
 ---
 

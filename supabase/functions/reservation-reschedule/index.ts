@@ -53,6 +53,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   is(column: string, value: unknown): QueryBuilder<T>;
   gt(column: string, value: unknown): QueryBuilder<T>;
   lt(column: string, value: unknown): QueryBuilder<T>;
+  maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
 };
 
 // The shared SupabaseClient type only declares `from`; the runtime client also has
@@ -156,6 +157,16 @@ Deno.serve(async (request) => {
           'Una dintre vile tocmai a fost ocupată pentru aceste date. Reîncearcă.',
         );
       }
+      // P0002 = a group row was cancelled between our read and the RPC (guest
+      // cancellation, CRM delete, hold expiry/release). The whole move rolled
+      // back (ADR-101) — before this, the RPC updated zero rows and the CRM
+      // still reported the move as done.
+      if (String((error as { code?: string }).code) === 'P0002') {
+        throw new HttpError(
+          409,
+          'Rezervarea nu mai este activă — a fost anulată sau eliberată între timp. Calendarul se va actualiza.',
+        );
+      }
       throw new Error(error.message || 'Could not update the reservation.');
     }
 
@@ -164,10 +175,14 @@ Deno.serve(async (request) => {
     //
     // A live temporary hold (ADR-100) is silent: the guest has no confirmed
     // booking to be moved, so "rezervarea ta a fost mutată" would be news about
-    // something they were never told existed.
+    // something they were never told existed. Decided on the row as it is AFTER
+    // the move committed, not on the pre-plan read — a hold confirmed while the
+    // move was in flight is a real booking whose guest must hear about it.
+    const openedAfterMove = await loadReservationHoldFields(client, opened.id);
+    const suppressHoldSms = openedAfterMove ? isTemporaryHold(openedAfterMove) : isTemporaryHold(opened);
     let smsSent = false;
     let smsError: string | null = null;
-    if (datesChanged && !isTemporaryHold(opened)) {
+    if (datesChanged && !suppressHoldSms) {
       try {
         await sendSms({
           to: opened.guest_phone,
@@ -194,10 +209,34 @@ Deno.serve(async (request) => {
   }
 });
 
-function isTemporaryHold(reservation: GroupReservationRow): boolean {
+type HoldFieldsRow = Pick<
+  GroupReservationRow,
+  'payment_type' | 'payment_status' | 'cash_expires_at'
+>;
+
+function isTemporaryHold(reservation: HoldFieldsRow): boolean {
   return reservation.payment_type === 'office' &&
     reservation.payment_status === 'pending' &&
     Boolean(reservation.cash_expires_at);
+}
+
+// Post-commit snapshot of just the fields the SMS decision needs. Best-effort:
+// on a read failure the caller falls back to the pre-move row rather than
+// failing a move that has already been saved.
+async function loadReservationHoldFields(
+  client: SupabaseClient,
+  reservationId: string,
+): Promise<HoldFieldsRow | null> {
+  try {
+    const { data, error } = await table<HoldFieldsRow>(client, 'reservations')
+      .select('payment_type, payment_status, cash_expires_at')
+      .eq('id', reservationId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data;
+  } catch (_error) {
+    return null;
+  }
 }
 
 async function loadGroupRows(

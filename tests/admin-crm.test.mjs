@@ -3716,6 +3716,28 @@ describe('EcoVila CRM date-first room grid and temporary holds', () => {
     assert.equal(sidebar.isClickOnRoomSquare({ target: elsewhere, composedPath: () => [elsewhere] }), false);
   });
 
+  it('refuses to report a reschedule as done when a group row vanished mid-move (ADR-101)', () => {
+    const sql = allMigrations();
+    const reschedule = read('supabase/functions/reservation-reschedule/index.ts');
+
+    // The RPC used to update zero rows silently when a row was cancelled between
+    // the Edge Function's read and the commit (guest cancel, CRM delete, hold
+    // expiry) — the CRM then showed a move that never happened. Both phases now
+    // assert row counts and abort with P0002, rolling the whole move back.
+    assert.match(sql, /get diagnostics touched = row_count/i);
+    assert.match(sql, /is no longer active and cannot be moved'[\s\S]{0,80}using errcode = 'P0002'/i);
+    assert.match(sql, /vanished mid-move'[\s\S]{0,80}using errcode = 'P0002'/i);
+
+    // The Edge Function turns that rollback into a retriable 409, like 23P01.
+    assert.match(reschedule, /\.code\) === 'P0002'/);
+    assert.match(reschedule, /nu mai este activă — a fost anulată sau eliberată între timp/);
+
+    // The hold-SMS suppression is decided on the row AFTER the move committed:
+    // a hold confirmed mid-move is a real booking whose guest must hear about it.
+    assert.match(reschedule, /loadReservationHoldFields\(client, opened\.id\)/);
+    assert.match(reschedule, /datesChanged && !suppressHoldSms/);
+  });
+
   it('keeps live holds out of every guest-facing rail, not just the OTP list', () => {
     const shared = read('supabase/functions/_shared/reservations.ts');
     const reschedule = read('supabase/functions/reservation-reschedule/index.ts');
@@ -3735,8 +3757,8 @@ describe('EcoVila CRM date-first room grid and temporary holds', () => {
     }
 
     // Moving a hold's dates must not text a guest about a booking they were
-    // never promised.
-    assert.match(reschedule, /if \(datesChanged && !isTemporaryHold\(opened\)\)/);
+    // never promised (decided on post-move state, see the ADR-101 test).
+    assert.match(reschedule, /if \(datesChanged && !suppressHoldSms\)/);
   });
 
   it('releases a hold instead of running the guest-notifying cancellation path', () => {
