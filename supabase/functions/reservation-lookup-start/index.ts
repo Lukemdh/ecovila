@@ -12,6 +12,7 @@ import {
   normalizeSmsLanguage,
   todayIso,
 } from '../_shared/reservationManage.ts';
+import { EXCLUDE_LIVE_HOLDS_FILTER } from '../_shared/reservations.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 import { enforceRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
@@ -28,6 +29,7 @@ type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
   gte(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
+  or(filters: string): QueryBuilder<T>;
   single(): Promise<QueryResult<T>>;
 };
 
@@ -125,6 +127,9 @@ async function hasActiveReservations(client: SupabaseClient, phone: string) {
     .eq('guest_phone', phone)
     .in('payment_status', ['pending', 'paid'])
     .is('cancelled_at', null)
+    // Same filter as reservation-lookup-verify: if only verification hid live
+    // holds, this counter would send an OTP and then show an empty list.
+    .or(EXCLUDE_LIVE_HOLDS_FILTER)
     .gte('check_out', todayIso());
 
   if (error) throw new Error(error.message);

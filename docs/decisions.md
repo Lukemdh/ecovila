@@ -3219,6 +3219,131 @@ bundles the still-pending ADR-095/096/098 admin+guest frontend with this one.
 
 ---
 
+### ADR-100 — CRM "adaugă rezervare": dates first with a 25-villa grid, plus temporary holds (1h/3h/8h)
+
+**Motivation.** Two owner requests for the staff booking form. (1) The villa picker was a free-text
+box ("3, 11, 18") *above* the dates, and the mini-calendar disabled **every** date until a number was
+typed — availability flowed rooms → dates, which is backwards from how a receptionist works ("the
+guest wants 22–24 August, what do we have?"). (2) Staff need to block a villa while a client's cheque
+or transfer clears, without inventing a fake paid booking that someone must remember to undo.
+
+#### Part 1 — dates → villas
+
+The form order is now Adulți/Copii → vârste → **Perioadă** → **Căsuțe** → conferință → contact →
+temporar → total. The text box is replaced by a permanently visible grid of all **25** villas in three
+labelled rows (MICI 1–8, MARI 9–15, HOTEL 16–25), 8 columns of ~36px squares inside the 340px sidebar,
+each a real `<button aria-pressed>` with a per-group free counter ("5/8") and a status line
+("20 din 25 libere" / "2 selectate din 20 libere" / "Nicio cameră liberă").
+
+- **The grid renders from the canonical 1–25 inventory** (`pricing.ROOM_TYPES[type].roomNumbers`),
+  not from `fetchRooms()` — that helper returns only ACTIVE rooms, so a deactivated villa would
+  otherwise vanish and shift every number after it. A number missing from the DB payload renders in
+  place as `is-inactive`. Occupied villas stay visible, struck through: staff navigate by position.
+- **`[data-add-room-numbers]` survives as a hidden input** holding the CSV. Every existing reader
+  (`getRoomNumbers`, `validateAddForm`, `calculateStaffTotal`, `buildStaffReservationRows`) and its
+  tests keep their single source of truth; the grid is only a controller over that field. Because
+  setting `.value` fires no `input` event, every write re-renders and re-totals explicitly.
+- **`isAddDateSelectable` no longer depends on the villa selection.** A check-in cell is offered when
+  ≥1 active villa is free that night; a check-out cell when ≥1 villa is free for the **whole**
+  `[check-in, d)` range. Checking the whole range (not each night) is what prevents the false positive
+  where villa A is free on night one and villa B on night two but no single villa covers the stay.
+- **Perf:** a `room -> stays` index is built once per reservations array (`buildRoomOccupancyIndex`,
+  cached on array identity) and queried with two string comparisons per cell — ISO dates sort
+  lexicographically. Without it, 42 cells × 25 villas × ~2 years of rows would be re-scanned per render.
+- **Beyond the two-year load horizon** (`ADD_RESERVATION_LOOKAHEAD_DAYS`) the grid reports
+  "Disponibilitate neverificată" instead of claiming 25 free villas. Staff may still book that far out
+  (ADR-086 removed the advance-booking wall) and the exclusion constraint remains the arbiter.
+- **A realtime reload reconciles instead of clearing.** The old `refresh()` cleared the *check-out*
+  when a selected villa became unavailable; with dates chosen first that would destroy the stay staff
+  are typing up. Now the dates stay, the villas that were taken meanwhile are dropped from the
+  selection, and an alert names them. Picking a new check-in also clears the selection (a new stay
+  makes the old villas meaningless), and completing a range auto-closes the popover to uncover the grid.
+- Clicking a villa before any dates exist opens the date picker rather than doing nothing.
+
+#### Part 2 — temporary holds
+
+A hold is an ordinary reservation row, so `reservations_no_room_overlap` blocks the villa exactly as a
+real booking does: **`payment_type='office'` + `payment_status='pending'` + `cash_expires_at` set +
+`paid_at` null**, with the price still computed. That triple IS the definition of a live hold; every
+pre-existing office row is `paid` with a null deadline, so none of them can match it, and every
+cash-specific path (`expire-cash-reservations`, the cash-expiry SMS in `send-reminders`,
+`reservation-extend-cash`, `confirm-reservation-payment`) is already gated on `payment_type='cash'`
+and cannot see a hold. `paid_at` staying null is what keeps expired holds out of the ADR-095 finance
+cancellation report, which filters on it.
+
+No new column: `hold_expires_at` would duplicate the "pending row with a deadline" concept the schema
+already has, and an `is_hold` boolean can drift out of sync with type/status. If holds later gain
+extensions, history or analytics, add a reservation-kind column and a dedicated expiry together.
+
+Migration `20260718210000_temporary_holds.sql`:
+
+1. **`enforce_temporary_hold_expiry`** (BEFORE INSERT). Staff rows are inserted straight from the
+   browser, so a laptop with a wrong clock could create an already-expired or multi-day hold. The
+   trigger reads the requested duration and re-stamps `cash_expires_at = now() + 1|3|8h` from the
+   **server** clock (nearest bucket), and forces `paid_at` null. Clock skew can at worst change which
+   button you appear to have pressed.
+2. **`confirm_temporary_hold(uuid)` / `release_temporary_hold(uuid)`** — `security definer`, gated on
+   `ecovila_app_role() = 'diana'` and called directly by the CRM as `authenticated` (the
+   `swap_reservation_rooms` access model, ADR-091). Confirm re-checks `cash_expires_at > now()` inside
+   the UPDATE, so the CRM cannot revive a hold in the ≤60s window between its deadline and the next
+   cron tick, moves the whole `booking_group_id` at once, and asserts no group row is left pending
+   (a partial confirmation rolls back). Not `confirm-reservation-payment`: that function filters
+   `payment_type='cash'` and would silently match 0 rows.
+3. **`ecovila-expire-temporary-holds`** — a pure-SQL pg_cron job (the `ecovila-expire-maib-sessions`
+   pattern), every minute, cancelling with `cancellation_reason='hold_expired'`. Deliberately **not**
+   a branch inside `expire-cash-reservations`: that path texts and emails the guest when a hold dies,
+   which is wrong for an internal block. Owner decision: expiry is silent for everyone, and confirming
+   a hold sends the guest nothing — consistent with existing "din oficiu" bookings.
+
+**Guest self-service (found in review).** A live hold was an active guest reservation to the OTP
+lookup: `reservation-lookup-start` counted it, `reservation-lookup-verify` returned it, and
+`gestionare.js` would render the normal management panel — so a guest could see, and **cancel**, an
+internal staff hold, firing guest cancellation notifications for a booking they were never promised.
+Both functions now exclude live holds via a shared `EXCLUDE_LIVE_HOLDS_FILTER` (De Morgan over the
+triple; filtering only `verify` would send an OTP and then show an empty list). Confirmed holds
+(office + paid) stay visible. For the same reason `reservation-reschedule` skips its "dates moved"
+SMS for a live hold.
+
+**CRM surface.** Holds get their own sidebar section, hidden until one exists, so the load-bearing
+"Plăți cash în așteptare" panel keeps its exact meaning and behaviour. Each card shows the guest,
+villa, price and an hours-aware countdown with **no** grace (`formatHoldCountdown`; the cash
+`formatCountdown` keeps its historic +10 min), plus **Confirmă** / **Eliberează**. Calendar cards are
+hatched + dashed ochre so provisional never reads as confirmed, and the reservation dialog gains a
+"Confirmă rezervarea temporară" action. Realtime reloads are now debounced 400ms — one row event per
+villa × seven queries per reload made grouped writes (and now cron expiries) stampede.
+
+**Three bugs found by driving the real form in a browser, not by the unit tests:**
+
+1. `readNumberList('')` returned `[0]` — `Number('')` is 0 and passes `Number.isInteger` — so an empty
+   villa field parsed as "villa 0" and the grid announced "Căsuța 0 … a fost deselectată" on load.
+   Blank segments are now dropped before `Number()`.
+2. The close-on-outside-click listener treated the villa square that OPENS the picker as an outside
+   click and shut it in the same tick (`isClickOnRoomSquare` now exempts it, like the picker itself).
+3. **`form.reset()` does not clear `<input type="hidden">`** — hidden inputs use the "default" value
+   mode where setting `.value` writes the content attribute, so the value is its own default. The
+   dates therefore survived every "add reservation" (a pre-existing bug, previously masked because the
+   villa text box did clear). `clearAddFormSelection` now clears the stay and the selection explicitly.
+
+**Tests.** +18 in `admin-crm.test.mjs` (grid model incl. all 25 squares/grouping/inactive/occupied/
+selected, reconciliation, the cross-night intersection case and half-open boundaries, the unverified
+horizon, paid-office vs 1h/3h/8h hold rows with `paid_at === null`, hold duration parsing, the
+Chișinău-clock expiry copy, hold card class + countdown, the migration's trigger/RPC/cron predicates
+and grants, and the lookup exclusions) plus the three regressions above. **node 333 + deno 127 green.**
+
+**Verification.** Driven end to end in a browser against the real modules with a throwaway harness
+(deleted after use — it would otherwise have shipped to TopHost): dates → grid → multi-select →
+totals → hold submit payload → post-submit reset, plus a side-by-side of the hold/pending/paid card
+styles.
+
+**Status: NOT deployed.** Backend = one migration (trigger + 2 RPCs + cron) and three functions
+(`reservation-lookup-start`, `reservation-lookup-verify`, `reservation-reschedule`). Frontend token
+bumped `?v=2026071801` → **`?v=2026071901`**, so this upload also carries the still-pending
+ADR-095/096/098/099 frontend. **Sequencing matters:** apply the migration and verify
+`cron.job` first, then deploy the functions, and only then upload the frontend — the hold checkbox
+must not exist in a browser before the DB can expire what it creates.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

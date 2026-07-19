@@ -39,6 +39,9 @@ type GroupReservationRow = {
   kids_ages: number[] | null;
   notes: string | null;
   created_at: string;
+  payment_type: string | null;
+  payment_status: string | null;
+  cash_expires_at: string | null;
   rooms?: RoomRelation | RoomRelation[] | null;
 };
 
@@ -158,9 +161,13 @@ Deno.serve(async (request) => {
 
     // Tell the guest only when the dates actually moved. Best-effort: the move is
     // already saved, so a failed SMS must not undo it — surface it as a warning.
+    //
+    // A live temporary hold (ADR-100) is silent: the guest has no confirmed
+    // booking to be moved, so "rezervarea ta a fost mutată" would be news about
+    // something they were never told existed.
     let smsSent = false;
     let smsError: string | null = null;
-    if (datesChanged) {
+    if (datesChanged && !isTemporaryHold(opened)) {
       try {
         await sendSms({
           to: opened.guest_phone,
@@ -187,12 +194,18 @@ Deno.serve(async (request) => {
   }
 });
 
+function isTemporaryHold(reservation: GroupReservationRow): boolean {
+  return reservation.payment_type === 'office' &&
+    reservation.payment_status === 'pending' &&
+    Boolean(reservation.cash_expires_at);
+}
+
 async function loadGroupRows(
   client: SupabaseClient,
   input: { reservationId: string; bookingGroupId: string },
 ): Promise<GroupReservationRow[]> {
   const columns =
-    'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_language, check_in, check_out, adults, kids_ages, notes, created_at, rooms(number, type)';
+    'id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, guest_language, check_in, check_out, adults, kids_ages, notes, created_at, payment_type, payment_status, cash_expires_at, rooms(number, type)';
 
   // Resolve the booking group from the opened reservation when no group id was
   // passed, so a single-row booking and a multi-villa group take the same path.

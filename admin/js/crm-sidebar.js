@@ -9,6 +9,17 @@
     '3-11': 3,
     '12+': 12,
   });
+  // Temporary holds (ADR-100): staff block a villa while a cheque or transfer
+  // clears. The DB snaps the deadline to one of these three from server now()
+  // (enforce_temporary_hold_expiry), so a wrong laptop clock cannot stretch or
+  // pre-expire a hold.
+  const HOLD_DURATIONS = Object.freeze([1, 3, 8]);
+  const DEFAULT_HOLD_HOURS = 3;
+  const ROOM_GROUP_LABELS = Object.freeze({
+    small: 'Mici',
+    large: 'Mari',
+    hotel: 'Hotel',
+  });
   // Full international number: non-zero country code + national part, 10–15 digits
   // after the "+". Staff local formats (069…, 69…) are coerced to +373 by
   // normalizeStaffPhone first; this floor still rejects a bare "+60843453".
@@ -60,7 +71,11 @@
   function readNumberList(value) {
     return String(value || '')
       .split(',')
-      .map((item) => Number(item.trim()))
+      // Drop blank segments before Number(): an empty field would otherwise read
+      // as Number('') === 0 and pass the integer check as villa "0".
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map(Number)
       .filter((number) => Number.isInteger(number));
   }
 
@@ -94,6 +109,151 @@
     return uniqueRoomNumbers(roomNumbers)
       .map((number) => byNumber.get(number))
       .filter(Boolean);
+  }
+
+  // The picker always shows the full inventory (1-25) so a villa never silently
+  // vanishes from the grid: fetchRooms() only returns ACTIVE rooms, so a number
+  // missing from the DB payload renders as "inactive" rather than shifting every
+  // square after it. Numbers and grouping come from the shared pricing model.
+  function roomGroupDefinitions() {
+    const pricing = root.EcoVilaPricing;
+    return Object.keys(ROOM_GROUP_LABELS).map((type) => ({
+      type,
+      label: ROOM_GROUP_LABELS[type],
+      numbers: Array.from(pricing.ROOM_TYPES[type].roomNumbers).map(Number),
+    }));
+  }
+
+  // One pass over the availability window builds a room -> stays index, so the
+  // 42 calendar cells and the 25 room squares each cost a handful of string
+  // comparisons instead of re-scanning ~2 years of reservations every render.
+  function buildRoomOccupancyIndex(reservations) {
+    const isActive = root.EcoVilaCalendar?.isActiveReservation;
+    const index = new Map();
+
+    (reservations || []).forEach((reservation) => {
+      if (!reservation?.room_id || (isActive && !isActive(reservation))) {
+        return;
+      }
+
+      const stays = index.get(reservation.room_id) || [];
+      stays.push([reservation.check_in, reservation.check_out]);
+      index.set(reservation.room_id, stays);
+    });
+
+    return index;
+  }
+
+  // ISO dates sort lexicographically, so the half-open [check-in, check-out)
+  // overlap test is two string comparisons — no Date parsing per cell.
+  function isRoomFreeInIndex(index, roomId, checkIn, checkOut) {
+    const stays = index?.get?.(roomId);
+    if (!stays) {
+      return true;
+    }
+
+    return !stays.some(([start, end]) => start < checkOut && checkIn < end);
+  }
+
+  function hasCompleteRange(checkIn, checkOut) {
+    return Boolean(checkIn && checkOut && checkOut > checkIn);
+  }
+
+  // Availability is only loaded for ADD_RESERVATION_LOOKAHEAD_DAYS. Staff may
+  // still book past that horizon (ADR-086 removed the advance-booking wall), but
+  // the grid must not claim a villa is free when nothing was fetched for those
+  // dates — it says "unverified" instead and lets the DB exclusion constraint
+  // arbitrate on insert.
+  function isBeyondAvailabilityHorizon(checkOut, horizonEnd) {
+    return Boolean(horizonEnd && checkOut && checkOut > horizonEnd);
+  }
+
+  function buildRoomPickerModel(input) {
+    const rooms = input.rooms || [];
+    const byNumber = new Map(rooms.map((room) => [Number(room.number), room]));
+    // Before the first dashboard load there is no inventory yet. "Not known
+    // yet" is not "deactivated", so the grid waits rather than flashing 25
+    // struck-out villas.
+    const inventoryLoaded = rooms.length > 0;
+    const index = input.index || buildRoomOccupancyIndex(input.reservations || []);
+    const selected = new Set(uniqueRoomNumbers(input.selectedNumbers));
+    const ranged = hasCompleteRange(input.checkIn, input.checkOut);
+    const unverified = ranged && isBeyondAvailabilityHorizon(input.checkOut, input.horizonEnd);
+
+    let freeCount = 0;
+    const groups = roomGroupDefinitions().map((group) => {
+      let groupFree = 0;
+      const squares = group.numbers.map((number) => {
+        const room = byNumber.get(number);
+        const free = Boolean(room) && ranged &&
+          (unverified || isRoomFreeInIndex(index, room.id, input.checkIn, input.checkOut));
+
+        if (free) {
+          groupFree += 1;
+        }
+
+        let state = 'available';
+        if (!room) {
+          state = inventoryLoaded ? 'inactive' : 'standby';
+        } else if (!ranged) {
+          state = 'standby';
+        } else if (!free) {
+          state = 'occupied';
+        } else if (selected.has(number)) {
+          state = 'selected';
+        }
+
+        return { number, roomId: room?.id || '', state };
+      });
+
+      freeCount += groupFree;
+
+      return {
+        type: group.type,
+        label: group.label,
+        squares,
+        freeCount: groupFree,
+        totalCount: group.numbers.length,
+      };
+    });
+
+    return {
+      groups,
+      ranged,
+      unverified,
+      freeCount,
+      totalCount: groups.reduce((sum, group) => sum + group.totalCount, 0),
+      selectedNumbers: uniqueRoomNumbers(input.selectedNumbers),
+    };
+  }
+
+  // A room selected earlier can be taken by someone else (or deactivated) before
+  // the form is submitted — a realtime reload then reconciles the selection
+  // instead of silently keeping a number that can no longer be booked.
+  function reconcileSelectedRooms(model) {
+    // Without a stay, availability is unknown rather than false — dropping the
+    // selection here would announce "villa 3 is taken" the moment staff clear
+    // the dates to pick a different period.
+    if (!model.ranged) {
+      return { kept: model.selectedNumbers, dropped: [] };
+    }
+
+    const selectable = new Set();
+    model.groups.forEach((group) => {
+      group.squares.forEach((square) => {
+        if (square.state === 'available' || square.state === 'selected') {
+          selectable.add(square.number);
+        }
+      });
+    });
+
+    const kept = [];
+    const dropped = [];
+    model.selectedNumbers.forEach((number) => {
+      (selectable.has(number) ? kept : dropped).push(number);
+    });
+
+    return { kept, dropped };
   }
 
   function areSelectedRoomsAvailable(input) {
@@ -205,6 +365,51 @@
     };
   }
 
+  function readHoldState(form) {
+    const enabled = Boolean(qs('[data-add-hold-toggle]', form)?.checked);
+    const selected = qsa('[data-add-hold-hours]', form).find((input) => input.checked);
+    const hours = Number(selected?.value || 0);
+
+    return {
+      enabled,
+      hours: HOLD_DURATIONS.includes(hours) ? hours : DEFAULT_HOLD_HOURS,
+    };
+  }
+
+  function holdExpiresAt(hours, now) {
+    return new Date((now || new Date()).getTime() + hours * 60 * 60 * 1000);
+  }
+
+  function chisinauParts(date) {
+    return {
+      day: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Chisinau' }).format(date),
+      time: new Intl.DateTimeFormat('ro-MD', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/Chisinau',
+      }).format(date),
+    };
+  }
+
+  // "Expiră azi la 17:40" / "Expiră mâine la 02:10" — always the resort's clock,
+  // so a staff laptop set to another timezone still reads the right hour.
+  function formatHoldExpiry(expiresAt, now) {
+    const pricing = root.EcoVilaPricing;
+    const expiry = chisinauParts(expiresAt);
+    const today = chisinauParts(now || new Date()).day;
+
+    if (expiry.day === today) {
+      return `Expiră azi la ${expiry.time}`;
+    }
+
+    if (pricing?.addDays && expiry.day === pricing.addDays(today, 1)) {
+      return `Expiră mâine la ${expiry.time}`;
+    }
+
+    return `Expiră la ${expiry.time}`;
+  }
+
   function splitTotalPrice(total, count) {
     const normalizedCount = Math.max(1, Number(count || 1));
     const normalizedTotal = Math.max(0, Math.round(Number(total || 0)));
@@ -247,6 +452,13 @@
     const childBucketValues = readChildBucketValues(form);
     const totalParts = splitTotalPrice(qs('[data-add-total]', form)?.dataset.total || 0, selectedRooms.length);
     const fullName = splitFullName(qs('[data-add-full-name]', form)?.value);
+    const now = options?.now || new Date();
+    // A temporary hold is this same row, unpaid and with a deadline: pending keeps
+    // the villa inside the no-overlap exclusion constraint, and paid_at MUST stay
+    // null so an expired hold never reaches the finance cancellation report. The
+    // deadline sent below is only a duration hint — the DB restamps it from server
+    // time on insert (enforce_temporary_hold_expiry).
+    const hold = readHoldState(form);
 
     return selectedRooms.map((room, index) => ({
       booking_group_id: bookingGroupId,
@@ -263,12 +475,12 @@
       kids_ages: bucketValuesToAges(childBucketValues),
       total_price: totalParts[index] || 0,
       payment_type: 'office',
-      payment_status: 'paid',
-      paid_at: (options?.now || new Date()).toISOString(),
+      payment_status: hold.enabled ? 'pending' : 'paid',
+      paid_at: hold.enabled ? null : now.toISOString(),
       room_explicitly_selected: true,
       conference_room: Boolean(qs('[data-add-conference]', form)?.checked),
       notes: qs('[data-add-notes]', form)?.value?.trim() || null,
-      cash_expires_at: null,
+      cash_expires_at: hold.enabled ? holdExpiresAt(hold.hours, now).toISOString() : null,
       created_by: context.role,
     }));
   }
@@ -308,12 +520,68 @@
     );
   }
 
+  // A room square clicked before the dates exist opens the range picker. That
+  // click then bubbles to the close-on-outside-click listener, which would
+  // count it as "outside" and shut the picker in the same tick — so the
+  // listener has to recognise it, exactly like a click inside the picker.
+  function isClickOnRoomSquare(event) {
+    return Boolean(
+      event.composedPath?.().some((node) => {
+        return node?.dataset && 'addRoom' in node.dataset;
+      }) || event.target.closest?.('[data-add-room]'),
+    );
+  }
+
   function getRoomNumbers(form) {
     return readNumberList(qs('[data-add-room-numbers]', form)?.value);
   }
 
+  // The grid writes through this hidden field, so every existing reader
+  // (validation, pricing, row building, the tests) keeps its single source of
+  // truth. Setting .value programmatically fires no 'input' event, so callers
+  // re-render and re-total explicitly.
+  function setRoomNumbers(form, numbers) {
+    const input = qs('[data-add-room-numbers]', form);
+    if (input) {
+      input.value = uniqueRoomNumbers(numbers).sort((left, right) => left - right).join(', ');
+    }
+  }
+
+  // form.reset() does NOT clear <input type="hidden">: hidden inputs use the
+  // "default" value mode, where setting .value writes the content attribute, so
+  // the value IS its own default. The stay and the villa selection therefore
+  // have to be cleared by hand after a booking is saved.
+  function clearAddFormSelection(form) {
+    const checkIn = qs('[data-add-check-in]', form);
+    const checkOut = qs('[data-add-check-out]', form);
+    if (checkIn) {
+      checkIn.value = '';
+    }
+    if (checkOut) {
+      checkOut.value = '';
+    }
+    setRoomNumbers(form, []);
+  }
+
   function getAddAvailabilityReservations(state) {
     return state.addReservations || state.reservations || [];
+  }
+
+  function activeRooms(state) {
+    return (state.rooms || []).filter((room) => room.is_active !== false);
+  }
+
+  // Rebuilt only when the dashboard swaps in a fresh reservations array, so
+  // month paging and typing reuse the same index.
+  function ensureOccupancyIndex(state, formState) {
+    const reservations = getAddAvailabilityReservations(state);
+
+    if (!formState.occupancyIndex || formState.occupancySource !== reservations) {
+      formState.occupancySource = reservations;
+      formState.occupancyIndex = buildRoomOccupancyIndex(reservations);
+    }
+
+    return formState.occupancyIndex;
   }
 
   function hasCompleteChildBuckets(form, formState) {
@@ -343,6 +611,139 @@
     if (checkOutLabel) {
       checkOutLabel.textContent = checkOut ? context.formatDate(checkOut) : '--';
     }
+  }
+
+  function renderRoomPicker(context, state, form, formState) {
+    const grid = qs('[data-add-room-grid]', form);
+    if (!grid) {
+      return null;
+    }
+
+    const input = {
+      rooms: activeRooms(state),
+      index: ensureOccupancyIndex(state, formState),
+      checkIn: qs('[data-add-check-in]', form)?.value,
+      checkOut: qs('[data-add-check-out]', form)?.value,
+      horizonEnd: state.addAvailabilityEnd,
+      selectedNumbers: getRoomNumbers(form),
+    };
+
+    let model = buildRoomPickerModel(input);
+    const reconciled = reconcileSelectedRooms(model);
+    if (reconciled.dropped.length) {
+      setRoomNumbers(form, reconciled.kept);
+      model = buildRoomPickerModel({ ...input, selectedNumbers: reconciled.kept });
+      context.setAlert?.(
+        `${reconciled.dropped.length === 1 ? 'Căsuța' : 'Căsuțele'} ${reconciled.dropped.join(', ')} nu mai ${reconciled.dropped.length === 1 ? 'este liberă' : 'sunt libere'} pentru perioada aleasă — ${reconciled.dropped.length === 1 ? 'a fost deselectată' : 'au fost deselectate'}.`,
+      );
+    }
+
+    grid.innerHTML = '';
+    model.groups.forEach((group) => {
+      const block = root.document.createElement('div');
+      block.className = 'crm-room-group';
+
+      const heading = root.document.createElement('span');
+      heading.className = 'crm-room-group__label';
+      const name = root.document.createElement('span');
+      name.textContent = group.label;
+      const count = root.document.createElement('span');
+      count.textContent = model.ranged && !model.unverified ? `${group.freeCount}/${group.totalCount}` : '';
+      heading.append(name, count);
+
+      const squares = root.document.createElement('div');
+      squares.className = 'crm-room-group__grid';
+      group.squares.forEach((square) => {
+        const button = root.document.createElement('button');
+        button.type = 'button';
+        button.className = `crm-room-square is-${square.state}`;
+        button.textContent = String(square.number);
+        button.dataset.addRoom = String(square.number);
+        button.disabled = square.state === 'inactive' || square.state === 'occupied';
+        button.setAttribute('aria-pressed', String(square.state === 'selected'));
+        button.setAttribute('aria-label', `Căsuța ${square.number}`);
+        button.addEventListener('click', () => toggleRoomSquare(context, state, form, formState, square.number));
+        squares.appendChild(button);
+      });
+
+      block.append(heading, squares);
+      grid.appendChild(block);
+    });
+
+    renderRoomStatus(form, model);
+    return model;
+  }
+
+  function renderRoomStatus(form, model) {
+    const status = qs('[data-add-room-status]', form);
+    if (!status) {
+      return;
+    }
+
+    status.classList.remove('is-free', 'is-empty', 'is-warning');
+
+    if (!model.ranged) {
+      status.textContent = 'Alege întâi perioada';
+      return;
+    }
+
+    if (model.unverified) {
+      status.textContent = 'Disponibilitate neverificată';
+      status.classList.add('is-warning');
+      return;
+    }
+
+    if (!model.freeCount) {
+      status.textContent = 'Nicio cameră liberă';
+      status.classList.add('is-empty');
+      return;
+    }
+
+    status.textContent = model.selectedNumbers.length
+      ? `${model.selectedNumbers.length} selectate din ${model.freeCount} libere`
+      : `${model.freeCount} din ${model.totalCount} libere`;
+    status.classList.add('is-free');
+  }
+
+  function toggleRoomSquare(context, state, form, formState, number) {
+    // Clicking a room before the dates are known opens the calendar instead of
+    // dying silently — the grid cannot know availability yet.
+    if (!hasCompleteRange(qs('[data-add-check-in]', form)?.value, qs('[data-add-check-out]', form)?.value)) {
+      formState.calendarOpen = true;
+      renderAddCalendar(context, state, form, formState);
+      return;
+    }
+
+    const selected = new Set(getRoomNumbers(form));
+    if (selected.has(number)) {
+      selected.delete(number);
+    } else {
+      selected.add(number);
+    }
+
+    setRoomNumbers(form, Array.from(selected));
+    renderRoomPicker(context, state, form, formState);
+    updateAddTotal(context, state, form, formState);
+  }
+
+  function updateHoldUi(form) {
+    const hold = readHoldState(form);
+    const body = qs('[data-add-hold-body]', form);
+    const note = qs('[data-add-hold-expiry]', form);
+    const submit = qs('[data-add-submit]', form);
+
+    if (body) {
+      body.hidden = !hold.enabled;
+    }
+    if (note) {
+      note.textContent = hold.enabled ? formatHoldExpiry(holdExpiresAt(hold.hours, new Date())) : '';
+    }
+    if (submit) {
+      submit.textContent = hold.enabled ? `Blochează temporar (${hold.hours}h)` : 'Adaugă rezervare';
+      submit.classList.toggle('crm-button--hold', hold.enabled);
+    }
+
+    return hold;
   }
 
   function quoteAddForm(context, state, form, formState) {
@@ -436,37 +837,32 @@
     updateAddTotal(context, state, form, formState);
   }
 
+  // Dates first, rooms second (ADR-100). A date is offered when SOME villa can
+  // take the stay, not when the villas typed in a box can — the room grid below
+  // then shows which ones. Checking the whole [check-in, date) range rather than
+  // each night separately is what stops the classic false positive where villa A
+  // is free on night one and villa B on night two, but no single villa covers
+  // the stay.
+  //
+  // No upper bound on how far ahead staff can book (ADR-086). Occupancy is loaded
+  // for the next ~2 years (ADD_RESERVATION_LOOKAHEAD_DAYS); past that the index
+  // is empty so dates read as free, and the grid says "disponibilitate
+  // neverificată" instead of claiming villas are available.
   function isAddDateSelectable(state, form, formState, date) {
     const pricing = root.EcoVilaPricing;
     const checkIn = qs('[data-add-check-in]', form)?.value;
     const checkOut = qs('[data-add-check-out]', form)?.value;
-    const roomNumbers = getRoomNumbers(form);
+    const index = ensureOccupancyIndex(state, formState);
+    const rooms = activeRooms(state);
 
     if (date < todayISO()) {
       return false;
     }
 
-    // No upper bound on how far ahead staff can book. Occupancy is loaded for the
-    // next ~2 years (ADD_RESERVATION_LOOKAHEAD_DAYS), so availability is accurate
-    // within that window; past it the picker shows dates as free (optimistic) and
-    // the DB exclusion constraint rejects the rare far-future clash on submit.
-    if (checkIn && !checkOut && date > checkIn) {
-      return areSelectedRoomsAvailable({
-        rooms: state.rooms || [],
-        reservations: getAddAvailabilityReservations(state),
-        roomNumbers,
-        checkIn,
-        checkOut: date,
-      });
-    }
+    const rangeStart = checkIn && !checkOut && date > checkIn ? checkIn : date;
+    const rangeEnd = checkIn && !checkOut && date > checkIn ? date : pricing.addDays(date, 1);
 
-    return areSelectedRoomsAvailable({
-      rooms: state.rooms || [],
-      reservations: getAddAvailabilityReservations(state),
-      roomNumbers,
-      checkIn: date,
-      checkOut: pricing.addDays(date, 1),
-    });
+    return rooms.some((room) => isRoomFreeInIndex(index, room.id, rangeStart, rangeEnd));
   }
 
   function renderAddCalendar(context, state, form, formState) {
@@ -511,37 +907,27 @@
   function selectAddDate(context, state, form, formState, date) {
     const checkInInput = qs('[data-add-check-in]', form);
     const checkOutInput = qs('[data-add-check-out]', form);
+    const startingOver = !checkInInput.value || checkOutInput.value || date <= checkInInput.value;
 
-    if (!checkInInput.value || checkOutInput.value || date <= checkInInput.value) {
+    if (startingOver) {
       checkInInput.value = date;
       checkOutInput.value = '';
     } else {
       checkOutInput.value = date;
     }
 
-    formState.calendarOpen = true;
+    // Picking a new check-in restarts the stay, so the villas chosen for the old
+    // range are meaningless; completing the range closes the popover so the grid
+    // it uncovers is the next thing staff see.
+    if (startingOver) {
+      setRoomNumbers(form, []);
+    }
+    formState.calendarOpen = startingOver;
+
     renderAddDateSummary(context, form);
+    renderRoomPicker(context, state, form, formState);
     updateAddTotal(context, state, form, formState);
     renderAddCalendar(context, state, form, formState);
-  }
-
-  function clearInvalidCheckout(context, state, form, formState) {
-    const checkIn = qs('[data-add-check-in]', form)?.value;
-    const checkOutInput = qs('[data-add-check-out]', form);
-    if (!checkIn || !checkOutInput?.value) {
-      return;
-    }
-
-    if (!areSelectedRoomsAvailable({
-      rooms: state.rooms || [],
-      reservations: getAddAvailabilityReservations(state),
-      roomNumbers: getRoomNumbers(form),
-      checkIn,
-      checkOut: checkOutInput.value,
-    })) {
-      checkOutInput.value = '';
-      renderAddDateSummary(context, form);
-    }
   }
 
   function initAddForm(context, state, form) {
@@ -557,6 +943,8 @@
 
     renderChildBuckets(context, state, form, formState);
     renderAddDateSummary(context, form);
+    renderRoomPicker(context, state, form, formState);
+    updateHoldUi(form);
     renderAddTotal(form, 0);
 
     qs('[data-add-kids]', form)?.addEventListener('input', () => {
@@ -565,10 +953,18 @@
     qs('[data-add-adults]', form)?.addEventListener('input', () => {
       updateAddTotal(context, state, form, formState);
     });
-    qs('[data-add-room-numbers]', form)?.addEventListener('input', () => {
-      clearInvalidCheckout(context, state, form, formState);
-      updateAddTotal(context, state, form, formState);
-      renderAddCalendar(context, state, form, formState);
+    qs('[data-add-hold-toggle]', form)?.addEventListener('change', () => {
+      updateHoldUi(form);
+    });
+    qsa('[data-add-hold-hours]', form).forEach((input) => {
+      input.addEventListener('change', () => {
+        // Picking a duration is the same intent as ticking the box.
+        const toggle = qs('[data-add-hold-toggle]', form);
+        if (toggle) {
+          toggle.checked = true;
+        }
+        updateHoldUi(form);
+      });
     });
     qsa('[data-add-focus-calendar]', form).forEach((button) => {
       button.addEventListener('click', () => {
@@ -587,7 +983,10 @@
     qs('[data-add-calendar-clear]', form)?.addEventListener('click', () => {
       qs('[data-add-check-in]', form).value = '';
       qs('[data-add-check-out]', form).value = '';
+      // Without a stay there is nothing to hold a villa for.
+      setRoomNumbers(form, []);
       renderAddDateSummary(context, form);
+      renderRoomPicker(context, state, form, formState);
       updateAddTotal(context, state, form, formState);
       renderAddCalendar(context, state, form, formState);
     });
@@ -596,7 +995,7 @@
       renderAddCalendar(context, state, form, formState);
     });
     root.document.addEventListener('click', (event) => {
-      if (!formState.calendarOpen || isClickInsideAddDatePicker(event)) {
+      if (!formState.calendarOpen || isClickInsideAddDatePicker(event) || isClickOnRoomSquare(event)) {
         return;
       }
       formState.calendarOpen = false;
@@ -605,11 +1004,15 @@
 
     return {
       formState,
+      // A realtime reload must never throw away the stay staff are typing up.
+      // renderRoomPicker reconciles instead: villas taken in the meantime lose
+      // their selection (and say so), the dates stay put.
       refresh() {
-        clearInvalidCheckout(context, state, form, formState);
         renderChildBuckets(context, state, form, formState);
         renderAddDateSummary(context, form);
+        renderRoomPicker(context, state, form, formState);
         renderAddCalendar(context, state, form, formState);
+        updateHoldUi(form);
         updateAddTotal(context, state, form, formState);
       },
     };
@@ -734,7 +1137,11 @@
 
           const rows = buildStaffReservationRows(addForm, state.rooms || [], context);
           await helpers.insertStaffReservations(context.client, rows);
+          // Clear any stale warning (e.g. "căsuța 4 a fost deselectată") now that
+          // the booking actually landed.
+          context.setAlert('');
           addForm.reset();
+          clearAddFormSelection(addForm);
           addController.formState.childBuckets = [];
           addController.formState.calendarOpen = false;
           addController.formState.currentMonth = firstOfMonth(todayISO());
@@ -778,12 +1185,21 @@
   return {
     areSelectedRoomsAvailable,
     bucketValuesToAges,
+    buildRoomOccupancyIndex,
+    buildRoomPickerModel,
+    clearAddFormSelection,
     buildStaffReservationRows,
     calculateStaffBillableGuests,
     calculateStaffTotal,
+    formatHoldExpiry,
+    holdExpiresAt,
     init,
     isClickInsideAddDatePicker,
+    isClickOnRoomSquare,
+    isRoomFreeInIndex,
+    readHoldState,
     readNumberList,
+    reconcileSelectedRooms,
     renderSearchResults,
     selectedRoomsFromNumbers,
     splitTotalPrice,

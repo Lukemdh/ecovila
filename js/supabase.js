@@ -584,6 +584,37 @@
     );
   }
 
+  // Live temporary holds (ADR-100): staff blocks awaiting a cheque or transfer.
+  // office + pending + a deadline is what makes a row a hold — every pre-existing
+  // office row is paid with a null cash_expires_at, so none of them match.
+  function fetchTemporaryHolds(client) {
+    return unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .select('id, booking_group_id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, total_price, payment_type, payment_status, cash_expires_at, notes, rooms(id, number, type)')
+        .eq('payment_type', 'office')
+        .eq('payment_status', 'pending')
+        .not('cash_expires_at', 'is', null)
+        .is('cancelled_at', null)
+        .order('cash_expires_at', { ascending: true }),
+    );
+  }
+
+  // Both RPCs re-check the deadline against the SERVER clock and move the whole
+  // booking group in one transaction, so a hold the expiry cron is about to
+  // cancel can never be half-confirmed or revived from a stale dashboard.
+  function confirmTemporaryHold(client, bookingGroupId) {
+    return unwrapSupabaseResult(
+      client.rpc('confirm_temporary_hold', { p_booking_group_id: bookingGroupId }),
+    );
+  }
+
+  function releaseTemporaryHold(client, bookingGroupId) {
+    return unwrapSupabaseResult(
+      client.rpc('release_temporary_hold', { p_booking_group_id: bookingGroupId }),
+    );
+  }
+
   function fetchFinanceReservations(client, options) {
     // Paginated: a wide finance range can exceed one PostgREST page, and a
     // truncated tail would silently UNDER-REPORT revenue. id tiebreaks the
@@ -1367,7 +1398,10 @@
     fetchPublicPhotoLibrary,
     fetchPricingTiers,
     fetchRooms,
+    fetchTemporaryHolds,
     fetchTowelCounts,
+    confirmTemporaryHold,
+    releaseTemporaryHold,
     getSupabaseClient,
     getSupabaseConfig,
     getCrmPhotoPublicUrl,

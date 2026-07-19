@@ -18,6 +18,8 @@
   // After we programmatically reposition the scroll (reload/jump), ignore the
   // synthetic scroll it triggers so it cannot immediately re-extend the window.
   const CALENDAR_EXTEND_SUPPRESS_MS = 500;
+  // Coalesce the per-row realtime events a grouped write emits into one reload.
+  const REALTIME_RELOAD_DEBOUNCE_MS = 400;
   const DELETE_CONFIRMATIONS = [
     'Sigur vrei să ștergi această rezervare?',
     'Ești absolut sigur că vrei să ștergi această rezervare?',
@@ -189,6 +191,34 @@
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')} rămase`;
   }
 
+  // Holds run for hours, not minutes, and their deadline is enforced verbatim by
+  // the expiry cron — so this counts down to the real moment, with no courtesy
+  // grace and no MM:SS overflowing past 60.
+  function formatHoldCountdown(expiresAt) {
+    if (!expiresAt) {
+      return 'Fără termen';
+    }
+
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) {
+      return 'Expiră acum';
+    }
+
+    const totalMinutes = Math.floor(diff / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours) {
+      return `${hours}h ${String(minutes).padStart(2, '0')}m rămase`;
+    }
+
+    if (totalMinutes) {
+      return `${totalMinutes}m rămase`;
+    }
+
+    return 'sub 1m rămas';
+  }
+
   function renderPendingCash(context, reservations) {
     const list = qs('[data-pending-cash-list]');
     if (!list) {
@@ -235,6 +265,108 @@
     }
   }
 
+  // Holds get their own panel rather than joining "Plăți cash în așteptare":
+  // that list is a daily money tool (an online guest owes cash at reception),
+  // while a hold is an internal block with different actions. The section stays
+  // hidden until a hold exists, so the sidebar is unchanged on a normal day.
+  function renderTemporaryHolds(context, holds) {
+    const section = qs('[data-holds-section]');
+    const list = qs('[data-holds-list]');
+    if (!section || !list) {
+      return;
+    }
+
+    const groups = root.EcoVilaCrmCalendar.groupPendingCashReservations(holds || []);
+    section.hidden = !groups.length;
+    setText('[data-holds-count]', groups.length);
+
+    if (!groups.length) {
+      list.innerHTML = '';
+      return;
+    }
+
+    const readOnly = Boolean(context.permissions?.dashboardReadOnly);
+
+    list.innerHTML = groups.map((group) => {
+      const reservation = group.primary;
+      const name = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation) || 'Fără nume');
+      const roomLabel = escapeHtml(group.roomLabel);
+      const expiresAt = escapeHtml(group.cash_expires_at || '');
+      const bookingGroupId = escapeHtml(group.bookingGroupId);
+      const phone = escapeHtml(root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone));
+      return `
+        <article class="crm-hold-card" data-hold-group="${bookingGroupId}">
+          <strong>${name}</strong>
+          <span>${roomLabel}</span>
+          <span>${phone} · ${context.formatMDL(group.totalPrice)}</span>
+          <span data-hold-countdown data-expires-at="${expiresAt}">${formatHoldCountdown(group.cash_expires_at)}</span>
+          ${readOnly ? '' : `<div class="crm-hold-card__actions">
+            <button class="crm-button crm-button--primary crm-button--small" type="button" data-confirm-hold="${bookingGroupId}">
+              Confirmă
+            </button>
+            <button class="crm-button crm-button--small" type="button" data-release-hold="${bookingGroupId}">
+              Eliberează
+            </button>
+          </div>`}
+        </article>
+      `;
+    }).join('');
+
+    if (readOnly) {
+      return;
+    }
+
+    list.querySelectorAll('[data-confirm-hold]').forEach((button) => {
+      button.addEventListener('click', () => confirmHold(context, button.dataset.confirmHold, button));
+    });
+    list.querySelectorAll('[data-release-hold]').forEach((button) => {
+      button.addEventListener('click', () => releaseHold(context, button.dataset.releaseHold, button));
+    });
+  }
+
+  async function confirmHold(context, bookingGroupId, button) {
+    if (!bookingGroupId || button?.disabled) {
+      return;
+    }
+
+    if (button) button.disabled = true;
+    try {
+      await root.EcoVilaSupabase.confirmTemporaryHold(context.client, bookingGroupId);
+      (activeState?.context || context)?.setAlert?.('');
+      await activeState?.reload?.();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
+      (activeState?.context || context)?.setAlert?.(`Rezervarea temporară nu a fost confirmată: ${message.slice(0, 180)}`);
+      // The hold may have expired a moment ago; reload so the panel tells the truth.
+      await activeState?.reload?.();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function releaseHold(context, bookingGroupId, button) {
+    if (!bookingGroupId || button?.disabled) {
+      return;
+    }
+
+    if (!root.confirm?.('Eliberezi rezervarea temporară? Camerele redevin libere imediat.')) {
+      return;
+    }
+
+    if (button) button.disabled = true;
+    try {
+      await root.EcoVilaSupabase.releaseTemporaryHold(context.client, bookingGroupId);
+      (activeState?.context || context)?.setAlert?.('');
+      await activeState?.reload?.();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
+      (activeState?.context || context)?.setAlert?.(`Rezervarea temporară nu a fost eliberată: ${message.slice(0, 180)}`);
+      await activeState?.reload?.();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function guestSummary(reservation) {
     const adults = Number(reservation.adults || 0);
     const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
@@ -242,6 +374,10 @@
   }
 
   function groupCardClass(block) {
+    if (block.reservations.some((reservation) => root.EcoVilaCrmCalendar.isTemporaryHold(reservation))) {
+      return 'crm-reservation-card--hold';
+    }
+
     const pendingCash = block.reservations.some((reservation) => {
       return reservation.payment_type === 'cash' && reservation.payment_status === 'pending';
     });
@@ -358,11 +494,13 @@
     card.dataset.roomId = reservation.room_id || '';
     card.dataset.roomIds = block.roomIds.join(',');
     card.dataset.roomExplicitlySelected = String(Boolean(reservation.room_explicitly_selected));
+    const isHold = root.EcoVilaCrmCalendar.isTemporaryHold(reservation);
     card.innerHTML = `
       <strong>${escapeHtml(totalLabel)}</strong>
       <span>${guestSummary(reservation)}</span>
       <span class="crm-reservation-card__phone">${phone}</span>
-      ${reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${expiresAt}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
+      ${isHold ? `<span data-hold-countdown data-expires-at="${expiresAt}">${formatHoldCountdown(reservation.cash_expires_at)}</span>` : ''}
+      ${!isHold && reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${expiresAt}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
     `;
     card.addEventListener('click', () => openReservation(reservation, { groupTotal: total }));
     return card;
@@ -375,6 +513,9 @@
     _countdownInterval = setInterval(() => {
       qsa('[data-countdown][data-expires-at]').forEach((node) => {
         node.textContent = formatCountdown(node.dataset.expiresAt);
+      });
+      qsa('[data-hold-countdown][data-expires-at]').forEach((node) => {
+        node.textContent = formatHoldCountdown(node.dataset.expiresAt);
       });
     }, 1000);
   }
@@ -557,8 +698,22 @@
     qs('[data-edit-name]', dialog).value = root.EcoVilaCrmCalendar.guestName(reservation);
     qs('[data-edit-phone]', dialog).value = reservation.guest_phone || '';
     qs('[data-edit-notes]', dialog).value = reservation.notes || '';
+    const isHold = root.EcoVilaCrmCalendar.isTemporaryHold(reservation);
     const paymentLabel = PAYMENT_LABELS[reservation.payment_type] || reservation.payment_type || '-';
-    qs('[data-edit-payment]', dialog).textContent = `Tip plată: ${paymentLabel} · ${reservation.payment_status}`;
+    qs('[data-edit-payment]', dialog).textContent = isHold
+      ? `Rezervare temporară · ${formatHoldCountdown(reservation.cash_expires_at)}`
+      : `Tip plată: ${paymentLabel} · ${reservation.payment_status}`;
+    const confirmHoldButton = qs('[data-confirm-hold-dialog]', dialog);
+    if (confirmHoldButton) {
+      const canConfirmHold = !readOnly && isHold && Boolean(reservation.booking_group_id);
+      confirmHoldButton.hidden = !canConfirmHold;
+      confirmHoldButton.onclick = canConfirmHold
+        ? async () => {
+          await confirmHold(activeState?.context || {}, reservation.booking_group_id, confirmHoldButton);
+          dialog.close?.('cancel');
+        }
+        : null;
+    }
     // Grouped (multi-villa) bookings: show the booking-group total to match the
     // calendar card. Falls back to the single reservation price when no group
     // total is supplied (e.g. the dialog opened outside the calendar grid).
@@ -902,7 +1057,16 @@
       const todayWindowEnd = root.EcoVilaCrmCalendar.addDays(state.today, 1);
       const addAvailabilityStart = state.today;
       const addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(addAvailabilityStart, ADD_RESERVATION_LOOKAHEAD_DAYS);
-      const [rooms, reservations, pending, todayReservations, pricingTiers, holidays, addReservations] = await Promise.all([
+      const [
+        rooms,
+        reservations,
+        pending,
+        todayReservations,
+        pricingTiers,
+        holidays,
+        addReservations,
+        holds,
+      ] = await Promise.all([
         helpers.fetchRooms(context.client),
         helpers.fetchAdminReservations(context.client, { startDate: state.dates[0], endDate }),
         helpers.fetchPendingCashReservations(context.client),
@@ -910,6 +1074,7 @@
         helpers.fetchPricingTiers(context.client),
         helpers.fetchHolidays(context.client),
         helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
+        helpers.fetchTemporaryHolds(context.client),
       ]);
       state.rooms = rooms;
       state.reservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
@@ -920,6 +1085,7 @@
       state.addAvailabilityEnd = addAvailabilityEnd;
       renderCalendar(context, state);
       renderPendingCash(context, pending);
+      renderTemporaryHolds(context, holds);
       renderTodayStats(state);
       state.refreshAddReservationForm?.();
       const scrollTarget = state.scrollToDateAfterReload || (state.shouldScrollToFocus ? state.focusDate : '');
@@ -954,6 +1120,7 @@
       // Debounce timer + cooldown for the scroll-driven month-window extension.
       extendTimer: null,
       suppressExtendUntil: 0,
+      realtimeTimer: null,
       rooms: [],
       reservations: [],
       todayReservations: [],
@@ -1032,9 +1199,20 @@
     startCountdownTicker();
     state.reload().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
 
+    // One realtime event per ROW: confirming or expiring a multi-villa booking
+    // fires several within milliseconds, and each reload is seven queries wide
+    // (including the two-year availability scan). Coalesce them into one.
     context.client
       .channel('crm-dashboard-reservations')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, state.reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
+        if (state.realtimeTimer) {
+          root.clearTimeout(state.realtimeTimer);
+        }
+        state.realtimeTimer = root.setTimeout(() => {
+          state.realtimeTimer = null;
+          state.reload();
+        }, REALTIME_RELOAD_DEBOUNCE_MS);
+      })
       .subscribe();
   }
 
@@ -1047,11 +1225,13 @@
     initStateForTests(state) {
       activeState = state;
     },
+    formatHoldCountdown,
     markPaid,
     openReservation,
     renderCalendar,
     renderTodayStats,
     renderPendingCash,
+    renderTemporaryHolds,
     restoreCalendarScroll,
     scrollCalendarToDate,
   };

@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026071801">
+    <link rel="stylesheet" href="../css/crm.css?v=2026071901">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -80,6 +80,14 @@
             </template>
           </section>
 
+          <section class="crm-sidebar-section" aria-labelledby="holds-title" data-holds-section hidden>
+            <div class="crm-section-heading">
+              <h2 id="holds-title">Rezervări temporare</h2>
+              <strong class="crm-holds-count" data-holds-count>0</strong>
+            </div>
+            <div class="crm-holds-list" data-holds-list></div>
+          </section>
+
           <section class="crm-sidebar-section" aria-labelledby="add-reservation-title">
             <button class="crm-sidebar-toggle" type="button" data-sidebar-toggle="add">Adaugă rezervare</button>
             <form class="crm-staff-form" id="add-reservation-title" data-add-reservation-form hidden>
@@ -99,14 +107,6 @@
                   <p class="crm-empty">Adaugă copii pentru a selecta intervalele de vârstă.</p>
                 </div>
               </div>
-              <label class="crm-field">
-                <span>Căsuțe</span>
-                <input type="text" placeholder="3, 11, 18" data-add-room-numbers>
-              </label>
-              <label class="crm-check">
-                <input type="checkbox" data-add-conference>
-                <span>Cameră de conferință</span>
-              </label>
               <div class="crm-add-date-picker" data-add-date-picker>
                 <span>Perioadă</span>
                 <div class="crm-add-date-summary" data-add-date-summary>
@@ -143,6 +143,18 @@
                   </div>
                 </div>
               </div>
+              <div class="crm-room-picker" data-add-room-picker>
+                <div class="crm-room-picker__head">
+                  <span>Căsuțe</span>
+                  <span class="crm-room-picker__status" data-add-room-status>Alege întâi perioada</span>
+                </div>
+                <div class="crm-room-picker__groups" data-add-room-grid></div>
+                <input type="hidden" data-add-room-numbers>
+              </div>
+              <label class="crm-check">
+                <input type="checkbox" data-add-conference>
+                <span>Cameră de conferință</span>
+              </label>
               <label class="crm-field">
                 <span>Nume/Prenume</span>
                 <input type="text" data-add-full-name>
@@ -159,8 +171,31 @@
                 <span>Note</span>
                 <textarea rows="3" data-add-notes></textarea>
               </label>
+              <div class="crm-hold" data-add-hold>
+                <label class="crm-check">
+                  <input type="checkbox" data-add-hold-toggle>
+                  <span>Rezervare temporară</span>
+                </label>
+                <div class="crm-hold__body" data-add-hold-body hidden>
+                  <div class="crm-child-bucket-options">
+                    <label class="crm-child-bucket-option">
+                      <input type="radio" name="add-hold-hours" value="1" data-add-hold-hours>
+                      <span>1h</span>
+                    </label>
+                    <label class="crm-child-bucket-option">
+                      <input type="radio" name="add-hold-hours" value="3" data-add-hold-hours checked>
+                      <span>3h</span>
+                    </label>
+                    <label class="crm-child-bucket-option">
+                      <input type="radio" name="add-hold-hours" value="8" data-add-hold-hours>
+                      <span>8h</span>
+                    </label>
+                  </div>
+                  <p class="crm-hold__note" data-add-hold-expiry></p>
+                </div>
+              </div>
               <div class="crm-total" data-add-total>Total: 0 MDL</div>
-              <button class="crm-button crm-button--primary" type="submit">Adaugă rezervare</button>
+              <button class="crm-button crm-button--primary" type="submit" data-add-submit>Adaugă rezervare</button>
             </form>
           </section>
 
@@ -313,6 +348,7 @@
             <p class="crm-edit-error" data-edit-error role="alert" hidden></p>
             <menu class="crm-dialog-actions">
               <button class="crm-button" value="cancel">Închide</button>
+              <button class="crm-button crm-button--hold" type="button" data-confirm-hold-dialog hidden>Confirmă rezervarea temporară</button>
               <button class="crm-button" type="button" data-send-payment-confirmation hidden>Trimite SMS confirmare</button>
               <button class="crm-button crm-button--primary" value="save" data-save-reservation>Salvează modificări</button>
             </menu>
@@ -812,21 +848,21 @@
       </section>
     </main>
 
-    <script src="../js/vendor/supabase.js?v=2026071801"></script>
-    <script src="../js/supabase-config.js?v=2026071801"></script>
-    <script src="../js/supabase.js?v=2026071801"></script>
-    <script src="../js/pricing.js?v=2026071801"></script>
-    <script src="../js/calendar.js?v=2026071801"></script>
-    <script src="js/crm-calendar.js?v=2026071801"></script>
-    <script src="js/crm-sidebar.js?v=2026071801"></script>
-    <script src="js/crm-dashboard.js?v=2026071801"></script>
-    <script src="js/crm-finance.js?v=2026071801"></script>
-    <script src="js/crm-daily.js?v=2026071801"></script>
-    <script src="js/crm-towels.js?v=2026071801"></script>
-    <script src="js/crm-photos.js?v=2026071801"></script>
-    <script src="js/crm-pricing.js?v=2026071801"></script>
-    <script src="js/crm-complaints.js?v=2026071801"></script>
-    <script src="js/crm-auth.js?v=2026071801"></script>
-    <script src="js/crm-app.js?v=2026071801"></script>
+    <script src="../js/vendor/supabase.js?v=2026071901"></script>
+    <script src="../js/supabase-config.js?v=2026071901"></script>
+    <script src="../js/supabase.js?v=2026071901"></script>
+    <script src="../js/pricing.js?v=2026071901"></script>
+    <script src="../js/calendar.js?v=2026071901"></script>
+    <script src="js/crm-calendar.js?v=2026071901"></script>
+    <script src="js/crm-sidebar.js?v=2026071901"></script>
+    <script src="js/crm-dashboard.js?v=2026071901"></script>
+    <script src="js/crm-finance.js?v=2026071901"></script>
+    <script src="js/crm-daily.js?v=2026071901"></script>
+    <script src="js/crm-towels.js?v=2026071901"></script>
+    <script src="js/crm-photos.js?v=2026071901"></script>
+    <script src="js/crm-pricing.js?v=2026071901"></script>
+    <script src="js/crm-complaints.js?v=2026071901"></script>
+    <script src="js/crm-auth.js?v=2026071901"></script>
+    <script src="js/crm-app.js?v=2026071901"></script>
   </body>
 </html>

@@ -2,6 +2,20 @@ import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
 export const CASH_EXPIRY_MINUTES = 30;
 
+// A live temporary staff hold (ADR-100) is office + pending + a deadline. It is
+// an internal block on a villa, not a booking the guest made: the guest was told
+// "we are holding it for you", nothing was paid, and it disappears by itself
+// within hours. Showing it in the self-service lookup would let a guest manage
+// and even cancel an internal hold (firing guest cancellation notifications for
+// a booking that never existed), so both lookup functions filter it out.
+//
+// PostgREST `or` is De Morgan over that definition: NOT (office AND pending AND
+// dated) == (not office) OR (not pending) OR (no deadline). payment_type and
+// payment_status are NOT NULL, so no three-valued-logic surprises. A confirmed
+// hold (office + paid, deadline cleared) matches and stays visible.
+export const EXCLUDE_LIVE_HOLDS_FILTER =
+  'payment_type.neq.office,payment_status.neq.pending,cash_expires_at.is.null';
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 // Full international number: a non-zero country code plus the national part,
 // 10–15 digits after the "+". The non-zero lead and 10-digit floor reject a bare

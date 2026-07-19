@@ -304,9 +304,25 @@
     }).sort((left, right) => String(left.cash_expires_at || '').localeCompare(String(right.cash_expires_at || '')));
   }
 
+  // A live temporary hold (ADR-100): a staff block waiting on a cheque or
+  // transfer. office + pending + a deadline; every other office row is paid.
+  function isTemporaryHold(reservation) {
+    return Boolean(
+      reservation &&
+      reservation.payment_type === 'office' &&
+      reservation.payment_status === 'pending' &&
+      reservation.cash_expires_at &&
+      !reservation.cancelled_at,
+    );
+  }
+
   function getCardClass(reservation) {
     if (reservation.payment_status === 'cancelled') {
       return 'crm-reservation-card--cancelled';
+    }
+
+    if (isTemporaryHold(reservation)) {
+      return 'crm-reservation-card--hold';
     }
 
     if (reservation.payment_type === 'cash' && reservation.payment_status === 'pending') {
@@ -350,6 +366,7 @@
     groupPendingCashReservations,
     groupReservationRows,
     isCancelled,
+    isTemporaryHold,
     overlapsDate,
     requiresSwapConfirmation,
     roomLabel,

@@ -386,6 +386,192 @@ h2 {
   padding: 7px 12px;
 }
 
+/* Room picker (ADR-100): the whole 1-25 inventory, always visible under the
+   dates. Eight columns make each accommodation type read as its own row —
+   mici 1-8, mari 9-15, hotel 16-25 — inside the 304px sidebar. */
+.crm-room-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.crm-room-picker__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crm-room-picker__head > span:first-child {
+  color: var(--crm-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.crm-room-picker__status {
+  color: var(--crm-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-room-picker__status.is-free {
+  color: var(--crm-moss);
+}
+
+.crm-room-picker__status.is-empty {
+  color: var(--crm-danger);
+}
+
+.crm-room-picker__status.is-warning {
+  color: var(--crm-ochre);
+}
+
+.crm-room-picker__groups {
+  display: grid;
+  gap: 9px;
+}
+
+.crm-room-group {
+  display: grid;
+  gap: 4px;
+}
+
+.crm-room-group__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--crm-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-room-group__grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.crm-room-square {
+  min-height: 36px;
+  border: 1px solid var(--crm-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--crm-ink);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.crm-room-square:hover:not(:disabled) {
+  border-color: var(--crm-moss);
+  background: rgba(96, 108, 56, 0.08);
+}
+
+.crm-room-square:focus-visible {
+  outline: 3px solid rgba(96, 108, 56, 0.18);
+  outline-offset: 1px;
+}
+
+.crm-room-square.is-selected {
+  border-color: var(--crm-moss);
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+/* Taken villas stay in place, struck through: staff navigate the grid by
+   position ("where is 7?"), so a hidden square would shift every number after
+   it and force a re-scan. */
+.crm-room-square.is-occupied {
+  border-style: dashed;
+  border-color: #c9c1b4;
+  background: #ede8df;
+  color: #a9a196;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.crm-room-square.is-standby {
+  background: #fbfaf6;
+  color: #a39b8f;
+}
+
+.crm-room-square.is-inactive {
+  border-style: dashed;
+  background: #f6f3ec;
+  color: #c4bcaf;
+  cursor: not-allowed;
+}
+
+/* Temporary hold controls: the same pill vocabulary as the child-age buckets,
+   in ochre so "provisional" never reads as the moss-green "confirmed". */
+.crm-hold {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  padding: 10px 11px;
+}
+
+.crm-hold__body {
+  display: grid;
+  gap: 8px;
+}
+
+.crm-hold .crm-child-bucket-option input:checked + span {
+  border-color: var(--crm-ochre);
+  background: var(--crm-ochre);
+}
+
+.crm-hold__note {
+  margin: 0;
+  color: var(--crm-ochre);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* Two classes deep on purpose: the submit button keeps crm-button--primary and
+   this modifier has to outrank it while the hold mode is on. */
+.crm-button.crm-button--hold {
+  border-color: var(--crm-ochre);
+  background: var(--crm-ochre);
+  color: #fff;
+}
+
+.crm-holds-count {
+  color: var(--crm-ochre);
+  font-size: 1.5rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-holds-list {
+  display: grid;
+  gap: 10px;
+}
+
+.crm-hold-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--crm-line);
+  border-left: 6px solid var(--crm-ochre);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-hold-card__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .crm-field--inline {
   grid-template-columns: 180px 1fr;
   align-items: center;
@@ -876,6 +1062,20 @@ h2 {
 
 .crm-reservation-card--pending {
   background: var(--crm-pending);
+  color: var(--crm-ink);
+}
+
+/* A temporary hold is not a booking yet: hatched and dashed rather than a solid
+   fill, so a glance down a dense month tells confirmed from provisional. */
+.crm-reservation-card--hold {
+  background: repeating-linear-gradient(
+    45deg,
+    #fffdf9,
+    #fffdf9 7px,
+    #f6e6bd 7px,
+    #f6e6bd 14px
+  );
+  border: 1px dashed var(--crm-ochre);
   color: var(--crm-ink);
 }
 

@@ -13,6 +13,7 @@ import {
 } from '../_shared/reservationManage.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
+import { EXCLUDE_LIVE_HOLDS_FILTER } from '../_shared/reservations.ts';
 import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -24,6 +25,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   gte(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
+  or(filters: string): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
 };
@@ -137,6 +139,7 @@ async function findActiveReservations(client: SupabaseClient, phone: string) {
     .eq('guest_phone', phone)
     .in('payment_status', ['pending', 'paid'])
     .is('cancelled_at', null)
+    .or(EXCLUDE_LIVE_HOLDS_FILTER)
     .gte('check_out', todayIso())
     .order('check_in', { ascending: true });
 

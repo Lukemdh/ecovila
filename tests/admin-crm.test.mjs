@@ -3332,3 +3332,404 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(sql, /create trigger enforce_angela_reservation_columns\s+before update on public\.reservations/i);
   });
 });
+
+// ADR-100: the add-reservation form picks dates first and then offers the whole
+// 1-25 inventory as a grid, and staff can block villas temporarily while a
+// cheque clears.
+describe('EcoVila CRM date-first room grid and temporary holds', () => {
+  const rooms = [
+    { id: 'room-1', number: 1, type: 'small', is_active: true },
+    { id: 'room-2', number: 2, type: 'small', is_active: true },
+    { id: 'room-9', number: 9, type: 'large', is_active: true },
+    { id: 'room-16', number: 16, type: 'hotel', is_active: true },
+  ];
+
+  function loadSidebar() {
+    return loadAdminModule('admin/js/crm-sidebar.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaCalendar: calendar,
+    }).EcoVilaCrmSidebar;
+  }
+
+  it('renders the room picker below the dates, as a grid writing into a hidden field', () => {
+    const dashboard = read('admin/dashboard.html');
+    const sidebarJs = read('admin/js/crm-sidebar.js');
+    const css = read('css/crm.css');
+
+    // The free-text villa box is gone; the CSV lives on as the hidden source of
+    // truth every reader (pricing, validation, row building) already uses.
+    assert.doesNotMatch(dashboard, /<input type="text" placeholder="3, 11, 18" data-add-room-numbers>/);
+    assert.match(dashboard, /<input type="hidden" data-add-room-numbers>/);
+    assert.match(dashboard, /data-add-room-grid/);
+    assert.match(dashboard, /data-add-room-status/);
+
+    // Dates must come first in the DOM order staff read top to bottom.
+    assert.ok(
+      dashboard.indexOf('data-add-date-picker') < dashboard.indexOf('data-add-room-picker'),
+      'the villa grid should sit below the check-in/check-out picker',
+    );
+
+    assert.match(sidebarJs, /function buildRoomPickerModel/);
+    assert.match(css, /\.crm-room-group__grid\s*{[^}]*grid-template-columns:\s*repeat\(8,/i);
+  });
+
+  it('offers every one of the 25 villas, grouped by type, with inactive numbers still in place', () => {
+    const sidebar = loadSidebar();
+    const model = sidebar.buildRoomPickerModel({
+      rooms,
+      reservations: [],
+      checkIn: '2026-08-10',
+      checkOut: '2026-08-12',
+      selectedNumbers: [],
+    });
+
+    assert.equal(model.totalCount, 25);
+    assert.deepEqual(Array.from(model.groups, (group) => group.label), ['Mici', 'Mari', 'Hotel']);
+    assert.deepEqual(Array.from(model.groups, (group) => group.totalCount), [8, 7, 10]);
+
+    const squares = Array.from(model.groups).flatMap((group) => Array.from(group.squares));
+    assert.equal(squares.length, 25);
+    assert.deepEqual(squares.map((square) => square.number), Array.from({ length: 25 }, (_, i) => i + 1));
+
+    // fetchRooms only returns ACTIVE rooms, so a villa missing from the payload
+    // must render in place as inactive rather than shifting every later number.
+    assert.equal(squares.find((square) => square.number === 1).state, 'available');
+    assert.equal(squares.find((square) => square.number === 3).state, 'inactive');
+    assert.equal(model.freeCount, 4);
+  });
+
+  it('waits for the dates before claiming anything is free', () => {
+    const sidebar = loadSidebar();
+    const model = sidebar.buildRoomPickerModel({ rooms, reservations: [], selectedNumbers: [] });
+
+    assert.equal(model.ranged, false);
+    assert.equal(model.freeCount, 0);
+    assert.ok(Array.from(model.groups).flatMap((group) => Array.from(group.squares)).every((square) => {
+      return square.state === 'standby' || square.state === 'inactive';
+    }));
+  });
+
+  it('waits for the inventory too, instead of flashing 25 deactivated villas', () => {
+    const sidebar = loadSidebar();
+    // state.rooms is empty until the first dashboard load lands.
+    const model = sidebar.buildRoomPickerModel({ rooms: [], reservations: [], selectedNumbers: [] });
+    const squares = Array.from(model.groups).flatMap((group) => Array.from(group.squares));
+
+    assert.equal(squares.length, 25);
+    assert.ok(squares.every((square) => square.state === 'standby'));
+  });
+
+  it('marks occupied villas, keeps selected ones, and says so when nothing is free', () => {
+    const sidebar = loadSidebar();
+    const reservations = [
+      { room_id: 'room-1', check_in: '2026-08-10', check_out: '2026-08-12', payment_status: 'paid', cancelled_at: null },
+      // A live hold blocks its villa exactly like a paid booking.
+      {
+        room_id: 'room-9',
+        check_in: '2026-08-10',
+        check_out: '2026-08-12',
+        payment_status: 'pending',
+        payment_type: 'office',
+        cash_expires_at: '2026-08-01T12:00:00.000Z',
+        cancelled_at: null,
+      },
+      // A cancelled row frees its villa again.
+      { room_id: 'room-16', check_in: '2026-08-10', check_out: '2026-08-12', payment_status: 'cancelled', cancelled_at: '2026-08-01T09:00:00.000Z' },
+    ];
+    const model = sidebar.buildRoomPickerModel({
+      rooms,
+      reservations,
+      checkIn: '2026-08-10',
+      checkOut: '2026-08-12',
+      selectedNumbers: [2],
+    });
+    const squares = model.groups.flatMap((group) => group.squares);
+
+    assert.equal(squares.find((square) => square.number === 1).state, 'occupied');
+    assert.equal(squares.find((square) => square.number === 9).state, 'occupied');
+    assert.equal(squares.find((square) => square.number === 16).state, 'available');
+    assert.equal(squares.find((square) => square.number === 2).state, 'selected');
+    assert.equal(model.freeCount, 2, 'a selected villa is still one of the free ones');
+  });
+
+  it('drops a selected villa that someone else booked, and keeps the rest', () => {
+    const sidebar = loadSidebar();
+    const model = sidebar.buildRoomPickerModel({
+      rooms,
+      reservations: [
+        { room_id: 'room-2', check_in: '2026-08-10', check_out: '2026-08-12', payment_status: 'paid', cancelled_at: null },
+      ],
+      checkIn: '2026-08-10',
+      checkOut: '2026-08-12',
+      selectedNumbers: [1, 2],
+    });
+
+    const reconciled = sidebar.reconcileSelectedRooms(model);
+    assert.deepEqual(Array.from(reconciled.kept), [1]);
+    assert.deepEqual(Array.from(reconciled.dropped), [2]);
+
+    // With no stay chosen, availability is unknown — nothing may be reported as
+    // taken, or clearing the dates would accuse villas of being booked.
+    const dateless = sidebar.buildRoomPickerModel({ rooms, reservations: [], selectedNumbers: [1, 2] });
+    assert.deepEqual(Array.from(sidebar.reconcileSelectedRooms(dateless).dropped), []);
+  });
+
+  it('never claims availability past the loaded two-year horizon', () => {
+    const sidebar = loadSidebar();
+    const model = sidebar.buildRoomPickerModel({
+      rooms,
+      reservations: [],
+      checkIn: '2029-08-10',
+      checkOut: '2029-08-12',
+      horizonEnd: '2028-07-18',
+      selectedNumbers: [],
+    });
+
+    // Staff may still book that far ahead (ADR-086), but the grid says the
+    // availability is unverified instead of inventing 25 free villas.
+    assert.equal(model.unverified, true);
+  });
+
+  it('treats a stay as bookable only when ONE villa covers every night of it', () => {
+    const sidebar = loadSidebar();
+    // Villa 1 is taken on night one, villa 2 on night two: each night has a free
+    // villa, yet no single villa can host a two-night stay.
+    const reservations = [
+      { room_id: 'room-1', check_in: '2026-08-10', check_out: '2026-08-11', payment_status: 'paid', cancelled_at: null },
+      { room_id: 'room-2', check_in: '2026-08-11', check_out: '2026-08-12', payment_status: 'paid', cancelled_at: null },
+    ];
+    const index = sidebar.buildRoomOccupancyIndex(reservations);
+    const twoRooms = rooms.filter((room) => room.type === 'small');
+
+    assert.ok(twoRooms.some((room) => sidebar.isRoomFreeInIndex(index, room.id, '2026-08-10', '2026-08-11')));
+    assert.ok(twoRooms.some((room) => sidebar.isRoomFreeInIndex(index, room.id, '2026-08-11', '2026-08-12')));
+    assert.ok(
+      !twoRooms.some((room) => sidebar.isRoomFreeInIndex(index, room.id, '2026-08-10', '2026-08-12')),
+      'the whole-range check is what stops an unbookable split stay',
+    );
+
+    // Half-open ranges: a stay may start the day another one checks out.
+    assert.ok(sidebar.isRoomFreeInIndex(index, 'room-1', '2026-08-11', '2026-08-12'));
+    assert.ok(sidebar.isRoomFreeInIndex(index, 'room-2', '2026-08-09', '2026-08-11'));
+  });
+
+  it('creates a paid office booking by default and an unpaid, dated hold when asked', () => {
+    const sidebar = loadSidebar();
+    const now = new Date('2026-08-01T09:00:00.000Z');
+    const baseFields = {
+      '[data-add-room-numbers]': field('7'),
+      '[data-add-full-name]': field('Ion Popescu'),
+      '[data-add-phone]': field('+37369857607'),
+      '[data-add-email]': field(''),
+      '[data-add-check-in]': field('2026-08-10'),
+      '[data-add-check-out]': field('2026-08-12'),
+      '[data-add-adults]': field('2'),
+      '[data-add-child-bucket]:checked': [],
+      '[data-add-total]': field('', { dataset: { total: '3000' } }),
+      '[data-add-conference]': field('', { checked: false }),
+      '[data-add-notes]': field(''),
+    };
+    const roomList = [{ id: 'room-7', number: 7 }];
+    const options = { createGroupId: () => 'staff-group', now };
+
+    const [normal] = sidebar.buildStaffReservationRows(
+      formWithFields(baseFields),
+      roomList,
+      { role: 'diana' },
+      options,
+    );
+    assert.equal(normal.payment_type, 'office');
+    assert.equal(normal.payment_status, 'paid');
+    assert.equal(normal.paid_at, now.toISOString());
+    assert.equal(normal.cash_expires_at, null);
+
+    const [hold] = sidebar.buildStaffReservationRows(
+      formWithFields({
+        ...baseFields,
+        '[data-add-hold-toggle]': field('', { checked: true }),
+        '[data-add-hold-hours]': [
+          { value: '1', checked: false },
+          { value: '3', checked: true },
+          { value: '8', checked: false },
+        ],
+      }),
+      roomList,
+      { role: 'diana' },
+      options,
+    );
+    assert.equal(hold.payment_type, 'office', 'a hold is still a staff booking');
+    assert.equal(hold.payment_status, 'pending', 'pending keeps the villa inside the no-overlap constraint');
+    assert.equal(hold.paid_at, null, 'paid_at must stay null or expired holds pollute finance');
+    assert.equal(hold.cash_expires_at, '2026-08-01T12:00:00.000Z');
+    assert.equal(hold.total_price, 3000, 'the price is still recorded — it is what will be owed');
+  });
+
+  it('defaults the hold to three hours and only accepts 1h / 3h / 8h', () => {
+    const sidebar = loadSidebar();
+
+    assert.deepEqual(
+      { ...sidebar.readHoldState(formWithFields({ '[data-add-hold-toggle]': field('', { checked: false }) })) },
+      { enabled: false, hours: 3 },
+    );
+    assert.deepEqual(
+      {
+        ...sidebar.readHoldState(formWithFields({
+          '[data-add-hold-toggle]': field('', { checked: true }),
+          '[data-add-hold-hours]': [{ value: '8', checked: true }],
+        })),
+      },
+      { enabled: true, hours: 8 },
+    );
+    // A tampered value falls back to the default rather than creating an
+    // arbitrary-length block; the DB snaps it to a real bucket anyway.
+    assert.deepEqual(
+      {
+        ...sidebar.readHoldState(formWithFields({
+          '[data-add-hold-toggle]': field('', { checked: true }),
+          '[data-add-hold-hours]': [{ value: '48', checked: true }],
+        })),
+      },
+      { enabled: true, hours: 3 },
+    );
+  });
+
+  it('tells staff exactly when a hold dies, on the resort clock', () => {
+    const sidebar = loadSidebar();
+    // 09:00 UTC on 1 August is 12:00 in Chișinău (UTC+3).
+    const now = new Date('2026-08-01T09:00:00.000Z');
+
+    assert.equal(sidebar.formatHoldExpiry(sidebar.holdExpiresAt(3, now), now), 'Expiră azi la 15:00');
+    assert.equal(sidebar.formatHoldExpiry(sidebar.holdExpiresAt(8, now), now), 'Expiră azi la 20:00');
+    // A late-evening 8h hold rolls past midnight.
+    const evening = new Date('2026-08-01T18:00:00.000Z');
+    assert.equal(sidebar.formatHoldExpiry(sidebar.holdExpiresAt(8, evening), evening), 'Expiră mâine la 05:00');
+  });
+
+  it('shows a hold as provisional in the calendar and counts down in hours', () => {
+    const { EcoVilaCrmCalendar: crmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const hold = {
+      payment_type: 'office',
+      payment_status: 'pending',
+      cash_expires_at: '2026-08-01T12:00:00.000Z',
+      cancelled_at: null,
+    };
+    const paidOffice = { payment_type: 'office', payment_status: 'paid', cash_expires_at: null, cancelled_at: null };
+
+    assert.equal(crmCalendar.isTemporaryHold(hold), true);
+    assert.equal(crmCalendar.isTemporaryHold(paidOffice), false, 'a confirmed hold is an ordinary booking');
+    assert.equal(crmCalendar.getCardClass(hold), 'crm-reservation-card--hold');
+    assert.equal(
+      crmCalendar.getCardClass({ ...hold, payment_status: 'cancelled', cancelled_at: '2026-08-01T12:00:00.000Z' }),
+      'crm-reservation-card--cancelled',
+    );
+
+    const css = read('css/crm.css');
+    assert.match(css, /\.crm-reservation-card--hold\s*{[\s\S]*?repeating-linear-gradient/i);
+  });
+
+  it('counts a hold down to its real deadline, with no cash-style grace', () => {
+    const { EcoVilaCrmDashboard: dashboard } = loadAdminModule('admin/js/crm-dashboard.js');
+    const inTwoHours = new Date(Date.now() + 2 * 60 * 60 * 1000 + 14 * 60 * 1000).toISOString();
+
+    assert.match(dashboard.formatHoldCountdown(inTwoHours), /^2h 1[34]m rămase$/);
+    assert.match(dashboard.formatHoldCountdown(new Date(Date.now() + 9 * 60 * 1000).toISOString()), /^[89]m rămase$/);
+    assert.equal(dashboard.formatHoldCountdown(new Date(Date.now() - 1000).toISOString()), 'Expiră acum');
+    assert.equal(dashboard.formatHoldCountdown(null), 'Fără termen');
+  });
+
+  it('gives holds their own sidebar panel with confirm and release actions', () => {
+    const dashboard = read('admin/dashboard.html');
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    const helpers = read('js/supabase.js');
+
+    // The cash panel is a daily money tool and stays exactly as it was.
+    assert.match(dashboard, /Plăți cash în așteptare/);
+    assert.match(dashboard, /data-holds-section/);
+    assert.match(dashboard, /Rezervări temporare/);
+    assert.match(dashboardJs, /data-confirm-hold/);
+    assert.match(dashboardJs, /data-release-hold/);
+
+    // Confirm/release go through the RPCs, which re-check the deadline on the
+    // server and move the whole booking group in one transaction.
+    assert.match(helpers, /rpc\('confirm_temporary_hold'/);
+    assert.match(helpers, /rpc\('release_temporary_hold'/);
+    assert.match(helpers, /function fetchTemporaryHolds[\s\S]*?eq\('payment_type', 'office'\)[\s\S]*?not\('cash_expires_at', 'is', null\)/);
+  });
+
+  it('stamps hold deadlines from the database clock and expires them on cron', () => {
+    const sql = allMigrations();
+
+    // The admin browser only hints at a duration; the DB decides the deadline.
+    assert.match(sql, /create or replace function public\.enforce_temporary_hold_expiry\(\)/i);
+    assert.match(sql, /new\.cash_expires_at := now\(\) \+ make_interval\(hours => snapped_hours\)/i);
+    assert.match(sql, /new\.paid_at := null/i);
+    assert.match(sql, /create trigger enforce_temporary_hold_expiry\s+before insert on public\.reservations/i);
+
+    // Auto-release: pure SQL, so no guest ever gets an "expired" message.
+    assert.match(sql, /cron\.schedule\(\s*'ecovila-expire-temporary-holds'/i);
+    assert.match(sql, /cancellation_reason = 'hold_expired'[\s\S]*?where payment_type = 'office'[\s\S]*?and payment_status = 'pending'[\s\S]*?and cash_expires_at < now\(\)/i);
+
+    // Both RPCs are diana-gated and re-check the deadline / group integrity.
+    assert.match(sql, /create or replace function public\.confirm_temporary_hold\(p_booking_group_id uuid\)/i);
+    assert.match(sql, /create or replace function public\.release_temporary_hold\(p_booking_group_id uuid\)/i);
+    assert.match(sql, /confirm_temporary_hold[\s\S]*?ecovila_app_role\(\) <> 'diana'/i);
+    assert.match(sql, /release_temporary_hold[\s\S]*?ecovila_app_role\(\) <> 'diana'/i);
+    assert.match(sql, /and r\.cash_expires_at > now\(\)/i);
+    assert.match(sql, /revoke all on function public\.confirm_temporary_hold\(uuid\) from public, anon, authenticated/i);
+    assert.match(sql, /grant execute on function public\.release_temporary_hold\(uuid\) to authenticated, service_role/i);
+  });
+
+  it('reads an empty villa field as no villas, not as villa zero', () => {
+    const sidebar = loadSidebar();
+
+    // Number('') is 0 and Number.isInteger(0) is true, so an empty field used to
+    // parse as villa "0" — which the grid then reported as deselected on load.
+    assert.deepEqual(Array.from(sidebar.readNumberList('')), []);
+    assert.deepEqual(Array.from(sidebar.readNumberList('   ')), []);
+    assert.deepEqual(Array.from(sidebar.readNumberList('3, , 4')), [3, 4]);
+    assert.deepEqual(Array.from(sidebar.readNumberList('3, 11, 18')), [3, 11, 18]);
+  });
+
+  it('clears the stay and the villas by hand after a booking is saved', () => {
+    const sidebar = loadSidebar();
+    const fields = {
+      '[data-add-check-in]': field('2026-08-10'),
+      '[data-add-check-out]': field('2026-08-12'),
+      '[data-add-room-numbers]': field('3, 4'),
+    };
+
+    // form.reset() leaves hidden inputs alone (their value IS their default), so
+    // without this the next booking would start with the previous stay filled in.
+    sidebar.clearAddFormSelection(formWithFields(fields));
+
+    assert.equal(fields['[data-add-check-in]'].value, '');
+    assert.equal(fields['[data-add-check-out]'].value, '');
+    assert.equal(fields['[data-add-room-numbers]'].value, '');
+  });
+
+  it('does not treat the click that opens the picker as a click outside it', () => {
+    const sidebar = loadSidebar();
+    const square = { closest: (selector) => (selector === '[data-add-room]' ? square : null), dataset: { addRoom: '3' } };
+    const elsewhere = { closest: () => null };
+
+    assert.equal(sidebar.isClickOnRoomSquare({ target: square, composedPath: () => [square] }), true);
+    assert.equal(sidebar.isClickOnRoomSquare({ target: elsewhere, composedPath: () => [elsewhere] }), false);
+  });
+
+  it('keeps live holds out of the guest self-service lookup', () => {
+    const shared = read('supabase/functions/_shared/reservations.ts');
+    const start = read('supabase/functions/reservation-lookup-start/index.ts');
+    const verify = read('supabase/functions/reservation-lookup-verify/index.ts');
+    const reschedule = read('supabase/functions/reservation-reschedule/index.ts');
+
+    // One definition, both lookup rails — filtering only one of them would send
+    // an OTP and then show an empty list.
+    assert.match(shared, /EXCLUDE_LIVE_HOLDS_FILTER =\s*\n?\s*'payment_type\.neq\.office,payment_status\.neq\.pending,cash_expires_at\.is\.null'/);
+    assert.match(start, /\.or\(EXCLUDE_LIVE_HOLDS_FILTER\)/);
+    assert.match(verify, /\.or\(EXCLUDE_LIVE_HOLDS_FILTER\)/);
+
+    // Moving a hold's dates must not text a guest about a booking they were
+    // never promised.
+    assert.match(reschedule, /if \(datesChanged && !isTemporaryHold\(opened\)\)/);
+  });
+});
