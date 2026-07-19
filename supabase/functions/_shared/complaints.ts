@@ -1,3 +1,5 @@
+import { HttpError } from './http.ts';
+
 export const COMPLAINT_CATEGORIES = ['casuta', 'facilitati', 'personal', 'altceva'] as const;
 export type ComplaintCategory = (typeof COMPLAINT_CATEGORIES)[number];
 
@@ -7,9 +9,12 @@ export function isComplaintCategory(value: unknown): value is ComplaintCategory 
   return COMPLAINT_CATEGORIES.includes(String(value || '') as ComplaintCategory);
 }
 
+// HttpError(400) rather than a plain Error: an unrecognised category or an
+// out-of-bounds description is the caller's mistake, and errorResponse maps
+// anything untyped to 500 — which would file guest typos as server faults.
 export function assertValidComplaintCategory(value: unknown): ComplaintCategory {
   if (!isComplaintCategory(value)) {
-    throw new Error('Invalid complaint category.');
+    throw new HttpError(400, 'Invalid complaint category.');
   }
   return value;
 }
@@ -21,7 +26,7 @@ export function assertValidComplaintCategory(value: unknown): ComplaintCategory 
 export function normalizeComplaintDescription(value: unknown): string {
   const text = String(value ?? '').trim();
   if (text.length < 1 || text.length > COMPLAINT_DESCRIPTION_MAX) {
-    throw new Error('Complaint description must be between 1 and 2000 characters.');
+    throw new HttpError(400, 'Complaint description must be between 1 and 2000 characters.');
   }
   return text;
 }

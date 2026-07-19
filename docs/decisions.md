@@ -3441,6 +3441,46 @@ asset token stays `?v=2026071901`.
 
 ---
 
+### ADR-102 — Guest input errors answer 400, not 500
+
+**Problem (found while smoke-testing the ADR-100 deploy).** `POST /reservation-lookup-start` with
+`{"phone":"invalid"}` returned the right body — `{"error":"Invalid phone number."}` — with status
+**500**. `errorResponse` maps anything that is not an `HttpError` to 500 (`_shared/http.ts:25`), and
+several older validation helpers threw a plain `Error`. So every guest typo was filed as a server
+fault: 5xx dashboards and any future alerting could not distinguish "our database is down" from
+"someone mistyped a phone number". The public booking flow had the same bug on its whole input
+block, which is the busiest guest path on the site.
+
+Behaviourally this was invisible — Supabase's `functions.invoke` raises `FunctionsHttpError` for any
+non-2xx and the frontends read the error *body* (`readInvokeErrorDetail`, ADR-087), and no frontend
+branches on status. This is about honest telemetry, not user-visible behaviour.
+
+**Decision.** Convert caller-fault validation to `HttpError(400, …)` in the three helpers that
+predate the convention. This is not a new pattern: `reservationChanges.ts` (ADR-057) and
+`pricingGuard.ts` already answer 400/404/409 for exactly these cases.
+
+- `reservationManage.ts::assertValidPhone` and `complaints.ts` (category + description bounds) throw
+  `HttpError(400)` directly — both are only ever called with guest-supplied values.
+- `reservations.ts::buildReservationRows` maps at the **boundary** instead of per check:
+  `normalizeReservationInput` does no I/O and reads no state, so every throw inside it is by
+  construction a rejected request body. This matters because its field helpers (`requiredString`,
+  `isoDate`, `guestNameField`) are shared with `buildCancellationTokenRows`, where the values are
+  SERVER-generated — a failure there is our bug and must keep reporting 500. Converting the helpers
+  themselves would have made the inverse mistake and quietly relabelled real server faults as client
+  errors.
+
+**Deliberately left as 500:** every DB/provider failure, `pricingGuard`'s "No pricing tiers are
+configured" (a server misconfiguration), and all of `maib.ts` — including the callback body check,
+because changing what we return to a payment provider's callback can change its retry behaviour.
+
+**Tests.** +2 deno tests asserting the status, not just that something throws: rejected booking
+input answers 400 *and* keeps its guest-facing message through `errorResponse`, while
+`buildCancellationTokenRows` on a missing id stays 500; the phone guard normalizes spacing but
+answers 400 for every malformed shape; the complaints tests now assert `HttpError(400)` too.
+**node 338 + deno 129 green.**
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

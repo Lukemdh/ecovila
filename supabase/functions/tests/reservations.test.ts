@@ -182,6 +182,58 @@ Deno.test('buildReservationRows rejects unsafe guest-created reservation fields'
   );
 });
 
+Deno.test('rejected booking input answers 400, while an internal failure stays 500', async () => {
+  const { buildReservationRows, buildCancellationTokenRows } = await import(
+    '../_shared/reservations.ts'
+  );
+  const { HttpError, errorResponse } = await import('../_shared/http.ts');
+
+  // Every check inside normalizeReservationInput is about the request body, so
+  // the whole block answers 400 — a guest typo must not be filed as a 5xx.
+  for (
+    const bad of [
+      [],
+      [{ payment_type: 'cash', adults: 0 }],
+      [{ payment_type: 'transfer' }],
+      [{ payment_type: 'cash', notes: 'VIP' }],
+      [{ payment_type: 'cash', conference_room: true }],
+    ] as unknown[][]
+  ) {
+    let thrown: unknown;
+    try {
+      buildReservationRows(bad as never);
+    } catch (error) {
+      thrown = error;
+    }
+
+    if (!(thrown instanceof HttpError) || thrown.status !== 400) {
+      throw new Error(
+        `expected HttpError(400) for ${JSON.stringify(bad)}, got ${String(thrown)}`,
+      );
+    }
+
+    // The message the guest sees must survive the mapping unchanged.
+    const response = errorResponse(thrown);
+    assertEquals(response.status, 400);
+    assertEquals(await response.json(), { error: (thrown as Error).message });
+  }
+
+  // The same field helpers also validate SERVER-generated values. A missing
+  // reservation id there is our bug, not the caller's, and must keep reporting
+  // 500 — otherwise the 400s stop meaning "the client sent something wrong".
+  let internal: unknown;
+  try {
+    buildCancellationTokenRows([{ id: '' }], () => 'a'.repeat(64));
+  } catch (error) {
+    internal = error;
+  }
+
+  if (internal instanceof HttpError) {
+    throw new Error('an internal invariant failure must not be reported as a client error');
+  }
+  assertEquals(errorResponse(internal).status, 500);
+});
+
 Deno.test('buildCancellationTokenRows creates one secure token row per reservation', async () => {
   const { buildCancellationTokenRows } = await import('../_shared/reservations.ts');
   const tokenRows = buildCancellationTokenRows(

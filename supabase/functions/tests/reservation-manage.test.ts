@@ -101,3 +101,36 @@ Deno.test('reservation manage token rows keep plaintext out of storage', async (
     throw new Error('checkout manage tokens should use the standard 30-minute TTL');
   }
 });
+
+Deno.test('a bad lookup phone is a 400, not a server fault', async () => {
+  const { assertValidPhone } = await import('../_shared/reservationManage.ts');
+  const { HttpError, errorResponse } = await import('../_shared/http.ts');
+
+  // Staff/guest local formats are normalized, not rejected.
+  if (assertValidPhone(' +373 60 123 456 ') !== '+37360123456') {
+    throw new Error('spacing and punctuation should be normalized away');
+  }
+
+  for (const bad of ['', 'invalid', '060123456', '+60843453', '+0123456789']) {
+    let thrown: unknown;
+    try {
+      assertValidPhone(bad);
+    } catch (error) {
+      thrown = error;
+    }
+
+    // Typing a bad number is the caller's mistake. errorResponse maps anything
+    // untyped to 500, which used to file guest typos as server faults.
+    if (!(thrown instanceof HttpError) || thrown.status !== 400) {
+      throw new Error(`${bad || '(empty)'} should be rejected with HttpError(400)`);
+    }
+
+    const response = errorResponse(thrown);
+    if (response.status !== 400) {
+      throw new Error('errorResponse should carry the 400 through');
+    }
+    if ((await response.json()).error !== 'Invalid phone number.') {
+      throw new Error('the guest-facing message must survive unchanged');
+    }
+  }
+});

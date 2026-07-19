@@ -1,4 +1,5 @@
 import { requiredEnv } from './env.ts';
+import { HttpError } from './http.ts';
 
 export const LOOKUP_CODE_TTL_MINUTES = 10;
 export const MANAGE_TOKEN_TTL_MINUTES = 30;
@@ -61,8 +62,11 @@ export function assertValidPhone(value: unknown) {
   // Require a full international number: a non-zero country code plus the national
   // part, 10–15 digits after the "+". Rejects a bare Moldovan number that lost its
   // "+373" (e.g. "+60843453"). Mirrors the lookup guard in booking.js / anulare.js.
+  //
+  // HttpError(400), not a plain Error: errorResponse maps anything untyped to 500,
+  // so a guest typing a bad number used to be logged as a server fault.
   if (!/^\+[1-9]\d{9,14}$/.test(phone)) {
-    throw new Error('Invalid phone number.');
+    throw new HttpError(400, 'Invalid phone number.');
   }
   return phone;
 }

@@ -1,3 +1,4 @@
+import { HttpError } from './http.ts';
 import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
 export const CASH_EXPIRY_MINUTES = 30;
@@ -117,7 +118,7 @@ export type CancellationTokenRow = {
 
 export function buildReservationRows(inputs: ReservationInput[], options: { now?: Date } = {}) {
   if (!Array.isArray(inputs) || inputs.length < 1) {
-    throw new Error('At least one reservation row is required.');
+    throw new HttpError(400, 'At least one reservation row is required.');
   }
 
   const now = options.now || new Date();
@@ -128,7 +129,29 @@ export function buildReservationRows(inputs: ReservationInput[], options: { now?
   // notifications and aggregation).
   const bookingGroupId = crypto.randomUUID();
 
-  return inputs.map((input) => normalizeReservationInput(input, now, bookingGroupId));
+  return inputs.map((input) => {
+    try {
+      return normalizeReservationInput(input, now, bookingGroupId);
+    } catch (error) {
+      throw asBadRequest(error);
+    }
+  });
+}
+
+// normalizeReservationInput reads nothing but its argument — no I/O, no state —
+// so every throw inside it is by construction a rejected request body, and the
+// public booking flow should answer 400, not 500.
+//
+// The mapping lives at this boundary rather than on each check because the field
+// helpers below (requiredString, isoDate, guestNameField) are shared with
+// buildCancellationTokenRows, where the values are SERVER-generated: a failure
+// there is a real server bug and must keep reporting 500.
+function asBadRequest(error: unknown) {
+  if (error instanceof HttpError) {
+    return error;
+  }
+
+  return new HttpError(400, error instanceof Error ? error.message : 'Invalid reservation input.');
 }
 
 export function buildCancellationTokenRows(

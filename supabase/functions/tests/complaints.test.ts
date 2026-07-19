@@ -12,15 +12,22 @@ Deno.test('complaint category validation accepts the four buttons and rejects ot
     }
   }
 
+  const { HttpError } = await import('../_shared/http.ts');
+
   for (const bad of ['', 'food', 'CASUTA', null, undefined]) {
-    let threw = false;
+    let thrown: unknown;
     try {
       assertValidComplaintCategory(bad);
-    } catch {
-      threw = true;
+    } catch (error) {
+      thrown = error;
     }
-    if (!threw) {
+    if (!thrown) {
       throw new Error(`${String(bad)} should be rejected`);
+    }
+    // A bad category is the caller's mistake: 400, not the 500 that errorResponse
+    // gives anything untyped.
+    if (!(thrown instanceof HttpError) || thrown.status !== 400) {
+      throw new Error(`${String(bad)} should be rejected with HttpError(400)`);
     }
   }
 });
@@ -32,15 +39,20 @@ Deno.test('complaint description trims and enforces the 1..2000 bound', async ()
     throw new Error('description should be trimmed');
   }
 
+  const { HttpError } = await import('../_shared/http.ts');
+
   for (const bad of ['', '   ', 'a'.repeat(2001)]) {
-    let threw = false;
+    let thrown: unknown;
     try {
       normalizeComplaintDescription(bad);
-    } catch {
-      threw = true;
+    } catch (error) {
+      thrown = error;
     }
-    if (!threw) {
+    if (!thrown) {
       throw new Error('out-of-bound description should be rejected');
+    }
+    if (!(thrown instanceof HttpError) || thrown.status !== 400) {
+      throw new Error('an out-of-bound description should be rejected with HttpError(400)');
     }
   }
 
