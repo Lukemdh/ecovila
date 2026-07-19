@@ -3479,6 +3479,16 @@ input answers 400 *and* keeps its guest-facing message through `errorResponse`, 
 answers 400 for every malformed shape; the complaints tests now assert `HttpError(400)` too.
 **node 338 + deno 129 green.**
 
+**Deployed to prod 2026-07-19** — all 26 functions, not just the 12 that bundle the three changed
+modules, so no function can keep serving a stale copy of a shared file (the ADR-099 stance). Verified
+live against the real endpoints: the originally reported call (`{"phone":"invalid"}`) and a bare
+`+60843453` both answer **400** with their bodies unchanged; the complaint category/description
+bounds and three public-booking rejections (`adults:0`, injected `notes`, empty list) likewise.
+Regression-checked in the same pass: unauthenticated **401**, anon-on-staff-function **401**,
+malformed JSON **400**, `GET` on a POST-only function **405**, and a valid lookup still returns
+**200** with a real `lookupId` — which also exercises the ADR-100 hold-exclusion filter in the same
+query. No frontend change and no asset-token bump: the token stays `?v=2026071901`.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)
