@@ -185,8 +185,13 @@
       let groupFree = 0;
       const squares = group.numbers.map((number) => {
         const room = byNumber.get(number);
+        // Even a stay that runs past the horizon is still checked against what
+        // IS loaded: a range starting before the horizon can already have a
+        // known clash, and "unverified" must not hide it. Past the horizon the
+        // index simply holds nothing, so unclashed villas read as free — which
+        // is exactly what the status line calls unverified.
         const free = Boolean(room) && ranged &&
-          (unverified || isRoomFreeInIndex(index, room.id, input.checkIn, input.checkOut));
+          isRoomFreeInIndex(index, room.id, input.checkIn, input.checkOut);
 
         if (free) {
           groupFree += 1;

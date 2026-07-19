@@ -72,6 +72,30 @@ before insert on public.reservations
 for each row
 execute function public.enforce_temporary_hold_expiry();
 
+-- 1b. A live hold must ALWAYS carry a deadline.
+--
+-- Without this, an `office + pending + NULL` row would be a villa blocked
+-- forever and invisible to everything that manages holds: the trigger above
+-- returns early on a null deadline, and the panel, both RPCs and the expiry cron
+-- all require a non-null one. The exclusion constraint would still keep the
+-- villa off the market with nothing in the CRM able to release it.
+--
+-- NOT VALID so the migration cannot fail on pre-existing rows (every office row
+-- to date is `paid` with a null deadline, so none should match anyway) — it is
+-- enforced on every INSERT and UPDATE from here on, which is what matters.
+alter table public.reservations
+  drop constraint if exists reservations_live_hold_requires_deadline;
+
+alter table public.reservations
+  add constraint reservations_live_hold_requires_deadline
+  check (
+    payment_type <> 'office'
+    or payment_status <> 'pending'
+    or cancelled_at is not null
+    or cash_expires_at is not null
+  )
+  not valid;
+
 -- 2. Confirming a hold ("cheque cleared") — whole group, server clock, atomic.
 --
 -- Access model matches swap_reservation_rooms (ADR-091): the logged-in CRM calls

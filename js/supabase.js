@@ -730,6 +730,9 @@
             'paid_at',
             'created_at',
             'cancelled_at',
+            // Needed to recognise a live temporary hold (ADR-100) and keep it
+            // out of the day's booking list until it is actually confirmed.
+            'cash_expires_at',
             'rooms(id, number, type)',
           ].join(', '),
         )

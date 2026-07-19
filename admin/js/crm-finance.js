@@ -103,6 +103,16 @@
     return reservation?.payment_status === 'paid';
   }
 
+  // A staff villa block waiting on a cheque (ADR-100), not income and not a
+  // booking. Mirrors EcoVilaCrmCalendar.isTemporaryHold, redeclared here because
+  // the finance tab loads without the dashboard module.
+  function isLiveTemporaryHold(reservation) {
+    return reservation?.payment_type === 'office' &&
+      reservation?.payment_status === 'pending' &&
+      Boolean(reservation?.cash_expires_at) &&
+      !reservation?.cancelled_at;
+  }
+
   function bookedNights(reservation) {
     return daysBetween(reservation?.check_in, reservation?.check_out);
   }
@@ -272,6 +282,13 @@
     return (rows || [])
       .filter((reservation) => {
         if (!reservation?.id) {
+          return false;
+        }
+        // A live temporary hold (ADR-100) is not a booking yet — counting it
+        // here would overstate the day's bookings until it expires or is
+        // confirmed. Once confirmed it is an ordinary paid office booking and
+        // shows up normally.
+        if (isLiveTemporaryHold(reservation)) {
           return false;
         }
         // Keep live bookings, plus ones that were actually paid then cancelled

@@ -3716,20 +3716,98 @@ describe('EcoVila CRM date-first room grid and temporary holds', () => {
     assert.equal(sidebar.isClickOnRoomSquare({ target: elsewhere, composedPath: () => [elsewhere] }), false);
   });
 
-  it('keeps live holds out of the guest self-service lookup', () => {
+  it('keeps live holds out of every guest-facing rail, not just the OTP list', () => {
     const shared = read('supabase/functions/_shared/reservations.ts');
-    const start = read('supabase/functions/reservation-lookup-start/index.ts');
-    const verify = read('supabase/functions/reservation-lookup-verify/index.ts');
     const reschedule = read('supabase/functions/reservation-reschedule/index.ts');
 
-    // One definition, both lookup rails — filtering only one of them would send
-    // an OTP and then show an empty list.
+    // One definition, every rail. Filtering only the OTP list would still leave
+    // a phone-scoped manage token able to open — and cancel — a staff hold.
     assert.match(shared, /EXCLUDE_LIVE_HOLDS_FILTER =\s*\n?\s*'payment_type\.neq\.office,payment_status\.neq\.pending,cash_expires_at\.is\.null'/);
-    assert.match(start, /\.or\(EXCLUDE_LIVE_HOLDS_FILTER\)/);
-    assert.match(verify, /\.or\(EXCLUDE_LIVE_HOLDS_FILTER\)/);
+    for (const fn of [
+      'reservation-lookup-start',
+      'reservation-lookup-verify',
+      'reservation-manage-details',
+      'reservation-cancel',
+    ]) {
+      const source = read(`supabase/functions/${fn}/index.ts`);
+      assert.match(source, /import \{ EXCLUDE_LIVE_HOLDS_FILTER \}/, `${fn} should import the shared filter`);
+      assert.match(source, /\.or\(EXCLUDE_LIVE_HOLDS_FILTER\)/, `${fn} should apply the shared filter`);
+    }
 
     // Moving a hold's dates must not text a guest about a booking they were
     // never promised.
     assert.match(reschedule, /if \(datesChanged && !isTemporaryHold\(opened\)\)/);
+  });
+
+  it('releases a hold instead of running the guest-notifying cancellation path', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+
+    // "Șterge rezervarea" on a hold used to reach notifyReservationCancellation,
+    // texting the guest that a booking they never made was cancelled.
+    assert.match(
+      dashboardJs,
+      /isTemporaryHold\(reservation\) && reservation\.booking_group_id\)\s*\{\s*await releaseHold\([^)]*\{ skipConfirm: true \}\)/,
+      'deleteReservation should route a live hold to the release RPC',
+    );
+    // The RPC call and the reload are separate, so a failed reload cannot report
+    // a committed confirmation as a failure.
+    assert.match(dashboardJs, /function runHoldAction/);
+    assert.match(dashboardJs, /function errorMessage\(error, fallback\)/);
+    // Stale reloads must not overwrite newer state.
+    assert.match(dashboardJs, /state\.loadGeneration !== generation/);
+  });
+
+  it('counts a hold as an occupied villa but never as an arrival', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+
+    // The Situația zilnică tab lists only paid stays; the dashboard counters
+    // have to agree with it or staff chase an arrival that does not exist.
+    assert.match(dashboardJs, /const confirmedReservations = activeReservations\.filter/);
+    assert.match(dashboardJs, /confirmedReservations\.filter\(\(reservation\) => reservation\.check_in === today\)/);
+    assert.match(dashboardJs, /confirmedReservations\.filter\(\(reservation\) => reservation\.check_out === today\)/);
+    // Occupancy still counts every non-cancelled row, holds included.
+    assert.match(dashboardJs, /activeReservations\s*\n?\s*\.filter\(\(reservation\) => root\.EcoVilaCrmCalendar\.overlapsDate/);
+  });
+
+  it('keeps a live hold out of the finance "bookings created" list until confirmed', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaCrmCalendar: { todayISO: () => '2026-08-01' },
+    });
+    const base = {
+      check_in: '2026-08-10',
+      check_out: '2026-08-12',
+      total_price: 4000,
+      created_at: '2026-08-01T09:00:00.000Z',
+      rooms: { number: 3, type: 'small' },
+    };
+    const rows = finance.normalizeBookedDayRows([
+      { ...base, id: 'hold', payment_type: 'office', payment_status: 'pending', cash_expires_at: '2026-08-01T12:00:00.000Z', paid_at: null, cancelled_at: null },
+      { ...base, id: 'confirmed', payment_type: 'office', payment_status: 'paid', cash_expires_at: null, paid_at: '2026-08-01T10:00:00.000Z', cancelled_at: null },
+      { ...base, id: 'online', payment_type: 'card', payment_status: 'paid', cash_expires_at: null, paid_at: '2026-08-01T11:00:00.000Z', cancelled_at: null },
+    ]);
+
+    assert.deepEqual(Array.from(rows, (row) => row.id), ['confirmed', 'online']);
+  });
+
+  it('respects conflicts it already knows about on a stay that runs past the horizon', () => {
+    const sidebar = loadSidebar();
+    // The stay starts inside the loaded window (where villa 1 is taken) and ends
+    // past it. "Unverified" must not erase the known clash.
+    const model = sidebar.buildRoomPickerModel({
+      rooms,
+      reservations: [
+        { room_id: 'room-1', check_in: '2028-07-01', check_out: '2028-07-20', payment_status: 'paid', cancelled_at: null },
+      ],
+      checkIn: '2028-07-10',
+      checkOut: '2028-08-05',
+      horizonEnd: '2028-07-18',
+      selectedNumbers: [],
+    });
+    const squares = Array.from(model.groups).flatMap((group) => Array.from(group.squares));
+
+    assert.equal(model.unverified, true, 'the range still reads as unverified overall');
+    assert.equal(squares.find((square) => square.number === 1).state, 'occupied');
+    assert.equal(squares.find((square) => square.number === 2).state, 'available');
   });
 });

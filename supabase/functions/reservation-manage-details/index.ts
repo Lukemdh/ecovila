@@ -2,6 +2,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
 import { groupReservations, hashManageToken } from '../_shared/reservationManage.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
+import { EXCLUDE_LIVE_HOLDS_FILTER } from '../_shared/reservations.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
@@ -10,6 +11,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
   update(payload: unknown): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
+  or(filters: string): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
@@ -120,6 +122,10 @@ async function findReservationGroup(client: SupabaseClient, reservationId: strin
     .select('booking_group_id')
     .eq('id', reservationId)
     .eq('guest_phone', phone)
+    // A manage token is phone-scoped, so filtering the OTP list alone would
+    // still let a token holder open a live staff hold by its id. Internal
+    // blocks are invisible to the guest on every rail (ADR-100).
+    .or(EXCLUDE_LIVE_HOLDS_FILTER)
     .maybeSingle();
 
   if (primaryError) throw new Error(primaryError.message);

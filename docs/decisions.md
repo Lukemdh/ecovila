@@ -3328,15 +3328,60 @@ villa × seven queries per reload made grouped writes (and now cron expiries) st
 selected, reconciliation, the cross-night intersection case and half-open boundaries, the unverified
 horizon, paid-office vs 1h/3h/8h hold rows with `paid_at === null`, hold duration parsing, the
 Chișinău-clock expiry copy, hold card class + countdown, the migration's trigger/RPC/cron predicates
-and grants, and the lookup exclusions) plus the three regressions above. **node 333 + deno 127 green.**
+and grants, and the lookup exclusions) plus the three regressions above, then +4 more for the QA
+round (hold release vs guest-notifying cancel, occupied-but-not-arriving, finance booking list, the
+straddling-horizon case). **node 337 + deno 127 green.**
 
 **Verification.** Driven end to end in a browser against the real modules with a throwaway harness
 (deleted after use — it would otherwise have shipped to TopHost): dates → grid → multi-select →
 totals → hold submit payload → post-submit reset, plus a side-by-side of the hold/pending/paid card
 styles.
 
-**Status: NOT deployed.** Backend = one migration (trigger + 2 RPCs + cron) and three functions
-(`reservation-lookup-start`, `reservation-lookup-verify`, `reservation-reschedule`). Frontend token
+**QA round (independent GPT-5.6 pass over the finished diff).** Eleven findings; eight fixed here,
+three accepted and recorded:
+
+1. *(fixed)* **The DB allowed an invisible, permanent hold.** Nothing required an `office + pending`
+   row to carry a deadline — the trigger returns early on a null one, and the panel, both RPCs and
+   the cron all require a non-null one, so such a row would block a villa forever with no way to
+   release it from the CRM. New `reservations_live_hold_requires_deadline` CHECK (added `NOT VALID`
+   so it cannot fail on legacy rows, but is enforced on every write from now on).
+2. *(fixed)* **"Șterge rezervarea" on a hold texted the guest.** The dialog's delete path runs the
+   booking-cancellation flow, which ends in `notifyReservationCancellation` — telling a guest their
+   booking was cancelled when all they had was a villa being held. `deleteReservation` now routes a
+   live hold to the release RPC (still behind the two existing confirmations).
+3. *(fixed)* **Filtering the OTP list was not enough.** Manage tokens are phone-scoped, so a token
+   holder could still open — and cancel — a hold by id. `reservation-manage-details` and
+   `reservation-cancel` now apply the same shared filter, making "a live hold is invisible to the
+   guest" true on every rail rather than only the list.
+4. *(fixed)* A committed confirm/release could be reported as a failure when the follow-up reload
+   failed, and PostgREST rejections (plain objects, not `Error`s) surfaced as "Eroare necunoscută",
+   swallowing the RPC's own message. The RPC call and the reload are now separate, `errorMessage`
+   reads `.message` off any shape, and the dialog stays open on failure.
+5. *(fixed)* **Overlapping reloads could apply out of order**, letting an older response re-offer a
+   villa that had just been taken. `loadDashboard` now carries a generation counter and drops its
+   own results if a newer load started meanwhile; the debounced realtime reload also has a rejection
+   handler instead of an unhandled promise.
+6. *(fixed)* **A stay crossing the availability horizon discarded conflicts that were already
+   known** — `unverified || isRoomFree(...)` marked every villa free, including one with a loaded
+   booking in the near half of the range. Known clashes are now always honoured; "unverified" only
+   describes the part nothing was fetched for.
+7. *(fixed)* Live holds inflated Finance's "bookings created today" count/list before confirmation.
+8. *(fixed)* Live holds counted as arrivals/departures in the dashboard stats while the Situația
+   zilnică tab (paid only) showed nothing — staff would chase an arrival that does not exist. Holds
+   still count as occupied villas, which is what they are.
+9. *(accepted)* `reservation-reschedule` reads the row before writing, so a hold confirmed by
+   someone else mid-move would keep its SMS suppressed. The harmful direction (texting about a hold)
+   cannot happen; the underlying "RPC updates zero rows and still reports success" is a pre-existing
+   ADR-087 gap, tracked separately.
+10. *(accepted)* A hold outlives its displayed deadline by up to the cron's one-minute tick — the
+    exclusion constraint does not read the timestamp. Confirm re-checks the deadline, so nothing can
+    be confirmed late; only the villa's release is up to a minute behind.
+11. *(accepted)* An INSERT that waits on an exclusion-constraint conflict longer than the chosen
+    duration could commit already expired (transaction-stable `now()`); the next cron tick clears it.
+
+**Status: NOT deployed.** Backend = one migration (trigger + CHECK + 2 RPCs + cron) and five functions
+(`reservation-lookup-start`, `reservation-lookup-verify`, `reservation-manage-details`,
+`reservation-cancel`, `reservation-reschedule`). Frontend token
 bumped `?v=2026071801` → **`?v=2026071901`**, so this upload also carries the still-pending
 ADR-095/096/098/099 frontend. **Sequencing matters:** apply the migration and verify
 `cron.job` first, then deploy the functions, and only then upload the frontend — the hold checkbox

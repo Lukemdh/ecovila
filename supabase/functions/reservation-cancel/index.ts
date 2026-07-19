@@ -12,6 +12,7 @@ import {
   isRefundEligible,
   refundEligibilityReason,
 } from '../_shared/reservationManage.ts';
+import { EXCLUDE_LIVE_HOLDS_FILTER } from '../_shared/reservations.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   aggregateRoomLabel,
@@ -34,6 +35,7 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   eq(column: string, value: unknown): QueryBuilder<T>;
   in(column: string, value: unknown[]): QueryBuilder<T>;
   is(column: string, value: unknown): QueryBuilder<T>;
+  or(filters: string): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T | null>>;
@@ -244,6 +246,11 @@ async function findActiveReservationGroup(
     .select('booking_group_id')
     .eq('id', reservationId)
     .eq('guest_phone', phone)
+    // A guest must never be able to cancel an internal staff hold (ADR-100) —
+    // it would free a villa staff are holding and send a cancellation message
+    // for a booking that was never made. Phone-scoped manage tokens make the
+    // OTP-list filter alone insufficient.
+    .or(EXCLUDE_LIVE_HOLDS_FILTER)
     .maybeSingle();
 
   if (primaryError) throw new Error(primaryError.message);

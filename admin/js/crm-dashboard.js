@@ -324,47 +324,67 @@
     });
   }
 
-  async function confirmHold(context, bookingGroupId, button) {
-    if (!bookingGroupId || button?.disabled) {
-      return;
-    }
-
-    if (button) button.disabled = true;
-    try {
-      await root.EcoVilaSupabase.confirmTemporaryHold(context.client, bookingGroupId);
-      (activeState?.context || context)?.setAlert?.('');
-      await activeState?.reload?.();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
-      (activeState?.context || context)?.setAlert?.(`Rezervarea temporară nu a fost confirmată: ${message.slice(0, 180)}`);
-      // The hold may have expired a moment ago; reload so the panel tells the truth.
-      await activeState?.reload?.();
-    } finally {
-      if (button) button.disabled = false;
-    }
+  // PostgREST rejections are plain `{ message, code, ... }` objects, not Error
+  // instances, so an `instanceof Error` check would swallow the RPC's own
+  // Romanian message ("Rezervarea temporară a expirat…") and show a useless
+  // "Eroare necunoscută" instead.
+  function errorMessage(error, fallback) {
+    const message = typeof error?.message === 'string' ? error.message.trim() : '';
+    return message ? message.slice(0, 180) : fallback;
   }
 
-  async function releaseHold(context, bookingGroupId, button) {
+  // The RPC call and the reload are separated on purpose: once the RPC has
+  // committed, the hold IS confirmed/released, and a reload that then fails must
+  // not be reported as "the hold was not confirmed".
+  async function runHoldAction(input) {
+    const { context, bookingGroupId, button, action, failureMessage } = input;
     if (!bookingGroupId || button?.disabled) {
-      return;
+      return false;
     }
 
-    if (!root.confirm?.('Eliberezi rezervarea temporară? Camerele redevin libere imediat.')) {
-      return;
-    }
-
+    const liveContext = activeState?.context || context;
     if (button) button.disabled = true;
+    let succeeded = false;
     try {
-      await root.EcoVilaSupabase.releaseTemporaryHold(context.client, bookingGroupId);
-      (activeState?.context || context)?.setAlert?.('');
-      await activeState?.reload?.();
+      await action();
+      succeeded = true;
+      liveContext?.setAlert?.('');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
-      (activeState?.context || context)?.setAlert?.(`Rezervarea temporară nu a fost eliberată: ${message.slice(0, 180)}`);
-      await activeState?.reload?.();
+      liveContext?.setAlert?.(`${failureMessage}: ${errorMessage(error, 'Eroare necunoscută.')}`);
     } finally {
       if (button) button.disabled = false;
     }
+
+    // Reload either way: on success to show the new state, on failure because
+    // the usual cause is that the cron expired the hold a moment ago.
+    await activeState?.reload?.().catch(() => {});
+    return succeeded;
+  }
+
+  function confirmHold(context, bookingGroupId, button) {
+    return runHoldAction({
+      context,
+      bookingGroupId,
+      button,
+      action: () => root.EcoVilaSupabase.confirmTemporaryHold(context.client, bookingGroupId),
+      failureMessage: 'Rezervarea temporară nu a fost confirmată',
+    });
+  }
+
+  function releaseHold(context, bookingGroupId, button, options) {
+    // The dialog's delete path has already asked twice before routing here.
+    if (!options?.skipConfirm &&
+      !root.confirm?.('Eliberezi rezervarea temporară? Camerele redevin libere imediat.')) {
+      return Promise.resolve(false);
+    }
+
+    return runHoldAction({
+      context,
+      bookingGroupId,
+      button,
+      action: () => root.EcoVilaSupabase.releaseTemporaryHold(context.client, bookingGroupId),
+      failureMessage: 'Rezervarea temporară nu a fost eliberată',
+    });
   }
 
   function guestSummary(reservation) {
@@ -709,8 +729,11 @@
       confirmHoldButton.hidden = !canConfirmHold;
       confirmHoldButton.onclick = canConfirmHold
         ? async () => {
-          await confirmHold(activeState?.context || {}, reservation.booking_group_id, confirmHoldButton);
-          dialog.close?.('cancel');
+          // Stay open on failure so the reason (expired, already released) is
+          // readable next to the reservation it refers to.
+          if (await confirmHold(activeState?.context || {}, reservation.booking_group_id, confirmHoldButton)) {
+            dialog.close?.('cancel');
+          }
         }
         : null;
     }
@@ -859,6 +882,15 @@
       return;
     }
 
+    // A temporary hold deleted from this dialog must take the release path, not
+    // the booking-cancellation path below: that one texts and emails the guest
+    // that "their reservation was cancelled" — for a villa they were only ever
+    // told was being held, and for which they paid nothing.
+    if (root.EcoVilaCrmCalendar.isTemporaryHold(reservation) && reservation.booking_group_id) {
+      await releaseHold(context, reservation.booking_group_id, null, { skipConfirm: true });
+      return;
+    }
+
     // Cancel FIRST, refund SECOND. Refunding before a cancel that then fails
     // would leave the money returned while the booking stays active — the worse
     // failure mode. A refund that fails after the cancel is recorded server-side
@@ -992,11 +1024,17 @@
         .map((reservation) => reservation.room_id)
         .filter(Boolean),
     );
+    // A hold blocks its villa (so it counts as occupied above) but nobody is
+    // arriving on it — it is a block, not a stay. The Situația zilnică tab shows
+    // only paid reservations, and these two counters must agree with it.
+    const confirmedReservations = activeReservations.filter((reservation) => {
+      return !root.EcoVilaCrmCalendar.isTemporaryHold(reservation);
+    });
     const arrivals = root.EcoVilaCrmCalendar.groupReservationRows(
-      activeReservations.filter((reservation) => reservation.check_in === today),
+      confirmedReservations.filter((reservation) => reservation.check_in === today),
     );
     const departures = root.EcoVilaCrmCalendar.groupReservationRows(
-      activeReservations.filter((reservation) => reservation.check_out === today),
+      confirmedReservations.filter((reservation) => reservation.check_out === today),
     );
 
     setText('[data-stat-free-rooms]', Math.max(0, (state.rooms || []).length - occupiedRoomIds.size));
@@ -1047,6 +1085,12 @@
     const helpers = root.EcoVilaSupabase;
     captureCalendarScroll(state);
     state.isLoading = true;
+    // Reloads overlap (a staff action reloads while a realtime event schedules
+    // its own), and they can finish out of order. Without this guard an older,
+    // slower response could overwrite newer rooms/reservations and re-offer a
+    // villa that has just been taken.
+    const generation = (state.loadGeneration || 0) + 1;
+    state.loadGeneration = generation;
     try {
       state.today = root.EcoVilaCrmCalendar.todayISO();
       state.focusDate = state.focusDate || state.today;
@@ -1076,6 +1120,13 @@
         helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
         helpers.fetchTemporaryHolds(context.client),
       ]);
+
+      // A newer reload started while these queries were in flight — its results
+      // are the current truth, so drop these ones rather than rendering them.
+      if (state.loadGeneration !== generation) {
+        return;
+      }
+
       state.rooms = rooms;
       state.reservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
       state.todayReservations = root.EcoVilaCrmCalendar.sortReservations(todayReservations);
@@ -1210,7 +1261,9 @@
         }
         state.realtimeTimer = root.setTimeout(() => {
           state.realtimeTimer = null;
-          state.reload();
+          state.reload().catch((error) => {
+            context.setAlert(error?.message || 'Dashboardul nu s-a putut actualiza.');
+          });
         }, REALTIME_RELOAD_DEBOUNCE_MS);
       })
       .subscribe();
