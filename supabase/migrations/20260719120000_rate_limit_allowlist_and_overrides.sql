@@ -1,6 +1,6 @@
 set search_path = public, extensions;
 
--- Rate-limit allowlist + per-bucket overrides (ADR-102).
+-- Rate-limit allowlist + per-bucket overrides (ADR-103).
 --
 -- Two operational controls added WITHOUT touching supabase/functions/_shared/
 -- rateLimit.ts, so no edge function has to be redeployed. Both are read inside
@@ -48,7 +48,7 @@ alter table public.rate_limit_overrides enable row level security;
 revoke all on table public.rate_limit_allowlist from public, anon, authenticated, service_role;
 revoke all on table public.rate_limit_overrides from public, anon, authenticated, service_role;
 
--- Office egress IP (ADR-102) -------------------------------------------------
+-- Office egress IP (ADR-103) -------------------------------------------------
 --
 -- Scoped to the exact buckets the office actually transits on the public site.
 -- Staff adding bookings through the CRM are NOT covered and do not need to be:
@@ -60,18 +60,18 @@ revoke all on table public.rate_limit_overrides from public, anon, authenticated
 -- login from /complaints, that bucket is the only spam gate left in front of a
 -- fully public form, and the office has no reason to submit complaints.
 insert into public.rate_limit_allowlist (bucket, key, note) values
-  ('create-reservation:ip', '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('create-payment:ip',     '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('lookup-start:ip',       '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('lookup-verify:ip',      '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('manage-action:ip',      '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('change-create:ip',      '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('change-status:ip',      '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('mia-status:ip',         '89.149.88.177', 'Office egress IP (ADR-102)'),
-  ('track-event:ip',        '89.149.88.177', 'Office egress IP (ADR-102)')
+  ('create-reservation:ip', '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('create-payment:ip',     '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('lookup-start:ip',       '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('lookup-verify:ip',      '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('manage-action:ip',      '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('change-create:ip',      '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('change-status:ip',      '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('mia-status:ip',         '89.149.88.177', 'Office egress IP (ADR-103)'),
+  ('track-event:ip',        '89.149.88.177', 'Office egress IP (ADR-103)')
 on conflict (bucket, key) do nothing;
 
--- +20% across every bucket (ADR-102) ----------------------------------------
+-- +20% across every bucket (ADR-103) ----------------------------------------
 --
 -- Exact values, since "+20%" is not expressible as an integer on the two small
 -- buckets: 6 -> 7.2 and 12 -> 14.4 are rounded to nearest (7 and 14, i.e. +17%).
@@ -80,21 +80,21 @@ on conflict (bucket, key) do nothing;
 -- Per-resource buckets (phone/group/change) are included for parity with the
 -- request, but note they are NOT what a shared office IP collides on.
 insert into public.rate_limit_overrides (bucket, effective_limit, note) values
-  ('lookup-start:ip',            24, '+20% (ADR-102), was 20'),
-  ('lookup-verify:ip',           48, '+20% (ADR-102), was 40'),
-  ('create-reservation:ip',      12, '+20% (ADR-102), was 10'),
-  ('create-reservation:phone',    7, '+17% (ADR-102), was 6 - 7.2 rounded'),
-  ('track-event:ip',            144, '+20% (ADR-102), was 120'),
-  ('complaint-submit:ip',        12, '+20% (ADR-102), was 10'),
-  ('mia-status:ip',             180, '+20% (ADR-102), was 150'),
-  ('mia-status:group',           48, '+20% (ADR-102), was 40'),
-  ('change-status:ip',          180, '+20% (ADR-102), was 150'),
-  ('change-status:change',       48, '+20% (ADR-102), was 40'),
-  ('mia-callback:ip',            72, '+20% (ADR-102), was 60'),
-  ('create-payment:ip',          36, '+20% (ADR-102), was 30'),
-  ('create-payment:group',       14, '+17% (ADR-102), was 12 - 14.4 rounded'),
-  ('change-create:ip',           24, '+20% (ADR-102), was 20'),
-  ('manage-action:ip',           72, '+20% (ADR-102), was 60')
+  ('lookup-start:ip',            24, '+20% (ADR-103), was 20'),
+  ('lookup-verify:ip',           48, '+20% (ADR-103), was 40'),
+  ('create-reservation:ip',      12, '+20% (ADR-103), was 10'),
+  ('create-reservation:phone',    7, '+17% (ADR-103), was 6 - 7.2 rounded'),
+  ('track-event:ip',            144, '+20% (ADR-103), was 120'),
+  ('complaint-submit:ip',        12, '+20% (ADR-103), was 10'),
+  ('mia-status:ip',             180, '+20% (ADR-103), was 150'),
+  ('mia-status:group',           48, '+20% (ADR-103), was 40'),
+  ('change-status:ip',          180, '+20% (ADR-103), was 150'),
+  ('change-status:change',       48, '+20% (ADR-103), was 40'),
+  ('mia-callback:ip',            72, '+20% (ADR-103), was 60'),
+  ('create-payment:ip',          36, '+20% (ADR-103), was 30'),
+  ('create-payment:group',       14, '+17% (ADR-103), was 12 - 14.4 rounded'),
+  ('change-create:ip',           24, '+20% (ADR-103), was 20'),
+  ('manage-action:ip',           72, '+20% (ADR-103), was 60')
 on conflict (bucket) do update
   set effective_limit = excluded.effective_limit,
       note = excluded.note;
