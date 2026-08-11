@@ -3631,8 +3631,32 @@ full cancellation, the unchanged plain one, SMS one-segment in ro/ru/en checked 
 alphabet, unknown-language fallback, and the stable owner surviving the cancellation of its own
 villa). **node 362 + deno 137 green.**
 
-**Not deployed.** Frontend token bumped `?v=2026071901` → `?v=2026081101`; `dist/tophost`
-regenerated. Awaiting sign-off before the migration, the function deploys and the TopHost upload.
+**Deployed to prod 2026-08-11.** Migration `20260811120000` pushed with no history drift (local and
+remote matched up to `20260719120000`), then **all 27 functions** redeployed — not just the ones that
+bundle the changed shared modules, so none can keep serving a stale `notifications.ts` or
+`reservationChanges.ts` (the ADR-099 stance).
+
+Verified live rather than assumed. The RPC exists as `security definer` with EXECUTE granted only to
+`postgres` and `service_role` — `anon`/`authenticated` are absent. Both of its raises were probed
+against the real database: ids that match nothing answer `P0002: Expected to cancel 1
+reservation(s), matched 0`, and passing a `pay_id` that already carries a succeeded refund answers
+`P0001: A refund already exists for payment …` — after which that real refund row was re-read and
+found untouched (still `succeeded`, 3.650 MDL), confirming the raise rolls the whole call back. The
+new endpoint answers **401** unauthenticated, **401** with the anon key (not a staff user) and
+**405** on GET. Regression-checked on the redeployed guest endpoints, which is what proves the shared
+modules resolve: `reservation-lookup-start` **400** on a bad phone, `reservation-manage-details`
+**401** on a bad token, `reservation-cancel` and `reservation-change-create` **400** on missing
+input — the ADR-102 statuses intact.
+
+Two facts about the existing data, checked before shipping: all 20 refunded payments in production
+history have a real `maib_refunds` row, so Finance reads true amounts everywhere and never falls back
+to the old estimate; and **no booking group currently holds a mix of cancelled and live rows**, so
+the new reader filters change nothing retroactively — they only matter from the first partial
+cancellation on.
+
+**Frontend** token `?v=2026071901` → `?v=2026081101`, `dist/tophost` regenerated (22 MB). The owner
+uploads it; until then the live CRM runs the old bundle, which is why `refunded-groups` still returns
+its plain `groups` id list alongside the new `refunds` array.
 
 ---
 
