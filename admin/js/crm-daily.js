@@ -171,13 +171,20 @@
     return Boolean(reservation && reservation.payment_status === 'paid' && !reservation.cancelled_at);
   }
 
+  // The booking's LIVE villas. Everything built on this — the "Achitat" total on
+  // the check-in/out cards, the repricing quote behind a guest edit, the towel
+  // cards written across the group — must ignore a villa the guest no longer
+  // has: since ADR-104 staff can cancel part of a booking, and state.reservations
+  // keeps cancelled rows (the calendar needs them). Falls back to the opened
+  // reservation so a fully cancelled booking still renders itself.
   function groupReservations(reservations, reservation) {
     const groupId = reservation.booking_group_id;
     if (!groupId) {
       return [reservation];
     }
 
-    const grouped = (reservations || []).filter((item) => item.booking_group_id === groupId);
+    const grouped = (reservations || []).filter((item) =>
+      item.booking_group_id === groupId && isActiveReservation(item));
     return grouped.length ? grouped : [reservation];
   }
 

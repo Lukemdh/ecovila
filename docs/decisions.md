@@ -3491,6 +3491,151 @@ query. No frontend change and no asset-token bump: the token stays `?v=202607190
 
 ---
 
+### ADR-104 — Partial cancellation: drop some villas of a booking and refund a typed amount
+
+**Problem.** A guest who booked three villas and gives up one had no path through the CRM. The only
+control was "Șterge rezervarea", which cancels the whole booking group and refunds the full payment.
+Staff worked around it by hand: patch the pending `maib_refunds` row with the amount and wait for the
+reconcile cron (recorded in the 2026-07-27 correction — 2 villas booked by mistake, 850 of 6.000 MDL
+returned). That is not something the owner can do unaided, and it leaves no CRM trail.
+
+**Shape.** Opening a reservation now offers **Anulare parțială / restituire**: the booking's live
+villas as a ticklist, an empty amount field the owner fills in by hand (their explicit requirement —
+the sum is never computed for them), and a typed `anulez` confirmation, mirroring the swap dialog's
+`schimba`. Selection starts empty, so a mis-click does nothing. Cash/office bookings get the amount
+field disabled — that money goes back over the counter, not through MAIB.
+
+The block restates the consequence in figures as the amount is typed: *"Restitui 3 500 MDL din
+12 200 MDL încasați. Restul de 8 700 MDL nu va mai putea fi restituit prin MAIB."* That sentence is
+the whole safety design, see below.
+
+**One server call, not three.** `reservation-partial-cancel` (diana-only) validates, cancels,
+refunds and notifies in one request. The existing full-cancel path does those as three browser calls
+(`updateReservationGroup` → `maib-refund` → `reservation-cancel-notify`), where a closed tab strands
+a booking cancelled with the money still taken. Extending `maib-refund` was rejected too: it is a
+payment primitive and has no business owning villa selection or guest email.
+
+**Immediate, not on the 60h cooldown.** ADR-096's cooldown exists to blunt *guest* fraud; this is a
+deliberate staff action, usually taken with the guest on the phone, and the owner asked for "proceed
+and it will cancel and refund". Codex argued for scheduling it instead, since a mistyped amount is
+unrecoverable. That risk is real but it is a *typo* risk, and a typo is best caught at the moment of
+typing — hence the restated arithmetic and the typed confirmation — not by a 60-hour wait that would
+also delay every correct refund. Recorded as a deliberate trade, not an oversight.
+
+**MAIB refunds exactly once per payment.** A partial refund permanently consumes that single refund.
+The engine used to hide this: `attemptBookingRefund` short-circuits on an already-succeeded
+`maib_refunds` row and answers `{ok:true}` with no money moving. So the preflight refuses:
+
+- a **succeeded** row → 409 naming the amount already returned ("transferă restul manual");
+- any other **non-terminal** row (a guest refund cooling down, or one mid-flight) → 409, because
+  executing here would overwrite that row's amount and pay out a different sum than the one someone
+  else already set in motion. Staff cancel or release it in Finance first.
+
+The same lie reached guests: `reservation-cancel` set `refundScheduled = true` unconditionally, so a
+guest cancelling the rest of a partially-refunded booking was told a refund was scheduled that no
+cron would ever pay. It now reports honestly, stamps `cancellation_reason` from what actually
+happened, and raises a staff alert for the manual transfer.
+
+**All or nothing, inside the transaction.** The first draft cancelled with a guarded PostgREST
+UPDATE and compared the returned row count in JavaScript. Codex correctly flagged that as not
+atomic: a one-of-two match *commits*, and the 409 arrives too late — one villa cancelled, no refund,
+no notice. The `cancel_reservation_rows` RPC (migration `20260811120000`) asserts its own
+cardinality and raises P0002, so a mismatch rolls back and the refund is never reached. Same lesson
+as ADR-101, with money attached. Cancel still precedes refund: money returned against a booking that
+stayed live is the worse failure, and an unconfirmed refund is retried by the 30-minute cron.
+
+**The same transaction also CLAIMS the refund**, which the QA round showed was necessary twice over.
+Checking `maib_refunds` in the function and then executing is check-then-act: a guest cancellation
+scheduling its own (full) refund in that window would have been overwritten with the staff amount
+and paid out immediately, because the staff path passes `allowCancelled`. And a cancellation that
+committed before any refund row existed could strand the guest with neither villa nor money if the
+row write then failed. `pay_id` is unique, so the insert *is* the lock: the RPC inserts the refund as
+`requested` with `eligible_at` ten minutes out, and only a row staff previously *aborted* may be
+re-claimed. Normal path, the function executes it a second later; crashed path, the reconcile cron
+finishes the payout within the hour.
+
+**Other defects the QA round surfaced and this change fixes.** A payment can be marked `refunded`
+with no `maib_refunds` row at all (manual reconciliation does exactly that) — calling MAIB again
+returns REVERSED, which the engine reads as success, so the preflight now refuses on the payment's
+own status too. `maib-create-payment` inserts its payment row *before* stamping
+`payment_in_progress`, so the reservation flag alone left a window where a checkout for the original
+amount was already open; the guard now also looks for an unexpired `created`/`pending` payment. The
+CRM re-reads the typed confirmation at submit time (a failed attempt re-enabled the button, and the
+word could have been cleared meanwhile) and measures the unrefundable remainder against the whole
+booking group rather than its live villas, so a villa dropped earlier without a refund still counts
+as money stuck on that payment. Ticking *every* villa is a full cancellation that nonetheless
+returned a hand-typed sum, so `buildCancellationEmail` and `cancellationConfirmationSms` gained an
+optional refund line. `/gestionare` no longer badges a booking "Rambursată" off a partially refunded
+payment while the guest still has live villas — that contradicted the confirmation page.
+
+Two pre-existing holes were fixed in passing because this feature makes them reachable: a paid
+add-guests difference landing on a change that is no longer pending was only `console.error`-ed,
+stranding captured money with nobody told — it now raises a staff alert; and every SMS carrying an
+amount was silently UCS-2, because the shared money formatter joins thousands with U+00A0, which is
+outside GSM-7. Any sum from 1.000 MDL up cost two or three segments instead of one. SMS now uses a
+plain-space formatter, and the tests check the GSM-7 alphabet itself rather than counting characters
+(the old length-only assertions passed straight through the bug).
+
+**Money in flight blocks the operation.** A live MAIB/MIA checkout settles at the amount it was
+created with, against whatever rows survive — cancelling mid-checkout can charge for three villas
+and deliver two. Any live `payment_in_progress` session on the group is a 409. An open "add guests"
+change has the same defect (it quotes the old villa count), so the flow calls `supersedeOpenChanges`
+before touching inventory. Paid change differences are deliberately **not** swept: the typed amount
+is the only money that moves.
+
+**A booking group can now hold cancelled and live rows at once** — a first, and several readers
+assumed a group cancels as a unit:
+
+- `reservation-manage-details` loaded every row: `/gestionare` showed the guest a villa they no
+  longer had, at the pre-cancellation price, and read the booking's status off the first row — which
+  could be the cancelled one. Now returns live rows whenever any survive.
+- `reservationChanges` required *every* loaded row to be paid and live, so one cancelled sibling
+  locked the guest out of "add guests" for the villas they kept; and the change email listed ghost
+  villas.
+- `crm-daily`'s group helper fed the "Achitat" total, the repricing quote behind a guest edit, and
+  the towel-card writes — all of which counted the dropped villa.
+- Finance's bookings-by-day merged the group into one row, summing the cancelled villa back in and
+  taking the status from the lowest-numbered villa: a 3-villa booking with one cancellation could
+  read "anulată" at the full price. Split into a live entry and a cancelled one.
+- Scheduled notifications (arrival reminder, review request) pick the owner from the *filtered*
+  active rows, so cancelling the current owner promotes the next villa and sends the guest the same
+  message twice. `resolveStableGroupOwnerIds` resolves the dedup key across the whole group
+  (cancelled rows are never deleted, so it never moves) — the split `send-checkin-welcome` already
+  used.
+- The cancellation notice itself keys on rows cancelled by *this* call, so a second partial
+  cancellation of the same booking still reaches the guest, and uses a new localized email/SMS that
+  names what was dropped, what stands and the refunded sum — the plain cancellation copy would tell
+  a still-arriving guest their booking is off.
+
+**Finance now reports the sum actually refunded.** `refunded-groups` returns
+`{bookingGroupId, amount}` from the real refund record instead of a bare id list; the cancellations
+view used to assume the cancelled villas' full price came back. The payout-fee tier follows the
+transferred sum too (850 MDL is the 20 MDL tier, not the 12.200 MDL booking's 40). A group with no
+refund record keeps the old estimate, and a plain Set still works, so nothing regresses.
+
+**Not built:** a durable cancellation-event/refund-allocation ledger, which Codex recommended. At
+this volume (25 villas, one operator, a handful of partial cancellations a year) `maib_refunds` plus
+`cancellation_reason` is enough of a trail. The one known gap it leaves: two partial cancellations of
+the same booking in different months would show the same refund amount in both months' Finance
+reports.
+
+**Tests.** +24 node (dialog wiring and confirm word, live-villa-only list, the restated arithmetic
+and the whole-payment remainder, the RPC's all-or-nothing contract, its refund claim and its
+service-role-only grant, the refund refusals including the row-less refunded payment, the partial
+guest notice, both in-flight guards, the stale add-guests alert, the guest-page filters and the
+manage-page badge, the honest `reservation-cancel` reporting, the 0-versus-garbage amount handling,
+the stale-handler and re-confirmation guards, the backward-compatible `refunded-groups` shape, daily
+totals ignoring a cancelled villa, Finance's real amounts and the split bookings-by-day row) and +8
+deno (partial email names dropped/remaining/refund and omits the refund block at zero, the refunded
+full cancellation, the unchanged plain one, SMS one-segment in ro/ru/en checked against the GSM-7
+alphabet, unknown-language fallback, and the stable owner surviving the cancellation of its own
+villa). **node 362 + deno 137 green.**
+
+**Not deployed.** Frontend token bumped `?v=2026071901` → `?v=2026081101`; `dist/tophost`
+regenerated. Awaiting sign-off before the migration, the function deploys and the TopHost upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

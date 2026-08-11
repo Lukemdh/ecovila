@@ -182,6 +182,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
         'send-sms',
         'send-email',
         'reservation-reschedule',
+        'reservation-partial-cancel',
       ]
     ) {
       assert.match(fn(name), /requireStaffRole/, `${name} should stay staff-gated`);
@@ -203,6 +204,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'send-email',
       'reservation-cancel-notify',
       'reservation-reschedule',
+      'reservation-partial-cancel',
       'send-checkin-welcome',
       // cron-secret gated
       'expire-cash-reservations',

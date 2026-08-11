@@ -770,6 +770,8 @@
       deleteButton.onclick = readOnly ? null : () => deleteReservation(reservation);
     }
 
+    setupPartialCancel(dialog, reservation, readOnly, isHold);
+
     const editError = qs('[data-edit-error]', dialog);
     if (editError) {
       editError.textContent = '';
@@ -780,6 +782,325 @@
       editorForm.onsubmit = (event) => handleReservationEditSubmit(event, reservation, dialog, readOnly);
     }
     dialog.showModal?.();
+  }
+
+  // ── Anulare parțială (ADR-104) ──────────────────────────────────────────────
+  // The guest gives up SOME villas of a booking and gets back a sum staff type by
+  // hand. Everything below only prepares that call: one Edge Function performs
+  // the cancellation, the refund and the guest notice together, because doing it
+  // in three browser calls (the shape of "Șterge rezervarea" above) can strand a
+  // booking half-cancelled if the tab closes in between.
+  const PARTIAL_CONFIRM_WORD = 'anulez';
+
+  // Every row of the opened booking, cancelled ones included. All rows of a group
+  // share the stay dates, so they are either all inside the loaded calendar
+  // window or all outside it — the list is never a partial view of the booking.
+  function partialCancelGroup(reservation) {
+    const rows = activeState?.reservations || [];
+    const groupId = reservation.booking_group_id;
+    return groupId
+      ? rows.filter((row) => row.booking_group_id === groupId)
+      : rows.filter((row) => row.id === reservation.id);
+  }
+
+  // Live villas of the opened booking, newest calendar state, lowest villa
+  // number first so the list reads in room order.
+  function partialCancelCandidates(reservation) {
+    return partialCancelGroup(reservation)
+      .filter((row) => !root.EcoVilaCrmCalendar.isCancelled(row))
+      .sort((left, right) => {
+        return Number(left.rooms?.number || 0) - Number(right.rooms?.number || 0) ||
+          String(left.id).localeCompare(String(right.id));
+      });
+  }
+
+  function setupPartialCancel(dialog, reservation, readOnly, isHold) {
+    const section = qs('[data-partial-cancel]', dialog);
+    if (!section) {
+      return;
+    }
+
+    const candidates = partialCancelCandidates(reservation);
+    // A hold is not a booking (it takes the release path), and a fully cancelled
+    // reservation has nothing left to give up.
+    const available = !readOnly && !isHold && candidates.length > 0;
+    section.hidden = !available;
+    if (!available) {
+      // Drop the previous booking's submit handler with the section: it closes
+      // over that booking's villas and would move money against it if the button
+      // were ever reachable again.
+      const staleSubmit = qs('[data-partial-submit]', section);
+      if (staleSubmit) staleSubmit.onclick = null;
+      return;
+    }
+
+    const body = qs('[data-partial-body]', section);
+    const toggle = qs('[data-partial-toggle]', section);
+    const list = qs('[data-partial-villas]', section);
+    const amountField = qs('[data-partial-amount]', section);
+    const confirmField = qs('[data-partial-confirm]', section);
+    const errorField = qs('[data-partial-error]', section);
+    const warning = qs('[data-partial-warning]', section);
+    const submit = qs('[data-partial-submit]', section);
+
+    // Reopening the dialog must never inherit a previous booking's selection,
+    // typed amount or confirmation word.
+    if (body) body.hidden = true;
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    if (amountField) amountField.value = '';
+    if (confirmField) confirmField.value = '';
+    if (errorField) {
+      errorField.textContent = '';
+      errorField.hidden = true;
+    }
+    if (submit) submit.disabled = false;
+
+    const paidOnline = candidates.some((row) =>
+      row.payment_type === 'card' && row.payment_status === 'paid');
+    // Summed over the WHOLE booking group, cancelled villas included: the single
+    // MAIB payment covered them all, so a villa dropped earlier without a refund
+    // is still money sitting on that payment. Counting only the live villas
+    // understated it and made the "what stays unrefundable" line too small.
+    const paidTotal = partialCancelGroup(reservation).reduce((sum, row) => {
+      return row.payment_status === 'paid' || row.cancelled_at
+        ? sum + Number(row.total_price || 0)
+        : sum;
+    }, 0);
+
+    if (amountField) {
+      // Cash and office bookings have no online payment to reverse — the money
+      // goes back over the counter, so the field would only invite a 409.
+      amountField.disabled = !paidOnline;
+      amountField.value = '';
+    }
+    if (warning) {
+      warning.hidden = !paidOnline;
+      warning.textContent =
+        'MAIB permite o singură restituire per plată. După această operațiune, orice altă sumă din această rezervare se transferă manual.';
+    }
+
+    if (list) {
+      list.innerHTML = '';
+      candidates.forEach((row) => list.appendChild(partialVillaItem(row)));
+    }
+
+    const refresh = () => refreshPartialCancel(section, { candidates, paidOnline, paidTotal });
+    refresh();
+
+    if (toggle) {
+      toggle.onclick = () => {
+        const open = body?.hidden;
+        if (body) body.hidden = !open;
+        toggle.setAttribute('aria-expanded', String(Boolean(open)));
+      };
+    }
+    if (list) {
+      list.onchange = refresh;
+    }
+    if (amountField) {
+      amountField.oninput = refresh;
+    }
+    if (confirmField) {
+      confirmField.oninput = refresh;
+    }
+    // The section lives inside the dialog's <form method="dialog">, so a stray
+    // Enter would close the dialog mid-edit instead of doing nothing.
+    qsa('input', section).forEach((field) => {
+      field.onkeydown = (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+        }
+      };
+    });
+    if (submit) {
+      submit.onclick = () =>
+        submitPartialCancel(dialog, section, { candidates, paidOnline, paidTotal });
+    }
+  }
+
+  function partialVillaItem(reservation) {
+    const item = root.document.createElement('li');
+    const label = root.document.createElement('label');
+    label.className = 'crm-partial__villa';
+
+    const checkbox = root.document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = reservation.id;
+    checkbox.dataset.partialVilla = reservation.id;
+    checkbox.dataset.price = String(Number(reservation.total_price || 0));
+
+    const main = root.document.createElement('span');
+    main.className = 'crm-partial__villa-main';
+    const name = root.document.createElement('span');
+    name.className = 'crm-partial__villa-name';
+    name.textContent = root.EcoVilaCrmCalendar.roomLabel(reservation);
+    const dates = root.document.createElement('span');
+    dates.className = 'crm-partial__villa-dates';
+    dates.textContent = `${reservation.check_in} → ${reservation.check_out}`;
+    main.append(name, dates);
+
+    const price = root.document.createElement('span');
+    price.className = 'crm-partial__villa-price';
+    price.textContent = root.EcoVilaCrmApp.formatMDL(Number(reservation.total_price || 0));
+
+    label.append(checkbox, main, price);
+    item.appendChild(label);
+    item.addEventListener('change', () => {
+      label.classList.toggle('is-selected', checkbox.checked);
+    });
+    return item;
+  }
+
+  function partialSelection(section) {
+    return qsa('[data-partial-villa]', section)
+      .filter((checkbox) => checkbox.checked)
+      .map((checkbox) => ({ id: checkbox.value, price: Number(checkbox.dataset.price || 0) }));
+  }
+
+  // null = no refund (an empty field, or a typed 0). NaN = the field holds
+  // something that is not a number, which must block the action rather than
+  // quietly read as "no refund": a number input reports garbage like "12e-" as
+  // an EMPTY value, so a mistyped amount would otherwise cancel villas and
+  // return nothing while the staff member believes they typed a sum.
+  function partialRefundAmount(section) {
+    const field = qs('[data-partial-amount]', section);
+    if (!field || field.disabled) {
+      return null;
+    }
+    if (field.validity?.badInput) {
+      return NaN;
+    }
+    const raw = String(field.value || '').trim();
+    if (!raw) {
+      return null;
+    }
+    const amount = Math.round(Number(raw));
+    if (!Number.isFinite(amount) || amount < 0) {
+      return NaN;
+    }
+    return amount > 0 ? amount : null;
+  }
+
+  // Everything staff need to decide, restated as they type: how much of the stay
+  // they picked, what the refund does to the money actually collected, and — the
+  // part that cannot be undone — how much of it MAIB will never return again.
+  function refreshPartialCancel(section, context) {
+    const selected = partialSelection(section);
+    const selectedTotal = selected.reduce((sum, row) => sum + row.price, 0);
+    const amount = partialRefundAmount(section);
+    const summary = qs('[data-partial-selected]', section);
+    const hint = qs('[data-partial-hint]', section);
+    const submit = qs('[data-partial-submit]', section);
+    const confirmField = qs('[data-partial-confirm]', section);
+    const formatMDL = root.EcoVilaCrmApp.formatMDL;
+
+    if (summary) {
+      summary.textContent = selected.length
+        ? `Selectate: ${selected.length} din ${context.candidates.length} · ${formatMDL(selectedTotal)}`
+        : `Selectate: 0 din ${context.candidates.length}`;
+    }
+
+    if (hint) {
+      if (Number.isNaN(amount)) {
+        hint.textContent = 'Suma nu este un număr valid — corecteaz-o sau golește câmpul.';
+      } else if (!context.paidOnline) {
+        hint.textContent =
+          'Rezervarea nu are plată online — restituirea se face la birou, în numerar.';
+      } else if (amount) {
+        const rest = Math.max(0, Math.round(context.paidTotal) - amount);
+        hint.textContent = amount > Math.round(context.paidTotal)
+          // Not blocked here: total_price never includes a paid "add guests"
+          // difference, so the real payment can legitimately be larger than the
+          // stay total. The server checks it against the actual MAIB payment.
+          ? `Atenție: ${formatMDL(amount)} depășește cei ${formatMDL(context.paidTotal)} din prețul rezervării. ` +
+            'Verifică suma încasată în Finance înainte de a continua.'
+          : `Restitui ${formatMDL(amount)} din ${formatMDL(context.paidTotal)} încasați. ` +
+            `Restul de ${formatMDL(rest)} nu va mai putea fi restituit prin MAIB.`;
+      } else {
+        hint.textContent = `Încasat online: ${formatMDL(context.paidTotal)}. Lasă gol dacă nu restitui nimic.`;
+      }
+    }
+
+    if (submit) {
+      const confirmed = String(confirmField?.value || '').trim().toLowerCase() === PARTIAL_CONFIRM_WORD;
+      submit.disabled = !selected.length || !confirmed || Number.isNaN(amount);
+      submit.textContent = amount
+        ? `Anulează și restituie ${formatMDL(amount)}`
+        : 'Anulează cazările selectate';
+    }
+  }
+
+  async function submitPartialCancel(dialog, section, context) {
+    const state = activeState;
+    if (!state?.context?.client) {
+      return;
+    }
+
+    const selected = partialSelection(section);
+    const amount = partialRefundAmount(section);
+    const errorField = qs('[data-partial-error]', section);
+    const submit = qs('[data-partial-submit]', section);
+    const showError = (message) => {
+      if (!errorField) return;
+      errorField.textContent = message || '';
+      errorField.hidden = !message;
+    };
+    showError('');
+
+    if (!selected.length) {
+      showError('Bifează cel puțin o cazare.');
+      return;
+    }
+    if (Number.isNaN(amount)) {
+      showError('Suma de restituit trebuie să fie un număr pozitiv (sau lasă câmpul gol).');
+      return;
+    }
+    // Re-read the confirmation here, not just when the button was last enabled:
+    // a failed attempt re-enables the button, and the word could have been
+    // cleared (or the dialog reopened on another booking) in the meantime.
+    const confirmWord = String(qs('[data-partial-confirm]', section)?.value || '')
+      .trim()
+      .toLowerCase();
+    if (confirmWord !== PARTIAL_CONFIRM_WORD) {
+      showError(`Scrie ${PARTIAL_CONFIRM_WORD} pentru a confirma.`);
+      return;
+    }
+
+    if (submit) submit.disabled = true;
+    try {
+      const result = await root.EcoVilaSupabase.partialCancelReservation(state.context.client, {
+        bookingGroupId: context.candidates[0]?.booking_group_id || '',
+        reservationIds: selected.map((row) => row.id),
+        refundAmount: amount,
+      });
+      dialog.close?.('cancel');
+      state.context.setAlert?.(describePartialCancelResult(result, selected.length));
+      await state.reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Anularea parțială a eșuat.';
+      showError(message.slice(0, 220));
+      // Re-derive the button state rather than blindly enabling it: the
+      // selection or the confirmation word may have changed while the request
+      // was in flight.
+      refreshPartialCancel(section, context);
+    }
+  }
+
+  function describePartialCancelResult(result, cancelledCount) {
+    const parts = [`${cancelledCount === 1 ? 'O cazare a fost anulată' : `${cancelledCount} cazări au fost anulate`}.`];
+
+    if (result?.refund?.ok) {
+      parts.push(`S-au restituit ${root.EcoVilaCrmApp.formatMDL(result.refund.amount)}.`);
+    } else if (result?.refund) {
+      parts.push('Restituirea nu s-a confirmat încă — sistemul o reîncearcă automat; verifică Finance.');
+    }
+
+    const notified = (result?.notificationResults || []).some((item) => item?.sent);
+    if (!notified) {
+      parts.push('Clientul NU a putut fi anunțat automat — sună-l.');
+    }
+
+    return parts.join(' ');
   }
 
   // "Salvează modificări": persists the dialog edits. A date change routes through

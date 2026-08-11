@@ -3833,3 +3833,392 @@ describe('EcoVila CRM date-first room grid and temporary holds', () => {
     assert.equal(squares.find((square) => square.number === 2).state, 'available');
   });
 });
+
+// ADR-104 — partial cancellation + manual partial refund from the CRM dialog.
+// The feature makes a booking group able to hold cancelled and live rows at the
+// same time for the first time, so these cover both the new control and the
+// readers that used to assume a group cancels as one unit.
+describe('EcoVila CRM partial cancellation and partial refund', () => {
+  it('offers the villa picker, a manual amount and a typed confirmation in the reservation dialog', () => {
+    const dashboard = read('admin/dashboard.html');
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    const css = read('css/crm.css');
+
+    for (
+      const hook of [
+        'data-partial-cancel',
+        'data-partial-toggle',
+        'data-partial-villas',
+        'data-partial-amount',
+        'data-partial-confirm',
+        'data-partial-submit',
+      ]
+    ) {
+      assert.match(dashboard, new RegExp(hook), `${hook} must exist in the reservation dialog`);
+    }
+    // The block belongs to the reservation dialog, not to some other panel.
+    const dialogMarkup = dashboard.slice(
+      dashboard.indexOf('data-reservation-dialog'),
+      dashboard.indexOf('data-swap-dialog'),
+    );
+    assert.match(dialogMarkup, /data-partial-cancel/);
+
+    // Irreversible money action: it needs the typed word before it can fire.
+    assert.match(dashboardJs, /PARTIAL_CONFIRM_WORD\s*=\s*'anulez'/);
+    assert.match(dashboardJs, /=== PARTIAL_CONFIRM_WORD/);
+    // One server call performs cancel + refund + notification together.
+    assert.match(dashboardJs, /EcoVilaSupabase\.partialCancelReservation/);
+    assert.match(css, /\.crm-partial__villa\b/);
+  });
+
+  it('only lists live villas, hides the control for read-only staff and for holds', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    // Candidates come from the booking group minus anything already cancelled.
+    assert.match(
+      dashboardJs,
+      /partialCancelCandidates[\s\S]*?!root\.EcoVilaCrmCalendar\.isCancelled\(row\)/,
+    );
+    // A hold is released, never "cancelled" — cancelling it would tell the guest
+    // a reservation they never made was called off.
+    assert.match(dashboardJs, /const available = !readOnly && !isHold && candidates\.length > 0/);
+  });
+
+  it('states what the refund does to the money before staff can confirm it', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    // The one-refund-per-payment consequence has to be on screen, in figures,
+    // because the remainder can never be returned through the system again.
+    assert.match(dashboardJs, /Restul de \$\{formatMDL\(rest\)\} nu va mai putea fi restituit prin MAIB/);
+    assert.match(dashboardJs, /const rest = Math\.max\(0, Math\.round\(context\.paidTotal\) - amount\)/);
+  });
+
+  it('cancels all the selected villas or none, inside one transaction', () => {
+    const migration = read('supabase/migrations/20260811120000_partial_cancellation.sql');
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+
+    // A guarded PostgREST update plus a JS row count is NOT atomic: a one-of-two
+    // match commits before the function can reject it (ADR-101's lesson).
+    assert.match(migration, /create or replace function public\.cancel_reservation_rows/);
+    assert.match(migration, /<> v_requested/);
+    assert.match(migration, /errcode = 'P0002'/);
+    assert.match(migration, /grant execute on function public\.cancel_reservation_rows/);
+    assert.doesNotMatch(migration, /grant execute[\s\S]*to (anon|authenticated)/);
+
+    assert.match(fn, /rpc\('cancel_reservation_rows'/);
+    // The refund must never run when the cancellation did not fully apply.
+    const cancelIndex = fn.indexOf('cancelSelectedReservations(client');
+    const refundIndex = fn.indexOf('executeRefund(client');
+    assert.ok(cancelIndex > 0 && refundIndex > cancelIndex, 'cancel must precede the refund');
+  });
+
+  it('refuses a second refund on a payment MAIB will only refund once', () => {
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+    // succeeded -> the slot is spent; anything else non-terminal -> someone else's
+    // refund is already in motion and would be silently overwritten.
+    assert.match(fn, /existing\?\.status === 'succeeded'/);
+    assert.match(fn, /existing && existing\.status !== 'cancelled'/);
+    assert.match(fn, /transferă restul manual/);
+    // Staff-only: this moves money.
+    assert.match(fn, /requireStaffRole\(request, \['diana'\]\)/);
+  });
+
+  it('tells the guest the rest of the booking stands instead of "cancelled"', () => {
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+    const notifications = read('supabase/functions/_shared/notifications.ts');
+    assert.match(notifications, /export function buildPartialCancellationEmail/);
+    assert.match(notifications, /export function partialCancellationSms/);
+    // Nothing left alive -> it really is an ordinary cancellation.
+    assert.match(fn, /if \(!input\.remaining\.length\)[\s\S]*?buildCancellationEmail/);
+    // The dedup key is one of the rows cancelled by THIS call, so a second
+    // partial cancellation of the same booking still reaches the guest.
+    assert.match(fn, /mapNotificationOwners\(input\.cancelled\)/);
+  });
+
+  it('stops a partial cancellation while the guest has money in flight', () => {
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+    // A live checkout settles at the amount it was created with, against
+    // whatever rows survive — the guest would pay for villas they no longer have.
+    assert.match(fn, /function assertNoLivePaymentSession/);
+    assert.match(fn, /plată online în curs/);
+    // An open "add guests" change quotes the old villa count; void it first.
+    assert.match(fn, /supersedeOpenChanges\(client, bookingGroupId\)/);
+  });
+
+  it('keeps the guest-facing pages on the villas the guest still has', () => {
+    const details = read('supabase/functions/reservation-manage-details/index.ts');
+    const changes = read('supabase/functions/_shared/reservationChanges.ts');
+    // /gestionare summed total_price over every row of the group, cancelled ones
+    // included, and read the booking's status off the first of them.
+    assert.match(details, /function keepLiveRows/);
+    assert.match(details, /return keepLiveRows\(data \|\| \[\]\)/);
+    // "Add guests" requires EVERY loaded row to be paid and live, so one
+    // cancelled sibling used to lock the guest out of the villas they kept.
+    assert.match(changes, /function keepLiveChangeRows/);
+    assert.match(changes, /return keepLiveChangeRows\(data \|\| \[\]\)/);
+  });
+
+  it('never promises a refund the payment can no longer make', () => {
+    const cancel = read('supabase/functions/reservation-cancel/index.ts');
+    // scheduleBookingRefund hands back a terminal row untouched; reporting
+    // "scheduled" then is a promise no cron will keep.
+    assert.match(
+      cancel,
+      /const spent = scheduled\?\.status === 'succeeded' \|\| scheduled\?\.status === 'cancelled'/,
+    );
+    assert.match(cancel, /refundScheduled = !spent/);
+    assert.match(cancel, /cancellation_reason: refundScheduled \? 'guest_request_refunded'/);
+    // And staff are told, because the remainder needs a manual transfer.
+    assert.match(cancel, /if \(spent\) \{[\s\S]*?alertRefundProblem/);
+  });
+
+  it('drops a cancelled villa out of the daily card total and repricing', () => {
+    const daily = loadAdminModule('admin/js/crm-daily.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaCrmCalendar: {
+        addDays: pricing.addDays,
+        roomNumber: (reservation) => Number(reservation.rooms?.number || 0),
+      },
+      EcoVilaCrmSidebar: {
+        calculateStaffTotal: (input) => ({ total: 1000 * input.rooms.length }),
+      },
+    }).EcoVilaCrmDaily;
+
+    const live = {
+      id: 'live',
+      room_id: 'room-1',
+      booking_group_id: 'group-1',
+      check_in: '2026-05-18',
+      check_out: '2026-05-19',
+      created_at: '2026-05-17T10:00:00Z',
+      adults: 2,
+      kids_ages: [],
+      total_price: 3000,
+      payment_status: 'paid',
+      cancelled_at: null,
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+    const dropped = {
+      ...live,
+      id: 'dropped',
+      room_id: 'room-2',
+      payment_status: 'cancelled',
+      cancelled_at: '2026-05-17T12:00:00Z',
+      rooms: { id: 'room-2', number: 2, type: 'small' },
+    };
+
+    const quote = daily.calculateDailySupplement({
+      reservations: [live, dropped],
+      reservation: live,
+      adults: 2,
+      childBuckets: [],
+      pricingTiers: [],
+      holidays: [],
+    });
+
+    // "Achitat" on the card, and the baseline a guest edit is priced against.
+    assert.equal(quote.existingTotal, 3000, 'the cancelled villa must not inflate the paid total');
+    assert.equal(quote.group.length, 1, 'only live villas belong to the booking');
+    assert.equal(quote.quotedTotal, 1000, 'repricing must quote one villa, not two');
+  });
+
+  it('reports the sum actually refunded, not the price of the cancelled villas', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const cancelledVilla = {
+      id: 'villa-1',
+      booking_group_id: 'grp-partial',
+      check_in: '2026-08-20',
+      check_out: '2026-08-23',
+      adults: 4,
+      kids_ages: [],
+      total_price: 6000,
+      payment_type: 'card',
+      payment_status: 'cancelled',
+      paid_at: '2026-08-01T10:00:00.000Z',
+      cancelled_at: '2026-08-05T09:00:00.000Z',
+      cancellation_reason: 'Anulare parțială din CRM',
+      guest_first_name: 'Vera',
+      guest_last_name: 'Munteanu',
+      rooms: { number: 4, type: 'small' },
+    };
+
+    // Staff typed 850 for a villa that cost 6000 — Finance must report 850.
+    const withAmount = finance.summarizeCancellationRows({
+      rows: [cancelledVilla],
+      refundedGroupIds: new Map([['grp-partial', 850]]),
+    });
+    assert.equal(withAmount.refundedTotal, 850);
+    // 0.7% of 850 + the 20 MDL sub-10k payout fee, i.e. the fee follows the sum
+    // actually transferred rather than the stay price.
+    assert.equal(withAmount.commissionLost, 26);
+
+    // No recorded amount (an out-of-band reconciliation): keep the old estimate.
+    const withoutAmount = finance.summarizeCancellationRows({
+      rows: [cancelledVilla],
+      refundedGroupIds: new Map([['grp-partial', null]]),
+    });
+    assert.equal(withoutAmount.refundedTotal, 6000);
+
+    // And a plain Set (the pre-ADR-104 shape) still behaves exactly as before.
+    const legacy = finance.summarizeCancellationRows({
+      rows: [cancelledVilla],
+      refundedGroupIds: new Set(['grp-partial']),
+    });
+    assert.equal(legacy.refundedTotal, 6000);
+  });
+
+  it('splits a partially cancelled booking in the bookings-by-day list', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const base = {
+      booking_group_id: 'grp-mixed',
+      check_in: '2026-08-20',
+      check_out: '2026-08-22',
+      adults: 4,
+      kids_ages: [],
+      total_price: 3000,
+      payment_type: 'card',
+      created_at: '2026-08-01T09:00:00.000Z',
+      paid_at: '2026-08-01T09:30:00.000Z',
+    };
+    const groups = finance.groupBookedDayRows(finance.normalizeBookedDayRows([
+      { ...base, id: 'kept-1', payment_status: 'paid', cancelled_at: null, rooms: { number: 2, type: 'small' } },
+      { ...base, id: 'kept-2', payment_status: 'paid', cancelled_at: null, rooms: { number: 3, type: 'small' } },
+      {
+        ...base,
+        id: 'dropped',
+        payment_status: 'cancelled',
+        cancelled_at: '2026-08-05T09:00:00.000Z',
+        rooms: { number: 1, type: 'small' },
+      },
+    ]));
+
+    // One entry per state: the live part at its own price, the cancelled villa
+    // beside it. Merged, the booking read "anulată" (lowest villa number wins)
+    // at the full 9000.
+    assert.equal(groups.length, 2);
+    const live = groups.find((group) => group.paymentStatus === 'paid');
+    const cancelled = groups.find((group) => group.paymentStatus === 'cancelled');
+    assert.equal(live.villas.length, 2);
+    assert.equal(live.totalPrice, 6000);
+    assert.equal(cancelled.villas.length, 1);
+    assert.equal(cancelled.totalPrice, 3000);
+  });
+
+  it('exposes the partial-cancel call and the refunded amounts through the shared client', () => {
+    const supabase = read('js/supabase.js');
+    assert.match(supabase, /async function partialCancelReservation/);
+    assert.match(supabase, /invoke\('reservation-partial-cancel'/);
+    assert.match(supabase, /partialCancelReservation,/);
+    // refunded-groups now carries the real amount; a legacy string entry from an
+    // older function build must still resolve to a usable row.
+    assert.match(supabase, /\{ bookingGroupId: entry, amount: null \}/);
+    assert.match(supabase, /Array\.isArray\(result\.data\?\.refunds\)/);
+  });
+
+  it('keeps refunded-groups readable by a CRM bundle the owner has not uploaded yet', () => {
+    // Functions go live days before the manual TopHost upload. If the response
+    // stopped being a plain id list, the CRM still running the old bundle would
+    // build a Set of objects and report every refunded cancellation as "fără
+    // rambursare" until the frontend catches up.
+    const fn = read('supabase/functions/scheduled-refunds/index.ts');
+    assert.match(fn, /groups: refunds\.map\(\(entry\) => entry\.bookingGroupId\), refunds/);
+  });
+
+  it('treats a typed 0 as "no refund" but refuses an amount that is not a number', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    // A number input reports garbage ("12e-") as an EMPTY value, which would
+    // otherwise read as "no refund" and cancel villas while returning nothing.
+    assert.match(dashboardJs, /if \(field\.validity\?\.badInput\) \{\s*return NaN;/);
+    assert.match(dashboardJs, /return amount > 0 \? amount : null;/);
+    // NaN is the only thing that blocks the button; null (no refund) is allowed.
+    assert.match(
+      dashboardJs,
+      /submit\.disabled = !selected\.length \|\| !confirmed \|\| Number\.isNaN\(amount\);/,
+    );
+  });
+
+  it('drops the previous booking\'s submit handler when the control is unavailable', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    // The handler closes over the villas of the booking it was built for.
+    assert.match(dashboardJs, /if \(staleSubmit\) staleSubmit\.onclick = null;/);
+  });
+
+  it('re-checks the confirmation word at submit time, not only when the button was enabled', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    // A failed attempt re-enables the button; the word could have been cleared
+    // (or the dialog reopened on another booking) while the request was in flight.
+    assert.match(dashboardJs, /if \(confirmWord !== PARTIAL_CONFIRM_WORD\)/);
+    // And the failure path re-derives the button state instead of blindly enabling.
+    assert.match(dashboardJs, /showError\(message\.slice\(0, 220\)\);\s*\n[\s\S]{0,220}refreshPartialCancel\(section, context\);/);
+  });
+
+  it('measures the unrefundable remainder against the whole payment, not the live villas', () => {
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    // One MAIB payment covered every villa, including any dropped earlier
+    // without a refund — counting only the live ones understated what stays
+    // stuck on that payment.
+    assert.match(dashboardJs, /const paidTotal = partialCancelGroup\(reservation\)\.reduce/);
+    assert.match(dashboardJs, /row\.payment_status === 'paid' \|\| row\.cancelled_at/);
+  });
+
+  it('claims the payment\'s single refund slot in the same transaction as the cancellation', () => {
+    const migration = read('supabase/migrations/20260811120000_partial_cancellation.sql');
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+
+    // Checking for an existing refund in the function and then executing is
+    // check-then-act: a guest cancellation scheduling its own refund in that
+    // window would be overwritten with the staff amount and paid out at once.
+    assert.match(migration, /insert into public\.maib_refunds/);
+    assert.match(migration, /on conflict \(pay_id\) do update set/);
+    assert.match(migration, /where public\.maib_refunds\.status = 'cancelled'/);
+    assert.match(migration, /A refund already exists for payment/);
+    assert.match(fn, /p_refund_pay_id: refund\.payment\?\.pay_id \?\? null/);
+    // Due-dated a few minutes out so the reconcile cron finishes the payout if
+    // this function dies after the cancellation commits.
+    assert.match(fn, /p_refund_eligible_at: refund\.payment/);
+    assert.match(fn, /REFUND_RECOVERY_DELAY_MS/);
+  });
+
+  it('refuses a payment already marked refunded even with no refund row to read', () => {
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+    // Manual reconciliation marks the payment without writing maib_refunds.
+    // Calling MAIB again returns REVERSED, which the engine reads as success —
+    // we would report money as returned that never moved.
+    assert.match(fn, /String\(payment\.status \|\| ''\) === 'refunded'/);
+  });
+
+  it('refuses to cancel while a checkout session is open with the provider', () => {
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+    // maib-create-payment inserts the payment row BEFORE stamping
+    // payment_in_progress, so the reservation flag alone leaves a window in
+    // which a checkout for the original amount is already live.
+    assert.match(fn, /async function assertNoOpenPaymentSession/);
+    assert.match(fn, /\.in\('status', \['created', 'pending'\]\)/);
+    assert.match(fn, /await assertNoOpenPaymentSession\(client, bookingGroupId\)/);
+  });
+
+  it('tells staff when an add-guests payment lands on a change that no longer applies', () => {
+    const callback = read('supabase/functions/maib-callback/index.ts');
+    // The money is captured and nothing downstream acts on it — a console line
+    // is not a person. More likely now that a partial cancellation supersedes
+    // open changes while a card checkout for one may still be payable.
+    assert.match(callback, /sendStaffAlert\('Plată „adaugă oaspeți" fără efect'/);
+    assert.match(callback, /Banii trebuie restituiți manual/);
+  });
+
+  it('names the refunded sum even when staff cancel every villa', () => {
+    const notifications = read('supabase/functions/_shared/notifications.ts');
+    const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
+    // Ticking all the villas is a full cancellation that still returned a
+    // hand-typed sum; the ordinary cancellation copy had no refund line.
+    assert.match(notifications, /refundAmount\?: number \| null;\s*\n\s*siteUrl: string;/);
+    assert.match(fn, /refundAmount: input\.refundAmount,\s*\n\s*siteUrl,/);
+  });
+
+  it('stops calling a still-live booking "refunded" on the guest manage page', () => {
+    const gestionare = read('js/gestionare.js');
+    // After a partial refund the payment reads 'refunded' while the guest still
+    // has live paid villas — badging those as "Rambursată" says their remaining
+    // stay is off, and contradicts the confirmation page.
+    assert.match(gestionare, /const stillBooked = summary\.paymentStatus === 'paid'/);
+    assert.match(gestionare, /if \(!stillBooked && \(payment\?\.status === 'refunded'/);
+  });
+});

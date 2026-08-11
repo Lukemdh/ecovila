@@ -94,7 +94,19 @@ Deno.serve(async (request) => {
       // (the CRM cancel stamps 'Anulat din CRM', the guest card path
       // 'guest_request_refunded', etc.), so the Finance tab asks here for the
       // truth to decide which cancellations are "rambursat".
-      return jsonResponse({ ok: true, groups: await refundedBookingGroups(client) }, {}, request);
+      //
+      // Two shapes on purpose. `groups` stays the plain id list it has always
+      // been, because the function deploys days before the owner uploads the
+      // frontend: a CRM still running the old bundle would turn a list of
+      // objects into a Set of objects and report every refunded cancellation as
+      // "fără rambursare". `refunds` carries the amounts (ADR-104) and the new
+      // bundle prefers it.
+      const refunds = await refundedBookingGroups(client);
+      return jsonResponse(
+        { ok: true, groups: refunds.map((entry) => entry.bookingGroupId), refunds },
+        {},
+        request,
+      );
     }
 
     const payId = optionalString(body?.payId);
@@ -269,10 +281,12 @@ async function releaseNow(client: SupabaseClient, payId: string) {
 // gives the stable total order the pager needs.
 const REFUNDED_GROUPS_PAGE_SIZE = 1000;
 
+type RefundedGroupRow = { booking_group_id: string | null; amount?: number | string | null };
+
 async function allBookingGroupIds(
-  build: () => QueryBuilder<{ booking_group_id: string | null }[]>,
-): Promise<Array<{ booking_group_id: string | null }>> {
-  const rows: Array<{ booking_group_id: string | null }> = [];
+  build: () => QueryBuilder<RefundedGroupRow[]>,
+): Promise<RefundedGroupRow[]> {
+  const rows: RefundedGroupRow[] = [];
   for (let from = 0; ; from += REFUNDED_GROUPS_PAGE_SIZE) {
     const { data, error } = await build().range(from, from + REFUNDED_GROUPS_PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
@@ -284,29 +298,45 @@ async function allBookingGroupIds(
   }
 }
 
-async function refundedBookingGroups(client: SupabaseClient): Promise<string[]> {
-  const groups = new Set<string>();
+// Each entry also carries the amount that ACTUALLY went back, taken from the
+// refund record. Finance used to assume a refund returned the full price of the
+// cancelled villas, which stopped being true the moment staff could type their
+// own amount (ADR-104). `amount: null` means "no refund row" (a payment
+// reconciled to 'refunded' out of band) — the caller keeps its old estimate.
+async function refundedBookingGroups(
+  client: SupabaseClient,
+): Promise<Array<{ bookingGroupId: string; amount: number | null }>> {
+  const amounts = new Map<string, number | null>();
   const [payments, refunds] = await Promise.all([
     allBookingGroupIds(() =>
-      table<{ booking_group_id: string | null }[]>(client, 'maib_payments')
+      table<RefundedGroupRow[]>(client, 'maib_payments')
         .select('booking_group_id')
         .eq('status', 'refunded')
         .order('pay_id', { ascending: true })
     ),
     allBookingGroupIds(() =>
-      table<{ booking_group_id: string | null }[]>(client, 'maib_refunds')
-        .select('booking_group_id')
+      table<RefundedGroupRow[]>(client, 'maib_refunds')
+        .select('booking_group_id, amount')
         .eq('status', 'succeeded')
         .order('pay_id', { ascending: true })
     ),
   ]);
   for (const row of payments) {
-    if (row.booking_group_id) groups.add(row.booking_group_id);
+    if (row.booking_group_id && !amounts.has(row.booking_group_id)) {
+      amounts.set(row.booking_group_id, null);
+    }
   }
+  // Refund rows win: they hold the sum the provider actually moved. A group can
+  // legitimately have several payments refunded (booking + differences), so the
+  // amounts add up rather than overwrite.
   for (const row of refunds) {
-    if (row.booking_group_id) groups.add(row.booking_group_id);
+    if (!row.booking_group_id) continue;
+    const amount = Number(row.amount || 0);
+    if (!(amount > 0)) continue;
+    const current = amounts.get(row.booking_group_id);
+    amounts.set(row.booking_group_id, (current || 0) + amount);
   }
-  return [...groups];
+  return [...amounts.entries()].map(([bookingGroupId, amount]) => ({ bookingGroupId, amount }));
 }
 
 async function payIdForGroup(client: SupabaseClient, bookingGroupId: string) {

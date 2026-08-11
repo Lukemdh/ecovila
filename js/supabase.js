@@ -328,6 +328,13 @@
   // Booking groups whose money was actually returned (real refund record) — the
   // truth the Finance cancellations view uses instead of the unreliable
   // cancellation_reason string. Diana-only, service-role server-side.
+  //
+  // Each entry is { bookingGroupId, amount }: `amount` is what the provider
+  // actually moved, which since ADR-104 need not be the full price of the
+  // cancelled villas (staff type the sum for a partial refund). A null amount
+  // means the group has no refund record to read — Finance falls back to its
+  // own estimate. Legacy string entries are tolerated so a browser holding an
+  // old bundle against a new function keeps working.
   async function fetchRefundedGroups(client) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -341,7 +348,50 @@
       throw decorateInvokeError(result.error);
     }
 
-    return Array.isArray(result.data?.groups) ? result.data.groups : [];
+    // `refunds` (with amounts) when the deployed function is new enough,
+    // otherwise the plain `groups` id list it has always returned.
+    const entries = Array.isArray(result.data?.refunds)
+      ? result.data.refunds
+      : Array.isArray(result.data?.groups)
+      ? result.data.groups
+      : [];
+    return entries
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return { bookingGroupId: entry, amount: null };
+        }
+        const bookingGroupId = String(entry?.bookingGroupId || '');
+        if (!bookingGroupId) {
+          return null;
+        }
+        const amount = Number(entry?.amount);
+        return { bookingGroupId, amount: Number.isFinite(amount) && amount > 0 ? amount : null };
+      })
+      .filter(Boolean);
+  }
+
+  // Partial cancellation (ADR-104): drop SOME villas of a booking and return a
+  // manually typed amount. One server call does the whole thing — validation,
+  // the all-or-nothing cancellation, the MAIB refund and the guest notice — so a
+  // closed tab can never leave villas cancelled with the money still taken.
+  async function partialCancelReservation(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('reservation-partial-cancel', {
+      body: {
+        bookingGroupId: input?.bookingGroupId || '',
+        reservationIds: Array.isArray(input?.reservationIds) ? input.reservationIds : [],
+        refundAmount: input?.refundAmount ?? null,
+      },
+    });
+
+    if (result.error) {
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
   }
 
   // Refunded "add guests" differences for a set of cancelled booking groups. A
@@ -1370,6 +1420,7 @@
     fetchRefundedChangeAmounts,
     controlScheduledRefund,
     notifyReservationCancellation,
+    partialCancelReservation,
     rescheduleReservation,
     createReservationRequest,
     startReservationLookup,

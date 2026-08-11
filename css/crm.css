@@ -1149,6 +1149,134 @@ h2 {
   padding-top: 14px;
 }
 
+/* Anulare parțială (ADR-104). Collapsed to a single ghost button until staff
+   ask for it: most cancellations are still whole-booking, and an always-open
+   villa list plus a money field would push the ordinary controls off screen. */
+.crm-partial {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  border-top: 1px solid var(--crm-line);
+  padding-top: 14px;
+}
+
+.crm-partial__toggle {
+  justify-self: start;
+}
+
+.crm-partial__body {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: #fbf8f1;
+  padding: 12px;
+}
+
+.crm-partial__villas {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crm-partial__villas li {
+  margin: 0;
+}
+
+/* The whole row is the hit target — staff tick villas quickly, often with a
+   guest on the phone, and a bare 13px checkbox is a poor target. */
+.crm-partial__villa {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--crm-line);
+  border-radius: 6px;
+  background: var(--crm-panel);
+  cursor: pointer;
+  padding: 9px 11px;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.crm-partial__villa:hover {
+  border-color: var(--crm-moss);
+}
+
+/* The checkbox is the focusable element but the row is what staff read, so the
+   whole row has to show where the keyboard is. */
+.crm-partial__villa:focus-within {
+  border-color: var(--crm-moss);
+  outline: 3px solid rgba(96, 108, 56, 0.18);
+  outline-offset: 1px;
+}
+
+.crm-partial__villa.is-selected {
+  border-color: var(--crm-danger);
+  background: #fbeeee;
+}
+
+.crm-partial__villa input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--crm-danger);
+}
+
+.crm-partial__villa-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crm-partial__villa-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.crm-partial__villa-dates {
+  color: var(--crm-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-partial__villa-price {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.crm-partial__selected,
+.crm-partial__hint {
+  margin: 0;
+  color: var(--crm-muted);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-partial__selected {
+  font-weight: 700;
+  color: var(--crm-ink);
+}
+
+/* The one-refund-per-payment rule is the single fact staff must not miss —
+   the money it warns about cannot be recovered through the system. */
+.crm-partial__warning {
+  margin: 0;
+  border: 1px solid var(--crm-terracotta);
+  border-radius: 6px;
+  background: #fff3ec;
+  color: #6f2a15;
+  font-size: 0.84rem;
+  padding: 9px 11px;
+}
+
+.crm-partial__body .crm-edit-error {
+  font-size: 0.86rem;
+}
+
 .crm-panel:not([data-panel="dashboard"]) {
   padding: 18px;
 }

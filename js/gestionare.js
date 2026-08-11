@@ -574,7 +574,13 @@
   }
 
   function managedStatusLabel(summary, payment) {
-    if (payment?.status === 'refunded' || payment?.refunded_at) {
+    // The refunded payment only describes the WHOLE booking when the whole
+    // booking is gone. After a partial cancellation (ADR-104) the payment reads
+    // 'refunded' while the guest still has live, paid villas — badging those as
+    // "Rambursată" would tell them their remaining stay is off, and would also
+    // contradict the confirmation page, which reads the reservation instead.
+    const stillBooked = summary.paymentStatus === 'paid' || summary.paymentStatus === 'pending';
+    if (!stillBooked && (payment?.status === 'refunded' || payment?.refunded_at)) {
       return t('confirmare.statusRefunded');
     }
     if (summary.paymentStatus === 'cancelled') {

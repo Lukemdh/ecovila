@@ -194,7 +194,20 @@ export async function loadBookingGroupForChange(
     .order('check_in', { ascending: true });
 
   if (error) throw new Error(error.message);
-  return data || [];
+  return keepLiveChangeRows(data || []);
+}
+
+// Once staff can cancel PART of a booking (ADR-104), a group may hold cancelled
+// and live rows at the same time. assertEligibleForChange requires EVERY row to
+// be paid and not cancelled, so a single cancelled sibling would lock the guest
+// out of "add guests" for the villas they still have — and quoteBookingChange
+// would price the dropped villa back in. Work on the live rows only; a fully
+// cancelled booking keeps them all so eligibility still fails with its own 409.
+function keepLiveChangeRows(rows: ChangeReservationRow[]) {
+  const live = rows.filter((row) =>
+    !row.cancelled_at && String(row.payment_status || '') !== 'cancelled'
+  );
+  return live.length ? live : rows;
 }
 
 export function assertEligibleForChange(reservations: ChangeReservationRow[], now = new Date()) {
@@ -746,13 +759,15 @@ async function notifyBookingChange(
 ) {
   const { data, error } = await table<ChangeReservationRow[]>(client, 'reservations')
     .select(
-      'id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, rooms(number, type)',
+      'id, guest_first_name, guest_last_name, guest_phone, guest_email, guest_language, check_in, check_out, payment_status, cancelled_at, rooms(number, type)',
     )
     .eq('booking_group_id', change.booking_group_id)
     .order('check_in', { ascending: true });
 
   if (error) throw new Error(error.message);
-  const rows = data || [];
+  // Live rows only: the accommodation line must not list a villa the guest no
+  // longer has after a partial cancellation (ADR-104).
+  const rows = keepLiveChangeRows(data || []);
   const primary = rows[0];
   if (!primary) return;
 

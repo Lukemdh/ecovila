@@ -156,8 +156,31 @@ Deno.serve(async (request) => {
           reason: 'guest_request',
           source: 'reservation-cancel',
         });
-        refundScheduled = true;
-        refundEta = scheduled?.eligible_at || null;
+        // scheduleBookingRefund leaves a TERMINAL row untouched and hands it
+        // back. That happens when this payment's single MAIB refund is already
+        // spent — a partial refund from the CRM (ADR-104) or an earlier payout —
+        // or when staff aborted it. Reporting "scheduled" then is a promise the
+        // system cannot keep: no cron will ever move money for this pay_id.
+        // Cancel the booking regardless, but say so honestly and put it in front
+        // of staff, who must transfer the remainder by hand.
+        const spent = scheduled?.status === 'succeeded' || scheduled?.status === 'cancelled';
+        refundScheduled = !spent;
+        refundEta = spent ? null : scheduled?.eligible_at || null;
+
+        if (spent) {
+          await alertRefundProblem(client, {
+            payId: payment.pay_id,
+            bookingGroupId: summary.bookingGroupId,
+            amount: payment.amount,
+            reason: 'guest_request',
+            detail: scheduled?.status === 'succeeded'
+              ? `Plata a fost deja restituită (${
+                Math.round(Number(scheduled?.amount || 0))
+              } MDL) — MAIB permite o singură restituire. Transferă manual diferența cuvenită.`
+              : 'Restituirea acestei plăți fusese anulată de personal — verifică dacă clientul trebuie despăgubit manual.',
+            source: 'reservation-cancel',
+          }).catch((alertError) => console.error('Refund alert failed', alertError));
+        }
       } catch (error) {
         console.error('Could not schedule guest refund', {
           bookingGroupId: summary.bookingGroupId,
@@ -183,7 +206,10 @@ Deno.serve(async (request) => {
         payment_in_progress: false,
         payment_session_expires_at: null,
         cancelled_at: now,
-        cancellation_reason: paidCard && refundable ? 'guest_request_refunded' : 'guest_request',
+        // Keyed off what actually happened, not off eligibility: a refund that
+        // could not be scheduled (slot already spent, or the write failed) must
+        // not leave a "refunded" marker behind.
+        cancellation_reason: refundScheduled ? 'guest_request_refunded' : 'guest_request',
       })
       .eq('booking_group_id', summary.bookingGroupId)
       .eq('guest_phone', manageToken.phone)

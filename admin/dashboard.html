@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026071901">
+    <link rel="stylesheet" href="../css/crm.css?v=2026081101">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -352,6 +352,33 @@
               <button class="crm-button" type="button" data-send-payment-confirmation hidden>Trimite SMS confirmare</button>
               <button class="crm-button crm-button--primary" value="save" data-save-reservation>Salvează modificări</button>
             </menu>
+            <!-- Anulare parțială (ADR-104): renunță la unele cazări din rezervare
+                 și restituie o sumă introdusă manual. Ascunsă până e cerută, ca
+                 dialogul să rămână scurt pentru cazul obișnuit. -->
+            <section class="crm-partial" data-partial-cancel hidden>
+              <button class="crm-button crm-button--ghost crm-partial__toggle" type="button" data-partial-toggle aria-expanded="false" aria-controls="crm-partial-body">
+                Anulare parțială / restituire
+              </button>
+              <div class="crm-partial__body" id="crm-partial-body" data-partial-body hidden>
+                <p class="crm-note">Bifează cazările la care clientul renunță. Restul rezervării rămâne neatins.</p>
+                <ul class="crm-partial__villas" data-partial-villas></ul>
+                <p class="crm-partial__selected" data-partial-selected>Selectate: 0</p>
+                <label class="crm-field">
+                  <span>Sumă de restituit (MDL) <span class="crm-field-optional">(gol = fără restituire)</span></span>
+                  <input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-partial-amount>
+                </label>
+                <p class="crm-partial__hint" data-partial-hint></p>
+                <p class="crm-partial__warning" data-partial-warning role="alert" hidden></p>
+                <label class="crm-field">
+                  <span>Scrie <strong>anulez</strong> pentru confirmare</span>
+                  <input type="text" autocomplete="off" spellcheck="false" data-partial-confirm>
+                </label>
+                <p class="crm-edit-error" data-partial-error role="alert" hidden></p>
+                <button class="crm-button crm-button--danger" type="button" data-partial-submit>
+                  Anulează cazările selectate
+                </button>
+              </div>
+            </section>
             <div class="crm-danger-zone">
               <p class="crm-note">Ștergerea cere două confirmări și anulează tot grupul rezervării.</p>
               <button class="crm-button crm-button--danger" type="button" data-delete-reservation>
@@ -848,21 +875,21 @@
       </section>
     </main>
 
-    <script src="../js/vendor/supabase.js?v=2026071901"></script>
-    <script src="../js/supabase-config.js?v=2026071901"></script>
-    <script src="../js/supabase.js?v=2026071901"></script>
-    <script src="../js/pricing.js?v=2026071901"></script>
-    <script src="../js/calendar.js?v=2026071901"></script>
-    <script src="js/crm-calendar.js?v=2026071901"></script>
-    <script src="js/crm-sidebar.js?v=2026071901"></script>
-    <script src="js/crm-dashboard.js?v=2026071901"></script>
-    <script src="js/crm-finance.js?v=2026071901"></script>
-    <script src="js/crm-daily.js?v=2026071901"></script>
-    <script src="js/crm-towels.js?v=2026071901"></script>
-    <script src="js/crm-photos.js?v=2026071901"></script>
-    <script src="js/crm-pricing.js?v=2026071901"></script>
-    <script src="js/crm-complaints.js?v=2026071901"></script>
-    <script src="js/crm-auth.js?v=2026071901"></script>
-    <script src="js/crm-app.js?v=2026071901"></script>
+    <script src="../js/vendor/supabase.js?v=2026081101"></script>
+    <script src="../js/supabase-config.js?v=2026081101"></script>
+    <script src="../js/supabase.js?v=2026081101"></script>
+    <script src="../js/pricing.js?v=2026081101"></script>
+    <script src="../js/calendar.js?v=2026081101"></script>
+    <script src="js/crm-calendar.js?v=2026081101"></script>
+    <script src="js/crm-sidebar.js?v=2026081101"></script>
+    <script src="js/crm-dashboard.js?v=2026081101"></script>
+    <script src="js/crm-finance.js?v=2026081101"></script>
+    <script src="js/crm-daily.js?v=2026081101"></script>
+    <script src="js/crm-towels.js?v=2026081101"></script>
+    <script src="js/crm-photos.js?v=2026081101"></script>
+    <script src="js/crm-pricing.js?v=2026081101"></script>
+    <script src="js/crm-complaints.js?v=2026081101"></script>
+    <script src="js/crm-auth.js?v=2026081101"></script>
+    <script src="js/crm-app.js?v=2026081101"></script>
   </body>
 </html>

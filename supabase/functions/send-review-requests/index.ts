@@ -5,6 +5,7 @@ import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
   composeReviewRequest,
   dispatchScheduledNotificationOnce,
+  resolveStableGroupOwnerIds,
 } from '../_shared/notifications.ts';
 import { reviewRequestTargetDate, shouldSendReviewRequests } from '../_shared/reminders.ts';
 import { aggregateCheckoutStatus, selectReviewRequestGroups } from '../_shared/reviewRequests.ts';
@@ -98,10 +99,16 @@ async function sendReviewRequests(client: SupabaseClient, now: Date) {
     await fetchCheckoutStatuses(client, reservations.map((reservation) => reservation.id)),
   );
   const eligible = selectReviewRequestGroups({ reservations, statusByReservation });
+  // The query above keeps only paid, non-cancelled rows, so a partial
+  // cancellation (ADR-104) of the group's lowest-id villa would promote the next
+  // one and send a second review request. Record the send against the group's
+  // stable owner instead — the lowest id across the whole group, forever.
+  const stableOwners = await resolveStableGroupOwnerIds(client, reservations);
 
   const results: NotificationResult[] = [];
 
   for (const { owner, group } of eligible) {
+    const dedupId = stableOwners.get(owner.booking_group_id || owner.id) || owner.id;
     // The review nudge is email-only — skip silently when the owner booking has no
     // email on file so we never burn the once-ever dedup slot on a no-op send.
     if (!String(owner.guest_email || '').trim()) {
@@ -116,7 +123,7 @@ async function sendReviewRequests(client: SupabaseClient, now: Date) {
       });
       const result = await dispatchScheduledNotificationOnce(
         client,
-        owner.id,
+        dedupId,
         REVIEW_REQUEST_EVENT,
         message,
       );

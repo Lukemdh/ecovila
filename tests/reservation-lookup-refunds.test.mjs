@@ -279,10 +279,17 @@ describe('EcoVila reservation lookup and refunds', () => {
       /message:\s*cancellationConfirmationSms\(/,
       'managed cancellation should send the shared cancellation SMS via cancellationConfirmationSms',
     );
+    // ADR-104 split the closing sentence out so a staff cancellation that
+    // returned money can name the sum instead; the date-only wording is unchanged.
     assert.match(
       notifications,
-      /Rezervarea dvs este anulata: \$\{checkIn\} - \$\{checkOut\}\. Speram sa ne mai vedem in curand!/,
+      /Rezervarea dvs este anulata: \$\{checkIn\} - \$\{checkOut\}\.\$\{tail\}/,
       'cancellation SMS should use the reworded date-only copy (ADR-039)',
+    );
+    assert.match(
+      notifications,
+      /' Speram sa ne mai vedem in curand!'/,
+      'the no-refund cancellation SMS keeps its closing line',
     );
   });
 });

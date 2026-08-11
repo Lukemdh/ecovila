@@ -79,6 +79,65 @@ export function mapNotificationOwners<T extends NotificationGroupRow>(
 }
 
 /**
+ * Booking-group key → the reservation id that owns the group's notification
+ * dedup, resolved across EVERY row of the group, cancelled ones included.
+ *
+ * mapNotificationOwners picks the lowest id among the rows it is handed. When a
+ * scheduler hands it a FILTERED subset ("paid and not cancelled"), cancelling
+ * the lowest row hands ownership to the next one — and a notification already
+ * sent under the old owner is sent a second time under the new one, because the
+ * dedup key is (reservation_id, event_type). Partial cancellations (ADR-104)
+ * create exactly that group shape: live rows alongside cancelled siblings.
+ *
+ * Rows are only ever soft-cancelled, never deleted, so the lowest id of the full
+ * group is stable forever. Callers keep using mapNotificationOwners to decide
+ * WHAT to send, and this to decide the id the send is recorded against — the
+ * same split send-checkin-welcome's resolveGroupOwner already uses.
+ */
+export async function resolveStableGroupOwnerIds(
+  client: SupabaseClient,
+  rows: NotificationGroupRow[],
+): Promise<Map<string, string>> {
+  const owners = new Map<string, string>();
+  const groupIds = [
+    ...new Set(rows.map((row) => row.booking_group_id).filter((id): id is string => Boolean(id))),
+  ];
+
+  // Ungrouped rows own themselves.
+  for (const row of rows) {
+    if (!row.booking_group_id) {
+      owners.set(row.id, row.id);
+    }
+  }
+
+  if (!groupIds.length) {
+    return owners;
+  }
+
+  const { data, error } = await (client.from('reservations') as unknown as {
+    select(columns: string): {
+      in(column: string, values: unknown[]): PromiseLike<
+        SupabaseQueryResult<Array<{ id: string; booking_group_id: string | null }>>
+      >;
+    };
+  })
+    .select('id, booking_group_id')
+    .in('booking_group_id', groupIds);
+
+  if (error) throw new Error(error.message);
+
+  for (const row of data || []) {
+    const key = row.booking_group_id || row.id;
+    const current = owners.get(key);
+    if (!current || row.id < current) {
+      owners.set(key, row.id);
+    }
+  }
+
+  return owners;
+}
+
+/**
  * One accommodation line for a whole booking group, e.g. "Căsuța #3, Căsuța #5".
  * Falls back to the single brand label when no room numbers are known.
  */
@@ -895,21 +954,64 @@ function expiredCashCancellationSms(language: string) {
 export function cancellationConfirmationSms(input: {
   checkIn: string;
   checkOut: string;
+  // Only set when the cancellation returned money on the spot (ADR-104). Every
+  // other caller omits it and the message is exactly what it always was.
+  refundAmount?: number | null;
   language: string;
 }) {
   const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
   const checkIn = formatSmsDate(input.checkIn, language);
   const checkOut = formatSmsDate(input.checkOut, language);
+  const refund = Number(input.refundAmount || 0);
+  const amount = formatSmsMoney(refund);
 
   if (language === 'ru') {
-    return `Ваша бронь отменена: ${checkIn} - ${checkOut}. Надеемся снова увидеть вас!`;
+    const tail = refund > 0 ? ` Возврат: ${amount} MDL.` : ' Надеемся снова увидеть вас!';
+    return `Ваша бронь отменена: ${checkIn} - ${checkOut}.${tail}`;
   }
 
   if (language === 'en') {
-    return `Your reservation is cancelled: ${checkIn} - ${checkOut}. We hope to see you again soon!`;
+    const tail = refund > 0 ? ` Refund: ${amount} MDL.` : ' We hope to see you again soon!';
+    return `Your reservation is cancelled: ${checkIn} - ${checkOut}.${tail}`;
   }
 
-  return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}. Speram sa ne mai vedem in curand!`;
+  const tail = refund > 0 ? ` Restituire: ${amount} MDL.` : ' Speram sa ne mai vedem in curand!';
+  return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}.${tail}`;
+}
+
+// Partial cancellation SMS (ADR-104). The plain cancellation SMS would read
+// "your reservation is cancelled" for a booking that is still on — so this one
+// says how many units were dropped, that the stay stands, and the refunded sum.
+// RO/EN stay GSM-7 (no diacritics, one segment); RU is UCS-2 and stays inside
+// 140 characters. Lengths are asserted in tests/reservationManage.test.ts.
+export function partialCancellationSms(input: {
+  cancelledCount: number;
+  totalCount: number;
+  checkIn: string;
+  checkOut: string;
+  refundAmount?: number | null;
+  language: string;
+}) {
+  const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
+  const checkIn = formatSmsDate(input.checkIn, language);
+  const checkOut = formatSmsDate(input.checkOut, language);
+  const cancelled = Math.max(1, Math.trunc(Number(input.cancelledCount) || 1));
+  const total = Math.max(cancelled, Math.trunc(Number(input.totalCount) || cancelled));
+  const refund = Number(input.refundAmount || 0);
+  const amount = formatSmsMoney(refund);
+
+  if (language === 'ru') {
+    const tail = refund > 0 ? ` Возврат: ${amount} MDL.` : '';
+    return `Отменено ${cancelled} из ${total} размещений. Бронь остаётся: ${checkIn} - ${checkOut}.${tail}`;
+  }
+
+  if (language === 'en') {
+    const tail = refund > 0 ? ` Refund: ${amount} MDL.` : '';
+    return `We cancelled ${cancelled} of ${total} units. Your booking stands: ${checkIn} - ${checkOut}.${tail}`;
+  }
+
+  const tail = refund > 0 ? ` Restituire: ${amount} MDL.` : '';
+  return `Am anulat ${cancelled} din ${total} cazari. Rezervarea ramane valabila: ${checkIn} - ${checkOut}.${tail}`;
 }
 
 export function bookingChangeSms(input: {
@@ -919,7 +1021,7 @@ export function bookingChangeSms(input: {
   difference: number;
 }) {
   const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
-  const amount = formatEmailMoney(input.difference);
+  const amount = formatSmsMoney(input.difference);
   const free = !(Number(input.difference) > 0);
   const adults = Math.max(0, Math.trunc(input.newAdults));
   const kids = Math.max(0, Math.trunc(input.newKids));
@@ -1196,6 +1298,15 @@ function formatEmailMoney(amount: number): string {
   const value = Math.round(Number(amount) || 0);
   const grouped = String(Math.abs(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return value < 0 ? `-${grouped}` : grouped;
+}
+
+// Same grouping for SMS, but with a PLAIN space. formatEmailMoney separates
+// thousands with U+00A0 so an amount never wraps in an email — and U+00A0 is
+// not in the GSM-7 alphabet, so a single one silently promotes the whole
+// message to UCS-2 and its 70-character segments. Any amount of 1.000 MDL or
+// more would then cost two or three SMS instead of one.
+function formatSmsMoney(amount: number): string {
+  return formatEmailMoney(amount).replace(/\u00a0/g, ' ');
 }
 
 type EmailRow = { label: string; value: string; total?: boolean };
@@ -1645,9 +1756,15 @@ export function buildCancellationEmail(args: {
   roomCopy: string;
   checkIn: string;
   checkOut: string;
+  // Only set when money was actually returned with the cancellation (ADR-104's
+  // hand-typed staff refund). Omitted everywhere else, so the copy is unchanged
+  // for the guest self-service and expiry paths.
+  refundAmount?: number | null;
   siteUrl: string;
 }): { subject: string; text: string; html: string } {
   const copy = CANCEL_COPY[args.lang];
+  const refund = Number(args.refundAmount || 0);
+  const refundLabel = refund > 0 ? `${formatEmailMoney(refund)} MDL` : '';
   const period = `${formatEmailDate(args.checkIn, args.lang)} – ${
     formatEmailDate(args.checkOut, args.lang)
   }`;
@@ -1663,6 +1780,18 @@ export function buildCancellationEmail(args: {
     { label: copy.labels.duration, value: stay },
     { label: copy.labels.accommodation, value: args.roomCopy },
   ];
+  // Reuses the partial-cancellation label and refund note so a refunded
+  // cancellation reads the same however it was made — minus that copy's "the
+  // rest of your booking stays paid" line, which is false when nothing is left.
+  const refundCopy = PARTIAL_CANCEL_COPY[args.lang];
+  const refundInfo: EmailInfoCard = {
+    title: refundCopy.refundInfo.title,
+    lines: refundCopy.refundInfo.lines.slice(0, 1),
+    phoneLead: refundCopy.refundInfo.phoneLead,
+  };
+  if (refundLabel) {
+    rows.push({ label: refundCopy.labels.refund, value: refundLabel, total: true });
+  }
 
   const html = renderReservationEmail({
     lang: args.lang,
@@ -1676,6 +1805,7 @@ export function buildCancellationEmail(args: {
     intro: copy.intro,
     rows,
     primary: { label: copy.cta, url: rebookUrl },
+    info: refundLabel ? refundInfo : undefined,
     closing: copy.closing,
   });
 
@@ -1690,8 +1820,198 @@ export function buildCancellationEmail(args: {
     `${copy.labels.period}: ${period}`,
     `${copy.labels.duration}: ${stay}`,
     `${copy.labels.accommodation}: ${args.roomCopy}`,
+    ...(refundLabel ? [`${refundCopy.labels.refund}: ${refundLabel}`] : []),
     '',
     `${copy.cta}: ${rebookUrl}`,
+    ...(refundLabel
+      ? ['', refundInfo.title, ...refundInfo.lines,
+        `${refundInfo.phoneLead} ${EMAIL_PHONE_DISPLAY}.`]
+      : []),
+    '',
+    copy.closing,
+  ].join('\n');
+
+  return { subject: copy.subject, text, html };
+}
+
+// Partial cancellation (ADR-104): staff dropped SOME villas of a multi-villa
+// booking and the rest of the stay still stands. The plain cancellation email
+// would tell the guest their whole booking is gone, so this variant names what
+// was dropped, what remains, and — when money was returned — how much.
+const PARTIAL_CANCEL_COPY: Record<EmailLang, {
+  subject: string;
+  preheader: string;
+  tagline: string;
+  heading: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  intro: string;
+  labels: {
+    cancelled: string;
+    remaining: string;
+    period: string;
+    duration: string;
+    refund: string;
+  };
+  refundInfo: { title: string; lines: string[]; phoneLead: string };
+  cta: string;
+  closing: string;
+  textDetails: string;
+}> = {
+  ro: {
+    subject: 'Rezervarea ta la EcoVila a fost actualizată',
+    preheader: 'O parte din rezervare a fost anulată — restul rămâne valabil.',
+    tagline: 'Odihnă all-inclusive la Orheiul Vechi',
+    heading: 'O parte din rezervarea ta a fost anulată',
+    greeting: (name) => `Bună, ${name}.`,
+    greetingFallback: 'Bună.',
+    intro:
+      'Am anulat cazările de mai jos din rezervarea ta. Restul rezervării rămâne valabil, fără nicio altă modificare.',
+    labels: {
+      cancelled: 'Anulat',
+      remaining: 'Rămâne rezervat',
+      period: 'Perioada',
+      duration: 'Durată',
+      refund: 'Sumă restituită',
+    },
+    refundInfo: {
+      title: 'Despre restituire',
+      lines: [
+        'Suma revine pe cardul folosit la plată, de regulă în 1–5 zile lucrătoare.',
+        'Restul rezervării rămâne achitat integral.',
+      ],
+      phoneLead: 'Pentru orice întrebare ne poți suna la',
+    },
+    cta: 'Vezi rezervarea',
+    closing: 'Te așteptăm cu drag la EcoVila.',
+    textDetails: 'Detaliile modificării',
+  },
+  ru: {
+    subject: 'Ваша бронь в EcoVila обновлена',
+    preheader: 'Часть брони отменена — остальное остаётся в силе.',
+    tagline: 'All-inclusive отдых в Орхеюл Векь',
+    heading: 'Часть вашей брони отменена',
+    greeting: (name) => `Здравствуйте, ${name}.`,
+    greetingFallback: 'Здравствуйте.',
+    intro:
+      'Мы отменили указанные ниже размещения из вашей брони. Остальная часть брони остаётся в силе без изменений.',
+    labels: {
+      cancelled: 'Отменено',
+      remaining: 'Остаётся забронировано',
+      period: 'Период',
+      duration: 'Длительность',
+      refund: 'Сумма возврата',
+    },
+    refundInfo: {
+      title: 'О возврате',
+      lines: [
+        'Сумма вернётся на карту, использованную при оплате, обычно за 1–5 рабочих дней.',
+        'Остальная часть брони остаётся полностью оплаченной.',
+      ],
+      phoneLead: 'По любым вопросам звоните нам по номеру',
+    },
+    cta: 'Посмотреть бронь',
+    closing: 'Будем рады видеть вас в EcoVila.',
+    textDetails: 'Детали изменения',
+  },
+  en: {
+    subject: 'Your EcoVila reservation has been updated',
+    preheader: 'Part of your reservation was cancelled — the rest still stands.',
+    tagline: 'All-inclusive escape at Orheiul Vechi',
+    heading: 'Part of your reservation has been cancelled',
+    greeting: (name) => `Hi ${name},`,
+    greetingFallback: 'Hello,',
+    intro:
+      'We cancelled the accommodation listed below from your reservation. The rest of your booking stands, with no other changes.',
+    labels: {
+      cancelled: 'Cancelled',
+      remaining: 'Still booked',
+      period: 'Dates',
+      duration: 'Duration',
+      refund: 'Refunded',
+    },
+    refundInfo: {
+      title: 'About the refund',
+      lines: [
+        'The amount returns to the card used for payment, usually within 1–5 business days.',
+        'The rest of your booking remains paid in full.',
+      ],
+      phoneLead: 'For any questions, call us at',
+    },
+    cta: 'View reservation',
+    closing: 'We look forward to welcoming you to EcoVila.',
+    textDetails: 'Change details',
+  },
+};
+
+export function buildPartialCancellationEmail(args: {
+  lang: EmailLang;
+  firstName: string;
+  cancelledCopy: string;
+  remainingCopy: string;
+  checkIn: string;
+  checkOut: string;
+  refundAmount?: number | null;
+  manageUrl: string;
+  siteUrl: string;
+}): { subject: string; text: string; html: string } {
+  const copy = PARTIAL_CANCEL_COPY[args.lang];
+  const period = `${formatEmailDate(args.checkIn, args.lang)} – ${
+    formatEmailDate(args.checkOut, args.lang)
+  }`;
+  const stay = nightsLabel(nightsBetween(args.checkIn, args.checkOut), args.lang);
+  const refund = Number(args.refundAmount || 0);
+  const refundLabel = refund > 0 ? `${formatEmailMoney(refund)} MDL` : '';
+  const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
+  const greetingHtml = args.firstName
+    ? copy.greeting(escapeHtml(args.firstName))
+    : copy.greetingFallback;
+
+  const rows: EmailRow[] = [
+    { label: copy.labels.cancelled, value: args.cancelledCopy },
+    { label: copy.labels.remaining, value: args.remainingCopy },
+    { label: copy.labels.period, value: period },
+    { label: copy.labels.duration, value: stay },
+  ];
+  if (refundLabel) {
+    rows.push({ label: copy.labels.refund, value: refundLabel, total: true });
+  }
+
+  const html = renderReservationEmail({
+    lang: args.lang,
+    siteUrl: args.siteUrl,
+    preheader: copy.preheader,
+    tagline: copy.tagline,
+    badgeSymbol: '✕',
+    badgeBg: EMAIL_COLORS.cocoa,
+    heading: copy.heading,
+    greetingHtml,
+    intro: copy.intro,
+    rows,
+    primary: { label: copy.cta, url: args.manageUrl },
+    info: refundLabel ? copy.refundInfo : undefined,
+    closing: copy.closing,
+  });
+
+  const text = [
+    copy.heading,
+    '',
+    greetingText,
+    '',
+    copy.intro,
+    '',
+    copy.textDetails,
+    `${copy.labels.cancelled}: ${args.cancelledCopy}`,
+    `${copy.labels.remaining}: ${args.remainingCopy}`,
+    `${copy.labels.period}: ${period}`,
+    `${copy.labels.duration}: ${stay}`,
+    ...(refundLabel ? [`${copy.labels.refund}: ${refundLabel}`] : []),
+    '',
+    `${copy.cta}: ${args.manageUrl}`,
+    ...(refundLabel
+      ? ['', copy.refundInfo.title, ...copy.refundInfo.lines,
+        `${copy.refundInfo.phoneLead} ${EMAIL_PHONE_DISPLAY}.`]
+      : []),
     '',
     copy.closing,
   ].join('\n');

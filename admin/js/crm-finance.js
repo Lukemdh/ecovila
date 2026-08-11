@@ -321,7 +321,14 @@
     const order = [];
 
     (rows || []).forEach((row) => {
-      const key = row.bookingGroupId || `single:${row.id}`;
+      // Cancelled villas group apart from live ones. A partially cancelled
+      // booking (ADR-104) otherwise came out as ONE row whose total summed the
+      // dropped villa back in and whose status was read off the lowest-numbered
+      // villa — so a 3-villa booking with one cancellation could read "anulată"
+      // at the full price. Split, it reads honestly: "2 vile · online plătit"
+      // next to "1 vilă · anulată".
+      const base = row.bookingGroupId || `single:${row.id}`;
+      const key = row.paymentStatus === 'cancelled' ? `${base}:cancelled` : base;
       if (!groups.has(key)) {
         groups.set(key, []);
         order.push(key);
@@ -681,8 +688,22 @@
   // They ride on top of the booking total: reservations.total_price never includes
   // a paid difference, so without them a cancelled booking with an add-guests
   // payment under-reported the money actually returned (ADR-099).
+  //
+  // Since ADR-104 refundedGroupIds is a Map booking-group id -> the sum the
+  // provider actually moved (null when there is no refund record to read). Staff
+  // can now type their own amount for a partial cancellation, so "the cancelled
+  // villas' price" is no longer a safe stand-in for the money returned; the real
+  // figure wins whenever it exists and the old estimate remains the fallback.
   function groupCancellationRows(rows, refundedGroupIds, refundedChangesByGroup) {
-    const refunded = refundedGroupIds instanceof Set ? refundedGroupIds : new Set(refundedGroupIds || []);
+    // Duck-typed, like changesByGroup below: a Map built in another realm fails
+    // instanceof. A plain Set (legacy shape) works too — it just has no amounts.
+    const refunded = typeof refundedGroupIds?.has === 'function'
+      ? refundedGroupIds
+      : new Set(refundedGroupIds || []);
+    const actualRefundFor = (bookingGroupId) => {
+      const amount = typeof refunded.get === 'function' ? Number(refunded.get(bookingGroupId)) : NaN;
+      return Number.isFinite(amount) && amount > 0 ? amount : null;
+    };
     // Duck-typed (not instanceof): the CRM tests construct the Map in another
     // realm, where instanceof Map is false for a perfectly good Map.
     const changesByGroup = typeof refundedChangesByGroup?.get === 'function'
@@ -713,16 +734,24 @@
           .map((amount) => Number(amount || 0))
           .filter((amount) => amount > 0);
         const isRefunded = refunded.has(primary.bookingGroupId);
+        // What came back on the booking payment itself: the recorded refund when
+        // we have one (a partial refund returns less than the villas cost), the
+        // stay total otherwise. Add-guests differences are separate transfers and
+        // are never part of that record, so they always add on top.
+        const bookingRefund = isRefunded
+          ? (actualRefundFor(primary.bookingGroupId) ?? totalPrice)
+          : 0;
         return {
           key,
           villas,
           bookingGroupId: primary.bookingGroupId,
           totalPrice,
           // Refunded add-guests differences for the group; the money actually
-          // returned is the stay total plus these transfers.
+          // returned is the booking refund plus these transfers.
           changeAmounts,
+          bookingRefund: roundMoney(bookingRefund),
           refundedAmount: isRefunded
-            ? roundMoney(totalPrice + changeAmounts.reduce((sum, amount) => sum + amount, 0))
+            ? roundMoney(bookingRefund + changeAmounts.reduce((sum, amount) => sum + amount, 0))
             : 0,
           adults: primary.adults,
           kids: primary.kids,
@@ -755,7 +784,9 @@
       if (group.refunded) {
         refundedCount += 1;
         refundedTotal += group.refundedAmount;
-        refundFees += refundTransferFee(group.totalPrice);
+        // The fee tier follows the sum actually transferred, not the stay price:
+        // a 850 MDL partial refund of a 12,200 MDL booking costs the 20 MDL tier.
+        refundFees += refundTransferFee(group.bookingRefund);
         group.changeAmounts.forEach((amount) => {
           refundFees += refundTransferFee(amount);
         });
@@ -1101,7 +1132,12 @@
     state.changeRows = changeRows || [];
     state.cancellationRows = cancellationRows || [];
     state.scheduledRefunds = scheduledRefunds || [];
-    state.refundedGroupIds = new Set(refundedGroups || []);
+    // Map id -> amount actually refunded (null when unknown). `.has()` still
+    // answers "was this group refunded?", so every existing reader keeps working
+    // while the cancellation totals gain the real sums (ADR-104).
+    state.refundedGroupIds = new Map(
+      (refundedGroups || []).map((entry) => [entry.bookingGroupId, entry.amount]),
+    );
     // Depends on the cancellation rows just fetched, so it runs after the batch.
     state.refundedChangesByGroup = await fetchRefundedChangesByGroupSafe(
       context,
@@ -1226,7 +1262,7 @@
       changeRows: [],
       cancellationRows: [],
       scheduledRefunds: [],
-      refundedGroupIds: new Set(),
+      refundedGroupIds: new Map(),
       refundedChangesByGroup: new Map(),
     };
     activeFinance = { context, state };

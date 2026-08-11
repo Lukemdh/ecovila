@@ -140,7 +140,21 @@ async function findReservationGroup(client: SupabaseClient, reservationId: strin
     .order('check_in', { ascending: true });
 
   if (error) throw new Error(error.message);
-  return data || [];
+  return keepLiveRows(data || []);
+}
+
+// A booking group can hold a mix of cancelled and live rows once staff cancel
+// PART of it (ADR-104). Everything downstream — groupReservations' price sum and
+// room list, the manage page's per-villa breakdown, and its "is this booking
+// cancelled?" read of the first row — assumes one uniform group, so a cancelled
+// sibling used to show the guest a villa they no longer have and the price they
+// no longer owe. Keep only the live rows whenever any survive; a fully cancelled
+// booking keeps all of them so the page can still render as cancelled.
+function keepLiveRows(rows: ReservationDetailRow[]) {
+  const live = rows.filter((row) =>
+    !row.cancelled_at && String(row.payment_status || '') !== 'cancelled'
+  );
+  return live.length ? live : rows;
 }
 
 async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {

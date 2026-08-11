@@ -7,6 +7,7 @@ import {
   composeCashExpiryReminder,
   dispatchScheduledNotificationOnce,
   mapNotificationOwners,
+  resolveStableGroupOwnerIds,
 } from '../_shared/notifications.ts';
 import { buildManageTokenRow } from '../_shared/reservationManage.ts';
 import { arrivalReminderTargetDate, shouldSendArrivalReminders } from '../_shared/reminders.ts';
@@ -154,6 +155,11 @@ async function notifyEach(
   // One notification per booking group: the owner reservation sends the SMS and
   // an email that lists every villa; the rest of the group is skipped.
   const ownerGroups = mapNotificationOwners(reservations);
+  // ...but the send is RECORDED against the group's stable owner — the lowest id
+  // of the whole group, cancelled rows included. These queries filter to active
+  // rows, so a partial cancellation (ADR-104) of the current owner would
+  // otherwise promote the next villa and send the guest a second reminder.
+  const stableOwners = await resolveStableGroupOwnerIds(client, reservations);
 
   for (const reservation of reservations) {
     const group = ownerGroups.get(reservation.id);
@@ -162,10 +168,13 @@ async function notifyEach(
       continue;
     }
 
+    const dedupId = stableOwners.get(reservation.booking_group_id || reservation.id) ||
+      reservation.id;
+
     try {
       const result = await dispatchScheduledNotificationOnce(
         client,
-        reservation.id,
+        dedupId,
         eventType,
         await createMessage(reservation, group),
       );

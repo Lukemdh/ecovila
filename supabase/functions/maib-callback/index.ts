@@ -336,6 +336,20 @@ async function handleChangeCallback(
           changeStatus: change.status,
         },
       );
+      // A console line is not a person. The guest's money IS captured here and
+      // nothing downstream will ever act on it, so this has to reach staff —
+      // more likely now that a partial cancellation supersedes open changes
+      // (ADR-104) while a card checkout for one may still be payable.
+      await sendStaffAlert('Plată „adaugă oaspeți" fără efect', [
+        'O diferență pentru oaspeți suplimentari a fost încasată, dar modificarea',
+        'nu mai era validă și NU a fost aplicată. Banii trebuie restituiți manual.',
+        `Booking group: ${change.booking_group_id}`,
+        `Change ID: ${change.id}`,
+        `Sumă: ${change.difference_amount ?? '?'} MDL`,
+        `Starea modificării: ${change.status}`,
+        '',
+        'Verifică panoul maibmerchants și restituie suma clientului.',
+      ]).catch((alertError) => console.error('Stale change alert failed', alertError));
       return jsonResponse({ ok: true, status: 'stale', changeId: change.id }, {}, request);
     }
 
