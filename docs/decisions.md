@@ -3770,12 +3770,56 @@ an unguarded UPDATE; that ordering and atomicity remain its own ADR rather than 
 here. Terms-version consent stamping was also not added. The effective-date carve-out is the chosen
 policy mechanism for this release, not a claim that per-booking consent history now exists.
 
-**Code complete, nothing deployed.** All tests are green — **375 Node / 159 Deno** — but the two
-migrations, the function deploy, the owner's TopHost upload and the
-`ECOVILA_REFUND_COMMISSION_BPS=140` flip all remain outstanding, in that order. The live rollout is
-not complete until one real low-value refund is checked against the maibmerchants statement to confirm
-that MAIB accepts a 98.6% partial refund of a full-value payment. Unit arithmetic and a successful API
-response cannot substitute for that provider-side money probe.
+**Backend LIVE 2026-08-25, and deliberately still inert.** Both migrations were applied with
+`supabase db push` (`migration list --linked` showed the histories aligned first, so no repair was
+needed) and all 27 edge functions were redeployed. Verified on production, not assumed: all 22
+existing `maib_refunds` rows backfilled with `gross_amount = amount + withheld_commission` and zero
+violations; `cancel_reservation_rows` left with exactly ONE 12-argument signature, so the overload
+ambiguity this ADR warned about cannot occur; `prepare_full_refund_intent` present and its
+`P0002 Invalid main refund quote` guard raised against the live database; the
+`ecovila-reconcile-refunds` cron still active on its 30-minute schedule; and smoke calls returning
+our own `400`/`401` bodies rather than a boot crash.
+
+`ECOVILA_REFUND_COMMISSION_BPS` was **not** set, so the deployed code computes `net = gross` and
+withholds nothing.
+
+**Still to do, and the order is the safety property — see below.**
+
+### ADR-105 pending activation (do this after the next TopHost upload)
+
+The 2026-08-25 upload did not reach the host: every live file still returned
+`last-modified: Tue, 11 Aug 2026`, `checkout.html` still served the ADR-104 token, and
+`termeni-conditii.html` contained no commission clause at all (checked cache-busted). The backend was
+therefore left inert on purpose. Activating it against that frontend would have withheld money from
+guests while the published Terms still promised a full refund and disclosed nothing — the exact
+outcome the inert default exists to prevent.
+
+After any future re-upload, confirm the frontend is genuinely live BEFORE activating. Do not rely on
+the upload appearing to succeed:
+
+```bash
+curl -sI https://ecovila.md/checkout.html | grep -i last-modified
+curl -s https://ecovila.md/checkout.html | grep -o 'v=20260[0-9]*' | sort -u
+curl -s https://ecovila.md/termeni-conditii.html | grep -c '1,4%'
+```
+
+The date must be recent, the token must match the repo's current `?v=` stamp (whatever
+`npm run bump:assets` last applied — it will move again as later features ship), and the Terms grep
+must be non-zero. Only then:
+
+```bash
+supabase secrets set ECOVILA_REFUND_COMMISSION_BPS=140 --project-ref mckchrviaawdxtsfytut
+```
+
+If later work redeploys the functions, the secret persists — it is project-level, not per-function.
+To roll back at any time, unset it or set it to `0`; already-stored quotes keep their recorded rate,
+so nothing recomputes retroactively in either direction.
+
+The rollout is still not finished at that point. One real low-value refund must be checked against
+the maibmerchants statement to confirm MAIB accepts a 98.6% partial refund of a full-value payment.
+Unit arithmetic and a successful API response cannot substitute for that provider-side money probe.
+The Terms effective-date clause (1 septembrie 2026) also warrants the owner's legal review before it
+is relied upon against bookings made earlier.
 
 ---
 
