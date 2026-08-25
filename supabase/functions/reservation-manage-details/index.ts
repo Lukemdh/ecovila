@@ -4,6 +4,7 @@ import { groupReservations, hashManageToken } from '../_shared/reservationManage
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { EXCLUDE_LIVE_HOLDS_FILTER } from '../_shared/reservations.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
+import { buildRefundPreviewQuote } from '../_shared/refundIntents.ts';
 import type { ReservationGroupRow } from '../_shared/reservationManage.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -11,6 +12,8 @@ type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
   update(payload: unknown): QueryBuilder<T>;
   eq(column: string, value: unknown): QueryBuilder<T>;
+  is(column: string, value: unknown): QueryBuilder<T>;
+  gt(column: string, value: unknown): QueryBuilder<T>;
   or(filters: string): QueryBuilder<T>;
   order(column: string, options?: Record<string, unknown>): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
@@ -54,6 +57,14 @@ type MaibPaymentRow = {
   refunded_at?: string | null;
 };
 
+type RefundableChangeRow = {
+  difference_amount: number | string;
+};
+
+type MaibRefundSlotRow = {
+  status?: string | null;
+};
+
 Deno.serve(async (request) => {
   const cors = handleCors(request);
   if (cors) return cors;
@@ -79,6 +90,17 @@ Deno.serve(async (request) => {
     }
 
     const payment = await findMaibPayment(client, reservations[0].booking_group_id);
+    const [refundSlot, refundableChanges] = payment
+      ? await Promise.all([
+        findMaibRefundSlot(client, payment.pay_id),
+        findRefundableChanges(client, reservations[0].booking_group_id),
+      ])
+      : [null, []];
+    const refundQuote = buildRefundPreviewQuote(
+      payment,
+      refundSlot?.status,
+      refundableChanges.map((row) => row.difference_amount),
+    );
 
     return jsonResponse(
       {
@@ -86,6 +108,9 @@ Deno.serve(async (request) => {
         reservation: groupReservations(reservations)[0],
         reservations,
         payment,
+        refundQuote: refundQuote
+          ? { gross: refundQuote.gross, withheld: refundQuote.withheld, net: refundQuote.net }
+          : null,
       },
       {},
       request,
@@ -163,6 +188,32 @@ async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {
     .eq('booking_group_id', bookingGroupId)
     .order('created_at', { ascending: false })
     .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data || null;
+}
+
+async function findRefundableChanges(client: SupabaseClient, bookingGroupId: string) {
+  const { data, error } = await table<RefundableChangeRow[]>(client, 'reservation_changes')
+    .select('difference_amount')
+    .eq('booking_group_id', bookingGroupId)
+    .eq('status', 'paid')
+    .is('refunded_at', null)
+    .gt('difference_amount', 0);
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function findMaibRefundSlot(
+  client: SupabaseClient,
+  payId: string | null | undefined,
+) {
+  if (!payId) return null;
+  const { data, error } = await table<MaibRefundSlotRow>(client, 'maib_refunds')
+    .select('status')
+    .eq('pay_id', payId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);

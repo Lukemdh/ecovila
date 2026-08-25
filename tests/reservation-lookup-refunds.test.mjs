@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const root = join(import.meta.dirname, '..');
 
 function read(relativePath) {
@@ -291,5 +293,323 @@ describe('EcoVila reservation lookup and refunds', () => {
       /' Speram sa ne mai vedem in curand!'/,
       'the no-refund cancellation SMS keeps its closing line',
     );
+  });
+
+  it('discloses the whole refund quote across the main payment and paid differences', () => {
+    const details = read('supabase/functions/reservation-manage-details/index.ts');
+    const cancel = read('supabase/functions/reservation-cancel/index.ts');
+
+    assert.match(details, /findRefundableChanges\(client, reservations\[0\]\.booking_group_id\)/);
+    assert.match(details, /findMaibRefundSlot\(client, payment\.pay_id\)/);
+    assert.match(details, /buildRefundPreviewQuote\(/);
+    assert.match(details, /refundQuote: refundQuote/);
+
+    assert.match(
+      cancel,
+      /prepareFullRefundIntent\(client, \{[\s\S]*?bookingGroupId: summary\.bookingGroupId/,
+    );
+    assert.match(cancel, /refundAmount: refundTotal\?\.net/);
+    assert.match(cancel, /withheldCommission: refundTotal\?\.withheld/);
+  });
+
+  it('only returns cancellation refund totals when the refund was really scheduled', () => {
+    const cancel = read('supabase/functions/reservation-cancel/index.ts');
+    assert.match(
+      cancel,
+      /refundQuote: refundScheduled && refundQuote \? publicQuote\(refundQuote\) : null/,
+    );
+    assert.match(
+      cancel,
+      /refundTotal: refundScheduled && refundTotal \? publicQuote\(refundTotal\) : null/,
+    );
+  });
+
+  it('renders real refund figures when a quote is present before and after cancellation, falling back to static copy when null', async () => {
+    const gestionareSource = read('js/gestionare.js');
+
+    // Static consumption guards:
+    assert.match(
+      gestionareSource,
+      /hasRefundQuote[\s\S]*?confirmare\.refundEligibleQuote/,
+      'pre-cancellation manage panel should render the quote key when refundQuote is present',
+    );
+    assert.match(
+      gestionareSource,
+      /confirmare\.refundEligibleQuote[\s\S]*?pricing\.formatMDL/,
+      'pre-cancellation quote figures must be formatted with formatMDL',
+    );
+    assert.match(
+      gestionareSource,
+      /quote\s*=\s*\(result\?\.refundTotal[\s\S]*?\)\s*\?\s*result\.refundTotal\s*:\s*\(result\?\.refundQuote[\s\S]*?\)\s*\?\s*result\.refundQuote\s*:\s*null/,
+      'post-cancellation must prefer refundTotal over refundQuote',
+    );
+    assert.match(
+      gestionareSource,
+      /confirmare\.cancelledWithScheduledQuote[\s\S]*?pricing\.formatMDL/,
+      'post-cancellation quote figures must be formatted with formatMDL',
+    );
+    assert.doesNotMatch(
+      gestionareSource,
+      /Math\.round\(.*0\.014\)|140\s*\/\s*10000|\*\s*0\.014/,
+      'browser must never compute commission locally; figures must come from the server quote',
+    );
+
+    // Runtime DOM execution:
+    function createFakeEl(tagName = 'div') {
+      const classes = new Set();
+      const element = {
+        tagName: tagName.toUpperCase(),
+        children: [],
+        hidden: false,
+        disabled: false,
+        textContent: '',
+        onclick: null,
+        querySelector(selector) {
+          if (selector === 'span') {
+            return this.children.find((c) => c.tagName === 'SPAN') || null;
+          }
+          return null;
+        },
+        appendChild(child) {
+          this.children.push(child);
+          return child;
+        },
+        classList: {
+          add(name) { classes.add(name); },
+          remove(name) { classes.delete(name); },
+          toggle(name, force) {
+            const shouldAdd = force === undefined ? !classes.has(name) : Boolean(force);
+            if (shouldAdd) classes.add(name); else classes.delete(name);
+            return shouldAdd;
+          },
+          contains(name) { return classes.has(name); },
+        },
+      };
+      return element;
+    }
+
+    function createDoc() {
+      const elements = new Map();
+      function reg(selector, tag = 'div') {
+        const el = createFakeEl(tag);
+        elements.set(selector, el);
+        return el;
+      }
+
+      const panel = reg('[data-manage-panel]', 'section');
+      const policy = createFakeEl('p');
+      panel.querySelector = (sel) => (sel === '.cf-manage__policy' ? policy : null);
+
+      reg('[data-managed-status]', 'span');
+      reg('[data-managed-refund-note]', 'p');
+      reg('[data-managed-actions]', 'div');
+      const cancelBtn = reg('[data-managed-cancel-btn]', 'button');
+      cancelBtn.appendChild(createFakeEl('span'));
+      reg('[data-managed-cancel-confirm]', 'div');
+      const cancelYes = reg('[data-managed-cancel-yes]', 'button');
+      cancelYes.appendChild(createFakeEl('span'));
+      reg('[data-managed-cancel-no]', 'button');
+      reg('[data-managed-action-error]', 'p');
+      reg('[data-confirmare-lead]', 'p');
+
+      return {
+        document: {
+          documentElement: { lang: 'ro' },
+          querySelector: (sel) => elements.get(sel) || null,
+          querySelectorAll: () => [],
+          createElement: createFakeEl,
+          addEventListener: () => {},
+        },
+        elements,
+      };
+    }
+
+    const pricing = require('../js/pricing.js');
+    const translations = require('../js/translations.js');
+
+    let cancelHandler = async () => ({});
+    const fakeSupabase = {
+      getSupabaseClient: () => ({}),
+      cancelManagedReservation: async (client, opts) => cancelHandler(client, opts),
+      isRateLimited: () => false,
+    };
+
+    globalThis.EcoVilaPricing = pricing;
+    globalThis.EcoVilaTranslations = translations;
+    globalThis.EcoVilaSupabase = fakeSupabase;
+
+    // 1. Pre-cancellation with quote:
+    {
+      const { document, elements } = createDoc();
+      globalThis.document = document;
+
+      const gestionare = require('../js/gestionare.js');
+      const summary = { paymentType: 'card', paymentStatus: 'paid', refundable: true };
+      const payment = { status: 'paid' };
+      const quote = { gross: 6000, withheld: 84, net: 5916 };
+
+      gestionare.renderManagePanel(summary, payment, 'res-1', 'token-1', quote);
+      assert.equal(
+        elements.get('[data-managed-refund-note]').textContent,
+        `Ai achitat ${pricing.formatMDL(6000)}. Reținem un comision bancar de ${pricing.formatMDL(84)}, iar tu primești ${pricing.formatMDL(5916)}.`,
+        'should render exact gross, withheld, and net figures when quote is present',
+      );
+    }
+
+    // 2. Pre-cancellation with null quote (fallback):
+    {
+      const { document, elements } = createDoc();
+      globalThis.document = document;
+
+      const gestionare = require('../js/gestionare.js');
+      const summary = { paymentType: 'card', paymentStatus: 'paid', refundable: true };
+      const payment = { status: 'paid' };
+
+      gestionare.renderManagePanel(summary, payment, 'res-1', 'token-1', null);
+      assert.equal(
+        elements.get('[data-managed-refund-note]').textContent,
+        'Această rezervare este eligibilă pentru o rambursare de cel puțin 98,6% din sumă prin MAIB (EcoVila reține un comision de procesare bancară de până la 1,4%) dacă o anulezi acum.',
+        'should fall back to static refundEligible copy when quote is null',
+      );
+    }
+
+    // 3. Post-cancellation with scheduled refund quote:
+    {
+      const { document, elements } = createDoc();
+      globalThis.document = document;
+      const gestionare = require('../js/gestionare.js');
+
+      cancelHandler = async () => ({
+        ok: true,
+        refundScheduled: true,
+        refundQuote: { gross: 6000, withheld: 84, net: 5916 },
+        refundTotal: { gross: 6000, withheld: 84, net: 5916 },
+      });
+
+      await gestionare.handleManagedCancel('res-1', 'token-1');
+      assert.equal(
+        elements.get('[data-managed-refund-note]').textContent,
+        `Rezervarea a fost anulată. Îți restituim ${pricing.formatMDL(5916)} (am reținut ${pricing.formatMDL(84)} comision bancar) în aproximativ 60 de ore (2–3 zile lucrătoare).`,
+        'post-cancellation should state actual refund and withheld sums with 60h expectation',
+      );
+      assert.equal(elements.get('[data-managed-status]').textContent, 'Rambursare programată');
+    }
+
+    // 4. Post-cancellation prefers refundTotal over refundQuote:
+    {
+      const { document, elements } = createDoc();
+      globalThis.document = document;
+      const gestionare = require('../js/gestionare.js');
+
+      cancelHandler = async () => ({
+        ok: true,
+        refundScheduled: true,
+        refundQuote: { gross: 6000, withheld: 84, net: 5916 },
+        refundTotal: { gross: 7000, withheld: 98, net: 6902 },
+      });
+
+      await gestionare.handleManagedCancel('res-1', 'token-1');
+      assert.equal(
+        elements.get('[data-managed-refund-note]').textContent,
+        `Rezervarea a fost anulată. Îți restituim ${pricing.formatMDL(6902)} (am reținut ${pricing.formatMDL(98)} comision bancar) în aproximativ 60 de ore (2–3 zile lucrătoare).`,
+        'post-cancellation should use refundTotal aggregate across main and add-guests payments',
+      );
+    }
+
+    // 5. Post-cancellation with null quote (scheduled fallback):
+    {
+      const { document, elements } = createDoc();
+      globalThis.document = document;
+      const gestionare = require('../js/gestionare.js');
+
+      cancelHandler = async () => ({
+        ok: true,
+        refundScheduled: true,
+        refundQuote: null,
+        refundTotal: null,
+      });
+
+      await gestionare.handleManagedCancel('res-1', 'token-1');
+      assert.equal(
+        elements.get('[data-managed-refund-note]').textContent,
+        'Rezervarea a fost anulată. Rambursarea prin MAIB va fi procesată în aproximativ 60 de ore (2–3 zile lucrătoare).',
+        'post-cancellation with null quote should fall back to tightened scheduled copy',
+      );
+    }
+
+    // 6. Post-cancellation without refund:
+    {
+      const { document, elements } = createDoc();
+      globalThis.document = document;
+      const gestionare = require('../js/gestionare.js');
+
+      cancelHandler = async () => ({
+        ok: true,
+        refundScheduled: false,
+        refunded: false,
+        refundQuote: null,
+        refundTotal: null,
+      });
+
+      await gestionare.handleManagedCancel('res-1', 'token-1');
+      assert.equal(
+        elements.get('[data-managed-refund-note]').textContent,
+        'Rezervarea a fost anulată.',
+      );
+      assert.equal(elements.get('[data-managed-status]').textContent, 'Anulată');
+    }
+  });
+
+  it('tightens post-cancellation confirmation copy while keeping pre-cancellation disclosures across all languages', () => {
+    const translations = read('js/translations.js');
+
+    // New quote keys must be present in ro, ru, en
+    for (const key of [
+      'confirmare.refundEligibleQuote',
+      'confirmare.cancelledWithScheduledQuote',
+      'confirmare.cancelledWithRefundQuote',
+    ]) {
+      const occurrences = (translations.match(new RegExp(`'${key}':`, 'g')) || []).length;
+      assert.equal(occurrences, 3, `${key} must be defined in all 3 languages (ro, ru, en)`);
+    }
+
+    // Post-cancellation confirmations should be trimmed of redundant percentages
+    for (const postKey of [
+      'confirmare.cancelledWithRefund',
+      'confirmare.cancelledWithScheduledRefund',
+    ]) {
+      const matches = [...translations.matchAll(new RegExp(`'${postKey}':\\s*'([^']*)'`, 'g'))];
+      assert.equal(matches.length, 3, `${postKey} must exist in 3 languages`);
+      for (const m of matches) {
+        assert.doesNotMatch(
+          m[1],
+          /98[,.]6%|1[,.]4%/,
+          `${postKey} should not contain redundant percentage disclaimers: "${m[1]}"`,
+        );
+      }
+    }
+
+    // Pre-cancellation notes and policies MUST retain explicit percentage disclosures
+    for (const preKey of [
+      'anulare.refundEligibleNote',
+      'confirmare.refundEligible',
+      'confirmare.refundPolicy',
+      'faq.a7',
+    ]) {
+      const matches = [...translations.matchAll(new RegExp(`'${preKey}':\\s*'([^']*)'`, 'g'))];
+      assert.equal(matches.length, 3, `${preKey} must exist in 3 languages`);
+      for (const m of matches) {
+        assert.match(
+          m[1],
+          /98[,.]6%/,
+          `${preKey} must keep the "at least 98.6%" wording: "${m[1]}"`,
+        );
+        assert.match(
+          m[1],
+          /1[,.]4%/,
+          `${preKey} must keep the "up to 1.4%" wording: "${m[1]}"`,
+        );
+      }
+    }
   });
 });

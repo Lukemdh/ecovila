@@ -22,10 +22,15 @@ import {
   attemptBookingRefund,
   cancelScheduledRefund,
   findRefundRow,
+  type MaibRefundRow,
+  quoteFromRefundRow,
 } from '../_shared/refunds.ts';
 import { refundPaidChanges } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
+import { aggregateRefundQuotes } from '../_shared/refundIntents.ts';
+import type { RefundQuote } from '../_shared/refundPolicy.ts';
+import { activeCommissionBps } from '../_shared/refundPolicy.ts';
 
 type QueryBuilder<T = unknown> = PromiseLike<SupabaseQueryResult<T>> & {
   select(columns: string): QueryBuilder<T>;
@@ -45,6 +50,10 @@ type ScheduledRefundRow = {
   pay_id: string;
   booking_group_id: string;
   amount?: number | string | null;
+  gross_amount?: number | string | null;
+  withheld_commission?: number | string | null;
+  commission_rate_bps?: number | string | null;
+  refund_policy_version?: string | null;
   currency?: string | null;
   status?: string | null;
   reason?: string | null;
@@ -70,6 +79,14 @@ type PaymentRow = {
   status?: string | null;
 };
 
+type ChangeQuoteRow = {
+  booking_group_id: string;
+  refund_amount?: number | string | null;
+  refund_withheld?: number | string | null;
+  refund_rate_bps?: number | string | null;
+  refund_policy_version?: string | null;
+};
+
 Deno.serve(async (request) => {
   const cors = handleCors(request);
   if (cors) {
@@ -85,7 +102,15 @@ Deno.serve(async (request) => {
     const client = createServiceClient();
 
     if (action === 'list') {
-      return jsonResponse({ ok: true, refunds: await listScheduledRefunds(client) }, {}, request);
+      return jsonResponse(
+        {
+          ok: true,
+          refunds: await listScheduledRefunds(client),
+          activeCommissionBps: activeCommissionBps(),
+        },
+        {},
+        request,
+      );
     }
 
     if (action === 'refunded-groups') {
@@ -147,7 +172,9 @@ Deno.serve(async (request) => {
 async function listScheduledRefunds(client: SupabaseClient) {
   const nowIso = new Date().toISOString();
   const { data: refunds, error } = await table<ScheduledRefundRow[]>(client, 'maib_refunds')
-    .select('pay_id, booking_group_id, amount, currency, status, reason, eligible_at, created_at')
+    .select(
+      'pay_id, booking_group_id, amount, gross_amount, withheld_commission, commission_rate_bps, refund_policy_version, currency, status, reason, eligible_at, created_at',
+    )
     .eq('status', 'requested')
     .gt('eligible_at', nowIso)
     .order('eligible_at', { ascending: true })
@@ -160,7 +187,10 @@ async function listScheduledRefunds(client: SupabaseClient) {
   }
 
   const groupIds = [...new Set(rows.map((row) => row.booking_group_id))];
-  const { data: reservations, error: resError } = await table<ReservationRow[]>(client, 'reservations')
+  const { data: reservations, error: resError } = await table<ReservationRow[]>(
+    client,
+    'reservations',
+  )
     .select(
       'booking_group_id, guest_first_name, guest_last_name, check_in, check_out, rooms(number, type)',
     )
@@ -175,13 +205,22 @@ async function listScheduledRefunds(client: SupabaseClient) {
     byGroup.set(reservation.booking_group_id, list);
   }
 
+  const changeQuotes = await storedChangeQuotes(client, groupIds);
+
   return rows.map((refund) => {
     const group = byGroup.get(refund.booking_group_id) || [];
     const primary = group[0];
+    const mainQuote = quoteFromRefundRow(refund);
+    const totalQuote = aggregateRefundQuotes([
+      mainQuote,
+      ...(changeQuotes.get(refund.booking_group_id) || []),
+    ]);
     return {
       payId: refund.pay_id,
       bookingGroupId: refund.booking_group_id,
       amount: Number(refund.amount || 0),
+      refundQuote: publicQuote(mainQuote),
+      refundTotal: publicQuote(totalQuote),
       currency: refund.currency || 'MDL',
       eligibleAt: refund.eligible_at || null,
       createdAt: refund.created_at || null,
@@ -206,7 +245,14 @@ async function releaseNow(client: SupabaseClient, payId: string) {
     throw new HttpError(404, 'Scheduled refund was not found.');
   }
   if (refund.status === 'succeeded') {
-    return { ok: true, status: 'succeeded', alreadyRefunded: true };
+    const total = await storedRefundTotal(client, refund);
+    return {
+      ok: true,
+      status: 'succeeded',
+      alreadyRefunded: true,
+      refundQuote: publicQuote(quoteFromRefundRow(refund)),
+      refundTotal: publicQuote(total),
+    };
   }
   if (refund.status === 'cancelled') {
     throw new HttpError(409, 'Această restituire a fost anulată și nu mai poate fi eliberată.');
@@ -227,12 +273,16 @@ async function releaseNow(client: SupabaseClient, payId: string) {
     .eq('pay_id', payId);
   if (clearError) throw new Error(clearError.message);
 
-  const amount = Number(refund.amount || payment.amount || 0);
+  const amount = Number(refund.amount);
+  if (!(amount > 0)) {
+    throw new HttpError(409, 'Stored refund amount is invalid.');
+  }
+  const refundTotal = await storedRefundTotal(client, refund);
   const outcome = await attemptBookingRefund(client, {
     payId: payment.pay_id,
     providerPayId: payment.provider_payment_id || payment.pay_id,
     bookingGroupId: refund.booking_group_id,
-    amount,
+    quote: quoteFromRefundRow(refund),
     currency: payment.currency || refund.currency || 'MDL',
     reason: refund.reason || 'staff_release',
     source: 'scheduled-refunds:release',
@@ -251,7 +301,9 @@ async function releaseNow(client: SupabaseClient, payId: string) {
       amount,
       reason: refund.reason || 'staff_release',
       detail: outcome.error ||
-        `Eliberare manuală — răspuns MAIB fără confirmare (status: ${outcome.providerStatus || 'necunoscut'}).`,
+        `Eliberare manuală — răspuns MAIB fără confirmare (status: ${
+          outcome.providerStatus || 'necunoscut'
+        }).`,
       source: 'scheduled-refunds:release',
     }).catch((alertError) => console.error('Refund alert failed', alertError));
 
@@ -260,6 +312,8 @@ async function releaseNow(client: SupabaseClient, payId: string) {
       pending: true,
       providerStatus: outcome.providerStatus || null,
       message: 'Restituirea nu s-a confirmat încă — sistemul o reîncearcă automat la 30 de minute.',
+      refundQuote: publicQuote(quoteFromRefundRow(refund)),
+      refundTotal: publicQuote(refundTotal),
     };
   }
 
@@ -268,8 +322,20 @@ async function releaseNow(client: SupabaseClient, payId: string) {
     refund.booking_group_id,
     refund.reason || 'staff_release',
   );
+  const differencesPending = differenceRefunds.some((refund) => !refund.ok);
 
-  return { ok: true, status: 'succeeded', differenceRefunds };
+  return {
+    ok: !differencesPending,
+    pending: differencesPending,
+    partial: differencesPending,
+    status: differencesPending ? 'partial' : 'succeeded',
+    message: differencesPending
+      ? 'Restituirea principală s-a confirmat, dar una sau mai multe autorizări suplimentare sunt încă în așteptare — sistemul le reîncearcă automat.'
+      : undefined,
+    differenceRefunds,
+    refundQuote: publicQuote(quoteFromRefundRow(refund)),
+    refundTotal: publicQuote(refundTotal),
+  };
 }
 
 // Union of the two authoritative "money returned" signals: a payment marked
@@ -281,13 +347,18 @@ async function releaseNow(client: SupabaseClient, payId: string) {
 // gives the stable total order the pager needs.
 const REFUNDED_GROUPS_PAGE_SIZE = 1000;
 
-type RefundedGroupRow = { booking_group_id: string | null; amount?: number | string | null };
+type RefundedGroupRow = {
+  booking_group_id: string | null;
+  amount?: number | string | null;
+  gross_amount?: number | string | null;
+  withheld_commission?: number | string | null;
+};
 
 async function allBookingGroupIds(
   build: () => QueryBuilder<RefundedGroupRow[]>,
 ): Promise<RefundedGroupRow[]> {
   const rows: RefundedGroupRow[] = [];
-  for (let from = 0; ; from += REFUNDED_GROUPS_PAGE_SIZE) {
+  for (let from = 0;; from += REFUNDED_GROUPS_PAGE_SIZE) {
     const { data, error } = await build().range(from, from + REFUNDED_GROUPS_PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
     const page = data || [];
@@ -305,8 +376,18 @@ async function allBookingGroupIds(
 // reconciled to 'refunded' out of band) — the caller keeps its old estimate.
 async function refundedBookingGroups(
   client: SupabaseClient,
-): Promise<Array<{ bookingGroupId: string; amount: number | null }>> {
-  const amounts = new Map<string, number | null>();
+): Promise<
+  Array<{
+    bookingGroupId: string;
+    amount: number | null;
+    grossAmount: number | null;
+    withheldCommission: number;
+  }>
+> {
+  const amounts = new Map<
+    string,
+    { amount: number | null; grossAmount: number | null; withheldCommission: number }
+  >();
   const [payments, refunds] = await Promise.all([
     allBookingGroupIds(() =>
       table<RefundedGroupRow[]>(client, 'maib_payments')
@@ -316,14 +397,18 @@ async function refundedBookingGroups(
     ),
     allBookingGroupIds(() =>
       table<RefundedGroupRow[]>(client, 'maib_refunds')
-        .select('booking_group_id, amount')
+        .select('booking_group_id, amount, gross_amount, withheld_commission')
         .eq('status', 'succeeded')
         .order('pay_id', { ascending: true })
     ),
   ]);
   for (const row of payments) {
     if (row.booking_group_id && !amounts.has(row.booking_group_id)) {
-      amounts.set(row.booking_group_id, null);
+      amounts.set(row.booking_group_id, {
+        amount: null,
+        grossAmount: null,
+        withheldCommission: 0,
+      });
     }
   }
   // Refund rows win: they hold the sum the provider actually moved. A group can
@@ -333,10 +418,20 @@ async function refundedBookingGroups(
     if (!row.booking_group_id) continue;
     const amount = Number(row.amount || 0);
     if (!(amount > 0)) continue;
-    const current = amounts.get(row.booking_group_id);
-    amounts.set(row.booking_group_id, (current || 0) + amount);
+    const gross = Number(row.gross_amount ?? amount);
+    const withheld = Number(row.withheld_commission || 0);
+    const current = amounts.get(row.booking_group_id) || {
+      amount: 0,
+      grossAmount: 0,
+      withheldCommission: 0,
+    };
+    amounts.set(row.booking_group_id, {
+      amount: (current.amount || 0) + amount,
+      grossAmount: (current.grossAmount || 0) + gross,
+      withheldCommission: current.withheldCommission + withheld,
+    });
   }
-  return [...amounts.entries()].map(([bookingGroupId, amount]) => ({ bookingGroupId, amount }));
+  return [...amounts.entries()].map(([bookingGroupId, quote]) => ({ bookingGroupId, ...quote }));
 }
 
 async function payIdForGroup(client: SupabaseClient, bookingGroupId: string) {
@@ -373,6 +468,47 @@ function cancelReasonMessage(reason: string) {
 
 function optionalString(value: unknown) {
   return String(value || '').trim();
+}
+
+async function storedRefundTotal(client: SupabaseClient, refund: MaibRefundRow) {
+  const changes = await storedChangeQuotes(client, [refund.booking_group_id]);
+  return aggregateRefundQuotes([
+    quoteFromRefundRow(refund),
+    ...(changes.get(refund.booking_group_id) || []),
+  ]);
+}
+
+async function storedChangeQuotes(client: SupabaseClient, bookingGroupIds: string[]) {
+  const quotes = new Map<string, RefundQuote[]>();
+  if (!bookingGroupIds.length) return quotes;
+  const { data, error } = await table<ChangeQuoteRow[]>(client, 'reservation_changes')
+    .select(
+      'booking_group_id, refund_amount, refund_withheld, refund_rate_bps, refund_policy_version',
+    )
+    .in('booking_group_id', bookingGroupIds)
+    .in('status', ['paid', 'refunded'])
+    .gt('refund_amount', 0);
+
+  if (error) throw new Error(error.message);
+  for (const row of data || []) {
+    const net = Number(row.refund_amount);
+    const withheld = Number(row.refund_withheld || 0);
+    if (!(net > 0)) continue;
+    const group = quotes.get(row.booking_group_id) || [];
+    group.push({
+      gross: net + withheld,
+      net,
+      withheld,
+      rateBps: Number(row.refund_rate_bps || 0),
+      version: String(row.refund_policy_version || ''),
+    });
+    quotes.set(row.booking_group_id, group);
+  }
+  return quotes;
+}
+
+function publicQuote(quote: RefundQuote) {
+  return { gross: quote.gross, withheld: quote.withheld, net: quote.net };
 }
 
 function table<T = unknown>(client: SupabaseClient, name: string) {

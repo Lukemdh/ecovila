@@ -29,7 +29,6 @@
     cash: 'cash',
     card: 'card',
   };
-
   function qs(selector, scope) {
     return (scope || root.document).querySelector(selector);
   }
@@ -766,11 +765,20 @@
       dangerZone.hidden = readOnly;
     }
     const deleteButton = qs('[data-delete-reservation]', dialog);
+    const refundOverride = qs('[data-refund-full-override]', dialog);
+    if (refundOverride) {
+      refundOverride.checked = false;
+      // EcoVila-caused cancellations (overbooking, force majeure or our own error)
+      // must not make the guest absorb a bank fee they did nothing to cause.
+      const rateBps = root.EcoVilaSupabase?.getActiveRefundCommissionBps?.();
+      refundOverride.disabled = readOnly || !(Number.isInteger(rateBps) && rateBps > 0);
+    }
     if (deleteButton) {
-      deleteButton.onclick = readOnly ? null : () => deleteReservation(reservation);
+      deleteButton.onclick = readOnly ? null : () => deleteReservation(reservation, dialog);
     }
 
     setupPartialCancel(dialog, reservation, readOnly, isHold);
+    refreshRefundCommissionRate(activeState?.context, dialog, readOnly);
 
     const editError = qs('[data-edit-error]', dialog);
     if (editError) {
@@ -782,6 +790,28 @@
       editorForm.onsubmit = (event) => handleReservationEditSubmit(event, reservation, dialog, readOnly);
     }
     dialog.showModal?.();
+  }
+
+  function refreshRefundCommissionRate(context, dialog, readOnly) {
+    if (
+      readOnly || root.EcoVilaSupabase?.getActiveRefundCommissionBps?.() !== null ||
+      typeof root.EcoVilaSupabase?.fetchScheduledRefunds !== 'function'
+    ) {
+      return;
+    }
+
+    // Finance normally primes this staff-only configuration during app startup.
+    // A very fast dialog open can win that race, so ask the same existing
+    // endpoint and repaint when it answers; until then the UI shows no guessed
+    // fee and keeps the meaningless override disabled.
+    root.EcoVilaSupabase.fetchScheduledRefunds(context?.client).then(() => {
+      const rateBps = root.EcoVilaSupabase?.getActiveRefundCommissionBps?.();
+      const override = qs('[data-refund-full-override]', dialog);
+      if (override) override.disabled = !(Number.isInteger(rateBps) && rateBps > 0);
+      qs('[data-partial-amount]', dialog)?.oninput?.();
+    }).catch(() => {
+      // Unavailable configuration intentionally stays null: no invented line.
+    });
   }
 
   // ── Anulare parțială (ADR-104) ──────────────────────────────────────────────
@@ -842,6 +872,7 @@
     const errorField = qs('[data-partial-error]', section);
     const warning = qs('[data-partial-warning]', section);
     const submit = qs('[data-partial-submit]', section);
+    const refundOverride = qs('[data-refund-full-override]', dialog);
 
     // Reopening the dialog must never inherit a previous booking's selection,
     // typed amount or confirmation word.
@@ -884,7 +915,12 @@
       candidates.forEach((row) => list.appendChild(partialVillaItem(row)));
     }
 
-    const refresh = () => refreshPartialCancel(section, { candidates, paidOnline, paidTotal });
+    const refresh = () => refreshPartialCancel(section, {
+      candidates,
+      paidOnline,
+      paidTotal,
+      refundOverride,
+    });
     refresh();
 
     if (toggle) {
@@ -903,6 +939,9 @@
     if (confirmField) {
       confirmField.oninput = refresh;
     }
+    if (refundOverride) {
+      refundOverride.onchange = refresh;
+    }
     // The section lives inside the dialog's <form method="dialog">, so a stray
     // Enter would close the dialog mid-edit instead of doing nothing.
     qsa('input', section).forEach((field) => {
@@ -914,7 +953,7 @@
     });
     if (submit) {
       submit.onclick = () =>
-        submitPartialCancel(dialog, section, { candidates, paidOnline, paidTotal });
+        submitPartialCancel(dialog, section, { candidates, paidOnline, paidTotal, refundOverride });
     }
   }
 
@@ -974,8 +1013,8 @@
     if (!raw) {
       return null;
     }
-    const amount = Math.round(Number(raw));
-    if (!Number.isFinite(amount) || amount < 0) {
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount < 0) {
       return NaN;
     }
     return amount > 0 ? amount : null;
@@ -993,6 +1032,11 @@
     const submit = qs('[data-partial-submit]', section);
     const confirmField = qs('[data-partial-confirm]', section);
     const formatMDL = root.EcoVilaCrmApp.formatMDL;
+    const activeRateBps = root.EcoVilaSupabase?.getActiveRefundCommissionBps?.();
+    const activeRate = Number.isInteger(activeRateBps) && activeRateBps > 0
+      ? activeRateBps / 10000
+      : null;
+    const withholdCommission = activeRate !== null && !context.refundOverride?.checked;
 
     if (summary) {
       summary.textContent = selected.length
@@ -1002,19 +1046,29 @@
 
     if (hint) {
       if (Number.isNaN(amount)) {
-        hint.textContent = 'Suma nu este un număr valid — corecteaz-o sau golește câmpul.';
+        hint.textContent = 'Suma trebuie să fie un număr întreg de MDL — corecteaz-o sau golește câmpul.';
       } else if (!context.paidOnline) {
         hint.textContent =
           'Rezervarea nu are plată online — restituirea se face la birou, în numerar.';
       } else if (amount) {
         const rest = Math.max(0, Math.round(context.paidTotal) - amount);
+        const net = withholdCommission
+          ? Math.ceil(amount * (1 - activeRate))
+          : amount;
+        const withheld = amount - net;
         hint.textContent = amount > Math.round(context.paidTotal)
           // Not blocked here: total_price never includes a paid "add guests"
           // difference, so the real payment can legitimately be larger than the
           // stay total. The server checks it against the actual MAIB payment.
           ? `Atenție: ${formatMDL(amount)} depășește cei ${formatMDL(context.paidTotal)} din prețul rezervării. ` +
             'Verifică suma încasată în Finance înainte de a continua.'
-          : `Restitui ${formatMDL(amount)} din ${formatMDL(context.paidTotal)} încasați. ` +
+          : `Restitui ${formatMDL(amount)} din ${formatMDL(context.paidTotal)} încasați · ` +
+            (withholdCommission
+              ? `comision reținut ${formatMDL(withheld)} · `
+              : activeRate === null
+              ? ''
+              : 'restituire integrală, fără reținerea comisionului · ') +
+            `clientul primește ${formatMDL(net)}. ` +
             `Restul de ${formatMDL(rest)} nu va mai putea fi restituit prin MAIB.`;
       } else {
         hint.textContent = `Încasat online: ${formatMDL(context.paidTotal)}. Lasă gol dacă nu restitui nimic.`;
@@ -1024,8 +1078,11 @@
     if (submit) {
       const confirmed = String(confirmField?.value || '').trim().toLowerCase() === PARTIAL_CONFIRM_WORD;
       submit.disabled = !selected.length || !confirmed || Number.isNaN(amount);
+      const net = amount && withholdCommission
+        ? Math.ceil(amount * (1 - activeRate))
+        : amount;
       submit.textContent = amount
-        ? `Anulează și restituie ${formatMDL(amount)}`
+        ? `Anulează și restituie ${formatMDL(net)}`
         : 'Anulează cazările selectate';
     }
   }
@@ -1052,7 +1109,7 @@
       return;
     }
     if (Number.isNaN(amount)) {
-      showError('Suma de restituit trebuie să fie un număr pozitiv (sau lasă câmpul gol).');
+      showError('Suma de reversat trebuie să fie un număr întreg pozitiv (sau lasă câmpul gol).');
       return;
     }
     // Re-read the confirmation here, not just when the button was last enabled:
@@ -1072,6 +1129,7 @@
         bookingGroupId: context.candidates[0]?.booking_group_id || '',
         reservationIds: selected.map((row) => row.id),
         refundAmount: amount,
+        withholdCommission: !context.refundOverride?.checked,
       });
       dialog.close?.('cancel');
       state.context.setAlert?.(describePartialCancelResult(result, selected.length));
@@ -1191,7 +1249,7 @@
     return `Rezervarea a fost mutată.${villa} SMS-ul către client nu a putut fi trimis — anunță-l manual.`;
   }
 
-  async function deleteReservation(reservation) {
+  async function deleteReservation(reservation, dialog) {
     const confirmed = DELETE_CONFIRMATIONS.every((message) => root.confirm?.(message));
     if (!confirmed) {
       activeState?.context?.setAlert('');
@@ -1241,10 +1299,18 @@
     let alert = '';
     if (reservation.payment_type === 'card' && reservation.payment_status === 'paid') {
       try {
-        await root.EcoVilaSupabase.refundMaibPaymentRequest(context.client, {
+        const refundResult = await root.EcoVilaSupabase.refundMaibPaymentRequest(context.client, {
           bookingGroupId: reservation.booking_group_id,
           reason: 'crm_cancellation',
+          withholdCommission: !qs('[data-refund-full-override]', dialog)?.checked,
         });
+        if (refundResult?.ok === false && refundResult?.pending) {
+          alert = String(refundResult.message ||
+            'Restituirea nu s-a confirmat încă — va fi reîncercată automat; verifică tab-ul plăți.');
+          if (refundResult?.partial) {
+            alert = `Restituire parțial confirmată: ${alert}`;
+          }
+        }
       } catch (refundError) {
         alert = 'Rezervarea a fost anulată, dar restituirea NU s-a finalizat — va fi reîncercată automat; verifică tab-ul plăți.';
       }

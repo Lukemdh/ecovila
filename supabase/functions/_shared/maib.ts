@@ -31,7 +31,7 @@ export type MaibCheckoutResult = {
 
 export type MaibCallbackStatus = 'paid' | 'pending' | 'failed' | 'cancelled';
 
-type MaibFetchOptions = {
+export type MaibFetchOptions = {
   fetcher?: typeof fetch;
   baseUrl?: string;
   clientId?: string;

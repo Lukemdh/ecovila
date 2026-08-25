@@ -954,29 +954,72 @@ function expiredCashCancellationSms(language: string) {
 export function cancellationConfirmationSms(input: {
   checkIn: string;
   checkOut: string;
-  // Only set when the cancellation returned money on the spot (ADR-104). Every
-  // other caller omits it and the message is exactly what it always was.
+  // Set only for money that is confirmed or durably queued for retry. The state
+  // is explicit because a cooldown/failed attempt must never borrow completed
+  // wording merely because its persisted quote belongs in the guest notice.
   refundAmount?: number | null;
+  withheldCommission?: number | null;
+  refundStatus?: 'completed' | 'scheduled' | 'processing';
+  refundEta?: string | null;
   language: string;
 }) {
   const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
   const checkIn = formatSmsDate(input.checkIn, language);
   const checkOut = formatSmsDate(input.checkOut, language);
   const refund = Number(input.refundAmount || 0);
+  const withheld = Math.max(0, Number(input.withheldCommission || 0));
   const amount = formatSmsMoney(refund);
+  const fee = formatSmsMoney(withheld);
+  const status = input.refundStatus || 'completed';
+  const eta = input.refundEta ? formatSmsRefundEta(input.refundEta) : '';
 
   if (language === 'ru') {
-    const tail = refund > 0 ? ` Возврат: ${amount} MDL.` : ' Надеемся снова увидеть вас!';
+    const tail = refund > 0
+      ? status === 'scheduled'
+        ? ` Возврат запланирован: ${amount} MDL (комиссия ${fee} MDL), отправка ${eta || 'позже'}.`
+        : status === 'processing'
+        ? ` Возврат в процессе: ${amount} MDL (комиссия ${fee} MDL).`
+        : ` Возвращено: ${amount} MDL (комиссия ${fee} MDL).`
+      : ' Надеемся снова увидеть вас!';
     return `Ваша бронь отменена: ${checkIn} - ${checkOut}.${tail}`;
   }
 
   if (language === 'en') {
-    const tail = refund > 0 ? ` Refund: ${amount} MDL.` : ' We hope to see you again soon!';
+    const tail = refund > 0
+      ? status === 'scheduled'
+        ? ` Scheduled refund: ${amount} MDL (fee ${fee} MDL), sent ${eta || 'later'}.`
+        : status === 'processing'
+        ? ` Refund in progress: ${amount} MDL (fee ${fee} MDL).`
+        : ` Refunded: ${amount} MDL (fee ${fee} MDL).`
+      : ' We hope to see you again soon!';
     return `Your reservation is cancelled: ${checkIn} - ${checkOut}.${tail}`;
   }
 
-  const tail = refund > 0 ? ` Restituire: ${amount} MDL.` : ' Speram sa ne mai vedem in curand!';
+  const tail = refund > 0
+    ? status === 'scheduled'
+      ? ` Restituire programata: ${amount} MDL (comision ${fee} MDL), la ${
+        eta || 'termenul comunicat'
+      }.`
+      : status === 'processing'
+      ? ` Restituire in curs: ${amount} MDL (comision ${fee} MDL).`
+      : ` Restituit: ${amount} MDL (comision ${fee} MDL).`
+    : ' Speram sa ne mai vedem in curand!';
   return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}.${tail}`;
+}
+
+function formatSmsRefundEta(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'Europe/Chisinau',
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((entry) => entry.type === type)?.value || '';
+  return `${part('day')}.${part('month')} ${part('hour')}:${part('minute')}`;
 }
 
 // Partial cancellation SMS (ADR-104). The plain cancellation SMS would read
@@ -990,6 +1033,7 @@ export function partialCancellationSms(input: {
   checkIn: string;
   checkOut: string;
   refundAmount?: number | null;
+  withheldCommission?: number | null;
   language: string;
 }) {
   const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
@@ -998,19 +1042,21 @@ export function partialCancellationSms(input: {
   const cancelled = Math.max(1, Math.trunc(Number(input.cancelledCount) || 1));
   const total = Math.max(cancelled, Math.trunc(Number(input.totalCount) || cancelled));
   const refund = Number(input.refundAmount || 0);
+  const withheld = Math.max(0, Number(input.withheldCommission || 0));
   const amount = formatSmsMoney(refund);
+  const fee = formatSmsMoney(withheld);
 
   if (language === 'ru') {
-    const tail = refund > 0 ? ` Возврат: ${amount} MDL.` : '';
+    const tail = refund > 0 ? ` Возврат: ${amount} MDL, комиссия ${fee} MDL.` : '';
     return `Отменено ${cancelled} из ${total} размещений. Бронь остаётся: ${checkIn} - ${checkOut}.${tail}`;
   }
 
   if (language === 'en') {
-    const tail = refund > 0 ? ` Refund: ${amount} MDL.` : '';
+    const tail = refund > 0 ? ` Refund: ${amount} MDL, fee ${fee} MDL.` : '';
     return `We cancelled ${cancelled} of ${total} units. Your booking stands: ${checkIn} - ${checkOut}.${tail}`;
   }
 
-  const tail = refund > 0 ? ` Restituire: ${amount} MDL.` : '';
+  const tail = refund > 0 ? ` Restituire: ${amount} MDL, comision ${fee} MDL.` : '';
   return `Am anulat ${cancelled} din ${total} cazari. Rezervarea ramane valabila: ${checkIn} - ${checkOut}.${tail}`;
 }
 
@@ -1756,15 +1802,21 @@ export function buildCancellationEmail(args: {
   roomCopy: string;
   checkIn: string;
   checkOut: string;
-  // Only set when money was actually returned with the cancellation (ADR-104's
-  // hand-typed staff refund). Omitted everywhere else, so the copy is unchanged
-  // for the guest self-service and expiry paths.
+  // Set only for money that is confirmed or durably queued. refundStatus keeps
+  // a scheduled/retryable quote from being labeled completed while preserving
+  // the settled ADR-104 staff-refund wording.
   refundAmount?: number | null;
+  withheldCommission?: number | null;
+  refundStatus?: 'completed' | 'scheduled' | 'processing';
+  refundEta?: string | null;
   siteUrl: string;
 }): { subject: string; text: string; html: string } {
   const copy = CANCEL_COPY[args.lang];
   const refund = Number(args.refundAmount || 0);
+  const withheld = Math.max(0, Number(args.withheldCommission || 0));
   const refundLabel = refund > 0 ? `${formatEmailMoney(refund)} MDL` : '';
+  const withheldLabel = `${formatEmailMoney(withheld)} MDL`;
+  const refundStatus = args.refundStatus || 'completed';
   const period = `${formatEmailDate(args.checkIn, args.lang)} – ${
     formatEmailDate(args.checkOut, args.lang)
   }`;
@@ -1784,13 +1836,15 @@ export function buildCancellationEmail(args: {
   // cancellation reads the same however it was made — minus that copy's "the
   // rest of your booking stays paid" line, which is false when nothing is left.
   const refundCopy = PARTIAL_CANCEL_COPY[args.lang];
+  const stateCopy = cancellationRefundStateCopy(args.lang, refundStatus, args.refundEta);
   const refundInfo: EmailInfoCard = {
-    title: refundCopy.refundInfo.title,
-    lines: refundCopy.refundInfo.lines.slice(0, 1),
+    title: stateCopy.title,
+    lines: stateCopy.lines,
     phoneLead: refundCopy.refundInfo.phoneLead,
   };
   if (refundLabel) {
-    rows.push({ label: refundCopy.labels.refund, value: refundLabel, total: true });
+    rows.push({ label: stateCopy.label, value: refundLabel, total: true });
+    rows.push({ label: refundCopy.labels.withheld, value: withheldLabel });
   }
 
   const html = renderReservationEmail({
@@ -1820,18 +1874,96 @@ export function buildCancellationEmail(args: {
     `${copy.labels.period}: ${period}`,
     `${copy.labels.duration}: ${stay}`,
     `${copy.labels.accommodation}: ${args.roomCopy}`,
-    ...(refundLabel ? [`${refundCopy.labels.refund}: ${refundLabel}`] : []),
+    ...(refundLabel ? [`${stateCopy.label}: ${refundLabel}`] : []),
+    ...(refundLabel ? [`${refundCopy.labels.withheld}: ${withheldLabel}`] : []),
     '',
     `${copy.cta}: ${rebookUrl}`,
     ...(refundLabel
-      ? ['', refundInfo.title, ...refundInfo.lines,
-        `${refundInfo.phoneLead} ${EMAIL_PHONE_DISPLAY}.`]
+      ? [
+        '',
+        refundInfo.title,
+        ...refundInfo.lines,
+        `${refundInfo.phoneLead} ${EMAIL_PHONE_DISPLAY}.`,
+      ]
       : []),
     '',
     copy.closing,
   ].join('\n');
 
   return { subject: copy.subject, text, html };
+}
+
+function cancellationRefundStateCopy(
+  lang: EmailLang,
+  status: 'completed' | 'scheduled' | 'processing',
+  eta?: string | null,
+) {
+  const formattedEta = eta ? formatRefundEta(eta, lang) : '';
+  if (status === 'scheduled') {
+    if (lang === 'ru') {
+      return {
+        label: 'Возврат запланирован',
+        title: 'О запланированном возврате',
+        lines: [`Сумма будет отправлена на обработку ${formattedEta || 'в указанный срок'}.`],
+      };
+    }
+    if (lang === 'en') {
+      return {
+        label: 'Scheduled refund',
+        title: 'About the scheduled refund',
+        lines: [`The refund will be sent for processing on ${formattedEta || 'the stated date'}.`],
+      };
+    }
+    return {
+      label: 'Restituire programată',
+      title: 'Despre restituirea programată',
+      lines: [
+        `Restituirea va fi trimisă spre procesare la ${formattedEta || 'termenul comunicat'}.`,
+      ],
+    };
+  }
+  if (status === 'processing') {
+    if (lang === 'ru') {
+      return {
+        label: 'Возврат в процессе',
+        title: 'Возврат ещё обрабатывается',
+        lines: [
+          'Часть или вся сумма ещё не подтверждена; система повторит операцию автоматически.',
+        ],
+      };
+    }
+    if (lang === 'en') {
+      return {
+        label: 'Refund in progress',
+        title: 'The refund is still in progress',
+        lines: [
+          'Some or all of the amount is not yet confirmed; the system will retry automatically.',
+        ],
+      };
+    }
+    return {
+      label: 'Restituire în curs',
+      title: 'Restituirea este încă în curs',
+      lines: ['O parte sau toată suma nu este încă confirmată; sistemul va reîncerca automat.'],
+    };
+  }
+  const copy = PARTIAL_CANCEL_COPY[lang];
+  return {
+    label: copy.labels.refund,
+    title: copy.refundInfo.title,
+    lines: copy.refundInfo.lines.slice(0, 1),
+  };
+}
+
+function formatRefundEta(value: string, lang: EmailLang) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const locale = lang === 'ru' ? 'ru-MD' : lang === 'en' ? 'en-GB' : 'ro-MD';
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'long',
+    timeStyle: 'short',
+    timeZone: 'Europe/Chisinau',
+  }).format(date);
 }
 
 // Partial cancellation (ADR-104): staff dropped SOME villas of a multi-villa
@@ -1852,6 +1984,7 @@ const PARTIAL_CANCEL_COPY: Record<EmailLang, {
     period: string;
     duration: string;
     refund: string;
+    withheld: string;
   };
   refundInfo: { title: string; lines: string[]; phoneLead: string };
   cta: string;
@@ -1873,6 +2006,7 @@ const PARTIAL_CANCEL_COPY: Record<EmailLang, {
       period: 'Perioada',
       duration: 'Durată',
       refund: 'Sumă restituită',
+      withheld: 'Comision de procesare reținut',
     },
     refundInfo: {
       title: 'Despre restituire',
@@ -1901,6 +2035,7 @@ const PARTIAL_CANCEL_COPY: Record<EmailLang, {
       period: 'Период',
       duration: 'Длительность',
       refund: 'Сумма возврата',
+      withheld: 'Удержанная комиссия за обработку',
     },
     refundInfo: {
       title: 'О возврате',
@@ -1929,6 +2064,7 @@ const PARTIAL_CANCEL_COPY: Record<EmailLang, {
       period: 'Dates',
       duration: 'Duration',
       refund: 'Refunded',
+      withheld: 'Processing fee withheld',
     },
     refundInfo: {
       title: 'About the refund',
@@ -1952,6 +2088,7 @@ export function buildPartialCancellationEmail(args: {
   checkIn: string;
   checkOut: string;
   refundAmount?: number | null;
+  withheldCommission?: number | null;
   manageUrl: string;
   siteUrl: string;
 }): { subject: string; text: string; html: string } {
@@ -1961,7 +2098,9 @@ export function buildPartialCancellationEmail(args: {
   }`;
   const stay = nightsLabel(nightsBetween(args.checkIn, args.checkOut), args.lang);
   const refund = Number(args.refundAmount || 0);
+  const withheld = Math.max(0, Number(args.withheldCommission || 0));
   const refundLabel = refund > 0 ? `${formatEmailMoney(refund)} MDL` : '';
+  const withheldLabel = `${formatEmailMoney(withheld)} MDL`;
   const greetingText = args.firstName ? copy.greeting(args.firstName) : copy.greetingFallback;
   const greetingHtml = args.firstName
     ? copy.greeting(escapeHtml(args.firstName))
@@ -1975,6 +2114,7 @@ export function buildPartialCancellationEmail(args: {
   ];
   if (refundLabel) {
     rows.push({ label: copy.labels.refund, value: refundLabel, total: true });
+    rows.push({ label: copy.labels.withheld, value: withheldLabel });
   }
 
   const html = renderReservationEmail({
@@ -2006,11 +2146,16 @@ export function buildPartialCancellationEmail(args: {
     `${copy.labels.period}: ${period}`,
     `${copy.labels.duration}: ${stay}`,
     ...(refundLabel ? [`${copy.labels.refund}: ${refundLabel}`] : []),
+    ...(refundLabel ? [`${copy.labels.withheld}: ${withheldLabel}`] : []),
     '',
     `${copy.cta}: ${args.manageUrl}`,
     ...(refundLabel
-      ? ['', copy.refundInfo.title, ...copy.refundInfo.lines,
-        `${copy.refundInfo.phoneLead} ${EMAIL_PHONE_DISPLAY}.`]
+      ? [
+        '',
+        copy.refundInfo.title,
+        ...copy.refundInfo.lines,
+        `${copy.refundInfo.phoneLead} ${EMAIL_PHONE_DISPLAY}.`,
+      ]
       : []),
     '',
     copy.closing,
@@ -2413,7 +2558,8 @@ const CHANGE_COPY: Record<EmailLang, {
     heading: 'Rezervarea ta a fost actualizată',
     greeting: (name) => `Bună, ${name}!`,
     greetingFallback: 'Bună!',
-    intro: 'Am adăugat persoanele solicitate la rezervarea ta. Mai jos găsești detaliile actualizate.',
+    intro:
+      'Am adăugat persoanele solicitate la rezervarea ta. Mai jos găsești detaliile actualizate.',
     labels: {
       checkIn: 'Check-in',
       checkOut: 'Check-out',

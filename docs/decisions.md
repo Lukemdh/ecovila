@@ -3660,6 +3660,125 @@ its plain `groups` id list alongside the new `refunds` array.
 
 ---
 
+### ADR-105 — Withhold a 1.4% bank processing commission from refunds
+
+**Problem.** The owner's request, verbatim: "Can you make so that when we refund someone, we withhold
+1.4% commission from them. So basically we only refund 98.6% of what they paid us. Bank allowed us to
+deduct processing fees." This is a policy number, not an exact pass-through of MAIB's costs. ADR-095
+measured the real cost as approximately 0.7% on the inbound payment plus a flat 20/40 MDL payout tier;
+1.4% therefore under-recovers below roughly 2.900 MDL and over-recovers above it. The owner knowingly
+chose the flat rate because one number can be stated clearly in the Terms and applied consistently,
+rather than exposing guests and staff to the provider's two-part fee schedule.
+
+**One quote, made at refund INTENT.** Every authorization fixes three integer-MDL figures — gross,
+net and withheld — persists them on the refund row, and every executor sends the stored net. No
+executor is allowed to quote again. This is the core invariant because `reconcile-refunds` may retry a
+row for up to 60 days and re-enters `attemptBookingRefund` with the stored amount. If execution
+treated that stored net as a fresh gross basis, each retry would deduct again; the original attempt
+plus three retries would withhold about 5.5%, not 1.4%. The boundary is architectural rather than a
+rule future callers must remember: policy belongs to intent creation, while execution only transports
+the already-authorized amount.
+
+**Rounding favours the guest: `net = ceil(gross * 0.986)`.** The first draft used `round()` and said
+that this could never withhold more than 1.4%. Both reviewers disproved the claim: rounding the net to
+nearest also rounds the residual fee to nearest, and that fee can round up. On a 36 MDL gross refund,
+it withholds 1 MDL, or 2.78%. Taking the ceiling of the net instead floors the withheld fee, so the
+guest always receives at least 98.6%, the withheld amount is never above 1.4%, and the Terms' “cel
+puțin 98,6% / până la 1,4%” is literally true rather than approximately true. The deliberate cost is
+that sufficiently small refunds withhold nothing at all.
+
+**Whole MDL, not bani.** Codex argued for `numeric(12,2)`, which would preserve the percentage more
+closely. Rejected: every money value in this system is integer MDL, and introducing decimals here
+would leak them into the MAIB payload, SMS/email formatters and CRM. Codex also flagged “MAIB rejects
+decimal refunds” as an unverified provider risk. Taking that live-money risk to recover less than 1
+MDL of precision is the wrong trade; guest-favouring whole-MDL rounding keeps the established money
+contract end to end.
+
+**Ships inert.** The rate comes from `ECOVILA_REFUND_COMMISSION_BPS`, defaults to 0 and is capped at
+140. The zero default protects three real rollout windows. The frontend reaches TopHost days after a
+backend deploy, so a live deduction during that gap would take money while the site still promises a
+full refund. All 27 functions deploy sequentially while the 30-minute cron continues to run; at rate
+0, an old executor and a new executor send the same amount despite seeing different schema and shared
+code generations. And rollback is one secret flip rather than another full deploy. “Forgot to turn it
+on” is visible and costs EcoVila money; “turned on before disclosure” silently takes money from guests
+without notice. The safer failure is therefore off.
+
+**Expand first, contract later.** The first migration draft made `gross_amount` `NOT NULL`. That
+would have rejected inserts from the still-deployed old `scheduleBookingRefund`; `reservation-cancel`
+catches that scheduling failure while continuing to cancel the booking, leaving a guest cancelled
+with no refund. The new quote columns are nullable, and all mixed-version checks tolerate null until a
+later contract migration can prove every writer has moved. The same compatibility lesson applies to
+`cancel_reservation_rows`: PostgreSQL keys functions by argument types, so `create or replace` with
+extra defaulted parameters does not replace the old signature. It leaves both overloads callable, and
+the existing eight-key call becomes ambiguous with 42725. The migration must DROP the old function
+before CREATEing the expanded one.
+
+**One staff override covers both cancellation paths.** A single checkbox, off by default, governs
+full cancellation and partial cancellation. The server default remains `withhold: true`, so an old
+cached CRM that does not know the field cannot accidentally grant a full refund. The override exists
+because withholding EcoVila's bank fee is indefensible when EcoVila cannot deliver: overbooking, our
+own operational error, and circumstances outside anyone's control such as force majeure are distinct
+situations, but they share the remedy that the guest is made whole. The choice applies to every
+authorization created by that cancellation and is persisted as the audit trail with rate 0 and policy
+version `adr-105-override`. Codex proposed a mandatory typed override reason. Rejected as friction
+that does not pay for itself in a two-person CRM; the explicit checkbox and persisted policy decision
+answer the operational question without manufacturing low-value prose.
+
+**A typed staff amount is the GROSS basis.** The owner chose that meaning: when staff type 1.000 MDL,
+they approve 1.000 MDL for restitution before commission, not the amount the guest must receive. The
+CRM therefore restates gross, net and withheld as the field changes and names the NET amount on the
+submit button. This extends ADR-104's safety design — “the typed sum is restated back literally” —
+instead of quietly changing the semantics of its most consequential field.
+
+**The adversarial rounds changed the design, not just the tests.** An early quote assertion required
+a complete quote even on ADR-104's already-spent refund slot, breaking the deliberate path that
+reports a manual transfer instead of pretending MAIB can refund twice. Another equality check compared
+audit labels along with the monetary quote, so equivalent money could be rejected because provenance
+text differed. The lesson is to assert the money invariant where money can still move and keep audit
+metadata descriptive, not let a new invariant erase an older terminal state.
+
+The same review caught promises being made before authority existed. Guest preview exposed a refund
+for spent refund slots and uncaptured payments; both must be excluded before showing a number. A
+multi-row quote stamp was not atomic, so a partial write could show the guest 986 MDL and later let an
+executor send 2.179 MDL from an unstamped sibling authorization. The quote and every authorization it
+governs now commit as one database operation. The CRM also hardcoded 1.4%, which would lie throughout
+the intentional rate-0 window; presentation reads the effective quote instead of guessing policy.
+
+Most importantly, this work uncovered and fixed a pre-existing ADR-104 defect. `reconcile-refunds`
+swept every paid add-guests difference after seeing a `maib_refunds` row, because its comment assumed
+such a row could only mean the whole booking had been cancelled. A partial cancellation leaves the
+booking live, so that sweep could refund differences the guest was still using. Refund ownership must
+come from the persisted intent, not be inferred from the mere existence of a booking-level row.
+
+**Concurrency is deliberately scoped.** Claims remain non-exclusive. Only the completion write is
+conditional, so a concurrent late attempt can no longer downgrade a `succeeded` refund and raise a
+false “not finalized” alert after money really moved. A full lease was considered and rejected: a
+naive compare-and-set lease would also prevent the cron from recovering genuinely stuck `processing`
+rows. The chosen guard closes the observed destructive race without turning an executor crash into a
+permanent refund stall.
+
+**Terms describe the approved sum.** Section 12 promises at least 98.6% returned and at most 1.4%
+withheld from “suma aprobată spre restituire”, not “suma achitată”: a staff partial refund applies the
+rate to the amount staff approved, not necessarily the whole captured payment. Section 23 previously
+said the Terms version in force when a booking was made governs that booking, which contradicted
+applying this policy to existing bookings. The owner chose an effective-date carve-out in §12 from 1
+septembrie 2026, with a pointer in §23. That clause changes the economic treatment of existing
+bookings and warrants legal review before publication.
+
+**Deliberately out of scope.** `reservation-cancel` still schedules the refund before cancelling with
+an unguarded UPDATE; that ordering and atomicity remain its own ADR rather than being silently widened
+here. Terms-version consent stamping was also not added. The effective-date carve-out is the chosen
+policy mechanism for this release, not a claim that per-booking consent history now exists.
+
+**Code complete, nothing deployed.** All tests are green — **375 Node / 159 Deno** — but the two
+migrations, the function deploy, the owner's TopHost upload and the
+`ECOVILA_REFUND_COMMISSION_BPS=140` flip all remain outstanding, in that order. The live rollout is
+not complete until one real low-value refund is checked against the maibmerchants statement to confirm
+that MAIB accepts a 98.6% partial refund of a full-value payment. Unit arithmetic and a successful API
+response cannot substitute for that provider-side money probe.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

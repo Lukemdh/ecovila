@@ -408,27 +408,41 @@ Deno.test('assertEligibleForChange enforces online-paid, live, upcoming bookings
   const now = new Date('2026-06-18T12:00:00.000Z');
   // assertEligibleForChange throws synchronously; wrap in async arrows so the
   // throw surfaces as a rejection for assertRejects.
-  await assertRejects(async () => assertEligibleForChange([], now), HttpError, 'not found');
+  await assertRejects(
+    async () => {
+      await Promise.resolve();
+      assertEligibleForChange([], now);
+    },
+    HttpError,
+    'not found',
+  );
 
   await assertRejects(
-    async () => assertEligibleForChange([reservationRow({ payment_type: 'cash' })], now),
+    async () => {
+      await Promise.resolve();
+      assertEligibleForChange([reservationRow({ payment_type: 'cash' })], now);
+    },
     HttpError,
     'online-paid',
   );
 
   await assertRejects(
-    async () =>
-      assertEligibleForChange([reservationRow({ cancelled_at: '2026-06-01T00:00:00Z' })], now),
+    async () => {
+      await Promise.resolve();
+      assertEligibleForChange([reservationRow({ cancelled_at: '2026-06-01T00:00:00Z' })], now);
+    },
     HttpError,
     'online-paid',
   );
 
   await assertRejects(
-    async () =>
+    async () => {
+      await Promise.resolve();
       assertEligibleForChange(
         [reservationRow({ check_in: '2026-05-01', check_out: '2026-05-03' })],
         now,
-      ),
+      );
+    },
     HttpError,
     'ended',
   );
@@ -457,4 +471,104 @@ Deno.test('storedChangeStatus maps stored state and lazy expiry to a public stat
     storedChangeStatus(changeRow({ status: 'pending', expires_at: '2999-01-01T00:00:00Z' })),
     'pending',
   );
+});
+
+Deno.test('refundPaidChanges executes stored nets and only falls back for explicitly legacy rows', async () => {
+  const { refundPaidChanges } = await import('../_shared/reservationChanges.ts');
+  const rows = [
+    {
+      id: 'quoted',
+      booking_group_id: 'grp-1',
+      provider_payment_id: 'provider-quoted',
+      difference_amount: 1000,
+      refund_amount: 986,
+      status: 'paid',
+    },
+    {
+      id: 'legacy',
+      booking_group_id: 'grp-1',
+      provider_payment_id: 'provider-legacy',
+      difference_amount: 500,
+      refund_amount: null,
+      refund_policy_version: 'legacy-full-refund',
+      status: 'paid',
+    },
+    {
+      id: 'unstamped',
+      booking_group_id: 'grp-1',
+      provider_payment_id: 'provider-unstamped',
+      difference_amount: 700,
+      refund_amount: null,
+      refund_policy_version: null,
+      status: 'paid',
+    },
+  ];
+  const updatePayloads: Array<Record<string, unknown>> = [];
+  const client = {
+    from(table: string) {
+      assertEquals(table, 'reservation_changes');
+      let updatePayload: Record<string, unknown> | null = null;
+      const builder = {
+        select() {
+          return builder;
+        },
+        update(payload: Record<string, unknown>) {
+          updatePayload = payload;
+          updatePayloads.push(payload);
+          return builder;
+        },
+        eq() {
+          return builder;
+        },
+        is() {
+          return builder;
+        },
+        gt() {
+          return builder;
+        },
+        then(resolve: (value: unknown) => unknown) {
+          return Promise.resolve(resolve(
+            updatePayload ? { data: null, error: null } : { data: rows, error: null },
+          ));
+        },
+      };
+      return builder;
+    },
+  };
+  const observedAmounts: number[] = [];
+  const fetcher = ((url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href.endsWith('/v2/auth/token')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          ok: true,
+          result: { accessToken: 'token', tokenType: 'Bearer' },
+        })),
+      );
+    }
+    observedAmounts.push(JSON.parse(String(init?.body || '{}')).amount);
+    return Promise.resolve(
+      new Response(JSON.stringify({
+        ok: true,
+        result: { status: 'OK', refundId: `refund-${observedAmounts.length}` },
+      })),
+    );
+  }) as typeof fetch;
+
+  const results = await refundPaidChanges(client as never, 'grp-1', 'test', {
+    fetcher,
+    baseUrl: 'https://api.test',
+    clientId: 'client',
+    clientSecret: 'secret',
+  });
+
+  assertEquals(observedAmounts, [986, 500]);
+  assertEquals(results.map((result) => result.amount), [986, 500, 0]);
+  assertEquals(results.map((result) => result.ok), [true, true, false]);
+  assertEquals(results[2].error, 'Missing stored refund quote; no money was moved.');
+  assertEquals(updatePayloads[0].refund_amount, undefined);
+  assertEquals(updatePayloads[1].refund_amount, 500);
+  assertEquals(updatePayloads[1].refund_withheld, 0);
+  assertEquals(updatePayloads[1].refund_rate_bps, 0);
+  assertEquals(updatePayloads[1].refund_policy_version, 'legacy-full-refund');
 });

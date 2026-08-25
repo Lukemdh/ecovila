@@ -12,6 +12,7 @@
 // confirmation notification. Card and MIA both confirm against MAIB's own
 // records, so a forged callback can never apply a change.
 import { HttpError } from './http.ts';
+import { sendStaffAlert } from './alerts.ts';
 import { getSiteUrl } from './env.ts';
 import { buildManageTokenRow, hashManageToken } from './reservationManage.ts';
 import { fetchHolidays, fetchPricingTiers, getPricing } from './pricingGuard.ts';
@@ -21,7 +22,9 @@ import {
   normalizeMaibMiaPaymentStatus,
   refundMaibPayment,
 } from './maib.ts';
+import type { MaibFetchOptions } from './maib.ts';
 import { interpretMaibRefundResponse } from './refunds.ts';
+import { REFUND_POLICY_VERSION_LEGACY } from './refundPolicy.ts';
 import { sendEmail, sendSms } from './providers.ts';
 import {
   aggregateRoomLabel,
@@ -116,6 +119,10 @@ export type ReservationChangeRow = {
   prev_total: number;
   new_total: number;
   difference_amount: number;
+  refund_amount?: number | null;
+  refund_withheld?: number | null;
+  refund_rate_bps?: number | null;
+  refund_policy_version?: string | null;
   payment_rail?: string | null;
   pay_id?: string | null;
   provider_payment_id?: string | null;
@@ -553,9 +560,12 @@ export async function refundPaidChanges(
   client: SupabaseClient,
   bookingGroupId: string,
   reason: string,
+  providerOptions: MaibFetchOptions = {},
 ): Promise<ChangeRefundResult[]> {
   const { data, error } = await table<ReservationChangeRow[]>(client, 'reservation_changes')
-    .select('id, provider_payment_id, difference_amount, status')
+    .select(
+      'id, provider_payment_id, difference_amount, refund_amount, refund_policy_version, status',
+    )
     .eq('booking_group_id', bookingGroupId)
     .eq('status', 'paid')
     .is('refunded_at', null)
@@ -567,7 +577,28 @@ export async function refundPaidChanges(
 
   for (const change of data || []) {
     const providerPayId = change.provider_payment_id;
-    const amount = Number(change.difference_amount || 0);
+    // The commission decision belongs to the cancellation intent. Executors
+    // only consume its stored net. NULL is ambiguous after a failed multi-row
+    // writer, so gross fallback is allowed solely when the migration explicitly
+    // branded the row legacy; every other NULL stops before the provider call.
+    const missingStoredNet = change.refund_amount === null || change.refund_amount === undefined;
+    if (missingStoredNet && change.refund_policy_version !== REFUND_POLICY_VERSION_LEGACY) {
+      const message = 'Missing stored refund quote; no money was moved.';
+      console.error('Unstamped change refund blocked — staff intervention required', {
+        changeId: change.id,
+        bookingGroupId,
+      });
+      await sendStaffAlert('Restituire diferență fără cotație — transfer blocat', [
+        'O autorizare add-guests aparține unei anulări, dar nu are suma netă persistată.',
+        `Booking group: ${bookingGroupId}`,
+        `Change ID: ${change.id}`,
+        `Diferență brută: ${change.difference_amount ?? '?'} MDL`,
+        'Nicio sumă nu a fost trimisă la MAIB. Verifică intentul și transferă manual dacă este necesar.',
+      ]).catch((alertError) => console.error('Missing change quote alert failed', alertError));
+      results.push({ changeId: change.id, amount: 0, refundId: null, ok: false, error: message });
+      continue;
+    }
+    const amount = Number(missingStoredNet ? change.difference_amount : change.refund_amount);
     if (!providerPayId || !(amount > 0)) {
       // Free applies have no payment to reverse; nothing to refund.
       continue;
@@ -575,7 +606,10 @@ export async function refundPaidChanges(
 
     let refund: Record<string, unknown>;
     try {
-      refund = (await refundMaibPayment(providerPayId, amount, reason)) as Record<string, unknown>;
+      refund = (await refundMaibPayment(providerPayId, amount, reason, providerOptions)) as Record<
+        string,
+        unknown
+      >;
     } catch (refundError) {
       const message = refundError instanceof Error ? refundError.message : 'Refund failed.';
       console.error('Change difference refund failed — left for reconcile-refunds', {
@@ -607,8 +641,25 @@ export async function refundPaidChanges(
     }
 
     const now = new Date().toISOString();
+    const legacyQuote = missingStoredNet
+      ? {
+        // Expand-only crossover: an old function may have produced this paid
+        // row after the migration backfill. Persist the factual amount this
+        // executor just returned so reporting never loses the successful money.
+        refund_amount: amount,
+        refund_withheld: 0,
+        refund_rate_bps: 0,
+        refund_policy_version: REFUND_POLICY_VERSION_LEGACY,
+      }
+      : {};
     const { error: updateError } = await table(client, 'reservation_changes')
-      .update({ status: 'refunded', refunded_at: now, refund_payload: refund, updated_at: now })
+      .update({
+        status: 'refunded',
+        refunded_at: now,
+        refund_payload: refund,
+        updated_at: now,
+        ...legacyQuote,
+      })
       .eq('id', change.id)
       .is('refunded_at', null);
 

@@ -150,8 +150,11 @@ function createFinanceDocument() {
   register('[data-finance-booked-list]', 'div');
   register('[data-finance-booked-empty]', 'p');
   register('[data-finance-cancelled-count]', 'strong');
-  register('[data-finance-commission-lost]', 'strong');
+  register('[data-finance-refund-gross]', 'strong');
+  register('[data-finance-withheld-commission]', 'strong');
   register('[data-finance-refunded-total]', 'strong');
+  register('[data-finance-bank-fees]', 'strong');
+  register('[data-finance-net-cost]', 'strong');
   register('[data-finance-cancel-count]', 'strong');
   register('[data-finance-cancel-list]', 'div');
   register('[data-finance-cancel-empty]', 'p');
@@ -192,6 +195,48 @@ function allMigrations() {
 }
 
 describe('EcoVila Step 9 CRM', () => {
+  it('reads the active refund rate from the staff backend and never invents one in the browser', () => {
+    const dashboard = read('admin/js/crm-dashboard.js');
+    const helpers = read('js/supabase.js');
+    const scheduled = read('supabase/functions/scheduled-refunds/index.ts');
+
+    assert.doesNotMatch(dashboard, /REFUND_COMMISSION_RATE\s*=\s*0\.014/);
+    assert.match(dashboard, /getActiveRefundCommissionBps\?\.\(\)/);
+    assert.match(dashboard, /fetchScheduledRefunds\(context\?\.client\)\.then/);
+    assert.match(helpers, /activeCommissionBps/);
+    assert.match(helpers, /getActiveRefundCommissionBps/);
+    assert.match(scheduled, /activeCommissionBps: activeCommissionBps\(\)/);
+  });
+
+  it('renders the scheduled whole-booking refund total, gross basis and retained commission', () => {
+    const finance = read('admin/js/crm-finance.js');
+    assert.match(finance, /refund\.refundTotal\?\.net/);
+    assert.match(finance, /refund\.refundTotal\?\.gross/);
+    assert.match(finance, /refund\.refundTotal\?\.withheld/);
+    assert.match(finance, /toate autorizările de plată/i);
+  });
+
+  it('surfaces unresolved difference authorizations as a pending refund outcome', () => {
+    const dashboard = read('admin/js/crm-dashboard.js');
+    const maibRefund = read('supabase/functions/maib-refund/index.ts');
+    const scheduled = read('supabase/functions/scheduled-refunds/index.ts');
+
+    assert.match(maibRefund, /differenceRefunds\.some\(.*!.*\.ok/s);
+    assert.match(scheduled, /differenceRefunds\.some\(.*!.*\.ok/s);
+    assert.match(maibRefund, /partial:\s*differencesPending/);
+    assert.match(scheduled, /partial:\s*differencesPending/);
+    assert.match(dashboard, /refundResult\?\.partial/);
+  });
+
+  it('prepares the main and every difference quote in one database transaction', () => {
+    const intents = read('supabase/functions/_shared/refundIntents.ts');
+    const migrations = allMigrations();
+    assert.match(intents, /rpc\('prepare_full_refund_intent'/);
+    assert.match(migrations, /create function public\.prepare_full_refund_intent/);
+    assert.match(migrations, /for update/);
+    assert.match(migrations, /reservation_changes/);
+  });
+
   it('creates the admin login and dashboard shell with the approved tabs', () => {
     assert.ok(exists('admin/index.html'));
     assert.ok(exists('admin/dashboard.html'));
@@ -274,8 +319,11 @@ describe('EcoVila Step 9 CRM', () => {
       'data-finance-booked-empty',
       'data-finance-cancellations',
       'data-finance-cancelled-count',
-      'data-finance-commission-lost',
+      'data-finance-refund-gross',
+      'data-finance-withheld-commission',
       'data-finance-refunded-total',
+      'data-finance-bank-fees',
+      'data-finance-net-cost',
       'data-finance-cancel-count',
       'data-finance-cancel-list',
       'data-finance-cancel-empty',
@@ -437,7 +485,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.roomTypeTotals.hotel, 5000);
   });
 
-  it('summarizes cancellations by count, refunded total, and tiered refund-fee commission lost', () => {
+  it('summarizes cancellation gross, retained commission, net refund, bank fees and net cost', () => {
     const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
     const summary = finance.summarizeCancellationRows({
       // "refunded" is the real refund record (server truth), NOT cancellation_reason:
@@ -530,11 +578,14 @@ describe('EcoVila Step 9 CRM', () => {
     // refund record count — kept-money, cash and office cancellations are out,
     // and never-paid abandoned holds were never in.
     assert.equal(summary.count, 2);
-    // Only the two refunded online bookings feed the refunded + commission totals.
+    // Legacy Set callers have no retained-commission quote, so gross and net match.
+    assert.equal(summary.grossTotal, 7500);
+    assert.equal(summary.withheldCommission, 0);
     assert.equal(summary.refundedTotal, 7500);
     // 0.7% inbound on 7500 = 52.5, plus a flat 20 MDL payout fee on each of the two
     // sub-10k refunds (5000 + 2500) = 40 -> round(92.5) = 93.
-    assert.equal(summary.commissionLost, 93);
+    assert.equal(summary.bankFees, 93);
+    assert.equal(summary.netCost, 93);
   });
 
   it('groups a multi-villa cancellation once and sums the whole-booking refund', () => {
@@ -591,7 +642,8 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.count, 1);
     assert.equal(summary.refundedTotal, 8000);
     // 0.7% inbound on the 8000 group + a flat 20 MDL payout fee (sub-10k) = 56 + 20.
-    assert.equal(summary.commissionLost, 76);
+    assert.equal(summary.bankFees, 76);
+    assert.equal(summary.netCost, 76);
   });
 
   it('applies the tiered flat refund payout fee: 20 MDL under 10k, 40 MDL at/over 10k', () => {
@@ -615,21 +667,54 @@ describe('EcoVila Step 9 CRM', () => {
       rows: [refundedRow('big', 12200)],
       refundedGroupIds: new Set(['big']),
     });
-    assert.equal(big.commissionLost, 125); // round(0.007 * 12200 + 40)
+    assert.equal(big.bankFees, 125); // round(0.007 * 12200 + 40)
+    assert.equal(big.netCost, 125);
 
     // Exactly at the 10k threshold still takes the 40 MDL tier.
     const edge = finance.summarizeCancellationRows({
       rows: [refundedRow('edge', 10000)],
       refundedGroupIds: new Set(['edge']),
     });
-    assert.equal(edge.commissionLost, 110); // round(0.007 * 10000 + 40)
+    assert.equal(edge.bankFees, 110); // round(0.007 * 10000 + 40)
 
     // Under 10k takes the 20 MDL tier.
     const small = finance.summarizeCancellationRows({
       rows: [refundedRow('small', 3000)],
       refundedGroupIds: new Set(['small']),
     });
-    assert.equal(small.commissionLost, 41); // round(0.007 * 3000 + 20)
+    assert.equal(small.bankFees, 41); // round(0.007 * 3000 + 20)
+  });
+
+  it('subtracts retained commission from bank fees and preserves a negative net cost', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+    const dashboard = read('admin/dashboard.html');
+    const summary = finance.summarizeCancellationRows({
+      rows: [{
+        id: 'negative-cost',
+        booking_group_id: 'negative-cost',
+        check_in: '2026-07-20',
+        check_out: '2026-07-22',
+        total_price: 12200,
+        payment_type: 'card',
+        payment_status: 'cancelled',
+        paid_at: '2026-07-01T10:00:00.000Z',
+        cancelled_at: '2026-07-08T09:00:00.000Z',
+        cancellation_reason: 'guest_request_refunded',
+        rooms: { number: 1, type: 'small' },
+      }],
+      refundedGroupIds: new Map([['negative-cost', {
+        amount: 12030,
+        grossAmount: 12200,
+        withheldCommission: 170,
+      }]]),
+    });
+
+    assert.equal(summary.grossTotal, 12200);
+    assert.equal(summary.withheldCommission, 170);
+    assert.equal(summary.refundedTotal, 12030);
+    assert.equal(summary.bankFees, 125);
+    assert.equal(summary.netCost, -45);
+    assert.match(dashboard, /Cost net EcoVila \(\+ cost \/ − recuperare\)/);
   });
 
   it('adds refunded add-guests transfers to the refunded total, each with its own payout fee', () => {
@@ -671,7 +756,8 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(summary.refundedTotal, 10500);
     // 0.7% inbound on 10500 = 73.5, plus a flat 20 MDL payout fee on EACH
     // sub-10k transfer (9000 main + 1500 difference) -> round(113.5) = 114.
-    assert.equal(summary.commissionLost, 114);
+    assert.equal(summary.bankFees, 114);
+    assert.equal(summary.netCost, 114);
 
     // Without a real refund record the change amounts contribute nothing.
     const kept = finance.summarizeCancellationRows({
@@ -681,7 +767,8 @@ describe('EcoVila Step 9 CRM', () => {
     });
     assert.equal(kept.count, 0);
     assert.equal(kept.refundedTotal, 0);
-    assert.equal(kept.commissionLost, 0);
+    assert.equal(kept.bankFees, 0);
+    assert.equal(kept.netCost, 0);
   });
 
   it('marks refunded by the real refund record, not cancellation_reason', () => {
@@ -1326,7 +1413,7 @@ describe('EcoVila Step 9 CRM', () => {
     assert.equal(totalField.textContent, 'Preț total: 8600 MDL');
   });
 
-  it('asks for two Romanian confirmations and cancels BEFORE refunding paid MAIB bookings', async () => {
+  it('passes the full-refund override and warns when a paid MAIB refund stays pending', async () => {
     const elements = new Map();
     const dialog = createFakeElement('dialog');
     dialog.showModal = () => {};
@@ -1343,6 +1430,7 @@ describe('EcoVila Step 9 CRM', () => {
       '[data-edit-total]': createFakeElement('strong'),
       '[data-send-payment-confirmation]': createFakeElement('button'),
       '[data-delete-reservation]': createFakeElement('button'),
+      '[data-refund-full-override]': createFakeElement('input'),
     };
     dialog.querySelector = (selector) => fields[selector] || null;
     elements.set('[data-reservation-dialog]', dialog);
@@ -1370,7 +1458,11 @@ describe('EcoVila Step 9 CRM', () => {
       EcoVilaSupabase: {
         async refundMaibPaymentRequest(_client, payload) {
           operations.push(['refund', payload]);
-          return { refunded: true };
+          return {
+            ok: false,
+            pending: true,
+            message: 'Restituirea nu s-a confirmat încă — verifică soldul MAIB.',
+          };
         },
         async updateReservationGroup(_client, groupId, payload) {
           operations.push(['cancel-group', groupId, payload.payment_status]);
@@ -1386,7 +1478,8 @@ describe('EcoVila Step 9 CRM', () => {
         },
       },
     });
-    const context = { client: {}, setAlert() {} };
+    let alert = '';
+    const context = { client: {}, setAlert(message) { alert = message; } };
     EcoVilaCrmDashboard.initStateForTests({
       context,
       reload: async () => {
@@ -1409,6 +1502,8 @@ describe('EcoVila Step 9 CRM', () => {
       payment_status: 'paid',
       total_price: 4200,
     });
+    assert.equal(fields['[data-refund-full-override]'].checked, false, 'override defaults to withhold');
+    fields['[data-refund-full-override]'].checked = true;
 
     await fields['[data-delete-reservation]'].onclick();
 
@@ -1424,6 +1519,8 @@ describe('EcoVila Step 9 CRM', () => {
     const refund = operations.find((item) => item[0] === 'refund');
     assert.equal(refund[1].bookingGroupId, 'group-paid-card');
     assert.equal(refund[1].reason, 'crm_cancellation');
+    assert.equal(refund[1].withholdCommission, false);
+    assert.equal(alert, 'Restituirea nu s-a confirmat încă — verifică soldul MAIB.');
     const notify = operations.find((item) => item[0] === 'notify');
     assert.equal(notify[1].bookingGroupId, 'group-paid-card');
     assert.equal(notify[1].reservationId, 'reservation-paid-card');
@@ -3884,11 +3981,191 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
   });
 
   it('states what the refund does to the money before staff can confirm it', () => {
+    const dashboard = read('admin/dashboard.html');
     const dashboardJs = read('admin/js/crm-dashboard.js');
     // The one-refund-per-payment consequence has to be on screen, in figures,
     // because the remainder can never be returned through the system again.
     assert.match(dashboardJs, /Restul de \$\{formatMDL\(rest\)\} nu va mai putea fi restituit prin MAIB/);
     assert.match(dashboardJs, /const rest = Math\.max\(0, Math\.round\(context\.paidTotal\) - amount\)/);
+    assert.match(dashboard, /Sumă de reversat \(bază brută, MDL\)/);
+    assert.match(dashboardJs, /getActiveRefundCommissionBps/);
+    assert.match(dashboardJs, /Math\.ceil\(amount \* \(1 - activeRate\)\)/);
+    assert.match(dashboardJs, /comision reținut \$\{formatMDL\(withheld\)\}/);
+    assert.match(dashboardJs, /clientul primește \$\{formatMDL\(net\)\}/);
+    assert.match(dashboardJs, /Anulează și restituie \$\{formatMDL\(net\)\}/);
+    assert.match(dashboardJs, /restituire integrală, fără reținerea comisionului/);
+  });
+
+  it('uses one unchecked override for both full and partial cancellation requests', () => {
+    const dashboard = read('admin/dashboard.html');
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    const dialogMarkup = dashboard.slice(
+      dashboard.indexOf('data-reservation-dialog'),
+      dashboard.indexOf('data-swap-dialog'),
+    );
+
+    assert.equal((dialogMarkup.match(/data-refund-full-override/g) || []).length, 1);
+    assert.doesNotMatch(dialogMarkup, /data-refund-full-override[^>]*checked/);
+    assert.match(
+      dashboardJs,
+      /partialCancelReservation[\s\S]*?withholdCommission: !context\.refundOverride\?\.checked/,
+    );
+    assert.match(
+      dashboardJs,
+      /refundMaibPaymentRequest[\s\S]*?withholdCommission: !qs\('\[data-refund-full-override\]', dialog\)\?\.checked/,
+    );
+  });
+
+  it('previews gross, retained and net figures and sends the partial override', async () => {
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.close = () => {};
+    const section = createFakeElement('section');
+    const list = createFakeElement('ul');
+    const amount = createFakeElement('input');
+    const confirm = createFakeElement('input');
+    const hint = createFakeElement('p');
+    const error = createFakeElement('p');
+    const submit = createFakeElement('button');
+    const override = createFakeElement('input');
+    const partialCheckboxes = [];
+    const sectionFields = {
+      '[data-partial-body]': createFakeElement('div'),
+      '[data-partial-toggle]': createFakeElement('button'),
+      '[data-partial-villas]': list,
+      '[data-partial-amount]': amount,
+      '[data-partial-confirm]': confirm,
+      '[data-partial-error]': error,
+      '[data-partial-warning]': createFakeElement('p'),
+      '[data-partial-submit]': submit,
+      '[data-partial-selected]': createFakeElement('p'),
+      '[data-partial-hint]': hint,
+    };
+    section.querySelector = (selector) => sectionFields[selector] || null;
+    section.querySelectorAll = (selector) => {
+      if (selector === '[data-partial-villa]') return partialCheckboxes;
+      if (selector === 'input') return [amount, confirm, ...partialCheckboxes];
+      return [];
+    };
+    list.appendChild = (item) => {
+      list.children.push(item);
+      partialCheckboxes.push(item.children[0].children[0]);
+      return item;
+    };
+
+    const fields = {
+      '[data-edit-check-in]': createFakeElement('input'),
+      '[data-edit-check-out]': createFakeElement('input'),
+      '[data-edit-adults]': createFakeElement('input'),
+      '[data-edit-kids-ages]': createFakeElement('input'),
+      '[data-edit-name]': createFakeElement('input'),
+      '[data-edit-phone]': createFakeElement('input'),
+      '[data-edit-notes]': createFakeElement('textarea'),
+      '[data-edit-payment]': createFakeElement('p'),
+      '[data-edit-total]': createFakeElement('strong'),
+      '[data-send-payment-confirmation]': createFakeElement('button'),
+      '[data-delete-reservation]': createFakeElement('button'),
+      '[data-refund-full-override]': override,
+      '[data-partial-cancel]': section,
+    };
+    dialog.querySelector = (selector) => fields[selector] || null;
+    const requests = [];
+    let activeRateBps = 140;
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js');
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: {
+        createElement: createFakeElement,
+        querySelector(selector) {
+          return selector === '[data-reservation-dialog]' ? dialog : null;
+        },
+        querySelectorAll() {
+          return [];
+        },
+        addEventListener() {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: {
+        formatMDL(value) {
+          return `${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} MDL`;
+        },
+      },
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        getActiveRefundCommissionBps() {
+          return activeRateBps;
+        },
+        async partialCancelReservation(_client, payload) {
+          requests.push(payload);
+          return {
+            ok: true,
+            refund: { ok: true, amount: payload.refundAmount },
+            notificationResults: [{ sent: true }],
+          };
+        },
+      },
+    });
+    const reservation = {
+      id: 'villa-partial',
+      booking_group_id: 'group-partial',
+      check_in: '2026-09-10',
+      check_out: '2026-09-12',
+      adults: 2,
+      kids_ages: [],
+      guest_first_name: 'Ana',
+      guest_last_name: 'Lungu',
+      guest_phone: '+37368983660',
+      payment_type: 'card',
+      payment_status: 'paid',
+      total_price: 12200,
+      rooms: { number: 1, type: 'small' },
+    };
+    EcoVilaCrmDashboard.initStateForTests({
+      context: { client: {}, setAlert() {} },
+      reservations: [reservation],
+      reload: async () => {},
+    });
+    EcoVilaCrmDashboard.openReservation(reservation);
+    partialCheckboxes[0].checked = true;
+    confirm.value = 'anulez';
+    amount.value = '3500';
+    amount.oninput();
+
+    assert.equal(
+      hint.textContent,
+      'Restitui 3 500 MDL din 12 200 MDL încasați · comision reținut 49 MDL · clientul primește 3 451 MDL. Restul de 8 700 MDL nu va mai putea fi restituit prin MAIB.',
+    );
+    assert.equal(submit.textContent, 'Anulează și restituie 3 451 MDL');
+
+    activeRateBps = 0;
+    override.checked = false;
+    amount.oninput();
+    assert.equal(
+      hint.textContent,
+      'Restitui 3 500 MDL din 12 200 MDL încasați · clientul primește 3 500 MDL. Restul de 8 700 MDL nu va mai putea fi restituit prin MAIB.',
+    );
+    assert.equal(hint.textContent.includes('comision'), false);
+    activeRateBps = null;
+    amount.oninput();
+    assert.equal(hint.textContent.includes('comision'), false);
+    activeRateBps = 140;
+
+    amount.value = '3500.5';
+    amount.oninput();
+    assert.equal(submit.disabled, true);
+    await submit.onclick();
+    assert.equal(error.textContent, 'Suma de reversat trebuie să fie un număr întreg pozitiv (sau lasă câmpul gol).');
+    assert.equal(requests.length, 0);
+
+    amount.value = '3500';
+    override.checked = true;
+    override.onchange();
+    assert.equal(
+      hint.textContent,
+      'Restitui 3 500 MDL din 12 200 MDL încasați · restituire integrală, fără reținerea comisionului · clientul primește 3 500 MDL. Restul de 8 700 MDL nu va mai putea fi restituit prin MAIB.',
+    );
+    assert.equal(submit.textContent, 'Anulează și restituie 3 500 MDL');
+    await submit.onclick();
+    assert.equal(requests[0].withholdCommission, false);
   });
 
   it('cancels all the selected villas or none, inside one transaction', () => {
@@ -3960,11 +4237,12 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     const cancel = read('supabase/functions/reservation-cancel/index.ts');
     // scheduleBookingRefund hands back a terminal row untouched; reporting
     // "scheduled" then is a promise no cron will keep.
+    assert.match(cancel, /prepareFullRefundIntent/);
     assert.match(
       cancel,
-      /const spent = scheduled\?\.status === 'succeeded' \|\| scheduled\?\.status === 'cancelled'/,
+      /const spent = !intent\.refundScheduled/,
     );
-    assert.match(cancel, /refundScheduled = !spent/);
+    assert.match(cancel, /refundScheduled = intent\.refundScheduled/);
     assert.match(cancel, /cancellation_reason: refundScheduled \? 'guest_request_refunded'/);
     // And staff are told, because the remainder needs a manual transfer.
     assert.match(cancel, /if \(spent\) \{[\s\S]*?alertRefundProblem/);
@@ -4048,7 +4326,8 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     assert.equal(withAmount.refundedTotal, 850);
     // 0.7% of 850 + the 20 MDL sub-10k payout fee, i.e. the fee follows the sum
     // actually transferred rather than the stay price.
-    assert.equal(withAmount.commissionLost, 26);
+    assert.equal(withAmount.bankFees, 26);
+    assert.equal(withAmount.netCost, 26);
 
     // No recorded amount (an out-of-band reconciliation): keep the old estimate.
     const withoutAmount = finance.summarizeCancellationRows({
@@ -4102,15 +4381,52 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     assert.equal(cancelled.totalPrice, 3000);
   });
 
-  it('exposes the partial-cancel call and the refunded amounts through the shared client', () => {
+  it('exposes the partial-cancel call and complete refunded quotes through the shared client', () => {
     const supabase = read('js/supabase.js');
     assert.match(supabase, /async function partialCancelReservation/);
     assert.match(supabase, /invoke\('reservation-partial-cancel'/);
     assert.match(supabase, /partialCancelReservation,/);
     // refunded-groups now carries the real amount; a legacy string entry from an
     // older function build must still resolve to a usable row.
-    assert.match(supabase, /\{ bookingGroupId: entry, amount: null \}/);
+    assert.match(supabase, /grossAmount: null/);
+    assert.match(supabase, /withheldCommission: 0/);
     assert.match(supabase, /Array\.isArray\(result\.data\?\.refunds\)/);
+    assert.match(supabase, /refund_amount, refund_withheld/);
+  });
+
+  it('omits an undefined commission choice but forwards explicit false to both functions', async () => {
+    const helpers = require('../js/supabase.js');
+    const calls = [];
+    const client = {
+      functions: {
+        async invoke(name, options) {
+          calls.push({ name, body: options.body });
+          return { data: { ok: true }, error: null };
+        },
+      },
+    };
+
+    await helpers.refundMaibPaymentRequest(client, { bookingGroupId: 'full-default' });
+    await helpers.refundMaibPaymentRequest(client, {
+      bookingGroupId: 'full-override',
+      withholdCommission: false,
+    });
+    await helpers.partialCancelReservation(client, {
+      bookingGroupId: 'partial-default',
+      reservationIds: ['villa-1'],
+      refundAmount: 3500,
+    });
+    await helpers.partialCancelReservation(client, {
+      bookingGroupId: 'partial-override',
+      reservationIds: ['villa-2'],
+      refundAmount: 3500,
+      withholdCommission: false,
+    });
+
+    assert.equal(Object.hasOwn(calls[0].body, 'withholdCommission'), false);
+    assert.equal(calls[1].body.withholdCommission, false);
+    assert.equal(Object.hasOwn(calls[2].body, 'withholdCommission'), false);
+    assert.equal(calls[3].body.withholdCommission, false);
   });
 
   it('keeps refunded-groups readable by a CRM bundle the owner has not uploaded yet', () => {
@@ -4122,11 +4438,13 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     assert.match(fn, /groups: refunds\.map\(\(entry\) => entry\.bookingGroupId\), refunds/);
   });
 
-  it('treats a typed 0 as "no refund" but refuses an amount that is not a number', () => {
+  it('treats a typed 0 as "no refund" but rejects a typed 3500.5 as non-integer', () => {
     const dashboardJs = read('admin/js/crm-dashboard.js');
     // A number input reports garbage ("12e-") as an EMPTY value, which would
     // otherwise read as "no refund" and cancel villas while returning nothing.
     assert.match(dashboardJs, /if \(field\.validity\?\.badInput\) \{\s*return NaN;/);
+    assert.match(dashboardJs, /!Number\.isInteger\(amount\)/);
+    assert.match(dashboardJs, /Suma de reversat trebuie să fie un număr întreg pozitiv/);
     assert.match(dashboardJs, /return amount > 0 \? amount : null;/);
     // NaN is the only thing that blocks the button; null (no refund) is allowed.
     assert.match(
@@ -4209,8 +4527,14 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     const fn = read('supabase/functions/reservation-partial-cancel/index.ts');
     // Ticking all the villas is a full cancellation that still returned a
     // hand-typed sum; the ordinary cancellation copy had no refund line.
-    assert.match(notifications, /refundAmount\?: number \| null;\s*\n\s*siteUrl: string;/);
-    assert.match(fn, /refundAmount: input\.refundAmount,\s*\n\s*siteUrl,/);
+    assert.match(
+      notifications,
+      /refundAmount\?: number \| null;\s*\n\s*withheldCommission\?: number \| null;/,
+    );
+    assert.match(
+      fn,
+      /refundAmount: input\.refundQuote\?\.net,\s*\n\s*withheldCommission: input\.refundQuote\?\.withheld/,
+    );
   });
 
   it('stops calling a still-live booking "refunded" on the guest manage page', () => {

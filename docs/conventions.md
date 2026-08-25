@@ -79,6 +79,8 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   marking anything paid. `_shared/pricing.js` must stay byte-identical to
   `js/pricing.js` — re-copy after any pricing change (`tests/pricing-guard.test.mjs`
   enforces this).
+- Refund amounts are integer MDL; `_shared/refundPolicy.ts` computes the quote once at intent, it is
+  persisted, and executors send the stored net amount without recomputing it.
 - Holidays are recurring month-day rules: fetch the whole `holidays` table; never
   filter it by a date range (client or server).
   Pending cash holds may be cancelled through the manage-token confirmation flow; paid

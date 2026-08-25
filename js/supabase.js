@@ -290,14 +290,17 @@
       throw new Error('Supabase Edge Functions are not available on this client.');
     }
 
-    const result = await client.functions.invoke('maib-refund', {
-      body: {
-        payId: input?.payId || '',
-        bookingGroupId: input?.bookingGroupId || '',
-        amount: input?.amount ?? null,
-        reason: input?.reason || 'crm_cancellation',
-      },
-    });
+    const body = {
+      payId: input?.payId || '',
+      bookingGroupId: input?.bookingGroupId || '',
+      amount: input?.amount ?? null,
+      reason: input?.reason || 'crm_cancellation',
+    };
+    if (input?.withholdCommission !== undefined) {
+      body.withholdCommission = input.withholdCommission;
+    }
+
+    const result = await client.functions.invoke('maib-refund', { body });
 
     if (result.error) {
       throw decorateInvokeError(result.error);
@@ -309,19 +312,34 @@
   // Refund cooldown controls (ADR-096). List the guest refunds still cooling down
   // and let staff cancel or release-early one during the 60h window. Diana-only,
   // enforced server-side by the scheduled-refunds function.
+  let activeRefundCommissionBps = null;
+
+  function getActiveRefundCommissionBps() {
+    return activeRefundCommissionBps;
+  }
+
   async function fetchScheduledRefunds(client) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
     }
 
-    const result = await client.functions.invoke('scheduled-refunds', {
-      body: { action: 'list' },
-    });
+    let result;
+    try {
+      result = await client.functions.invoke('scheduled-refunds', {
+        body: { action: 'list' },
+      });
+    } catch (error) {
+      activeRefundCommissionBps = null;
+      throw error;
+    }
 
     if (result.error) {
+      activeRefundCommissionBps = null;
       throw decorateInvokeError(result.error);
     }
 
+    const rate = Number(result.data?.activeCommissionBps);
+    activeRefundCommissionBps = Number.isInteger(rate) && rate >= 0 ? rate : null;
     return Array.isArray(result.data?.refunds) ? result.data.refunds : [];
   }
 
@@ -329,12 +347,10 @@
   // truth the Finance cancellations view uses instead of the unreliable
   // cancellation_reason string. Diana-only, service-role server-side.
   //
-  // Each entry is { bookingGroupId, amount }: `amount` is what the provider
-  // actually moved, which since ADR-104 need not be the full price of the
-  // cancelled villas (staff type the sum for a partial refund). A null amount
-  // means the group has no refund record to read — Finance falls back to its
-  // own estimate. Legacy string entries are tolerated so a browser holding an
-  // old bundle against a new function keeps working.
+  // Each entry carries the gross basis, retained commission and net amount the
+  // provider moved. A null amount means the group has no refund record to read —
+  // Finance falls back to its own estimate. Legacy string entries are tolerated
+  // so a browser holding an old bundle against a new function keeps working.
   async function fetchRefundedGroups(client) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -358,14 +374,29 @@
     return entries
       .map((entry) => {
         if (typeof entry === 'string') {
-          return { bookingGroupId: entry, amount: null };
+          return {
+            bookingGroupId: entry,
+            amount: null,
+            grossAmount: null,
+            withheldCommission: 0,
+          };
         }
         const bookingGroupId = String(entry?.bookingGroupId || '');
         if (!bookingGroupId) {
           return null;
         }
         const amount = Number(entry?.amount);
-        return { bookingGroupId, amount: Number.isFinite(amount) && amount > 0 ? amount : null };
+        const grossAmount = Number(entry?.grossAmount);
+        const withheldCommission = Number(entry?.withheldCommission);
+        return {
+          bookingGroupId,
+          amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+          grossAmount: Number.isFinite(grossAmount) && grossAmount > 0 ? grossAmount : null,
+          withheldCommission:
+            Number.isFinite(withheldCommission) && withheldCommission > 0
+              ? withheldCommission
+              : 0,
+        };
       })
       .filter(Boolean);
   }
@@ -379,13 +410,16 @@
       throw new Error('Supabase Edge Functions are not available on this client.');
     }
 
-    const result = await client.functions.invoke('reservation-partial-cancel', {
-      body: {
-        bookingGroupId: input?.bookingGroupId || '',
-        reservationIds: Array.isArray(input?.reservationIds) ? input.reservationIds : [],
-        refundAmount: input?.refundAmount ?? null,
-      },
-    });
+    const body = {
+      bookingGroupId: input?.bookingGroupId || '',
+      reservationIds: Array.isArray(input?.reservationIds) ? input.reservationIds : [],
+      refundAmount: input?.refundAmount ?? null,
+    };
+    if (input?.withholdCommission !== undefined) {
+      body.withholdCommission = input.withholdCommission;
+    }
+
+    const result = await client.functions.invoke('reservation-partial-cancel', { body });
 
     if (result.error) {
       throw decorateInvokeError(result.error);
@@ -408,7 +442,7 @@
     const buildQuery = () =>
       client
         .from('reservation_changes')
-        .select('id, booking_group_id, difference_amount')
+        .select('id, booking_group_id, difference_amount, refund_amount, refund_withheld')
         .eq('status', 'refunded')
         .gt('difference_amount', 0)
         .in('booking_group_id', ids)
@@ -1416,6 +1450,7 @@
     fetchMiaPaymentStatus,
     refundMaibPaymentRequest,
     fetchScheduledRefunds,
+    getActiveRefundCommissionBps,
     fetchRefundedGroups,
     fetchRefundedChangeAmounts,
     controlScheduledRefund,

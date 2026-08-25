@@ -25,6 +25,7 @@ import {
   requireStaffRole,
 } from '../_shared/http.ts';
 import { alertRefundProblem, attemptBookingRefund, findRefundRow } from '../_shared/refunds.ts';
+import { quoteRefund, type RefundQuote } from '../_shared/refundPolicy.ts';
 import { supersedeOpenChanges } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import {
@@ -129,6 +130,13 @@ Deno.serve(async (request) => {
     const bookingGroupId = String(body?.bookingGroupId || '').trim();
     const reservationIds = normalizeIds(body?.reservationIds);
     const refundAmount = normalizeAmount(body?.refundAmount);
+    if (
+      body?.withholdCommission !== undefined &&
+      typeof body.withholdCommission !== 'boolean'
+    ) {
+      throw new HttpError(400, 'withholdCommission must be a boolean.');
+    }
+    const withholdCommission = body?.withholdCommission !== false;
 
     if (!UUID_PATTERN.test(bookingGroupId)) {
       throw new HttpError(400, 'bookingGroupId is required.');
@@ -140,7 +148,7 @@ Deno.serve(async (request) => {
       throw new HttpError(400, 'Selecție invalidă.');
     }
     if (refundAmount !== null && !(refundAmount > 0)) {
-      throw new HttpError(400, 'Suma de restituit trebuie să fie un număr pozitiv.');
+      throw new HttpError(400, 'Suma de restituit trebuie să fie un număr întreg pozitiv.');
     }
 
     const client = createServiceClient();
@@ -180,6 +188,9 @@ Deno.serve(async (request) => {
     // Refund preflight BEFORE anything is cancelled: a refund that can never
     // execute must not leave villas cancelled behind a "success" toast.
     let payment: MaibPaymentRow | null = null;
+    const refundQuote = refundAmount === null
+      ? null
+      : quoteRefund(refundAmount, { withhold: withholdCommission });
     if (refundAmount !== null) {
       payment = await preparePartialRefund(client, {
         bookingGroupId,
@@ -200,21 +211,21 @@ Deno.serve(async (request) => {
     // refund exists as a due-dated row even if everything below fails.
     const cancelledIds = await cancelSelectedReservations(client, bookingGroupId, reservationIds, {
       payment,
-      amount: refundAmount,
+      quote: refundQuote,
     });
 
     const refund = payment
       ? await executeRefund(client, {
         payment,
         bookingGroupId,
-        amount: refundAmount as number,
+        quote: refundQuote as RefundQuote,
       })
       : null;
 
     const notificationResults = await notifyGuest(client, {
       cancelled: selected,
       remaining,
-      refundAmount: refund?.ok ? refundAmount : null,
+      refundQuote: refund?.ok ? refundQuote : null,
       totalCount: active.length,
     });
 
@@ -224,6 +235,7 @@ Deno.serve(async (request) => {
         cancelledIds,
         remainingActive: remaining.length,
         refund,
+        refundQuote: refundQuote ? publicQuote(refundQuote) : null,
         notificationResults,
       },
       {},
@@ -253,11 +265,10 @@ function normalizeAmount(value: unknown): number | null {
     return null;
   }
   const amount = Number(value);
-  if (!Number.isFinite(amount)) {
-    throw new HttpError(400, 'Suma de restituit trebuie să fie un număr pozitiv.');
+  if (!Number.isInteger(amount)) {
+    throw new HttpError(400, 'Suma de restituit trebuie să fie un număr întreg pozitiv.');
   }
-  // Whole lei only — MAIB settles in MDL and staff type round sums.
-  return Math.round(amount);
+  return amount;
 }
 
 function isActive(row: GroupReservationRow) {
@@ -378,7 +389,7 @@ async function cancelSelectedReservations(
   client: SupabaseClient,
   bookingGroupId: string,
   reservationIds: string[],
-  refund: { payment: MaibPaymentRow | null; amount: number | null },
+  refund: { payment: MaibPaymentRow | null; quote: RefundQuote | null },
 ) {
   const { data, error } = await (client as unknown as RpcClient).rpc('cancel_reservation_rows', {
     p_booking_group_id: bookingGroupId,
@@ -389,7 +400,7 @@ async function cancelSelectedReservations(
     // scheduling its own refund between the check and the execution would be
     // overwritten with this amount and paid out immediately.
     p_refund_pay_id: refund.payment?.pay_id ?? null,
-    p_refund_amount: refund.amount,
+    p_refund_amount: refund.quote?.net ?? null,
     p_refund_currency: refund.payment?.currency || 'MDL',
     p_refund_reason: 'crm_partial_cancellation',
     // A few minutes out, so the reconcile cron finishes the payout if this
@@ -398,6 +409,10 @@ async function cancelSelectedReservations(
     p_refund_eligible_at: refund.payment
       ? new Date(Date.now() + REFUND_RECOVERY_DELAY_MS).toISOString()
       : null,
+    p_refund_gross_amount: refund.quote?.gross ?? null,
+    p_refund_withheld: refund.quote?.withheld ?? 0,
+    p_refund_rate_bps: refund.quote?.rateBps ?? 0,
+    p_refund_policy_version: refund.quote?.version ?? null,
   });
 
   if (error) {
@@ -419,7 +434,9 @@ async function cancelSelectedReservations(
   }
 
   return (Array.isArray(data) ? data : []).map((row) =>
-    typeof row === 'string' ? row : String((row as { cancel_reservation_rows?: string })?.cancel_reservation_rows || '')
+    typeof row === 'string'
+      ? row
+      : String((row as { cancel_reservation_rows?: string })?.cancel_reservation_rows || '')
   ).filter(Boolean);
 }
 
@@ -469,7 +486,7 @@ async function assertNoOpenPaymentSession(client: SupabaseClient, bookingGroupId
 
 async function executeRefund(
   client: SupabaseClient,
-  input: { payment: MaibPaymentRow; bookingGroupId: string; amount: number },
+  input: { payment: MaibPaymentRow; bookingGroupId: string; quote: RefundQuote },
 ) {
   // Cancel-then-refund: the villas are already free at this point. A refund that
   // does not confirm leaves a retryable maib_refunds row for the 30-minute
@@ -478,7 +495,7 @@ async function executeRefund(
     payId: input.payment.pay_id,
     providerPayId: input.payment.provider_payment_id || input.payment.pay_id,
     bookingGroupId: input.bookingGroupId,
-    amount: input.amount,
+    quote: input.quote,
     currency: input.payment.currency || 'MDL',
     reason: 'crm_partial_cancellation',
     source: 'reservation-partial-cancel',
@@ -490,7 +507,7 @@ async function executeRefund(
   if (outcome.ok) {
     return {
       ok: true,
-      amount: input.amount,
+      amount: input.quote.net,
       alreadyRefunded: Boolean(outcome.alreadyRefunded),
       providerStatus: outcome.providerStatus || null,
     };
@@ -499,7 +516,7 @@ async function executeRefund(
   await alertRefundProblem(client, {
     payId: input.payment.pay_id,
     bookingGroupId: input.bookingGroupId,
-    amount: input.amount,
+    amount: input.quote.net,
     reason: 'crm_partial_cancellation',
     detail: outcome.error ||
       `Anulare parțială — răspuns MAIB fără confirmare (status: ${
@@ -511,7 +528,7 @@ async function executeRefund(
   return {
     ok: false,
     pending: true,
-    amount: input.amount,
+    amount: input.quote.net,
     providerStatus: outcome.providerStatus || null,
     error: outcome.error || null,
     message: 'Restituirea nu s-a confirmat încă — sistemul o reîncearcă automat la 30 de minute.',
@@ -527,7 +544,7 @@ async function notifyGuest(
   input: {
     cancelled: GroupReservationRow[];
     remaining: GroupReservationRow[];
-    refundAmount: number | null;
+    refundQuote: RefundQuote | null;
     totalCount: number;
   },
 ): Promise<NotificationResult[]> {
@@ -578,7 +595,7 @@ function composeMessage(
   input: {
     cancelled: GroupReservationRow[];
     remaining: GroupReservationRow[];
-    refundAmount: number | null;
+    refundQuote: RefundQuote | null;
     totalCount: number;
   },
 ): NotificationMessage {
@@ -602,7 +619,8 @@ function composeMessage(
       // Staff can tick every villa, which makes this a full cancellation that
       // still returned a hand-typed sum. The ordinary cancellation copy has no
       // refund line, so the guest would never be told the money is coming.
-      refundAmount: input.refundAmount,
+      refundAmount: input.refundQuote?.net,
+      withheldCommission: input.refundQuote?.withheld,
       siteUrl,
     });
     return {
@@ -611,7 +629,8 @@ function composeMessage(
         message: cancellationConfirmationSms({
           checkIn: owner.check_in,
           checkOut: owner.check_out,
-          refundAmount: input.refundAmount,
+          refundAmount: input.refundQuote?.net,
+          withheldCommission: input.refundQuote?.withheld,
           language: lang,
         }),
       },
@@ -636,7 +655,8 @@ function composeMessage(
     remainingCopy: aggregateRoomLabel(input.remaining, lang),
     checkIn,
     checkOut,
-    refundAmount: input.refundAmount,
+    refundAmount: input.refundQuote?.net,
+    withheldCommission: input.refundQuote?.withheld,
     manageUrl: `${siteUrl}/rezervari.html#reservation-lookup-title`,
     siteUrl,
   });
@@ -649,7 +669,8 @@ function composeMessage(
         totalCount: input.totalCount,
         checkIn,
         checkOut,
-        refundAmount: input.refundAmount,
+        refundAmount: input.refundQuote?.net,
+        withheldCommission: input.refundQuote?.withheld,
         language: lang,
       }),
     },
@@ -659,6 +680,10 @@ function composeMessage(
 
 function providerError(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Provider request failed.');
+}
+
+function publicQuote(quote: RefundQuote) {
+  return { gross: quote.gross, withheld: quote.withheld, net: quote.net };
 }
 
 function table<T = unknown>(client: SupabaseClient, name: string) {

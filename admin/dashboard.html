@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026081101">
+    <link rel="stylesheet" href="../css/crm.css?v=2026082501">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -364,7 +364,7 @@
                 <ul class="crm-partial__villas" data-partial-villas></ul>
                 <p class="crm-partial__selected" data-partial-selected>Selectate: 0</p>
                 <label class="crm-field">
-                  <span>Sumă de restituit (MDL) <span class="crm-field-optional">(gol = fără restituire)</span></span>
+                  <span>Sumă de reversat (bază brută, MDL) <span class="crm-field-optional">(gol = fără restituire)</span></span>
                   <input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-partial-amount>
                 </label>
                 <p class="crm-partial__hint" data-partial-hint></p>
@@ -379,6 +379,12 @@
                 </button>
               </div>
             </section>
+            <label class="crm-field">
+              <span>
+                <input type="checkbox" data-refund-full-override>
+                Restituie integral (fără reținerea de 1,4%)
+              </span>
+            </label>
             <div class="crm-danger-zone">
               <p class="crm-note">Ștergerea cere două confirmări și anulează tot grupul rezervării.</p>
               <button class="crm-button crm-button--danger" type="button" data-delete-reservation>
@@ -529,12 +535,24 @@
               <strong data-finance-cancelled-count>0</strong>
             </article>
             <article class="crm-finance-stat crm-finance-stat--cancel">
-              <span>Pierdut pe comisioane</span>
-              <strong data-finance-commission-lost>0 MDL</strong>
+              <span>Bază brută restituită</span>
+              <strong data-finance-refund-gross>0 MDL</strong>
+            </article>
+            <article class="crm-finance-stat crm-finance-stat--cancel">
+              <span>Comision reținut</span>
+              <strong data-finance-withheld-commission>0 MDL</strong>
             </article>
             <article class="crm-finance-stat crm-finance-stat--cancel">
               <span>Sumă rambursată</span>
               <strong data-finance-refunded-total>0 MDL</strong>
+            </article>
+            <article class="crm-finance-stat crm-finance-stat--cancel">
+              <span>Costuri bancare</span>
+              <strong data-finance-bank-fees>0 MDL</strong>
+            </article>
+            <article class="crm-finance-stat crm-finance-stat--cancel">
+              <span>Cost net EcoVila (+ cost / − recuperare)</span>
+              <strong data-finance-net-cost>0 MDL</strong>
             </article>
           </div>
           <div class="crm-finance-booked-list" data-finance-cancel-list></div>
@@ -875,21 +893,21 @@
       </section>
     </main>
 
-    <script src="../js/vendor/supabase.js?v=2026081101"></script>
-    <script src="../js/supabase-config.js?v=2026081101"></script>
-    <script src="../js/supabase.js?v=2026081101"></script>
-    <script src="../js/pricing.js?v=2026081101"></script>
-    <script src="../js/calendar.js?v=2026081101"></script>
-    <script src="js/crm-calendar.js?v=2026081101"></script>
-    <script src="js/crm-sidebar.js?v=2026081101"></script>
-    <script src="js/crm-dashboard.js?v=2026081101"></script>
-    <script src="js/crm-finance.js?v=2026081101"></script>
-    <script src="js/crm-daily.js?v=2026081101"></script>
-    <script src="js/crm-towels.js?v=2026081101"></script>
-    <script src="js/crm-photos.js?v=2026081101"></script>
-    <script src="js/crm-pricing.js?v=2026081101"></script>
-    <script src="js/crm-complaints.js?v=2026081101"></script>
-    <script src="js/crm-auth.js?v=2026081101"></script>
-    <script src="js/crm-app.js?v=2026081101"></script>
+    <script src="../js/vendor/supabase.js?v=2026082501"></script>
+    <script src="../js/supabase-config.js?v=2026082501"></script>
+    <script src="../js/supabase.js?v=2026082501"></script>
+    <script src="../js/pricing.js?v=2026082501"></script>
+    <script src="../js/calendar.js?v=2026082501"></script>
+    <script src="js/crm-calendar.js?v=2026082501"></script>
+    <script src="js/crm-sidebar.js?v=2026082501"></script>
+    <script src="js/crm-dashboard.js?v=2026082501"></script>
+    <script src="js/crm-finance.js?v=2026082501"></script>
+    <script src="js/crm-daily.js?v=2026082501"></script>
+    <script src="js/crm-towels.js?v=2026082501"></script>
+    <script src="js/crm-photos.js?v=2026082501"></script>
+    <script src="js/crm-pricing.js?v=2026082501"></script>
+    <script src="js/crm-complaints.js?v=2026082501"></script>
+    <script src="js/crm-auth.js?v=2026082501"></script>
+    <script src="js/crm-app.js?v=2026082501"></script>
   </body>
 </html>

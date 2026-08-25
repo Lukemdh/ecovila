@@ -55,7 +55,7 @@ Step 6: **Confirmation \& Cancellation**
 Implement:
 
 * `confirmare.html`: cash countdown, extend once, policy-gated online cancellation
-* `anulare.html`: token-based cancellation, 7-day / 2-hour rule, phone confirmation
+* `anulare.html`: token-based cancellation, 20-day / 2-hour rule, phone confirmation
 
 Step 7: **Supabase Edge Functions**
 Add server-side logic:
@@ -479,7 +479,7 @@ Accessed via a unique link sent in the SMS/email confirmation: `/anulare?token=C
 
 1. Page loads, fetches reservation by token.
 2. Shows: reservation details (dates, accommodation type, room number, total paid).
-3. Shows online cancellation eligibility based on the legal policy: cancellations are available if there are at least 7 calendar days before check-in, or if the reservation was created less than 2 hours ago. Cash-paid reservations direct guests to office-only reimbursement.
+3. Shows online cancellation eligibility based on the legal policy: cancellations are available if there are at least 20 calendar days before check-in, or if the reservation was created less than 2 hours ago. Cash-paid reservations direct guests to office-only reimbursement.
 
    * If YES → show **"Anulează rezervarea"** button and the refundable message.
    * If NO → disable online cancellation and show the office/contact message.
@@ -712,8 +712,8 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Guest-initiated (via cancellation link):
 
-* **At least 7 calendar days before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
-* **Less than 2 hours after reservation creation:** Allowed. Room freed immediately. Cancellation SMS + email sent. Full refund applies.
+* **At least 20 calendar days before check-in:** Allowed. Room freed immediately. Cancellation SMS + email sent. At least 98.6% refund applies (up to 1.4% bank processing fee retained).
+* **Less than 2 hours after reservation creation:** Allowed. Room freed immediately. Cancellation SMS + email sent. At least 98.6% refund applies (up to 1.4% bank processing fee retained).
 * **Outside both refund windows:** Not available online. Guest must contact EcoVila.
 * **Cash-paid reservations:** Not cancelled or reimbursed online; reimbursement is handled only at the EcoVila office.
 
@@ -725,8 +725,8 @@ Adresa: \\\[address]. Ne vedem mâine!
 
 ### Refund policy (display in T\&C and on cancellation page):
 
-* At least 7 calendar days before arrival → full refund
-* Less than 2 hours after reservation creation → full refund
+* At least 20 calendar days before arrival → at least 98.6% refund (up to 1.4% bank processing fee retained)
+* Less than 2 hours after reservation creation → at least 98.6% refund (up to 1.4% bank processing fee retained)
 * Outside both refund windows → no online cancellation/refund
 * Cash-paid reservations → reimbursement only at the EcoVila office
 
@@ -781,7 +781,7 @@ Must include:
 Must include:
 
 * Booking and payment terms
-* Cancellation policy (7-day or 2-hour refund conditions)
+* Cancellation policy (20-day or 2-hour refund conditions: at least 98.6% refund, up to 1.4% bank processing fee retained)
 * Check-in / check-out times (13:00 / 10:00)
 * House rules: no pets, no outside food/drinks on premises, access only for paying guests
 * Pricing disclaimer (prices in MDL, all-inclusive)

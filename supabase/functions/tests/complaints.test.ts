@@ -169,13 +169,23 @@ Deno.test('check-in welcome SMS is localized, links the complaints page, and sta
 Deno.test('complaintStaffAlertSms builds a diacritic-free single-segment staff alert (ADR-097)', async () => {
   const { complaintStaffAlertSms } = await import('../_shared/notifications.ts');
 
-  const casuta = complaintStaffAlertSms({ category: 'casuta', roomNumber: '7', phone: '+37360111222' });
-  if (casuta !== 'Problema noua la EcoVila: Casuta, casuta 7. Tel oaspete: +37360111222. Detalii in CRM > Probleme.') {
+  const casuta = complaintStaffAlertSms({
+    category: 'casuta',
+    roomNumber: '7',
+    phone: '+37360111222',
+  });
+  if (
+    casuta !==
+      'Problema noua la EcoVila: Casuta, casuta 7. Tel oaspete: +37360111222. Detalii in CRM > Probleme.'
+  ) {
     throw new Error(`unexpected casuta alert: ${casuta}`);
   }
 
   const facilities = complaintStaffAlertSms({ category: 'facilitati', phone: null });
-  if (facilities !== 'Problema noua la EcoVila: Facilitati. Fara telefon oaspete. Detalii in CRM > Probleme.') {
+  if (
+    facilities !==
+      'Problema noua la EcoVila: Facilitati. Fara telefon oaspete. Detalii in CRM > Probleme.'
+  ) {
     throw new Error(`unexpected facilities alert: ${facilities}`);
   }
 

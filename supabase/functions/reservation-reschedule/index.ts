@@ -179,7 +179,9 @@ Deno.serve(async (request) => {
     // the move committed, not on the pre-plan read — a hold confirmed while the
     // move was in flight is a real booking whose guest must hear about it.
     const openedAfterMove = await loadReservationHoldFields(client, opened.id);
-    const suppressHoldSms = openedAfterMove ? isTemporaryHold(openedAfterMove) : isTemporaryHold(opened);
+    const suppressHoldSms = openedAfterMove
+      ? isTemporaryHold(openedAfterMove)
+      : isTemporaryHold(opened);
     let smsSent = false;
     let smsError: string | null = null;
     if (datesChanged && !suppressHoldSms) {

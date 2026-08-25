@@ -446,7 +446,9 @@ Deno.test('composeArrivalReminder localizes the premium email (ru/en)', async ()
 });
 
 Deno.test('accommodationTypeLabel + aggregateRoomLabel render localized types with counts', async () => {
-  const { accommodationTypeLabel, aggregateRoomLabel } = await import('../_shared/notifications.ts');
+  const { accommodationTypeLabel, aggregateRoomLabel } = await import(
+    '../_shared/notifications.ts'
+  );
   // Resolves from either room_type or a raw rooms(type) join, localized.
   assertEquals(accommodationTypeLabel({ room_type: 'hotel' }, 'ro'), 'Cameră în hotel');
   assertEquals(accommodationTypeLabel({ rooms: { type: 'large' } }, 'en'), 'Large Villa');

@@ -406,4 +406,64 @@ describe('EcoVila Step 7 Supabase Edge Functions', () => {
       'scheduled-refund note should exist in all three languages',
     );
   });
+
+  it('persists immutable gross/net refund quotes and keeps executors on stored net (ADR-105)', () => {
+    const policy = read('supabase/functions/_shared/refundPolicy.ts');
+    const intents = read('supabase/functions/_shared/refundIntents.ts');
+    const refunds = read('supabase/functions/_shared/refunds.ts');
+    const maibRefund = read('supabase/functions/maib-refund/index.ts');
+    const cancel = read('supabase/functions/reservation-cancel/index.ts');
+    const cancelNotify = read('supabase/functions/reservation-cancel-notify/index.ts');
+    const changes = read('supabase/functions/_shared/reservationChanges.ts');
+    const reconcile = read('supabase/functions/reconcile-refunds/index.ts');
+    const scheduled = read('supabase/functions/scheduled-refunds/index.ts');
+    const migration = read('supabase/migrations/20260824120000_refund_commission.sql');
+    const atomicMigration = read('supabase/migrations/20260825120000_atomic_full_refund_intent.sql');
+
+    assert.match(policy, /REFUND_COMMISSION_RATE_BPS = 140/);
+    assert.match(policy, /optionalEnv\('ECOVILA_REFUND_COMMISSION_BPS'\)/);
+    assert.match(policy, /export function sameRefundMoney/);
+    assert.match(intents, /rpc\('prepare_full_refund_intent'/);
+    assert.match(atomicMigration, /for update/);
+    assert.match(atomicMigration, /raise exception 'A different refund quote already exists/);
+    assert.match(refunds, /sameRefundMoney\(requested, stored\)/);
+    assert.equal(
+      (refunds.match(/unlessSucceeded: true/g) || []).length,
+      2,
+      'both failed and pending completion writes must preserve a concurrent success',
+    );
+    assert.match(maibRefund, /sameRefundMoney\(quoteFromRefundRow\(existing\), refundQuote\)/);
+    assert.doesNotMatch(intents, /function sameQuote/);
+    assert.doesNotMatch(maibRefund, /function sameQuote/);
+    assert.match(policy, /Math\.ceil\(\(gross \* \(10_000 - rateBps\)\) \/ 10_000\)/);
+    assert.match(cancel, /const commissionRateBps = activeCommissionBps\(\)/);
+    assert.match(cancel, /quoteRefund\(Number\(payment\.amount\), \{ rateBps: commissionRateBps \}\)/);
+    assert.match(maibRefund, /const commissionRateBps = activeCommissionBps\(\)/);
+
+    assert.match(migration, /add column if not exists gross_amount integer,/);
+    assert.doesNotMatch(migration, /gross_amount integer not null/i);
+    assert.match(migration, /drop function if exists public\.cancel_reservation_rows/);
+    assert.match(migration, /gross_amount\s*= excluded\.gross_amount/);
+    assert.match(migration, /withheld_commission\s*= excluded\.withheld_commission/);
+    assert.match(migration, /commission_rate_bps\s*= excluded\.commission_rate_bps/);
+    assert.match(migration, /refund_policy_version\s*= excluded\.refund_policy_version/);
+
+    assert.match(refunds, /\.update\(\{ status: 'processing' \}\)/);
+    assert.match(refunds, /assertQuoteMatches\(input\.quote, quoteFromRefundRow\(claimed\[0\]\)\)/);
+    assert.doesNotMatch(changes, /change\.refund_amount \?\? change\.difference_amount/);
+    assert.match(
+      changes,
+      /missingStoredNet && change\.refund_policy_version !== REFUND_POLICY_VERSION_LEGACY/,
+    );
+    assert.match(changes, /REFUND_POLICY_VERSION_LEGACY/);
+    assert.doesNotMatch(changes, /quoteRefund/);
+    assert.match(cancelNotify, /refundCountsTowardGuestNotice/);
+    assert.match(reconcile, /shouldSweepPaidChangeRefunds/);
+    assert.match(reconcile, /refundRow\.gross_amount === null[\s\S]*?prepareFullRefundIntent/);
+    assert.match(reconcile, /crm_partial_cancellation/);
+    assert.doesNotMatch(reconcile, /refund\.amount \|\| payment\.amount/);
+    assert.doesNotMatch(scheduled, /refund\.amount \|\| payment\.amount/);
+    assert.match(scheduled, /grossAmount/);
+    assert.match(scheduled, /withheldCommission/);
+  });
 });

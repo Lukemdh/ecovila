@@ -11,7 +11,10 @@ import {
   alertRefundProblem,
   attemptBookingRefund,
   findRefundRow,
+  quoteFromRefundRow,
 } from '../_shared/refunds.ts';
+import { aggregateRefundQuotes, prepareFullRefundIntent } from '../_shared/refundIntents.ts';
+import { activeCommissionBps, quoteRefund, sameRefundMoney } from '../_shared/refundPolicy.ts';
 import { refundPaidChanges } from '../_shared/reservationChanges.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 
@@ -35,13 +38,23 @@ Deno.serve(async (request) => {
         ? null
         : Number(body?.amount);
     const reason = (optionalString(body?.reason) || 'crm_cancellation').slice(0, 500);
+    if (
+      body?.withholdCommission !== undefined &&
+      typeof body.withholdCommission !== 'boolean'
+    ) {
+      throw new HttpError(400, 'withholdCommission must be a boolean.');
+    }
+    const withholdCommission = body?.withholdCommission !== false;
 
     if (!payId && !bookingGroupId) {
       throw new HttpError(400, 'payId or bookingGroupId is required.');
     }
 
-    if (requestedAmount !== null && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
-      throw new HttpError(400, 'amount must be a positive number.');
+    if (
+      requestedAmount !== null &&
+      (!Number.isInteger(requestedAmount) || requestedAmount <= 0)
+    ) {
+      throw new HttpError(400, 'amount must be a positive integer.');
     }
 
     const client = createServiceClient();
@@ -51,10 +64,10 @@ Deno.serve(async (request) => {
       throw new HttpError(404, 'MAIB payment was not found.');
     }
 
-    const amount = requestedAmount ?? Number(payment.amount || 0);
+    const gross = requestedAmount ?? Number(payment.amount || 0);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new HttpError(400, 'amount must be a positive number.');
+    if (!Number.isInteger(gross) || gross <= 0) {
+      throw new HttpError(400, 'amount must be a positive integer.');
     }
 
     const refundBookingGroupId = payment.booking_group_id || bookingGroupId;
@@ -67,8 +80,37 @@ Deno.serve(async (request) => {
     // guests" differences are reversed too — each as its own MAIB transaction.
     // A partial refund touches only the requested amount.
     const refundDifferences = requestedAmount === null;
+    const commissionRateBps = activeCommissionBps();
+    const refundQuote = quoteRefund(gross, {
+      withhold: withholdCommission,
+      rateBps: commissionRateBps,
+    });
+    let existing = await findRefundRow(client, payment.pay_id);
+    if (
+      requestedAmount !== null && existing &&
+      !sameRefundMoney(quoteFromRefundRow(existing), refundQuote)
+    ) {
+      throw new HttpError(409, 'A different refund quote already exists for this payment.');
+    }
+    const intent = refundDifferences
+      ? await prepareFullRefundIntent(client, {
+        payId: payment.pay_id,
+        bookingGroupId: refundBookingGroupId,
+        quote: refundQuote,
+        currency: payment.currency || 'MDL',
+        reason,
+        source: 'maib-refund',
+        allowCancelled: true,
+      })
+      : null;
+    if (intent) existing = await findRefundRow(client, payment.pay_id);
+    const mainQuote = intent?.mainQuote || refundQuote;
+    const changeQuotes = intent?.changeQuotes || [];
+    const refundTotal = aggregateRefundQuotes([
+      mainQuote,
+      ...changeQuotes.map((entry) => entry.quote),
+    ]);
 
-    const existing = await findRefundRow(client, payment.pay_id);
     if (existing?.status === 'succeeded') {
       // MAIB allows exactly ONE refund per payment. A retried FULL refund is
       // idempotent (return the recorded result and still settle any outstanding
@@ -82,8 +124,20 @@ Deno.serve(async (request) => {
       }
 
       const differenceRefunds = await refundPaidChanges(client, refundBookingGroupId, reason);
+      const differencesPending = differenceRefunds.some((refund) => !refund.ok);
       return jsonResponse(
-        { ok: true, result: existing.response_payload || {}, differenceRefunds },
+        {
+          ok: !differencesPending,
+          pending: differencesPending,
+          partial: differencesPending,
+          message: differencesPending
+            ? 'Restituirea principală s-a confirmat, dar una sau mai multe autorizări suplimentare sunt încă în așteptare — sistemul le reîncearcă automat.'
+            : undefined,
+          result: existing.response_payload || {},
+          differenceRefunds,
+          refundQuote: publicQuote(mainQuote),
+          refundTotal: publicQuote(refundTotal),
+        },
         {},
         request,
       );
@@ -93,7 +147,7 @@ Deno.serve(async (request) => {
       payId: payment.pay_id,
       providerPayId: payment.provider_payment_id || payment.pay_id,
       bookingGroupId: refundBookingGroupId,
-      amount,
+      quote: mainQuote,
       currency: payment.currency || 'MDL',
       reason,
       source: 'maib-refund',
@@ -109,7 +163,7 @@ Deno.serve(async (request) => {
       await alertRefundProblem(client, {
         payId: payment.pay_id,
         bookingGroupId: refundBookingGroupId,
-        amount,
+        amount: mainQuote.net,
         reason,
         detail: outcome.error ||
           `Răspuns MAIB fără confirmare (status: ${outcome.providerStatus || 'necunoscut'}).`,
@@ -124,6 +178,8 @@ Deno.serve(async (request) => {
           error: outcome.error || null,
           message:
             'Restituirea nu s-a confirmat încă — sistemul o reîncearcă automat la 30 de minute.',
+          refundQuote: publicQuote(mainQuote),
+          refundTotal: publicQuote(refundTotal),
         },
         {},
         request,
@@ -133,13 +189,21 @@ Deno.serve(async (request) => {
     const differenceRefunds = refundDifferences
       ? await refundPaidChanges(client, refundBookingGroupId, reason)
       : [];
+    const differencesPending = differenceRefunds.some((refund) => !refund.ok);
 
     return jsonResponse(
       {
-        ok: true,
+        ok: !differencesPending,
+        pending: differencesPending,
+        partial: differencesPending,
+        message: differencesPending
+          ? 'Restituirea principală s-a confirmat, dar una sau mai multe autorizări suplimentare sunt încă în așteptare — sistemul le reîncearcă automat.'
+          : undefined,
         result: (outcome.payload as Record<string, unknown>)?.result || outcome.payload,
         alreadyRefunded: Boolean(outcome.alreadyRefunded),
         differenceRefunds,
+        refundQuote: publicQuote(mainQuote),
+        refundTotal: publicQuote(refundTotal),
       },
       {},
       request,
@@ -202,4 +266,8 @@ async function findPayment(
 function optionalString(value: unknown) {
   const text = String(value || '').trim();
   return text || '';
+}
+
+function publicQuote(quote: { gross: number; withheld: number; net: number }) {
+  return { gross: quote.gross, withheld: quote.withheld, net: quote.net };
 }

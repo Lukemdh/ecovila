@@ -138,7 +138,9 @@ Această clauză nu exclude răspunderea EcoVila în cazurile în care legea int
 
 Clientul poate solicita anularea rezervării prin e-mail la rezervari@ecovila.md sau prin alt canal confirmat de EcoVila.
 
-Sumele achitate se rambursează numai dacă solicitarea de anulare este recepționată de EcoVila cu cel puțin 7 zile calendaristice înainte de data începerii rezervării ori dacă rezervarea a fost creată de mai puțin de 2 ore.
+Sumele achitate se rambursează numai dacă solicitarea de anulare este recepționată de EcoVila cu cel puțin 20 zile calendaristice înainte de data începerii rezervării ori dacă rezervarea a fost creată de mai puțin de 2 ore.
+
+În cazul unei rambursări aprobate pentru plățile efectuate cu cardul sau online, se restituie cel puțin 98,6% din suma aprobată spre restituire. EcoVila reține un comision de procesare bancară de până la 1,4% din suma aprobată spre restituire, care este nerambursabil deoarece este perceput de bancă la tranzacția inițială. Acest comision bancar se aplică exclusiv plăților efectuate cu cardul sau online; sumele achitate cash nu sunt supuse reținerii de comision bancar. Prin excepție de la regula generală prevăzută la secțiunea 23, prevederile privind reținerea comisionului de procesare bancară se aplică tuturor anulărilor procesate începând cu 1 septembrie 2026, inclusiv pentru rezervările efectuate anterior acestei date.
 
 Dacă solicitarea de anulare este recepționată în afara acestor două situații, anularea online și rambursarea online nu sunt disponibile.
 
@@ -237,5 +239,5 @@ Nicio prevedere din prezentele Termeni și condiții nu limitează drepturile im
 Prezentele Termeni și condiții pot fi puse la dispoziție în mai multe limbi. În caz de diferențe între versiuni, versiunea în limba română prevalează.
 
 ## 23. Modificarea termenilor
-
-EcoVila poate actualiza prezentele Termeni și condiții. Versiunea aplicabilă rezervării este versiunea disponibilă la momentul efectuării rezervării, cu excepția cazului în care legea sau acordul părților prevede altfel.
+ 
+EcoVila poate actualiza prezentele Termeni și condiții. Versiunea aplicabilă rezervării este versiunea disponibilă la momentul efectuării rezervării, cu excepția cazului în care legea sau acordul părților prevede altfel. Excepția privind aplicarea comisionului de procesare bancară la rambursare este prevăzută la secțiunea 12.

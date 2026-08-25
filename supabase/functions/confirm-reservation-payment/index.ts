@@ -137,8 +137,7 @@ Deno.serve(async (request) => {
     // the SELECT and the UPDATE, telling staff "paid" (and texting the guest a
     // confirmation) would hide that the booking no longer exists (ADR-089).
     const settledReservations = reservations.filter(
-      (reservation) =>
-        reservation.payment_status === 'paid' || confirmedIds.has(reservation.id),
+      (reservation) => reservation.payment_status === 'paid' || confirmedIds.has(reservation.id),
     );
 
     if (!settledReservations.length) {

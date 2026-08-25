@@ -9,8 +9,10 @@
 // retries until it succeeds. MAIB allows exactly one refund per payment, so the
 // retry loop is safe by construction: re-attempting an already-executed refund
 // returns REVERSED, which resolves the row instead of paying twice.
-import { refundMaibPayment } from './maib.ts';
+import { type MaibFetchOptions, refundMaibPayment } from './maib.ts';
 import { sendStaffAlert } from './alerts.ts';
+import { HttpError } from './http.ts';
+import { REFUND_POLICY_VERSION_LEGACY, type RefundQuote, sameRefundMoney } from './refundPolicy.ts';
 import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
 // Guest self-service refunds (ADR-096) are scheduled, not executed on the spot:
@@ -43,6 +45,10 @@ export type MaibRefundRow = {
   pay_id: string;
   booking_group_id: string;
   amount?: number | string | null;
+  gross_amount?: number | string | null;
+  withheld_commission?: number | string | null;
+  commission_rate_bps?: number | string | null;
+  refund_policy_version?: string | null;
   currency?: string | null;
   status?: string | null;
   reason?: string | null;
@@ -116,7 +122,7 @@ export function interpretMaibRefundResponse(raw: unknown): MaibRefundInterpretat
 export async function findRefundRow(client: SupabaseClient, payId: string) {
   const { data, error } = await table<MaibRefundRow>(client, 'maib_refunds')
     .select(
-      'pay_id, booking_group_id, amount, currency, status, reason, response_payload, provider_status, attempts, alerted_at, eligible_at, created_at',
+      'pay_id, booking_group_id, amount, gross_amount, withheld_commission, commission_rate_bps, refund_policy_version, currency, status, reason, response_payload, provider_status, attempts, alerted_at, eligible_at, created_at',
     )
     .eq('pay_id', payId)
     .maybeSingle();
@@ -135,7 +141,7 @@ export async function scheduleBookingRefund(
   input: {
     payId: string;
     bookingGroupId: string;
-    amount: number;
+    quote: RefundQuote;
     currency?: string;
     reason: string;
     source: string;
@@ -143,30 +149,56 @@ export async function scheduleBookingRefund(
 ): Promise<MaibRefundRow | null> {
   const existing = await findRefundRow(client, input.payId);
   if (existing?.status === 'succeeded' || existing?.status === 'cancelled') {
+    // A terminal row has spent this payment's single MAIB refund slot. Hand it
+    // back verbatim even when a later cancellation asks for different money:
+    // the caller needs the settled amount/status to report the unpaid remainder
+    // and alert staff, and this branch cannot overwrite the quote.
     return existing;
+  }
+
+  if (existing) {
+    assertQuoteMatches(input.quote, quoteFromRefundRow(existing));
   }
 
   const now = new Date();
   const eligibleAt = existing?.eligible_at || refundEligibleAtIso(now);
-  const { error } = await table(client, 'maib_refunds')
-    .upsert({
-      pay_id: input.payId,
-      booking_group_id: input.bookingGroupId,
-      amount: input.amount,
-      currency: input.currency || 'MDL',
-      // A row already mid-flight (processing) keeps that state; a fresh schedule
-      // starts as requested. Either way the cron gates on eligible_at.
-      status: existing?.status === 'processing' ? 'processing' : 'requested',
+  const payload = {
+    pay_id: input.payId,
+    booking_group_id: input.bookingGroupId,
+    amount: input.quote.net,
+    gross_amount: input.quote.gross,
+    withheld_commission: input.quote.withheld,
+    commission_rate_bps: input.quote.rateBps,
+    refund_policy_version: input.quote.version,
+    currency: input.currency || 'MDL',
+    // A row already mid-flight (processing) keeps that state; a fresh schedule
+    // starts as requested. Either way the cron gates on eligible_at.
+    status: existing?.status === 'processing' ? 'processing' : 'requested',
+    reason: input.reason,
+    request_payload: {
+      gross: input.quote.gross,
+      amount: input.quote.net,
+      withheld: input.quote.withheld,
+      rateBps: input.quote.rateBps,
+      version: input.quote.version,
       reason: input.reason,
-      request_payload: {
-        amount: input.amount,
+      source: input.source,
+      scheduled: true,
+    },
+    eligible_at: eligibleAt,
+    updated_at: now.toISOString(),
+  };
+  const { error } = existing
+    ? await table(client, 'maib_refunds')
+      .update({
+        status: existing.status === 'processing' ? 'processing' : 'requested',
         reason: input.reason,
-        source: input.source,
-        scheduled: true,
-      },
-      eligible_at: eligibleAt,
-      updated_at: now.toISOString(),
-    }, { onConflict: 'pay_id' });
+        request_payload: payload.request_payload,
+        eligible_at: eligibleAt,
+        updated_at: payload.updated_at,
+      })
+      .eq('pay_id', input.payId)
+    : await table(client, 'maib_refunds').insert(payload);
 
   if (error) throw new Error(error.message);
   return (await findRefundRow(client, input.payId)) ?? null;
@@ -245,7 +277,7 @@ export async function attemptBookingRefund(
     payId: string;
     providerPayId: string;
     bookingGroupId: string;
-    amount: number;
+    quote: RefundQuote;
     currency?: string;
     reason: string;
     source: string;
@@ -254,10 +286,12 @@ export async function attemptBookingRefund(
     // an abort is an explicit decision to pay after all. Every other caller
     // (reconcile cron, scheduled-refunds release) must respect the abort.
     allowCancelled?: boolean;
+    providerOptions?: MaibFetchOptions;
   },
 ): Promise<RefundAttemptOutcome> {
   const existing = await findRefundRow(client, input.payId);
   if (existing?.status === 'succeeded') {
+    assertQuoteMatches(input.quote, quoteFromRefundRow(existing));
     return { ok: true, payload: existing.response_payload || {} };
   }
 
@@ -265,14 +299,26 @@ export async function attemptBookingRefund(
   const now = new Date().toISOString();
   const claim = {
     booking_group_id: input.bookingGroupId,
-    amount: input.amount,
+    amount: input.quote.net,
+    gross_amount: input.quote.gross,
+    withheld_commission: input.quote.withheld,
+    commission_rate_bps: input.quote.rateBps,
+    refund_policy_version: input.quote.version,
     currency: input.currency || 'MDL',
     // 'processing' (not 'requested') from the moment the attempt is claimed:
     // cancelScheduledRefund's guard only matches 'requested' rows, so a claimed
     // attempt can never be "cancelled" while the MAIB call is in flight.
     status: 'processing',
     reason: input.reason,
-    request_payload: { amount: input.amount, reason: input.reason, source: input.source },
+    request_payload: {
+      gross: input.quote.gross,
+      amount: input.quote.net,
+      withheld: input.quote.withheld,
+      rateBps: input.quote.rateBps,
+      version: input.quote.version,
+      reason: input.reason,
+      source: input.source,
+    },
     attempts,
     last_attempt_at: now,
     updated_at: now,
@@ -282,13 +328,18 @@ export async function attemptBookingRefund(
     // Guarded claim instead of a blind upsert: a concurrent staff abort
     // (status 'cancelled') must win — the old upsert resurrected the row to
     // 'requested' and paid out a refund staff had just cancelled (ADR-099).
-    let query = table<{ pay_id: string }[]>(client, 'maib_refunds')
-      .update(claim)
+    let query = table<MaibRefundRow[]>(client, 'maib_refunds')
+      // An executor may claim ownership of the attempt, but the monetary quote
+      // is immutable once another intent wrote it. RETURNING is authoritative:
+      // comparing the earlier read alone would leave a check-then-act race.
+      .update({ status: 'processing' })
       .eq('pay_id', input.payId);
     if (!input.allowCancelled) {
       query = query.neq('status', 'cancelled');
     }
-    const { data: claimed, error: claimError } = await query.select('pay_id');
+    const { data: claimed, error: claimError } = await query.select(
+      'pay_id, booking_group_id, amount, gross_amount, withheld_commission, commission_rate_bps, refund_policy_version, currency, status, reason, response_payload, provider_status, attempts, alerted_at, eligible_at, created_at',
+    );
     if (claimError) throw new Error(claimError.message);
     if (!claimed || !claimed.length) {
       return {
@@ -297,6 +348,7 @@ export async function attemptBookingRefund(
         error: 'Restituirea a fost anulată de personal — nu se mai execută.',
       };
     }
+    assertQuoteMatches(input.quote, quoteFromRefundRow(claimed[0]));
   } else {
     const { error: insertError } = await table(client, 'maib_refunds')
       .insert({ pay_id: input.payId, ...claim });
@@ -305,7 +357,12 @@ export async function attemptBookingRefund(
 
   let raw: Record<string, unknown>;
   try {
-    raw = (await refundMaibPayment(input.providerPayId, input.amount, input.reason)) as Record<
+    raw = (await refundMaibPayment(
+      input.providerPayId,
+      input.quote.net,
+      input.reason,
+      input.providerOptions,
+    )) as Record<
       string,
       unknown
     >;
@@ -315,7 +372,7 @@ export async function attemptBookingRefund(
       status: 'failed',
       error_message: message,
       updated_at: new Date().toISOString(),
-    });
+    }, { unlessSucceeded: true });
     return { ok: false, error: message };
   }
 
@@ -351,13 +408,55 @@ export async function attemptBookingRefund(
     provider_status: verdict.providerStatus || null,
     error_message: null,
     updated_at: doneAt,
-  });
+  }, { unlessSucceeded: true });
   return {
     ok: false,
     providerStatus: verdict.providerStatus,
     refundId: verdict.refundId,
     payload: raw,
   };
+}
+
+export function quoteFromRefundRow(row: MaibRefundRow): RefundQuote {
+  const net = Number(row.amount);
+  if (!Number.isInteger(net) || net <= 0) {
+    throw new HttpError(409, 'Stored refund amount is invalid.');
+  }
+
+  // Nullable gross_amount is the deliberate migration crossover. A row written
+  // by an old function after the backfill is a legacy full refund, never a cue
+  // for an executor to derive a fresh policy quote.
+  if (row.gross_amount === null || row.gross_amount === undefined) {
+    return {
+      gross: net,
+      net,
+      withheld: 0,
+      rateBps: 0,
+      version: REFUND_POLICY_VERSION_LEGACY,
+    };
+  }
+
+  const quote = {
+    gross: Number(row.gross_amount),
+    net,
+    withheld: Number(row.withheld_commission || 0),
+    rateBps: Number(row.commission_rate_bps || 0),
+    version: String(row.refund_policy_version || ''),
+  };
+  if (
+    !Number.isInteger(quote.gross) || quote.gross <= 0 ||
+    !Number.isInteger(quote.withheld) || quote.withheld < 0 ||
+    quote.gross !== quote.net + quote.withheld
+  ) {
+    throw new HttpError(409, 'Stored refund quote is invalid.');
+  }
+  return quote;
+}
+
+function assertQuoteMatches(requested: RefundQuote, stored: RefundQuote) {
+  if (!sameRefundMoney(requested, stored)) {
+    throw new HttpError(409, 'A different refund quote already exists for this payment.');
+  }
 }
 
 // Staff alert for an unresolved (or REVERSED-resolved) refund, stamped on the
@@ -398,10 +497,19 @@ async function updateRefundRow(
   client: SupabaseClient,
   payId: string,
   values: Record<string, unknown>,
+  opts: { unlessSucceeded?: boolean } = {},
 ) {
-  const { error } = await table(client, 'maib_refunds')
+  let query = table(client, 'maib_refunds')
     .update(values)
     .eq('pay_id', payId);
+  // Two deliberate executors may overlap. A late PENDING/error describes only
+  // its own provider call and must never downgrade another call's confirmed
+  // success; claims stay non-exclusive so genuinely stuck processing rows can
+  // still be retried by the cron.
+  if (opts.unlessSucceeded) {
+    query = query.neq('status', 'succeeded');
+  }
+  const { error } = await query;
 
   if (error) throw new Error(error.message);
 }

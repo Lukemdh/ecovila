@@ -22,6 +22,7 @@ Deno.test('partial cancellation email names what was dropped, what stands and th
     checkIn: '2026-08-20',
     checkOut: '2026-08-23',
     refundAmount: 850,
+    withheldCommission: 12,
     manageUrl: 'https://ecovila.md/rezervari.html#reservation-lookup-title',
     siteUrl: 'https://ecovila.md',
   });
@@ -32,6 +33,7 @@ Deno.test('partial cancellation email names what was dropped, what stands and th
   assert(email.html.includes('2× Căsuță mare'));
   assert(email.text.includes('Rămâne rezervat: 2× Căsuță mare'));
   assert(email.text.includes('Sumă restituită: 850 MDL'));
+  assert(email.text.includes('Comision de procesare reținut: 12 MDL'));
   // The refund note only earns its place when money actually moved.
   assert(email.text.includes('1–5 zile lucrătoare'));
 });
@@ -57,8 +59,7 @@ Deno.test('partial cancellation email drops the refund row when nothing was retu
 // GSM-7 basic set + extension. A character outside it (U+00A0 from the email
 // money formatter is the easy mistake) promotes the whole message to UCS-2 and
 // its 70-character segments, so a one-segment RO/EN SMS silently becomes three.
-const GSM7 =
-  '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?' +
+const GSM7 = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?' +
   '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà' +
   '^{}\\[~]|€';
 
@@ -78,6 +79,7 @@ Deno.test('partial cancellation SMS stays in one segment and says the booking st
         checkIn: `2026-${mm}-28`,
         checkOut: `2026-${mm}-30`,
         refundAmount: 12200,
+        withheldCommission: 171,
         language,
       });
       if (message.length > limits[language]) {
@@ -97,11 +99,13 @@ Deno.test('partial cancellation SMS stays in one segment and says the booking st
     checkIn: '2026-08-20',
     checkOut: '2026-08-23',
     refundAmount: 850,
+    withheldCommission: 12,
     language: 'ro',
   });
   assertEquals(nonGsm7(ro), [], `RO partial-cancel SMS leaves GSM-7: ${ro}`);
   assert(ro.includes('1 din 2'));
   assert(ro.includes('Restituire: 850 MDL'));
+  assert(ro.includes('comision 12 MDL'));
 
   // A grouped amount is where GSM-7 gets lost: the email money formatter joins
   // thousands with a non-breaking space.
@@ -111,6 +115,7 @@ Deno.test('partial cancellation SMS stays in one segment and says the booking st
     checkIn: '2026-08-20',
     checkOut: '2026-08-23',
     refundAmount: 12200,
+    withheldCommission: 171,
     language: 'en',
   });
   assertEquals(nonGsm7(grouped), [], `EN partial-cancel SMS leaves GSM-7: ${grouped}`);
@@ -196,9 +201,14 @@ Deno.test('a full cancellation that returned money names the sum', () => {
     checkIn: '2026-08-20',
     checkOut: '2026-08-23',
     refundAmount: 850,
+    withheldCommission: 12,
     siteUrl: 'https://ecovila.md',
   });
   assert(withRefund.text.includes('Sumă restituită: 850 MDL'), withRefund.text);
+  assert(
+    withRefund.text.includes('Comision de procesare reținut: 12 MDL'),
+    withRefund.text,
+  );
   assert(withRefund.text.includes('1–5 zile lucrătoare'));
   // Nothing is left of this booking, so the partial copy's "the rest of your
   // booking stays paid" line must not come along with the refund note.
@@ -231,9 +241,11 @@ Deno.test('the cancellation SMS keeps its closing line unless money was returned
     checkIn: '2026-08-20',
     checkOut: '2026-08-23',
     refundAmount: 12200,
+    withheldCommission: 171,
     language: 'ro',
   });
-  assert(refunded.includes('Restituire: 12 200 MDL'), refunded);
+  assert(refunded.includes('Restituit: 12 200 MDL'), refunded);
+  assert(refunded.includes('comision 171 MDL'), refunded);
   assert(refunded.length <= 160, `${refunded.length} chars: ${refunded}`);
   assertEquals(nonGsm7(refunded), [], `RO cancellation SMS leaves GSM-7: ${refunded}`);
 
@@ -241,7 +253,79 @@ Deno.test('the cancellation SMS keeps its closing line unless money was returned
     checkIn: '2026-08-20',
     checkOut: '2026-08-23',
     refundAmount: 12200,
+    withheldCommission: 171,
     language: 'ru',
   });
   assert(ru.length <= 140, `${ru.length} chars: ${ru}`);
+});
+
+Deno.test('scheduled cancellation notices never call pending money refunded', () => {
+  const emailLabels = {
+    ro: 'Restituire programată',
+    ru: 'Возврат запланирован',
+    en: 'Scheduled refund',
+  };
+  const smsLabels = {
+    ro: 'Restituire programata',
+    ru: 'Возврат запланирован',
+    en: 'Scheduled refund',
+  };
+  for (const language of ['ro', 'ru', 'en'] as const) {
+    const email = buildCancellationEmail({
+      lang: language,
+      firstName: 'Ana',
+      fullName: 'Ana Lungu',
+      roomCopy: 'EcoVila',
+      checkIn: '2026-09-10',
+      checkOut: '2026-09-12',
+      refundAmount: 2170,
+      withheldCommission: 30,
+      refundStatus: 'scheduled',
+      refundEta: '2026-08-28T18:30:00.000Z',
+      siteUrl: 'https://ecovila.md',
+    });
+    assert(email.text.includes(`${emailLabels[language]}: 2 170 MDL`), email.text);
+    assert(email.text.includes('28'), email.text);
+    assertEquals(email.text.includes('1–5'), false, email.text);
+
+    const sms = cancellationConfirmationSms({
+      checkIn: '2026-09-10',
+      checkOut: '2026-09-12',
+      refundAmount: 2170,
+      withheldCommission: 30,
+      refundStatus: 'scheduled',
+      refundEta: '2026-08-28T18:30:00.000Z',
+      language,
+    });
+    assert(sms.includes(`${smsLabels[language]}: 2 170 MDL`), sms);
+    assert(sms.includes('28.08'), sms);
+    assert(sms.length <= (language === 'ru' ? 140 : 160), `${sms.length}: ${sms}`);
+    if (language !== 'ru') {
+      assertEquals(nonGsm7(sms), [], `${language} scheduled SMS leaves GSM-7: ${sms}`);
+    }
+  }
+});
+
+Deno.test('processing cancellation notices describe retryable money as in progress', () => {
+  const labels = {
+    ro: 'Restituire în curs',
+    ru: 'Возврат в процессе',
+    en: 'Refund in progress',
+  };
+  for (const language of ['ro', 'ru', 'en'] as const) {
+    const email = buildCancellationEmail({
+      lang: language,
+      firstName: 'Ana',
+      fullName: 'Ana Lungu',
+      roomCopy: 'EcoVila',
+      checkIn: '2026-09-10',
+      checkOut: '2026-09-12',
+      refundAmount: 493,
+      withheldCommission: 7,
+      refundStatus: 'processing',
+      siteUrl: 'https://ecovila.md',
+    });
+    assert(email.text.includes(`${labels[language]}: 493 MDL`), email.text);
+    assertEquals(email.text.includes('1–5'), false, email.text);
+  }
 });

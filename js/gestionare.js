@@ -511,7 +511,7 @@
     if (cancelNo) cancelNo.onclick = hideCancelConfirm;
   }
 
-  function renderManagePanel(summary, payment, reservationId, manageToken) {
+  function renderManagePanel(summary, payment, reservationId, manageToken, refundQuoteOverride) {
     const panel = el('[data-manage-panel]');
     if (!panel) return;
 
@@ -533,19 +533,37 @@
       statusEl.classList.toggle('cf-badge--pending', summary.paymentStatus !== 'paid' && payment?.status !== 'refunded');
     }
 
+    const refundQuote = refundQuoteOverride !== undefined
+      ? refundQuoteOverride
+      : (_managedContext?.details?.refundQuote || null);
+
     const paidCard = summary.paymentType === 'card' && summary.paymentStatus === 'paid';
     const isCash = summary.paymentType === 'cash';
     const alreadyRefunded = payment?.status === 'refunded' || Boolean(payment?.refunded_at);
     const refundable = paidCard && summary.refundable && !alreadyRefunded;
+    const hasRefundQuote = Boolean(
+      refundable &&
+      refundQuote &&
+      typeof refundQuote.gross === 'number' &&
+      typeof refundQuote.withheld === 'number' &&
+      typeof refundQuote.net === 'number',
+    );
+
     const note = isCash
       ? t('confirmare.cashOfficeRefund')
       : alreadyRefunded
       ? t('confirmare.alreadyRefunded')
+      : hasRefundQuote
+      ? t('confirmare.refundEligibleQuote', {
+          gross: pricing ? pricing.formatMDL(refundQuote.gross) : `${refundQuote.gross} MDL`,
+          withheld: pricing ? pricing.formatMDL(refundQuote.withheld) : `${refundQuote.withheld} MDL`,
+          net: pricing ? pricing.formatMDL(refundQuote.net) : `${refundQuote.net} MDL`,
+        })
       : refundable
-        ? t('confirmare.refundEligible')
-        : paidCard
-          ? t('confirmare.refundIneligible')
-          : t('confirmare.cancelOnly');
+      ? t('confirmare.refundEligible')
+      : paidCard
+      ? t('confirmare.refundIneligible')
+      : t('confirmare.cancelOnly');
 
     setText('[data-managed-refund-note]', note);
 
@@ -635,13 +653,46 @@
         : result?.refunded
         ? 'confirmare.statusRefunded'
         : 'confirmare.statusCancelled';
-      const noteKey = refundScheduled
-        ? 'confirmare.cancelledWithScheduledRefund'
-        : result?.refunded
-        ? 'confirmare.cancelledWithRefund'
-        : 'confirmare.cancelledWithoutRefund';
+
+      const quote = (result?.refundTotal && typeof result.refundTotal.net === 'number')
+        ? result.refundTotal
+        : (result?.refundQuote && typeof result.refundQuote.net === 'number')
+        ? result.refundQuote
+        : null;
+
+      const hasQuote = Boolean(
+        quote &&
+        typeof quote.net === 'number' &&
+        typeof quote.withheld === 'number',
+      );
+
+      let note = '';
+      if (refundScheduled) {
+        if (hasQuote) {
+          note = t('confirmare.cancelledWithScheduledQuote', {
+            gross: pricing ? pricing.formatMDL(quote.gross || 0) : `${quote.gross || 0} MDL`,
+            withheld: pricing ? pricing.formatMDL(quote.withheld) : `${quote.withheld} MDL`,
+            net: pricing ? pricing.formatMDL(quote.net) : `${quote.net} MDL`,
+          });
+        } else {
+          note = t('confirmare.cancelledWithScheduledRefund');
+        }
+      } else if (result?.refunded) {
+        if (hasQuote) {
+          note = t('confirmare.cancelledWithRefundQuote', {
+            gross: pricing ? pricing.formatMDL(quote.gross || 0) : `${quote.gross || 0} MDL`,
+            withheld: pricing ? pricing.formatMDL(quote.withheld) : `${quote.withheld} MDL`,
+            net: pricing ? pricing.formatMDL(quote.net) : `${quote.net} MDL`,
+          });
+        } else {
+          note = t('confirmare.cancelledWithRefund');
+        }
+      } else {
+        note = t('confirmare.cancelledWithoutRefund');
+      }
+
       setText('[data-managed-status]', t(statusKey));
-      setText('[data-managed-refund-note]', t(noteKey));
+      setText('[data-managed-refund-note]', note);
 
       if (_managedContext?.details?.reservation) {
         _managedContext.details.reservation.paymentStatus = 'cancelled';
@@ -1446,5 +1497,5 @@
     root.document.addEventListener('DOMContentLoaded', init);
   }
 
-  return { init, loadManagedReservation, handleManagedCancel, formatManagedGuests };
+  return { init, loadManagedReservation, handleManagedCancel, renderManagePanel, formatManagedGuests };
 });

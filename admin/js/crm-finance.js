@@ -7,9 +7,8 @@
   const MODE_NIGHTS = 'nights';
   const MODE_PAID = 'paid';
   const COMMERCIAL_PAYMENT_TYPES = new Set(['cash', 'card', 'mia']);
-  // Commission lost on a cancelled-and-refunded online booking = the ~0.7% MAIB
-  // took on the inbound payment (wasted, since the booking netted nothing) PLUS
-  // MAIB's interbank payout fee to refund the guest. That payout fee is a flat
+  // Bank fees on a cancelled-and-refunded online booking include the ~0.7% MAIB
+  // took on the inbound gross basis plus the interbank payout fee. That fee is a flat
   // tier, NOT a percentage (owner's MAIB rates, confirmed against a maibmerchants
   // statement — a 12,200 refund cost exactly 40 MDL): 20 MDL under 10,000 MDL,
   // 40 MDL at/above 10,000 MDL, charged once per refund. Applied only to
@@ -700,9 +699,27 @@
     const refunded = typeof refundedGroupIds?.has === 'function'
       ? refundedGroupIds
       : new Set(refundedGroupIds || []);
-    const actualRefundFor = (bookingGroupId) => {
-      const amount = typeof refunded.get === 'function' ? Number(refunded.get(bookingGroupId)) : NaN;
-      return Number.isFinite(amount) && amount > 0 ? amount : null;
+    const refundQuoteFor = (bookingGroupId) => {
+      const value = typeof refunded.get === 'function' ? refunded.get(bookingGroupId) : null;
+      if (value && typeof value === 'object') {
+        const amount = Number(value.amount);
+        const grossAmount = Number(value.grossAmount);
+        const withheldCommission = Number(value.withheldCommission);
+        return {
+          amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+          grossAmount: Number.isFinite(grossAmount) && grossAmount > 0 ? grossAmount : null,
+          withheldCommission:
+            Number.isFinite(withheldCommission) && withheldCommission > 0
+              ? withheldCommission
+              : 0,
+        };
+      }
+      const amount = Number(value);
+      return {
+        amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+        grossAmount: null,
+        withheldCommission: 0,
+      };
     };
     // Duck-typed (not instanceof): the CRM tests construct the Map in another
     // realm, where instanceof Map is false for a perfectly good Map.
@@ -730,17 +747,34 @@
         const primary = villas[0];
         // A group cancels as a unit, so total_price sums across its villa rows.
         const totalPrice = villas.reduce((sum, villa) => sum + Number(villa.totalPrice || 0), 0);
-        const changeAmounts = (changesByGroup.get(primary.bookingGroupId) || [])
-          .map((amount) => Number(amount || 0))
-          .filter((amount) => amount > 0);
+        const changeQuotes = (changesByGroup.get(primary.bookingGroupId) || [])
+          .map((value) => {
+            if (value && typeof value === 'object') {
+              const amount = Number(value.amount || 0);
+              const withheldCommission = Number(value.withheldCommission || 0);
+              const grossAmount = Number(value.grossAmount || amount + withheldCommission);
+              return { amount, grossAmount, withheldCommission };
+            }
+            const amount = Number(value || 0);
+            return { amount, grossAmount: amount, withheldCommission: 0 };
+          })
+          .filter((quote) => quote.amount > 0);
         const isRefunded = refunded.has(primary.bookingGroupId);
+        const bookingQuote = refundQuoteFor(primary.bookingGroupId);
         // What came back on the booking payment itself: the recorded refund when
         // we have one (a partial refund returns less than the villas cost), the
         // stay total otherwise. Add-guests differences are separate transfers and
         // are never part of that record, so they always add on top.
         const bookingRefund = isRefunded
-          ? (actualRefundFor(primary.bookingGroupId) ?? totalPrice)
+          ? (bookingQuote.amount ?? totalPrice)
           : 0;
+        const bookingGross = isRefunded
+          ? (bookingQuote.grossAmount ?? bookingRefund + bookingQuote.withheldCommission)
+          : 0;
+        const changeAmounts = changeQuotes.map((quote) => quote.amount);
+        const grossAmount = bookingGross + changeQuotes.reduce((sum, quote) => sum + quote.grossAmount, 0);
+        const withheldCommission = bookingQuote.withheldCommission +
+          changeQuotes.reduce((sum, quote) => sum + quote.withheldCommission, 0);
         return {
           key,
           villas,
@@ -750,6 +784,8 @@
           // returned is the booking refund plus these transfers.
           changeAmounts,
           bookingRefund: roundMoney(bookingRefund),
+          grossAmount: roundMoney(grossAmount),
+          withheldCommission: roundMoney(withheldCommission),
           refundedAmount: isRefunded
             ? roundMoney(bookingRefund + changeAmounts.reduce((sum, amount) => sum + amount, 0))
             : 0,
@@ -776,6 +812,8 @@
     );
     let refundedCount = 0;
     let refundedTotal = 0;
+    let grossTotal = 0;
+    let withheldCommission = 0;
     // The payout fee is a flat tier charged once per MAIB transfer: the main
     // booking refund is one transfer, and every refunded add-guests difference
     // is another, so each carries its own fee at its own amount's tier.
@@ -784,6 +822,8 @@
       if (group.refunded) {
         refundedCount += 1;
         refundedTotal += group.refundedAmount;
+        grossTotal += group.grossAmount;
+        withheldCommission += group.withheldCommission;
         // The fee tier follows the sum actually transferred, not the stay price:
         // a 850 MDL partial refund of a 12,200 MDL booking costs the 20 MDL tier.
         refundFees += refundTransferFee(group.bookingRefund);
@@ -793,13 +833,19 @@
       }
     });
     refundedTotal = roundMoney(refundedTotal);
+    grossTotal = roundMoney(grossTotal);
+    withheldCommission = roundMoney(withheldCommission);
+    const bankFees = roundMoney(grossTotal * INBOUND_COMMISSION_RATE + refundFees);
 
     return {
       // The whole cancellations view is refunded-only (owner request, ADR-095
       // corrected): one refunded booking (across however many villas) counts once.
       count: refundedCount,
+      grossTotal,
+      withheldCommission,
       refundedTotal,
-      commissionLost: roundMoney(refundedTotal * INBOUND_COMMISSION_RATE + refundFees),
+      bankFees,
+      netCost: roundMoney(bankFees - withheldCommission),
     };
   }
 
@@ -850,8 +896,11 @@
       refundedGroupIds: state.refundedGroupIds,
       refundedChangesByGroup: state.refundedChangesByGroup,
     });
-    setText('[data-finance-commission-lost]', formatMDL(context, summary.commissionLost));
+    setText('[data-finance-refund-gross]', formatMDL(context, summary.grossTotal));
+    setText('[data-finance-withheld-commission]', formatMDL(context, summary.withheldCommission));
     setText('[data-finance-refunded-total]', formatMDL(context, summary.refundedTotal));
+    setText('[data-finance-bank-fees]', formatMDL(context, summary.bankFees));
+    setText('[data-finance-net-cost]', formatMDL(context, summary.netCost));
 
     const list = qs('[data-finance-cancel-list]');
     const empty = qs('[data-finance-cancel-empty]');
@@ -982,7 +1031,11 @@
 
     const amount = root.document.createElement('span');
     amount.className = 'crm-finance-scheduled-card__amount';
-    amount.textContent = formatMDL(context, refund.amount);
+    const totalNet = Number(refund.refundTotal?.net ?? refund.amount ?? 0);
+    const totalGross = Number(refund.refundTotal?.gross ?? totalNet);
+    const totalWithheld = Number(refund.refundTotal?.withheld ?? 0);
+    amount.textContent = `Total net pentru toate autorizările de plată: ${formatMDL(context, totalNet)} · ` +
+      `brut ${formatMDL(context, totalGross)} · comision reținut ${formatMDL(context, totalWithheld)}`;
 
     const eta = root.document.createElement('span');
     eta.className = 'crm-finance-scheduled-card__eta';
@@ -1043,8 +1096,7 @@
     if (typeof root.EcoVilaSupabase.fetchScheduledRefunds !== 'function') {
       return Promise.resolve([]);
     }
-    return root.EcoVilaSupabase.fetchScheduledRefunds(context.client).catch((error) => {
-      console.error('Could not load scheduled refunds', error);
+    return root.EcoVilaSupabase.fetchScheduledRefunds(context.client).catch(() => {
       return [];
     });
   }
@@ -1055,14 +1107,13 @@
     if (typeof root.EcoVilaSupabase.fetchRefundedGroups !== 'function') {
       return Promise.resolve([]);
     }
-    return root.EcoVilaSupabase.fetchRefundedGroups(context.client).catch((error) => {
-      console.error('Could not load refunded groups', error);
+    return root.EcoVilaSupabase.fetchRefundedGroups(context.client).catch(() => {
       return [];
     });
   }
 
   // Refunded add-guests transfers for the cancelled groups, as a Map of
-  // booking_group_id -> [difference amounts]. Best-effort like the other refund
+  // booking_group_id -> [difference refund quotes]. Best-effort like the other refund
   // lookups: a failure just means the totals fall back to the stay prices.
   async function fetchRefundedChangesByGroupSafe(context, cancellationRows) {
     const groupIds = [
@@ -1077,18 +1128,22 @@
       const byGroup = new Map();
       (rows || []).forEach((row) => {
         const groupId = row?.booking_group_id;
-        const amount = Number(row?.difference_amount || 0);
+        const amount = Number(row?.refund_amount ?? row?.difference_amount ?? 0);
+        const withheldCommission = Number(row?.refund_withheld || 0);
         if (!groupId || !(amount > 0)) {
           return;
         }
         if (!byGroup.has(groupId)) {
           byGroup.set(groupId, []);
         }
-        byGroup.get(groupId).push(amount);
+        byGroup.get(groupId).push({
+          amount,
+          grossAmount: amount + withheldCommission,
+          withheldCommission,
+        });
       });
       return byGroup;
-    } catch (error) {
-      console.error('Could not load refunded change amounts', error);
+    } catch (_error) {
       return new Map();
     }
   }
@@ -1132,11 +1187,11 @@
     state.changeRows = changeRows || [];
     state.cancellationRows = cancellationRows || [];
     state.scheduledRefunds = scheduledRefunds || [];
-    // Map id -> amount actually refunded (null when unknown). `.has()` still
+    // Map id -> persisted refund quote (amount is null when unknown). `.has()` still
     // answers "was this group refunded?", so every existing reader keeps working
     // while the cancellation totals gain the real sums (ADR-104).
     state.refundedGroupIds = new Map(
-      (refundedGroups || []).map((entry) => [entry.bookingGroupId, entry.amount]),
+      (refundedGroups || []).map((entry) => [entry.bookingGroupId, entry]),
     );
     // Depends on the cancellation rows just fetched, so it runs after the batch.
     state.refundedChangesByGroup = await fetchRefundedChangesByGroupSafe(

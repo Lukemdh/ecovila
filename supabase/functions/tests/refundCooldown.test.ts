@@ -3,14 +3,36 @@
 // mechanics the whole feature rests on: scheduleBookingRefund records a due-dated
 // row without ever calling MAIB, and cancelScheduledRefund only aborts a refund
 // that has NOT yet fired.
-import { assert, assertEquals } from 'std/assert';
+import { assert, assertEquals, assertRejects } from 'std/assert';
 import {
   attemptBookingRefund,
   cancelScheduledRefund,
-  refundEligibleAtIso,
   REFUND_COOLDOWN_HOURS,
+  refundEligibleAtIso,
   scheduleBookingRefund,
 } from '../_shared/refunds.ts';
+import type { RefundQuote } from '../_shared/refundPolicy.ts';
+
+const QUOTE: RefundQuote = {
+  gross: 5000,
+  net: 4930,
+  withheld: 70,
+  rateBps: 140,
+  version: 'adr-105-1.4pct',
+};
+
+function quotedRefundRow(overrides: Record<string, unknown> = {}) {
+  return {
+    pay_id: 'p1',
+    booking_group_id: 'g1',
+    amount: QUOTE.net,
+    gross_amount: QUOTE.gross,
+    withheld_commission: QUOTE.withheld,
+    commission_rate_bps: QUOTE.rateBps,
+    refund_policy_version: QUOTE.version,
+    ...overrides,
+  };
+}
 
 // Minimal chainable client: serves one row per table for findRefundRow's
 // select().eq().maybeSingle(), captures upsert()/insert() payloads, and records
@@ -22,7 +44,13 @@ import {
 // concurrent writer landing between a read-check and the guarded write.
 function makeClient(
   initial: Record<string, Record<string, unknown>> = {},
-  options: { onRead?: (table: string) => void } = {},
+  options: {
+    onRead?: (table: string) => void;
+    updateError?: (
+      table: string,
+      payload: Record<string, unknown> | null,
+    ) => { message: string } | null;
+  } = {},
 ) {
   const store: Record<string, Record<string, unknown> | null> = { ...initial };
   const upserts: Array<{ table: string; payload: Record<string, unknown> }> = [];
@@ -40,13 +68,17 @@ function makeClient(
         return false;
       }
       return filters.every((filter) =>
-        filter.op === 'eq' ? row[filter.column] === filter.value : row[filter.column] !== filter.value
+        filter.op === 'eq'
+          ? row[filter.column] === filter.value
+          : row[filter.column] !== filter.value
       );
     }
 
     function resolveUpdate() {
       const matched = filtersMatch(store[table] ?? null);
       updates.push({ table, payload: pendingUpdate, matched });
+      const error = options.updateError?.(table, pendingUpdate) || null;
+      if (error) return { data: null, error };
       if (matched && pendingUpdate) {
         store[table] = { ...(store[table] || {}), ...pendingUpdate };
       }
@@ -107,20 +139,22 @@ Deno.test('refundEligibleAtIso stamps the payout 60 hours out', () => {
 });
 
 Deno.test('scheduleBookingRefund records a requested row with a ~60h eligible_at and never calls MAIB', async () => {
-  const { client, upserts } = makeClient();
+  const { client, inserts } = makeClient();
   const row = await scheduleBookingRefund(client, {
     payId: 'p1',
     bookingGroupId: 'g1',
-    amount: 5000,
+    quote: QUOTE,
     reason: 'guest_request',
     source: 'test',
   });
 
-  assertEquals(upserts.length, 1);
-  const payload = upserts[0].payload;
+  assertEquals(inserts.length, 1);
+  const payload = inserts[0].payload;
   assertEquals(payload.status, 'requested');
   assertEquals(payload.pay_id, 'p1');
-  assertEquals(payload.amount, 5000);
+  assertEquals(payload.amount, 4930);
+  assertEquals(payload.gross_amount, 5000);
+  assertEquals(payload.withheld_commission, 70);
   assertEquals((payload.request_payload as Record<string, unknown>).scheduled, true);
 
   const leadMs = new Date(String(payload.eligible_at)).getTime() - Date.now();
@@ -131,41 +165,100 @@ Deno.test('scheduleBookingRefund records a requested row with a ~60h eligible_at
 
 Deno.test('scheduleBookingRefund keeps the original eligible_at so re-initiating never extends the wait', async () => {
   const existingEligible = '2026-07-10T22:00:00.000Z';
-  const { client, upserts } = makeClient({
-    maib_refunds: {
-      pay_id: 'p1',
-      booking_group_id: 'g1',
+  const { client, updates } = makeClient({
+    maib_refunds: quotedRefundRow({
       status: 'requested',
       eligible_at: existingEligible,
-    },
+    }),
   });
 
   await scheduleBookingRefund(client, {
     payId: 'p1',
     bookingGroupId: 'g1',
-    amount: 5000,
+    quote: QUOTE,
     reason: 'guest_request',
     source: 'test',
   });
 
-  assertEquals(upserts[0].payload.eligible_at, existingEligible);
+  assertEquals(updates[0].payload?.eligible_at, existingEligible);
 });
 
 Deno.test('scheduleBookingRefund never resurrects a settled or aborted refund', async () => {
   for (const status of ['succeeded', 'cancelled']) {
-    const { client, upserts } = makeClient({
-      maib_refunds: { pay_id: 'p1', booking_group_id: 'g1', status },
+    const { client, upserts, inserts } = makeClient({
+      maib_refunds: quotedRefundRow({ status }),
     });
     const row = await scheduleBookingRefund(client, {
       payId: 'p1',
       bookingGroupId: 'g1',
-      amount: 5000,
+      quote: QUOTE,
       reason: 'guest_request',
       source: 'test',
     });
     assertEquals(upserts.length, 0, `${status} must not be re-upserted`);
+    assertEquals(inserts.length, 0, `${status} must not be inserted`);
     assertEquals(row?.status, status);
   }
+});
+
+Deno.test('scheduleBookingRefund reads back a spent partial-refund row despite a different request quote', async () => {
+  const spent = quotedRefundRow({
+    status: 'succeeded',
+    amount: 3451,
+    gross_amount: 3500,
+    withheld_commission: 49,
+  });
+  const { client, upserts, inserts, updates } = makeClient({ maib_refunds: spent });
+
+  const row = await scheduleBookingRefund(client, {
+    payId: 'p1',
+    bookingGroupId: 'g1',
+    quote: {
+      gross: 12_200,
+      net: 12_030,
+      withheld: 170,
+      rateBps: 140,
+      version: 'adr-105-1.4pct',
+    },
+    reason: 'guest_request',
+    source: 'test',
+  });
+
+  assertEquals(row, spent);
+  assertEquals(upserts.length, 0);
+  assertEquals(inserts.length, 0);
+  assertEquals(updates.length, 0);
+});
+
+Deno.test('scheduleBookingRefund accepts different audit labels when the stored money is identical', async () => {
+  const { client } = makeClient({
+    maib_refunds: quotedRefundRow({
+      status: 'requested',
+      amount: 36,
+      gross_amount: 36,
+      withheld_commission: 0,
+      commission_rate_bps: 140,
+      refund_policy_version: 'legacy-full-refund',
+    }),
+  });
+
+  const row = await scheduleBookingRefund(client, {
+    payId: 'p1',
+    bookingGroupId: 'g1',
+    quote: {
+      gross: 36,
+      net: 36,
+      withheld: 0,
+      rateBps: 0,
+      version: 'adr-105-override',
+    },
+    reason: 'guest_request',
+    source: 'test',
+  });
+
+  assertEquals(row?.amount, 36);
+  assertEquals(row?.commission_rate_bps, 140);
+  assertEquals(row?.refund_policy_version, 'legacy-full-refund');
 });
 
 Deno.test('cancelScheduledRefund aborts a still-pending refund and drops the refunded marker', async () => {
@@ -234,7 +327,7 @@ Deno.test('attemptBookingRefund refuses a staff-cancelled refund instead of resu
     payId: 'p1',
     providerPayId: 'prov-1',
     bookingGroupId: 'g1',
-    amount: 5000,
+    quote: QUOTE,
     reason: 'guest_request',
     source: 'test',
   });
@@ -246,6 +339,205 @@ Deno.test('attemptBookingRefund refuses a staff-cancelled refund instead of resu
   assertEquals(store.maib_refunds?.status, 'cancelled');
   assertEquals(upserts.length, 0);
   assertEquals(inserts.length, 0);
+});
+
+Deno.test('attemptBookingRefund rejects a competing quote without rewriting the stored money', async () => {
+  const { client, store } = makeClient({
+    maib_refunds: quotedRefundRow({ status: 'requested' }),
+  });
+
+  await assertRejects(
+    () =>
+      attemptBookingRefund(client, {
+        payId: 'p1',
+        providerPayId: 'prov-1',
+        bookingGroupId: 'g1',
+        quote: { ...QUOTE, net: 5000, withheld: 0, rateBps: 0, version: 'adr-105-override' },
+        reason: 'staff_override',
+        source: 'test',
+      }),
+    Error,
+    'different refund quote',
+  );
+
+  assertEquals(store.maib_refunds?.amount, QUOTE.net);
+  assertEquals(store.maib_refunds?.gross_amount, QUOTE.gross);
+});
+
+Deno.test('every retry sends the stored net to MAIB, including unresolved retries', async () => {
+  const { client } = makeClient({
+    maib_refunds: quotedRefundRow({ status: 'requested', attempts: 0 }),
+  });
+  const observedAmounts: number[] = [];
+  const fetcher = ((url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href.endsWith('/v2/auth/token')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          ok: true,
+          result: { accessToken: 'token', tokenType: 'Bearer' },
+        })),
+      );
+    }
+
+    const body = JSON.parse(String(init?.body || '{}')) as { amount?: number };
+    observedAmounts.push(Number(body.amount));
+    // Stay unresolved so all three executions genuinely reach the provider.
+    return Promise.resolve(
+      new Response(JSON.stringify({
+        ok: true,
+        result: { status: 'PENDING' },
+      })),
+    );
+  }) as typeof fetch;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const outcome = await attemptBookingRefund(client, {
+      payId: 'p1',
+      providerPayId: 'provider-p1',
+      bookingGroupId: 'g1',
+      quote: QUOTE,
+      reason: 'retry-test',
+      source: 'test',
+      providerOptions: {
+        fetcher,
+        baseUrl: 'https://api.test',
+        clientId: 'client',
+        clientSecret: 'secret',
+      },
+    });
+    assertEquals(outcome.ok, false);
+  }
+
+  assertEquals(observedAmounts, [QUOTE.net, QUOTE.net, QUOTE.net]);
+});
+
+Deno.test('two executors keep a succeeded ledger when the later provider result is pending', async () => {
+  let releasePending: (() => void) | null = null;
+  const successWritten = new Promise<void>((resolve) => {
+    releasePending = resolve;
+  });
+  const { client, store } = makeClient(
+    { maib_refunds: quotedRefundRow({ status: 'requested' }) },
+    {
+      updateError: (table, payload) => {
+        if (table === 'maib_refunds' && payload?.status === 'succeeded') {
+          releasePending?.();
+        }
+        return null;
+      },
+    },
+  );
+  const observedAmounts: number[] = [];
+  let providerCall = 0;
+  const fetcher = ((url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href.endsWith('/v2/auth/token')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          ok: true,
+          result: { accessToken: 'token', tokenType: 'Bearer' },
+        })),
+      );
+    }
+    observedAmounts.push(JSON.parse(String(init?.body || '{}')).amount);
+    providerCall += 1;
+    if (providerCall === 1) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ ok: true, result: { status: 'OK' } })),
+      );
+    }
+    return successWritten.then(() =>
+      new Response(JSON.stringify({ ok: true, result: { status: 'PENDING' } }))
+    );
+  }) as typeof fetch;
+  const input = {
+    payId: 'p1',
+    providerPayId: 'provider-p1',
+    bookingGroupId: 'g1',
+    quote: QUOTE,
+    reason: 'race-test',
+    source: 'test',
+    providerOptions: {
+      fetcher,
+      baseUrl: 'https://api.test',
+      clientId: 'client',
+      clientSecret: 'secret',
+    },
+  };
+
+  const outcomes = await Promise.all([
+    attemptBookingRefund(client, input),
+    attemptBookingRefund(client, input),
+  ]);
+
+  assertEquals(outcomes.map((outcome) => outcome.ok), [true, false]);
+  assertEquals(observedAmounts, [QUOTE.net, QUOTE.net]);
+  assertEquals(store.maib_refunds?.status, 'succeeded');
+  assertEquals(store.maib_refunds?.amount, QUOTE.net);
+});
+
+Deno.test('a crash after MAIB success retries the same stored net and resolves REVERSED', async () => {
+  let failSuccessWrite = true;
+  const { client, store } = makeClient(
+    { maib_refunds: quotedRefundRow({ status: 'requested' }) },
+    {
+      updateError: (table, payload) => {
+        if (table === 'maib_refunds' && payload?.status === 'succeeded' && failSuccessWrite) {
+          failSuccessWrite = false;
+          return { message: 'simulated crash before ledger success write' };
+        }
+        return null;
+      },
+    },
+  );
+  const observedAmounts: number[] = [];
+  let providerAttempt = 0;
+  const fetcher = ((url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href.endsWith('/v2/auth/token')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          ok: true,
+          result: { accessToken: 'token', tokenType: 'Bearer' },
+        })),
+      );
+    }
+    observedAmounts.push(JSON.parse(String(init?.body || '{}')).amount);
+    providerAttempt += 1;
+    return Promise.resolve(
+      new Response(JSON.stringify({
+        ok: true,
+        result: { status: providerAttempt === 1 ? 'OK' : 'REVERSED' },
+      })),
+    );
+  }) as typeof fetch;
+  const input = {
+    payId: 'p1',
+    providerPayId: 'provider-p1',
+    bookingGroupId: 'g1',
+    quote: QUOTE,
+    reason: 'retry-test',
+    source: 'test',
+    providerOptions: {
+      fetcher,
+      baseUrl: 'https://api.test',
+      clientId: 'client',
+      clientSecret: 'secret',
+    },
+  };
+
+  await assertRejects(
+    () => attemptBookingRefund(client, input),
+    Error,
+    'simulated crash',
+  );
+  assertEquals(store.maib_refunds?.status, 'processing');
+
+  const retried = await attemptBookingRefund(client, input);
+  assertEquals(retried.ok, true);
+  assertEquals(retried.alreadyRefunded, true);
+  assertEquals(observedAmounts, [QUOTE.net, QUOTE.net]);
 });
 
 Deno.test('cancelScheduledRefund reports already_processing when the refund is claimed mid-cancel', async () => {

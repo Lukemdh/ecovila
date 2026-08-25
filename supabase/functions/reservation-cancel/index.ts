@@ -1,9 +1,8 @@
 import { handleCors } from '../_shared/cors.ts';
 import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '../_shared/http.ts';
-import {
-  alertRefundProblem,
-  scheduleBookingRefund,
-} from '../_shared/refunds.ts';
+import { alertRefundProblem, refundEligibleAtIso } from '../_shared/refunds.ts';
+import { aggregateRefundQuotes, prepareFullRefundIntent } from '../_shared/refundIntents.ts';
+import { activeCommissionBps, quoteRefund, type RefundQuote } from '../_shared/refundPolicy.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import {
@@ -133,11 +132,18 @@ Deno.serve(async (request) => {
       : null;
     let refundScheduled = false;
     let refundEta: string | null = null;
+    let refundQuote: RefundQuote | null = null;
+    let refundTotal: RefundQuote | null = null;
 
     if (paidCard && refundable) {
       if (!payment) {
         throw new HttpError(409, 'The MAIB payment is not ready for refund.');
       }
+
+      // One cancellation is one policy decision even though MAIB requires a
+      // separate authorization for the main payment and every paid difference.
+      const commissionRateBps = activeCommissionBps();
+      refundQuote = quoteRefund(Number(payment.amount), { rateBps: commissionRateBps });
 
       // Cooldown (ADR-096): do NOT move the money now. Record the refund as a
       // scheduled maib_refunds row (eligible_at = now + 60h) and let the
@@ -148,13 +154,14 @@ Deno.serve(async (request) => {
       // is just a DB write, but if it fails the guest would never be refunded, so
       // alert staff to intervene — and still cancel the booking.
       try {
-        const scheduled = await scheduleBookingRefund(client, {
+        const intent = await prepareFullRefundIntent(client, {
           payId: payment.pay_id,
           bookingGroupId: summary.bookingGroupId,
-          amount: Number(payment.amount || 0),
+          quote: refundQuote,
           currency: payment.currency || 'MDL',
           reason: 'guest_request',
           source: 'reservation-cancel',
+          eligibleAt: refundEligibleAtIso(),
         });
         // scheduleBookingRefund leaves a TERMINAL row untouched and hands it
         // back. That happens when this payment's single MAIB refund is already
@@ -163,9 +170,15 @@ Deno.serve(async (request) => {
         // system cannot keep: no cron will ever move money for this pay_id.
         // Cancel the booking regardless, but say so honestly and put it in front
         // of staff, who must transfer the remainder by hand.
-        const spent = scheduled?.status === 'succeeded' || scheduled?.status === 'cancelled';
-        refundScheduled = !spent;
-        refundEta = spent ? null : scheduled?.eligible_at || null;
+        const spent = !intent.refundScheduled;
+        refundScheduled = intent.refundScheduled;
+        refundEta = spent ? null : intent.mainRow?.eligible_at || null;
+        refundTotal = refundScheduled
+          ? aggregateRefundQuotes([
+            intent.mainQuote,
+            ...intent.changeQuotes.map((entry) => entry.quote),
+          ])
+          : null;
 
         if (spent) {
           await alertRefundProblem(client, {
@@ -173,9 +186,9 @@ Deno.serve(async (request) => {
             bookingGroupId: summary.bookingGroupId,
             amount: payment.amount,
             reason: 'guest_request',
-            detail: scheduled?.status === 'succeeded'
+            detail: intent.mainRow?.status === 'succeeded'
               ? `Plata a fost deja restituită (${
-                Math.round(Number(scheduled?.amount || 0))
+                Math.round(Number(intent.mainRow?.amount || 0))
               } MDL) — MAIB permite o singură restituire. Transferă manual diferența cuvenită.`
               : 'Restituirea acestei plăți fusese anulată de personal — verifică dacă clientul trebuie despăgubit manual.',
             source: 'reservation-cancel',
@@ -218,7 +231,12 @@ Deno.serve(async (request) => {
 
     if (cancelError) throw new Error(cancelError.message);
 
-    const notificationResults = await notifyCancelledReservations(client, reservations);
+    const notificationResults = await notifyCancelledReservations(
+      client,
+      reservations,
+      refundScheduled ? refundTotal : null,
+      refundScheduled ? refundEta : null,
+    );
 
     return jsonResponse(
       {
@@ -230,6 +248,8 @@ Deno.serve(async (request) => {
         refunded: false,
         refundScheduled,
         refundEta,
+        refundQuote: refundScheduled && refundQuote ? publicQuote(refundQuote) : null,
+        refundTotal: refundScheduled && refundTotal ? publicQuote(refundTotal) : null,
         refundable,
         refundReason: refundEligibilityReason({
           checkIn: summary.checkIn,
@@ -305,6 +325,8 @@ function earliestCreatedAt(reservations: CancellationReservationRow[]) {
 async function notifyCancelledReservations(
   client: SupabaseClient,
   reservations: CancellationReservationRow[],
+  refundTotal: RefundQuote | null,
+  refundEta: string | null,
 ) {
   const results: CancellationNotificationResult[] = [];
   // One notification per booking group: the owner reservation sends the SMS and
@@ -325,7 +347,7 @@ async function notifyCancelledReservations(
         continue;
       }
 
-      const message = composeCancellationConfirmation(reservation, group);
+      const message = composeCancellationConfirmation(reservation, group, refundTotal, refundEta);
       const [sms, email] = await Promise.allSettled([
         message.sms ? sendSms(message.sms) : Promise.resolve({ skipped: true }),
         sendEmail(message.email),
@@ -423,6 +445,8 @@ async function markNotificationEventFailed(
 function composeCancellationConfirmation(
   reservation: CancellationReservationRow,
   groupReservations: CancellationReservationRow[] = [reservation],
+  refundTotal: RefundQuote | null = null,
+  refundEta: string | null = null,
 ): NotificationMessage {
   // The owner reservation's email lists every villa in the booking group.
   const group = groupReservations.length ? groupReservations : [reservation];
@@ -440,6 +464,10 @@ function composeCancellationConfirmation(
     roomCopy,
     checkIn: reservation.check_in,
     checkOut: reservation.check_out,
+    refundAmount: refundTotal?.net,
+    withheldCommission: refundTotal?.withheld,
+    refundStatus: refundTotal ? 'scheduled' : undefined,
+    refundEta,
     siteUrl: getSiteUrl(),
   });
 
@@ -449,6 +477,10 @@ function composeCancellationConfirmation(
       message: cancellationConfirmationSms({
         checkIn: reservation.check_in,
         checkOut: reservation.check_out,
+        refundAmount: refundTotal?.net,
+        withheldCommission: refundTotal?.withheld,
+        refundStatus: refundTotal ? 'scheduled' : undefined,
+        refundEta,
         language: lang,
       }),
     },
@@ -463,6 +495,10 @@ function composeCancellationConfirmation(
 
 function providerError(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Provider request failed.');
+}
+
+function publicQuote(quote: RefundQuote) {
+  return { gross: quote.gross, withheld: quote.withheld, net: quote.net };
 }
 
 async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {

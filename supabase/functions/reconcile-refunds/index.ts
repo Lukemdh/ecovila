@@ -13,9 +13,11 @@ import {
   alertRefundProblem,
   attemptBookingRefund,
   type MaibRefundRow,
+  quoteFromRefundRow,
 } from '../_shared/refunds.ts';
 import { refundPaidChanges } from '../_shared/reservationChanges.ts';
 import type { ChangeRefundResult } from '../_shared/reservationChanges.ts';
+import { prepareFullRefundIntent, shouldSweepPaidChangeRefunds } from '../_shared/refundIntents.ts';
 import { createServiceClient } from '../_shared/supabaseAdmin.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
@@ -111,7 +113,7 @@ async function findUnresolvedRefunds(client: SupabaseClient) {
   const nowIso = new Date().toISOString();
   const { data, error } = await table<MaibRefundRow[]>(client, 'maib_refunds')
     .select(
-      'pay_id, booking_group_id, amount, currency, status, reason, provider_status, attempts, alerted_at, eligible_at, created_at',
+      'pay_id, booking_group_id, amount, gross_amount, withheld_commission, commission_rate_bps, refund_policy_version, currency, status, reason, provider_status, attempts, alerted_at, eligible_at, created_at',
     )
     .in('status', ['requested', 'processing', 'failed'])
     .gt('created_at', oldestIso)
@@ -150,7 +152,7 @@ async function reconcileRefund(
     return { ...base, resolved: false, error: 'payment_row_missing', alerted };
   }
 
-  const amount = Number(refund.amount || payment.amount || 0);
+  const amount = Number(refund.amount);
   if (!(amount > 0)) {
     const alerted = await maybeAlert(client, refund, 'Suma restituirii este invalidă.');
     return { ...base, resolved: false, error: 'invalid_amount', alerted };
@@ -160,7 +162,7 @@ async function reconcileRefund(
     payId: payment.pay_id,
     providerPayId: payment.provider_payment_id || payment.pay_id,
     bookingGroupId: refund.booking_group_id,
-    amount,
+    quote: quoteFromRefundRow(refund),
     currency: payment.currency || refund.currency || 'MDL',
     reason: refund.reason || 'reconcile',
     source: 'reconcile-refunds',
@@ -227,9 +229,9 @@ async function maybeAlert(client: SupabaseClient, refund: MaibRefundRow, detail:
 
 // "Add guests" differences are separate MAIB transactions with no maib_refunds
 // row of their own. When a booking's refund flow ran, any difference left
-// 'paid' + unrefunded needs the same retry treatment. A change qualifies when
-// its booking group has ANY maib_refunds row — that row only ever exists after
-// a cancellation-with-refund was initiated for the group.
+// 'paid' + unrefunded needs the same retry treatment after a FULL cancellation.
+// ADR-104 partial cancellations also create maib_refunds rows, but the remaining
+// booking is live and its add-guest authorizations must stay paid.
 async function sweepOrphanedChangeRefunds(
   client: SupabaseClient,
   alreadyTouched: Set<string>,
@@ -253,13 +255,13 @@ async function sweepOrphanedChangeRefunds(
       continue;
     }
 
-    const { data: refundRow, error: refundError } = await table<
-      { pay_id: string; status?: string | null; eligible_at?: string | null }
-    >(
+    const { data: refundRow, error: refundError } = await table<MaibRefundRow>(
       client,
       'maib_refunds',
     )
-      .select('pay_id, status, eligible_at')
+      .select(
+        'pay_id, booking_group_id, amount, gross_amount, withheld_commission, commission_rate_bps, refund_policy_version, currency, status, reason, eligible_at',
+      )
       .eq('booking_group_id', bookingGroupId)
       .limit(1)
       .maybeSingle();
@@ -271,16 +273,29 @@ async function sweepOrphanedChangeRefunds(
       continue;
     }
 
-    // Cooldown (ADR-096): differences ride the group's refund clock. Don't sweep
-    // one whose main refund staff aborted, nor one still cooling down.
-    if (refundRow.status === 'cancelled') {
-      continue;
-    }
-    if (refundRow.eligible_at && new Date(refundRow.eligible_at).getTime() > Date.now()) {
+    // The reason is the narrow authoritative discriminator established by
+    // ADR-104: crm_partial_cancellation means the booking remains partly live;
+    // every full guest/staff cancellation uses a different reason. Cooldown and
+    // staff-abort gates are folded into the same tested predicate.
+    if (!shouldSweepPaidChangeRefunds(refundRow)) {
       continue;
     }
 
     try {
+      if (refundRow.gross_amount === null || refundRow.gross_amount === undefined) {
+        // An old deployed writer can create a nullable main quote after the
+        // expand migration. Route it through the transaction before the strict
+        // executor: the RPC explicitly brands every related NULL as legacy,
+        // while refundPaidChanges itself remains forbidden from guessing.
+        await prepareFullRefundIntent(client, {
+          payId: refundRow.pay_id,
+          bookingGroupId,
+          quote: quoteFromRefundRow(refundRow),
+          currency: refundRow.currency || 'MDL',
+          reason: refundRow.reason || 'reconcile',
+          source: 'reconcile-refunds:crossover',
+        });
+      }
       const refunds = await refundPaidChanges(client, bookingGroupId, 'reconcile');
       if (refunds.length) {
         results.push({ bookingGroupId, refunds });
