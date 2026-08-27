@@ -6339,6 +6339,46 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     assert.equal(summary.refundedTotal, 2000, 'Refunded bound link amount must be recognized in refunded total');
   });
 
+  it('shows a calendar loading overlay without strobing on every realtime reload', () => {
+    const dashboard = read('admin/dashboard.html');
+    const dashboardJs = read('admin/js/crm-dashboard.js');
+    const css = read('css/crm.css');
+
+    // The overlay needs its own positioned wrapper: .crm-calendar is the scroll
+    // container, so an absolutely positioned child of it would scroll away with
+    // the grid instead of staying centred.
+    assert.match(dashboard, /class="crm-calendar-viewport"/);
+    assert.match(dashboard, /data-calendar-loader hidden/);
+    assert.match(dashboard, /class="crm-spinner"/);
+    assert.match(css, /\.crm-calendar-viewport\s*\{[^}]*position:\s*relative/);
+    assert.match(css, /@keyframes crm-spin/);
+
+    // A reload fires on every realtime event. The overlay must be armed on a
+    // delay so a fast refresh never flashes it, while the very first paint —
+    // which has no rooms rendered yet — shows it at once.
+    assert.match(dashboardJs, /CALENDAR_LOADER_DELAY_MS\s*=\s*\d+/);
+    assert.match(
+      dashboardJs,
+      /if \(!state\?\.rooms\?\.length\) \{\s*loader\.hidden = false;/,
+      'first paint must not wait out the delay',
+    );
+    assert.match(
+      dashboardJs,
+      /calendarLoaderTimer = root\.setTimeout\(/,
+      'later reloads must arm the overlay on a timer',
+    );
+
+    // An older, slower reload finishing second must not clear the spinner a
+    // newer one is still waiting on.
+    assert.match(
+      dashboardJs,
+      /if \(state\.loadGeneration === generation\) \{\s*setCalendarLoading\(state, false\);/,
+    );
+
+    // It must never swallow a click or block scrolling of the grid on screen.
+    assert.match(css, /\.crm-calendar-loader\s*\{[^}]*pointer-events:\s*none/);
+  });
+
   it('ADR-107 QA Finding 2: Move dialog summary indicates unverified figure when bookingMoney is not reliable', () => {
     const summaryEl = createFakeElement('div');
     const moveDialog = createFakeElement('dialog');

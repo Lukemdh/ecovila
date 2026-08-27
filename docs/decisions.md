@@ -4193,6 +4193,30 @@ is relied upon against bookings made earlier.
 
 ---
 
+### ADR-109 — Calendar loading overlay that does not strobe
+
+- **Date:** 2026-08-27. Owner: the calendar takes a moment to load and said nothing while it did.
+- **The constraint that shaped it:** the dashboard reloads on every realtime event and after every
+  staff action, and most reloads are quick. A naive spinner would flash many times an hour and read
+  as breakage. So the overlay is **armed on a 250 ms delay** and only paints when a load actually
+  drags. The exception is the first paint — there are no rooms rendered yet, so waiting would just
+  show an empty grid; that one appears immediately.
+- **Overlap:** reloads can finish out of order (the pre-existing `loadGeneration` guard exists for
+  exactly that). Only the newest load clears the overlay, so an older slower reload finishing second
+  cannot dismiss a spinner a newer one is still waiting on.
+- **A wrapper was required.** `.crm-calendar` is itself the scroll container, so an absolutely
+  positioned child of it rides along with the scrolled grid instead of staying centred. The new
+  `.crm-calendar-viewport` exists only to anchor the overlay.
+- **It never blocks.** `pointer-events: none` — a background reload must not swallow a click or stop
+  staff scrolling the grid already on screen. `aria-busy` is toggled on the calendar instead of
+  adding visible text. Reduced-motion keeps the spinner turning slowly rather than freezing it, since
+  a stopped spinner reads as a hung screen.
+- **Verified** by rendering the real calendar markup against the real stylesheet and measuring:
+  the overlay's box matches the calendar's exactly, `pointer-events` computes to `none`, and the
+  spinner animates. `npm test` → 428 Node + 202 Deno. Token `?v=2026082704`; frontend-only.
+
+---
+
 ### ADR-108 — Reservation dialog: regrouped, nothing added
 
 - **Date:** 2026-08-27. Owner asked for better UX on the `data-reservation-dialog` popup with two

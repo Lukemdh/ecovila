@@ -267,7 +267,11 @@
             </article>
           </div>
 
-          <div class="crm-calendar" data-reservation-calendar>
+          <!-- The viewport only exists to anchor the loading overlay: .crm-calendar
+               is itself the scroll container, so an absolutely positioned child of
+               it would scroll away with the grid instead of staying centred. -->
+          <div class="crm-calendar-viewport">
+          <div class="crm-calendar" data-reservation-calendar aria-busy="false">
             <div class="crm-calendar-grid" data-calendar-grid>
               <div class="crm-calendar-cell crm-calendar-cell--head"></div>
               <div class="crm-calendar-cell crm-calendar-cell--head">8 mai</div>
@@ -305,6 +309,10 @@
               <div class="crm-calendar-cell"></div>
               <div class="crm-calendar-cell"></div>
             </div>
+          </div>
+          <div class="crm-calendar-loader" data-calendar-loader hidden aria-hidden="true">
+            <span class="crm-spinner"></span>
+          </div>
           </div>
         </section>
 

@@ -2069,10 +2069,48 @@
     state.reload().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
   }
 
+  // A reload fires on every realtime event, and most finish in well under a
+  // frame's worth of perceptible time. Painting a spinner for each one would
+  // strobe the calendar, so the overlay is armed on a delay and only appears when
+  // a load actually drags. The very first paint is the exception: there is
+  // nothing on screen yet, so waiting would just show an empty grid.
+  const CALENDAR_LOADER_DELAY_MS = 250;
+  let calendarLoaderTimer = null;
+
+  function setCalendarLoading(state, loading) {
+    const calendar = qs('[data-reservation-calendar]');
+    if (calendar) {
+      calendar.setAttribute('aria-busy', loading ? 'true' : 'false');
+    }
+
+    const loader = qs('[data-calendar-loader]');
+    if (!loader) {
+      return;
+    }
+
+    root.clearTimeout(calendarLoaderTimer);
+    calendarLoaderTimer = null;
+
+    if (!loading) {
+      loader.hidden = true;
+      return;
+    }
+
+    if (!state?.rooms?.length) {
+      loader.hidden = false;
+      return;
+    }
+
+    calendarLoaderTimer = root.setTimeout(() => {
+      loader.hidden = false;
+    }, CALENDAR_LOADER_DELAY_MS);
+  }
+
   async function loadDashboard(context, state) {
     const helpers = root.EcoVilaSupabase;
     captureCalendarScroll(state);
     state.isLoading = true;
+    setCalendarLoading(state, true);
     // Reloads overlap (a staff action reloads while a realtime event schedules
     // its own), and they can finish out of order. Without this guard an older,
     // slower response could overwrite newer rooms/reservations and re-offer a
@@ -2152,6 +2190,11 @@
       state.scrollToDateAfterReload = '';
       state.shouldScrollToFocus = false;
       state.isLoading = false;
+      // Only the newest load owns the overlay. An older, slower reload finishing
+      // second must not clear the spinner a newer one is still waiting on.
+      if (state.loadGeneration === generation) {
+        setCalendarLoading(state, false);
+      }
     }
   }
 

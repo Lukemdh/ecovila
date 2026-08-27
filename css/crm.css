@@ -940,6 +940,53 @@ h2 {
   font-weight: 600;
 }
 
+/* Anchors the loading overlay. .crm-calendar is the scroll container, so an
+   absolutely positioned child of it would ride along with the scrolled grid
+   instead of staying centred in view. */
+.crm-calendar-viewport {
+  position: relative;
+  min-width: 0;
+}
+
+/* The calendar reloads on every realtime event, so the overlay must not strobe:
+   it is armed with a delay in JS and only paints when a load actually drags.
+   pointer-events stay off — a reload should never swallow a click or block
+   scrolling of the grid that is still on screen. */
+.crm-calendar-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(244, 241, 233, 0.55);
+  backdrop-filter: blur(1px);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.crm-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--crm-line);
+  border-top-color: var(--crm-moss);
+  border-radius: 50%;
+  animation: crm-spin 0.7s linear infinite;
+}
+
+@keyframes crm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Keep it turning, just slowly: a frozen spinner reads as a hung screen. */
+@media (prefers-reduced-motion: reduce) {
+  .crm-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 .crm-calendar {
   width: 100%;
   max-width: calc(100vw - 410px);
