@@ -4193,6 +4193,42 @@ is relied upon against bookings made earlier.
 
 ---
 
+### ADR-108 — Reservation dialog: regrouped, nothing added
+
+- **Date:** 2026-08-27. Owner asked for better UX on the `data-reservation-dialog` popup with two
+  hard constraints: **no new text and no new buttons**. Planned with Gemini reviewing the dialog
+  independently; both passes reached the same four findings.
+- **Deleted:** `Prețul nu se recalculează automat la mutare — ajustează-l din Situația zilnică dacă
+  e nevoie.` (owner's call — the move flow now has its own dialog, so the hint had outlived itself).
+- **Payment status and money move into a header row.** They previously sat *below* a three-row
+  notes textarea, so the two facts staff check first were the last ones they reached. Identity left,
+  `data-edit-total` right at 1.18rem; the `data-edit-total-breakdown` line stays rendered but recedes
+  to 0.76rem muted. It is deliberately NOT hidden when it repeats the total: the same node carries
+  the real calculation once a difference is paid, and suppressing it would mean touching money
+  rendering that had just cleared a QA gate.
+- **Field order follows a phone call** — Nume/Telefon, then Check-in/Check-out, then Adulți/Copii,
+  then Note. Name and phone were full-width rows in a ≥560px panel; pairing them removes roughly
+  three rows of height.
+- **The two rare operations share one divider** in `.crm-dialog__ops`, side by side while collapsed.
+  Whichever is opened spans the full width via `:has()`, with an `@supports not selector(:has(*))`
+  fallback that simply stacks them — the first use of `:has()` in this codebase. Move comes first so
+  the destructive operation sits next to the danger zone.
+- **`data-refund-full-override` was an orphan and visually broken.** It sat between "Mută cazarea"
+  and the delete zone, wrapped in `.crm-field` — a grid with `input { width: 100% }`, which rendered
+  the checkbox as a block *above* its own label. It now uses the existing `.crm-check` row (flex,
+  aligned) and sits with the cancellation controls it actually modifies. Still exactly one instance:
+  both destructive paths read it, and a contract test asserts the count.
+- **The danger zone reads as one** — tinted panel with its own border instead of just being last in
+  the column.
+- **Not changed:** every `data-*` hook, every button, every behaviour, and all JS. The redesign is
+  markup grouping plus CSS.
+- **Verified** by rendering the real dialog markup against the real `css/crm.css` and measuring the
+  result in a browser: an opened section reports the same width as its container (522px = 522px), and
+  the override row computes `display: flex` with input and label on one line. `npm test` → 427 Node +
+  202 Deno. Token `?v=2026082704`, `dist/tophost` regenerated. Frontend-only.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

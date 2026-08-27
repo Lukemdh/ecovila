@@ -1307,6 +1307,94 @@ h2 {
   font-size: 0.82rem;
 }
 
+/* Reservation dialog header: identity on the left, money on the right. Payment
+   status and the total used to sit below the notes textarea, so the two facts
+   staff check first were the last ones they reached. The breakdown line stays
+   rendered but recedes — it repeats the total whenever no difference was paid,
+   and it carries the real calculation when one was. */
+.crm-dialog__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--crm-line);
+  padding-bottom: 13px;
+  margin-bottom: 14px;
+}
+
+.crm-dialog__head h2 {
+  margin: 0 0 5px;
+}
+
+.crm-dialog__head .crm-total-breakdown {
+  text-align: right;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-dialog__head .crm-total {
+  font-size: 1.18rem;
+  line-height: 1.15;
+}
+
+.crm-dialog__head .crm-total-breakdown > span:not(.crm-difference-marker) {
+  font-size: 0.76rem;
+}
+
+/* The two rare operations share one divider and sit side by side while closed;
+   whichever is opened takes the full width so its body is not squeezed. */
+.crm-dialog__ops {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 8px;
+  border-top: 1px solid var(--crm-line);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.crm-dialog__ops > .crm-partial {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.crm-dialog__ops > .crm-partial .crm-partial__toggle {
+  justify-self: stretch;
+  text-align: left;
+}
+
+.crm-dialog__ops > .crm-partial:has(> .crm-partial__body:not([hidden])) {
+  grid-column: 1 / -1;
+}
+
+/* No visible section left: drop the divider instead of leaving a stray rule. */
+.crm-dialog__ops:not(:has(> section:not([hidden]))) {
+  display: none;
+}
+
+/* Without :has() an opened body would be stuck in one column — stack instead. */
+@supports not selector(:has(*)) {
+  .crm-dialog__ops {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.crm-refund-override {
+  margin-top: 12px;
+}
+
+.crm-danger-zone {
+  border: 1px solid rgba(168, 50, 50, 0.18);
+  border-radius: 9px;
+  background: rgba(168, 50, 50, 0.045);
+  padding: 12px;
+}
+
+.crm-danger-zone .crm-button--danger {
+  justify-self: start;
+}
+
 .crm-move-section__body select {
   width: 100%;
 }

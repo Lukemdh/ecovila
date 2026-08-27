@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026082703">
+    <link rel="stylesheet" href="../css/crm.css?v=2026082704">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -310,7 +310,31 @@
 
         <dialog class="crm-dialog" data-reservation-dialog>
           <form method="dialog" class="crm-dialog__panel" data-reservation-editor>
-            <h2>Detalii rezervare</h2>
+            <!-- Header carries the two facts staff check first — payment status and
+                 the money. They used to sit below a 3-row textarea, so an at-a-glance
+                 check meant scrolling to the bottom of the form. -->
+            <div class="crm-dialog__head">
+              <div class="crm-dialog__head-id">
+                <h2>Detalii rezervare</h2>
+                <p class="crm-payment-readonly" data-edit-payment>Tip plată: cash/card</p>
+              </div>
+              <div class="crm-total-breakdown">
+                <strong class="crm-total" data-edit-total>Preț efectiv: 0 MDL</strong>
+                <span data-edit-total-breakdown>Preț rezervare: 0 MDL</span>
+                <span class="crm-difference-marker" data-edit-pending-difference hidden>Diferență neachitată: 0 MDL</span>
+              </div>
+            </div>
+            <!-- Field order follows a phone call: who → when → how many → notes. -->
+            <div class="crm-form-grid crm-form-grid--two">
+              <label class="crm-field">
+                <span>Nume / Prenume</span>
+                <input type="text" data-edit-name>
+              </label>
+              <label class="crm-field">
+                <span>Telefon</span>
+                <input type="tel" data-edit-phone>
+              </label>
+            </div>
             <div class="crm-form-grid crm-form-grid--two">
               <label class="crm-field">
                 <span>Check-in</span>
@@ -321,7 +345,6 @@
                 <input type="date" data-edit-check-out>
               </label>
             </div>
-            <p class="crm-note">Prețul nu se recalculează automat la mutare — ajustează-l din Situația zilnică dacă e nevoie.</p>
             <div class="crm-form-grid crm-form-grid--two">
               <label class="crm-field">
                 <span>Adulți</span>
@@ -333,23 +356,9 @@
               </label>
             </div>
             <label class="crm-field">
-              <span>Nume / Prenume</span>
-              <input type="text" data-edit-name>
-            </label>
-            <label class="crm-field">
-              <span>Telefon</span>
-              <input type="tel" data-edit-phone>
-            </label>
-            <label class="crm-field">
               <span>Note</span>
-              <textarea rows="3" data-edit-notes></textarea>
+              <textarea rows="2" data-edit-notes></textarea>
             </label>
-            <p class="crm-payment-readonly" data-edit-payment>Tip plată: cash/card</p>
-            <div class="crm-total-breakdown">
-              <strong class="crm-total" data-edit-total>Preț efectiv: 0 MDL</strong>
-              <span data-edit-total-breakdown>Preț rezervare: 0 MDL</span>
-              <span class="crm-difference-marker" data-edit-pending-difference hidden>Diferență neachitată: 0 MDL</span>
-            </div>
             <p class="crm-edit-error" data-edit-error role="alert" hidden></p>
             <menu class="crm-dialog-actions">
               <button class="crm-button" value="cancel">Închide</button>
@@ -357,9 +366,33 @@
               <button class="crm-button" type="button" data-send-payment-confirmation hidden>Trimite SMS confirmare</button>
               <button class="crm-button crm-button--primary" value="save" data-save-reservation>Salvează modificări</button>
             </menu>
-            <!-- Anulare parțială (ADR-104): renunță la unele cazări din rezervare
+            <!-- The two rare operations sit side by side under one divider, out of
+                 the everyday path; either expands to full width when opened. Move
+                 comes first so the destructive one sits next to the danger zone.
+                 Anulare parțială (ADR-104): renunță la unele cazări din rezervare
                  și restituie o sumă introdusă manual. Ascunsă până e cerută, ca
                  dialogul să rămână scurt pentru cazul obișnuit. -->
+            <div class="crm-dialog__ops">
+            <section class="crm-partial crm-move-section" data-move-accommodation hidden>
+              <button class="crm-button crm-button--ghost crm-partial__toggle" type="button" data-move-toggle aria-expanded="false" aria-controls="crm-move-body">
+                Mută cazarea
+              </button>
+              <div class="crm-partial__body crm-move-section__body" id="crm-move-body" data-move-body hidden>
+                <p class="crm-note">Alege cazarea din rezervare și o cazare liberă pentru întregul sejur.</p>
+                <div class="crm-form-grid crm-form-grid--two">
+                  <label class="crm-field">
+                    <span>Care cazare se mută</span>
+                    <select data-move-source></select>
+                  </label>
+                  <label class="crm-field">
+                    <span>Cazarea destinație</span>
+                    <select data-move-target></select>
+                  </label>
+                </div>
+                <p class="crm-partial__hint" data-move-picker-status></p>
+                <button class="crm-button crm-button--primary" type="button" data-move-open>Continuă mutarea</button>
+              </div>
+            </section>
             <section class="crm-partial" data-partial-cancel hidden>
               <button class="crm-button crm-button--ghost crm-partial__toggle" type="button" data-partial-toggle aria-expanded="false" aria-controls="crm-partial-body">
                 Anulare parțială / restituire
@@ -385,31 +418,14 @@
                 </button>
               </div>
             </section>
-            <section class="crm-partial crm-move-section" data-move-accommodation hidden>
-              <button class="crm-button crm-button--ghost crm-partial__toggle" type="button" data-move-toggle aria-expanded="false" aria-controls="crm-move-body">
-                Mută cazarea
-              </button>
-              <div class="crm-partial__body crm-move-section__body" id="crm-move-body" data-move-body hidden>
-                <p class="crm-note">Alege cazarea din rezervare și o cazare liberă pentru întregul sejur.</p>
-                <div class="crm-form-grid crm-form-grid--two">
-                  <label class="crm-field">
-                    <span>Care cazare se mută</span>
-                    <select data-move-source></select>
-                  </label>
-                  <label class="crm-field">
-                    <span>Cazarea destinație</span>
-                    <select data-move-target></select>
-                  </label>
-                </div>
-                <p class="crm-partial__hint" data-move-picker-status></p>
-                <button class="crm-button crm-button--primary" type="button" data-move-open>Continuă mutarea</button>
-              </div>
-            </section>
-            <label class="crm-field">
-              <span>
-                <input type="checkbox" data-refund-full-override>
-                Restituie integral (fără reținerea de 1,4%)
-              </span>
+            </div>
+            <!-- Moved next to the cancellation controls it modifies, and switched to
+                 the shared .crm-check row: inside .crm-field (a grid with
+                 input{width:100%}) the checkbox rendered as a block above its own
+                 label. Exactly one instance — both destructive paths read it. -->
+            <label class="crm-check crm-refund-override">
+              <input type="checkbox" data-refund-full-override>
+              <span>Restituie integral (fără reținerea de 1,4%)</span>
             </label>
             <div class="crm-danger-zone">
               <p class="crm-note">Ștergerea cere două confirmări și anulează tot grupul rezervării.</p>
@@ -1080,22 +1096,22 @@
       </section>
     </main>
 
-    <script src="../js/vendor/supabase.js?v=2026082703"></script>
-    <script src="../js/supabase-config.js?v=2026082703"></script>
-    <script src="../js/supabase.js?v=2026082703"></script>
-    <script src="../js/pricing.js?v=2026082703"></script>
-    <script src="../js/calendar.js?v=2026082703"></script>
-    <script src="js/crm-calendar.js?v=2026082703"></script>
-    <script src="js/crm-sidebar.js?v=2026082703"></script>
-    <script src="js/crm-dashboard.js?v=2026082703"></script>
-    <script src="js/crm-finance.js?v=2026082703"></script>
-    <script src="js/crm-daily.js?v=2026082703"></script>
-    <script src="js/crm-towels.js?v=2026082703"></script>
-    <script src="js/crm-photos.js?v=2026082703"></script>
-    <script src="js/crm-pricing.js?v=2026082703"></script>
-    <script src="js/crm-complaints.js?v=2026082703"></script>
-    <script src="js/crm-payment-links.js?v=2026082703"></script>
-    <script src="js/crm-auth.js?v=2026082703"></script>
-    <script src="js/crm-app.js?v=2026082703"></script>
+    <script src="../js/vendor/supabase.js?v=2026082704"></script>
+    <script src="../js/supabase-config.js?v=2026082704"></script>
+    <script src="../js/supabase.js?v=2026082704"></script>
+    <script src="../js/pricing.js?v=2026082704"></script>
+    <script src="../js/calendar.js?v=2026082704"></script>
+    <script src="js/crm-calendar.js?v=2026082704"></script>
+    <script src="js/crm-sidebar.js?v=2026082704"></script>
+    <script src="js/crm-dashboard.js?v=2026082704"></script>
+    <script src="js/crm-finance.js?v=2026082704"></script>
+    <script src="js/crm-daily.js?v=2026082704"></script>
+    <script src="js/crm-towels.js?v=2026082704"></script>
+    <script src="js/crm-photos.js?v=2026082704"></script>
+    <script src="js/crm-pricing.js?v=2026082704"></script>
+    <script src="js/crm-complaints.js?v=2026082704"></script>
+    <script src="js/crm-payment-links.js?v=2026082704"></script>
+    <script src="js/crm-auth.js?v=2026082704"></script>
+    <script src="js/crm-app.js?v=2026082704"></script>
   </body>
 </html>
