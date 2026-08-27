@@ -285,6 +285,171 @@
     return result.data || {};
   }
 
+  async function paymentLinkStatus(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const body = {
+      action: 'status',
+    };
+    if (input?.linkId) {
+      body.linkId = input.linkId;
+    }
+    if (input?.attemptId) {
+      body.attemptId = input.attemptId;
+    }
+
+    const result = await client.functions.invoke('payment-link-public', { body });
+
+    if (result.error) {
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function startPaymentLink(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const result = await client.functions.invoke('payment-link-public', {
+      body: {
+        action: 'start',
+        linkId: input?.linkId || '',
+      },
+    });
+
+    if (result.error) {
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function createPaymentLink(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const body = {
+      action: 'create',
+      amount: input?.amount,
+      paymentRail: input?.paymentRail,
+      expiresInHours: input?.expiresInHours ?? null,
+      label: input?.label ?? null,
+    };
+
+    const result = await client.functions.invoke('payment-link-admin', { body });
+
+    if (result.error) {
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function listPaymentLinks(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const body = {
+      action: 'list',
+    };
+    if (input?.limit !== undefined) {
+      body.limit = input.limit;
+    }
+    if (input?.before !== undefined && input?.before !== null && input?.before !== '') {
+      body.before = input.before;
+    }
+
+    const result = await client.functions.invoke('payment-link-admin', { body });
+
+    if (result.error) {
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function revokePaymentLink(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const body = {
+      action: 'revoke',
+      id: input?.id || '',
+    };
+
+    const result = await client.functions.invoke('payment-link-admin', { body });
+
+    if (result.error) {
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function markPaymentLinkRefunded(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const body = {
+      action: 'markRefunded',
+      id: input?.id || '',
+      amount: input?.amount,
+      note: input?.note ?? null,
+    };
+
+    const result = await client.functions.invoke('payment-link-admin', { body });
+
+    if (result.error) {
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
   async function refundMaibPaymentRequest(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -737,6 +902,52 @@
       }
 
       return query.order('id', { ascending: true });
+    };
+
+    return unwrapAllSupabaseRows(buildQuery);
+  }
+
+  function fetchFinancePaymentLinks(client, options) {
+    // Paginated (see fetchFinanceReservations): a wide range can exceed one
+    // PostgREST page, and a truncated tail would silently UNDER-REPORT revenue.
+    // id tiebreaks paid_at for stable paging.
+    const buildQuery = () => {
+      let query = client
+        .from('payment_links')
+        .select(
+          [
+            'id',
+            'amount',
+            'currency',
+            'payment_rail',
+            'label',
+            'status',
+            'expires_at',
+            'paid_at',
+            'paid_amount',
+            'revoked_at',
+            'settled_attempt_id',
+            'refunded_at',
+            'refunded_amount',
+            'refund_note',
+            'manual_review',
+            'created_at',
+            'updated_at',
+          ].join(', '),
+        )
+        .eq('status', 'paid')
+        .not('paid_at', 'is', null);
+
+      if (options?.rangeStart) {
+        query = query.gte('paid_at', `${options.rangeStart}T00:00:00.000Z`);
+      }
+      if (options?.rangeEnd) {
+        query = query.lt('paid_at', `${options.rangeEnd}T00:00:00.000Z`);
+      }
+
+      return query
+        .order('paid_at', { ascending: true })
+        .order('id', { ascending: true });
     };
 
     return unwrapAllSupabaseRows(buildQuery);
@@ -1448,6 +1659,13 @@
     fetchReservationChangeStatus,
     fetchFinanceChangePayments,
     fetchMiaPaymentStatus,
+    paymentLinkStatus,
+    startPaymentLink,
+    createPaymentLink,
+    listPaymentLinks,
+    revokePaymentLink,
+    markPaymentLinkRefunded,
+    fetchFinancePaymentLinks,
     refundMaibPaymentRequest,
     fetchScheduledRefunds,
     getActiveRefundCommissionBps,

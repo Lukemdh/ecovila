@@ -152,6 +152,7 @@
       occupiedNights: 0,
       paidBookings: 0,
       averageBookingValue: 0,
+      linksTotal: 0,
       roomTypeTotals: {
         small: 0,
         large: 0,
@@ -195,6 +196,7 @@
     const rangeEnd = input?.rangeEnd || addMonths(rangeStart, 1);
     const summary = emptySummary();
     const commercialKeys = new Set();
+    let reservationCommercialTotal = 0;
 
     rows.forEach((reservation) => {
       if (!isPaid(reservation) || isCancelled(reservation)) {
@@ -224,6 +226,7 @@
       }
 
       summary.commercialTotal += contribution.amount;
+      reservationCommercialTotal += contribution.amount;
       if (paymentType === 'cash') {
         summary.cashTotal += contribution.amount;
       } else {
@@ -248,6 +251,7 @@
         }
 
         summary.commercialTotal += amount;
+        reservationCommercialTotal += amount;
         summary.onlineTotal += amount;
 
         const roomType = change.room_type || '';
@@ -260,18 +264,39 @@
           commercialKeys.add(key);
         }
       });
+
+      // Paid standalone payment links (ADR-106) fold into the commercial and
+      // online totals by paid_at. They touch no nights, no rooms, and do NOT
+      // inflate the reservation-only average booking value.
+      (input?.linkRows || []).forEach((link) => {
+        if (!link || !link.paid_at || !isPaidAtInRange(link, rangeStart, rangeEnd)) {
+          return;
+        }
+
+        const paidAmount = Number(link.paid_amount || 0);
+        const refundedAmount = Number(link.refunded_amount || 0);
+        const net = paidAmount - (refundedAmount > 0 ? refundedAmount : 0);
+        if (net <= 0) {
+          return;
+        }
+
+        summary.commercialTotal += net;
+        summary.onlineTotal += net;
+        summary.linksTotal += net;
+      });
     }
 
     summary.commercialTotal = roundMoney(summary.commercialTotal);
     summary.cashTotal = roundMoney(summary.cashTotal);
     summary.onlineTotal = roundMoney(summary.onlineTotal);
     summary.officeTotal = roundMoney(summary.officeTotal);
+    summary.linksTotal = roundMoney(summary.linksTotal);
     Object.keys(summary.roomTypeTotals).forEach((type) => {
       summary.roomTypeTotals[type] = roundMoney(summary.roomTypeTotals[type]);
     });
     summary.paidBookings = commercialKeys.size;
     summary.averageBookingValue = summary.paidBookings
-      ? roundMoney(summary.commercialTotal / summary.paidBookings)
+      ? roundMoney(reservationCommercialTotal / summary.paidBookings)
       : 0;
 
     return summary;
@@ -482,6 +507,15 @@
     setText('[data-finance-paid-bookings]', summary.paidBookings);
     setText('[data-finance-average-booking]', formatMDL(context, summary.averageBookingValue));
 
+    const linksSubline = qs('[data-finance-links-subline]');
+    const linksTotal = qs('[data-finance-links-total]');
+    if (linksSubline) {
+      linksSubline.hidden = !(summary.linksTotal > 0);
+    }
+    if (linksTotal) {
+      linksTotal.textContent = formatMDL(context, summary.linksTotal || 0);
+    }
+
     Object.entries(ROOM_TYPE_LABELS).forEach(([type]) => {
       const container = qs(`[data-finance-room-type="${type}"]`);
       const value = container?.querySelector?.('[data-finance-room-total]');
@@ -641,6 +675,75 @@
 
     card.append(title, meta, stay, total, paidAt, status);
     return card;
+  }
+
+  function buildPaymentLinkCard(context, link) {
+    const card = root.document.createElement('article');
+    card.className = 'crm-finance-booked-card crm-finance-booked-card--link';
+
+    const title = root.document.createElement('strong');
+    title.textContent = link.label ? String(link.label) : 'Link de plată';
+
+    const meta = root.document.createElement('span');
+    const rail = String(link.payment_rail || '').toUpperCase();
+    meta.textContent = rail === 'MIA' ? 'MIA Plăți Instant' : 'Card bancar';
+
+    const total = root.document.createElement('span');
+    const paidAmount = Number(link.paid_amount || 0);
+    const refundedAmount = Number(link.refunded_amount || 0);
+    const net = paidAmount - (refundedAmount > 0 ? refundedAmount : 0);
+    total.textContent = formatMDL(context, net);
+
+    const paidAt = root.document.createElement('span');
+    paidAt.textContent = `Achitat: ${formatCreatedAt(link.paid_at)}`;
+
+    const status = root.document.createElement('span');
+    status.className = 'crm-finance-booked-status';
+    status.textContent = refundedAmount > 0
+      ? `achitat · restituit ${formatMDL(context, refundedAmount)}`
+      : 'online plătit link';
+
+    card.append(title, meta, total, paidAt, status);
+    return card;
+  }
+
+  function renderFinancePaymentLinks(context, state) {
+    const section = qs('[data-finance-payment-links]');
+    const list = qs('[data-finance-links-list]');
+    const empty = qs('[data-finance-links-empty]');
+    const count = qs('[data-finance-links-count]');
+    if (!section || !list || !empty) {
+      return;
+    }
+
+    const visible = state.mode === MODE_PAID;
+    section.hidden = !visible;
+    if (!visible) {
+      list.innerHTML = '';
+      if (count) {
+        count.textContent = '0';
+      }
+      return;
+    }
+
+    const links = (state.linkRows || []).filter((link) => {
+      if (!link?.paid_at || !isPaidAtInRange(link, state.rangeStart, state.rangeEnd)) {
+        return false;
+      }
+      const paidAmount = Number(link.paid_amount || 0);
+      const refundedAmount = Number(link.refunded_amount || 0);
+      return paidAmount - (refundedAmount > 0 ? refundedAmount : 0) > 0;
+    });
+
+    if (count) {
+      count.textContent = String(links.length);
+    }
+    empty.hidden = links.length > 0;
+    list.innerHTML = '';
+
+    links.forEach((link) => {
+      list.appendChild(buildPaymentLinkCard(context, link));
+    });
   }
 
   function guestName(reservation) {
@@ -1157,9 +1260,10 @@
     };
     const shouldLoadBookedDay = state.mode === MODE_PAID && isOneDayRange(state.rangeStart, state.rangeEnd);
     const loadChanges = state.mode === MODE_PAID;
+    const loadLinks = state.mode === MODE_PAID;
     // Cancellations are keyed by cancelled_at, orthogonal to the Nopți/Încasări
     // mode, so they always load for the selected range (today or a wider span).
-    const [rows, bookedDayRows, changeRows, cancellationRows, scheduledRefunds, refundedGroups] =
+    const [rows, bookedDayRows, changeRows, linkRows, cancellationRows, scheduledRefunds, refundedGroups] =
       await Promise.all([
         root.EcoVilaSupabase.fetchFinanceReservations(context.client, financeOptions),
         shouldLoadBookedDay
@@ -1170,6 +1274,12 @@
           : Promise.resolve([]),
         loadChanges
           ? root.EcoVilaSupabase.fetchFinanceChangePayments(context.client, {
+              rangeStart: state.rangeStart,
+              rangeEnd: state.rangeEnd,
+            })
+          : Promise.resolve([]),
+        loadLinks && typeof root.EcoVilaSupabase.fetchFinancePaymentLinks === 'function'
+          ? root.EcoVilaSupabase.fetchFinancePaymentLinks(context.client, {
               rangeStart: state.rangeStart,
               rangeEnd: state.rangeEnd,
             })
@@ -1185,6 +1295,7 @@
     state.rows = rows || [];
     state.bookedDayRows = bookedDayRows || [];
     state.changeRows = changeRows || [];
+    state.linkRows = linkRows || [];
     state.cancellationRows = cancellationRows || [];
     state.scheduledRefunds = scheduledRefunds || [];
     // Map id -> persisted refund quote (amount is null when unknown). `.has()` still
@@ -1201,11 +1312,13 @@
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
       changeRows: state.changeRows,
+      linkRows: state.linkRows,
       mode: state.mode,
       rangeStart: state.rangeStart,
       rangeEnd: state.rangeEnd,
     }));
     renderBookedDayRows(context, state);
+    renderFinancePaymentLinks(context, state);
     renderCancellations(context, state);
     renderScheduledRefunds(context, state);
   }
@@ -1315,6 +1428,7 @@
       rows: [],
       bookedDayRows: [],
       changeRows: [],
+      linkRows: [],
       cancellationRows: [],
       scheduledRefunds: [],
       refundedGroupIds: new Map(),
@@ -1381,6 +1495,7 @@
       .channel('crm-finance-reservations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => loadFinance(context, state))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_changes' }, () => loadFinance(context, state))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, () => loadFinance(context, state))
       .subscribe();
   }
 

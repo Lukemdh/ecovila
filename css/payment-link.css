@@ -1,0 +1,161 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   EcoVila — Standalone payment links (plata.html)
+   Calm, single-purpose payment page. Amount is the hero.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.pl-card {
+  gap: 20px;
+}
+
+.pl-label {
+  display: inline-block;
+  max-width: 44ch;
+  margin: 0 auto;
+  padding: 6px 14px;
+  background: rgba(139, 117, 100, 0.08);
+  border: 1px solid rgba(139, 117, 100, 0.18);
+  border-radius: 999px;
+  color: var(--cocoa, #4a3528);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.pl-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 8px auto 4px;
+}
+
+.pl-amount__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pl-amount__value {
+  font-family: var(--heading-font);
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--espresso);
+  letter-spacing: 0.02em;
+}
+
+.pl-paid-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 12px auto 6px;
+  padding: 12px 24px;
+  background: rgba(96, 108, 56, 0.08);
+  border: 1px solid rgba(96, 108, 56, 0.22);
+  border-radius: 14px;
+}
+
+.pl-paid-amount .pl-amount__value {
+  color: #3a6b2a;
+}
+
+.pl-acceptance {
+  margin: 10px auto 0;
+  max-width: 44ch;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.pl-acceptance a {
+  color: var(--espresso);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 200ms ease;
+}
+
+.pl-acceptance a:hover,
+.pl-acceptance a:focus-visible {
+  color: var(--moss, #606c38);
+}
+
+.pl-brands {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 8px auto 4px;
+}
+
+.pl-brands img {
+  height: 22px;
+  width: auto;
+  opacity: 0.85;
+  transition: opacity 200ms ease;
+}
+
+.pl-brands img:hover {
+  opacity: 1;
+}
+
+.pl-pay-btn,
+.pl-continue-link {
+  width: 100%;
+  max-width: 320px;
+  min-height: 52px;
+  margin: 8px auto 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pl-pay-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.pl-continue-link {
+  background: #2b5329;
+}
+
+.pl-continue-link:hover,
+.pl-continue-link:focus-visible {
+  background: #1f3d1e;
+}
+
+.an-status-icon--review {
+  color: #5c6b32;
+  background: rgba(96, 108, 56, 0.14);
+}
+
+.cb-status-card--review {
+  border-color: rgba(96, 108, 56, 0.28);
+}
+
+.cb-status-card--review h2 {
+  color: #3a6b2a;
+}
+
+@media (max-width: 480px) {
+  .pl-amount__value {
+    font-size: 2.3rem;
+  }
+
+  .pl-brands {
+    gap: 12px;
+  }
+
+  .pl-brands img {
+    height: 19px;
+  }
+}

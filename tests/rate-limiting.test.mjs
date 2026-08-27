@@ -30,6 +30,7 @@ const RATE_LIMITED_FUNCTIONS = [
   'reservation-extend-cash',
   'reservation-manage-details',
   'complaint-submit',
+  'payment-link-public',
 ];
 
 // maib-callback is gated by the MAIB HMAC signature, so it deliberately carries
@@ -183,6 +184,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
         'send-email',
         'reservation-reschedule',
         'reservation-partial-cancel',
+        'payment-link-admin',
       ]
     ) {
       assert.match(fn(name), /requireStaffRole/, `${name} should stay staff-gated`);
@@ -206,6 +208,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'reservation-reschedule',
       'reservation-partial-cancel',
       'send-checkin-welcome',
+      'payment-link-admin',
       // cron-secret gated
       'expire-cash-reservations',
       'reconcile-refunds',

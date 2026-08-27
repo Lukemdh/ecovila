@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026082501">
+    <link rel="stylesheet" href="../css/crm.css?v=2026082701">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -33,6 +33,7 @@
         <nav class="crm-tabs" aria-label="Secțiuni CRM">
           <button class="crm-tab is-active" type="button" data-tab="dashboard">Dashboard</button>
           <button class="crm-tab" type="button" data-tab="finance">Finance</button>
+          <button class="crm-tab" type="button" data-tab="payment-links">Linkuri de plată</button>
           <button class="crm-tab" type="button" data-tab="daily">Situația zilnică</button>
           <button class="crm-tab" type="button" data-tab="towels">Ștergare</button>
           <button class="crm-tab" type="button" data-tab="photos">Poze</button>
@@ -470,6 +471,7 @@
           <article class="crm-finance-stat">
             <span>Online</span>
             <strong data-finance-online-total>0 MDL</strong>
+            <span class="crm-finance-stat__subline" data-finance-links-subline hidden>din care <strong data-finance-links-total>0 MDL</strong> din linkuri</span>
           </article>
           <article class="crm-finance-stat crm-finance-stat--office">
             <span>Din oficiu</span>
@@ -570,6 +572,109 @@
           <div class="crm-finance-booked-list" data-finance-booked-list></div>
           <p class="crm-empty" data-finance-booked-empty>Nu sunt rezervări create în această zi.</p>
         </section>
+
+        <section class="crm-finance-payment-links" data-finance-payment-links aria-labelledby="finance-payment-links-title">
+          <div class="crm-finance-payment-links__header">
+            <div>
+              <h2 id="finance-payment-links-title">Plăți din linkuri</h2>
+              <p>Încasări din linkuri de plată standalone în perioada selectată.</p>
+            </div>
+            <strong data-finance-links-count>0</strong>
+          </div>
+          <div class="crm-finance-booked-list" data-finance-links-list></div>
+          <p class="crm-empty" data-finance-links-empty>Nu sunt plăți din linkuri în această perioadă.</p>
+        </section>
+      </section>
+
+      <section class="crm-panel" data-panel="payment-links" aria-labelledby="payment-links-title">
+        <div class="crm-panel-header">
+          <div>
+            <h1 id="payment-links-title">Linkuri de plată</h1>
+            <p class="crm-panel-subtitle">Generează și gestionează linkuri de plată standalone.</p>
+          </div>
+        </div>
+
+        <div class="crm-settings-grid crm-pricing-layout crm-payment-links-workspace">
+          <!-- Region (a): Creation form -->
+          <section class="crm-settings-section crm-pricing-card" aria-labelledby="link-create-title">
+            <h2 id="link-create-title">Generează link nou</h2>
+            <form class="crm-staff-form" data-link-create-form>
+              <label class="crm-field">
+                <span>Sumă (MDL)</span>
+                <input type="number" min="1" max="1000000" step="1" inputmode="numeric" placeholder="ex: 1500" data-link-amount autofocus required>
+              </label>
+
+              <div class="crm-field">
+                <span>Metodă de plată</span>
+                <div class="crm-finance-mode crm-link-rail-options" role="group" aria-label="Metodă de plată">
+                  <button class="is-active" type="button" data-link-rail="mia" aria-pressed="true">MIA Plăți Instant</button>
+                  <button type="button" data-link-rail="card" aria-pressed="false">Card bancar</button>
+                </div>
+                <p class="crm-note" data-link-rail-hint>MIA: comision redus, recomandat pentru clienți din Moldova (+373).</p>
+              </div>
+
+              <div class="crm-field">
+                <span>Valabilitate</span>
+                <div class="crm-price-views crm-link-expiry-options" role="group" aria-label="Valabilitate link">
+                  <button class="crm-price-view is-active" type="button" data-link-expiry="" aria-pressed="true">Fără expirare</button>
+                  <button class="crm-price-view" type="button" data-link-expiry="1" aria-pressed="false">1h</button>
+                  <button class="crm-price-view" type="button" data-link-expiry="3" aria-pressed="false">3h</button>
+                  <button class="crm-price-view" type="button" data-link-expiry="8" aria-pressed="false">8h</button>
+                </div>
+              </div>
+
+              <label class="crm-field">
+                <span>Descriere <span class="crm-field-optional">(opțional, max 120 caractere)</span></span>
+                <input type="text" maxlength="120" placeholder="Ex: Avans eveniment" data-link-label>
+                <span class="crm-note">Payerul (oaspetele) vede acest text pe pagina de plată.</span>
+              </label>
+
+              <button class="crm-button crm-button--primary" type="submit" data-link-create>Generează link</button>
+              <p class="crm-edit-error" data-link-create-error role="alert" hidden></p>
+            </form>
+
+            <div class="crm-link-result" data-link-result hidden>
+              <label class="crm-field">
+                <span>Link generat</span>
+                <input class="crm-link-result__url" type="text" readonly data-link-url>
+              </label>
+              <div class="crm-link-result__actions">
+                <button class="crm-button crm-button--primary crm-button--small crm-link-result__copy" type="button" data-link-copy aria-live="polite">Copiază</button>
+                <a class="crm-button crm-button--ghost crm-button--small" href="#" target="_blank" rel="noopener" data-link-open>Deschide</a>
+              </div>
+            </div>
+          </section>
+
+          <!-- Region (b): Recent links list -->
+          <section class="crm-settings-section crm-pricing-card" aria-labelledby="link-list-title">
+            <div class="crm-section-heading crm-link-list-heading">
+              <h2 id="link-list-title">Linkuri recente</h2>
+              <button class="crm-button crm-button--small" type="button" data-link-refresh>Actualizează</button>
+            </div>
+            <div class="crm-payment-links-list" data-link-list></div>
+            <p class="crm-empty" data-link-empty>Nu există linkuri de plată create.</p>
+          </section>
+        </div>
+
+        <dialog class="crm-dialog" data-link-refund-dialog>
+          <form method="dialog" class="crm-dialog__panel" data-link-refund-form>
+            <h2>Marchează ca restituit</h2>
+            <p class="crm-note">Această acțiune este doar contabilă (înregistrează restituirea în sistem, nu transferă bani).</p>
+            <label class="crm-field">
+              <span>Sumă restituită (MDL)</span>
+              <input type="number" min="1" step="1" inputmode="numeric" data-link-refund-amount required>
+            </label>
+            <label class="crm-field">
+              <span>Notă / Motiv <span class="crm-field-optional">(opțional)</span></span>
+              <input type="text" maxlength="200" placeholder="Ex: Transfer manual din bancă" data-link-refund-note>
+            </label>
+            <p class="crm-edit-error" data-link-refund-error role="alert" hidden></p>
+            <menu class="crm-dialog-actions">
+              <button class="crm-button" value="cancel" type="button" data-link-refund-cancel>Închide</button>
+              <button class="crm-button crm-button--danger" value="confirm" type="submit" data-link-refund-submit>Confirmă restituirea</button>
+            </menu>
+          </form>
+        </dialog>
       </section>
 
       <section class="crm-panel" data-panel="daily" aria-labelledby="daily-title">
@@ -893,21 +998,22 @@
       </section>
     </main>
 
-    <script src="../js/vendor/supabase.js?v=2026082501"></script>
-    <script src="../js/supabase-config.js?v=2026082501"></script>
-    <script src="../js/supabase.js?v=2026082501"></script>
-    <script src="../js/pricing.js?v=2026082501"></script>
-    <script src="../js/calendar.js?v=2026082501"></script>
-    <script src="js/crm-calendar.js?v=2026082501"></script>
-    <script src="js/crm-sidebar.js?v=2026082501"></script>
-    <script src="js/crm-dashboard.js?v=2026082501"></script>
-    <script src="js/crm-finance.js?v=2026082501"></script>
-    <script src="js/crm-daily.js?v=2026082501"></script>
-    <script src="js/crm-towels.js?v=2026082501"></script>
-    <script src="js/crm-photos.js?v=2026082501"></script>
-    <script src="js/crm-pricing.js?v=2026082501"></script>
-    <script src="js/crm-complaints.js?v=2026082501"></script>
-    <script src="js/crm-auth.js?v=2026082501"></script>
-    <script src="js/crm-app.js?v=2026082501"></script>
+    <script src="../js/vendor/supabase.js?v=2026082701"></script>
+    <script src="../js/supabase-config.js?v=2026082701"></script>
+    <script src="../js/supabase.js?v=2026082701"></script>
+    <script src="../js/pricing.js?v=2026082701"></script>
+    <script src="../js/calendar.js?v=2026082701"></script>
+    <script src="js/crm-calendar.js?v=2026082701"></script>
+    <script src="js/crm-sidebar.js?v=2026082701"></script>
+    <script src="js/crm-dashboard.js?v=2026082701"></script>
+    <script src="js/crm-finance.js?v=2026082701"></script>
+    <script src="js/crm-daily.js?v=2026082701"></script>
+    <script src="js/crm-towels.js?v=2026082701"></script>
+    <script src="js/crm-photos.js?v=2026082701"></script>
+    <script src="js/crm-pricing.js?v=2026082701"></script>
+    <script src="js/crm-complaints.js?v=2026082701"></script>
+    <script src="js/crm-payment-links.js?v=2026082701"></script>
+    <script src="js/crm-auth.js?v=2026082701"></script>
+    <script src="js/crm-app.js?v=2026082701"></script>
   </body>
 </html>

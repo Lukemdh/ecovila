@@ -1409,6 +1409,240 @@ h2 {
   color: #fff;
 }
 
+/* Payment links: a quiet money desk where exceptions carry the visual weight. */
+.crm-payment-links-workspace {
+  gap: 20px;
+}
+
+.crm-payment-links-workspace > .crm-pricing-card {
+  align-content: start;
+  min-width: 0;
+}
+
+.crm-link-rail-options {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.crm-link-expiry-options {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+
+.crm-link-result {
+  display: grid;
+  gap: 14px;
+  margin-top: 2px;
+  border: 1px solid var(--crm-moss);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crm-moss) 8%, var(--crm-panel));
+  padding: 18px;
+}
+
+.crm-link-result .crm-field .crm-link-result__url {
+  border: 2px solid var(--crm-moss);
+  background: var(--crm-panel);
+  color: var(--crm-ink);
+  cursor: text;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.45;
+  padding: 14px 16px;
+  user-select: text;
+}
+
+.crm-link-result__actions,
+.crm-link-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crm-link-result__actions .crm-button,
+.crm-link-actions .crm-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.crm-link-result__copy {
+  min-width: 8.5rem;
+}
+
+.crm-link-list-heading {
+  align-items: center;
+}
+
+.crm-payment-links-list {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.crm-payment-link-card {
+  display: grid;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: var(--crm-panel);
+  padding: 16px 18px;
+}
+
+.crm-link-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.crm-link-amount {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crm-link-amount__value {
+  color: var(--crm-ink);
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.crm-link-rail {
+  border: 1px solid var(--crm-line);
+  border-radius: 4px;
+  background: var(--crm-surface);
+  color: var(--crm-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  text-transform: uppercase;
+}
+
+.crm-link-status {
+  border: 1px solid var(--crm-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--crm-muted);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 10px;
+}
+
+.crm-link-status--active {
+  border-color: var(--crm-line);
+  background: transparent;
+  color: var(--crm-muted);
+}
+
+.crm-link-status--pending {
+  border-color: var(--crm-pending);
+  background: var(--crm-pending);
+  color: var(--crm-ink);
+}
+
+.crm-link-status--paid {
+  border-color: var(--crm-paid-card);
+  background: var(--crm-paid-card);
+  color: var(--crm-panel);
+}
+
+.crm-link-status--expired,
+.crm-link-status--revoked {
+  border-color: var(--crm-cancelled);
+  background: transparent;
+  color: var(--crm-cancelled);
+  opacity: 0.72;
+}
+
+.crm-link-status--review {
+  border-color: var(--crm-danger);
+  background: var(--crm-danger);
+  color: var(--crm-panel);
+}
+
+.crm-link-warning-strip {
+  align-self: stretch;
+  margin: -16px -18px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--crm-danger) 28%, var(--crm-line));
+  border-left: 5px solid var(--crm-danger);
+  background: color-mix(in srgb, var(--crm-danger) 9%, var(--crm-panel));
+  color: var(--crm-danger);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.4;
+  padding: 11px 14px;
+  user-select: text;
+}
+
+.crm-link-pending-info {
+  border-left: 4px solid var(--crm-ochre);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--crm-ochre) 9%, var(--crm-panel));
+  color: var(--crm-ink);
+  cursor: text;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  padding: 8px 10px;
+  user-select: text;
+}
+
+.crm-link-label {
+  color: var(--crm-ink);
+  font-size: 0.92rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.crm-link-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--crm-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.crm-link-actions {
+  margin-top: 2px;
+  border-top: 1px solid var(--crm-line);
+  padding-top: 10px;
+}
+
+.crm-link-actions .crm-button--danger {
+  background: transparent;
+  color: var(--crm-danger);
+}
+
+.crm-link-rail-options button:focus-visible,
+.crm-link-expiry-options button:focus-visible,
+.crm-link-result__url:focus-visible,
+.crm-link-result__actions .crm-button:focus-visible,
+.crm-link-actions .crm-button:focus-visible {
+  outline: 2px solid var(--crm-moss);
+  outline-offset: 2px;
+}
+
+.crm-payment-readonly {
+  margin: 0;
+  color: var(--crm-muted);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .crm-price-schedule-card {
   max-width: 720px;
 }
@@ -1493,6 +1727,7 @@ h2 {
 
 .crm-panel[data-panel="daily"].is-active,
 .crm-panel[data-panel="finance"].is-active,
+.crm-panel[data-panel="payment-links"].is-active,
 .crm-panel[data-panel="towels"].is-active {
   min-height: calc(100vh - 69px);
   padding: 36px 28px 80px;
@@ -1500,6 +1735,7 @@ h2 {
 
 .crm-panel[data-panel="daily"] .crm-panel-header,
 .crm-panel[data-panel="finance"] .crm-panel-header,
+.crm-panel[data-panel="payment-links"] .crm-panel-header,
 .crm-panel[data-panel="towels"] .crm-panel-header {
   align-items: flex-start;
   margin-bottom: 30px;
@@ -1507,6 +1743,7 @@ h2 {
 
 .crm-panel[data-panel="daily"] h1,
 .crm-panel[data-panel="finance"] h1,
+.crm-panel[data-panel="payment-links"] h1,
 .crm-panel[data-panel="towels"] h1 {
   font-size: 3.05rem;
 }
@@ -1864,6 +2101,56 @@ h2 {
   color: var(--crm-ink);
   justify-self: end;
   text-align: right;
+}
+
+.crm-finance-payment-links {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: var(--crm-panel);
+  padding: 24px;
+}
+
+.crm-finance-payment-links__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.crm-finance-payment-links__header h2 {
+  font-size: 2rem;
+}
+
+.crm-finance-payment-links__header p {
+  max-width: 660px;
+  margin-top: 6px;
+  color: var(--crm-muted);
+}
+
+.crm-finance-payment-links__header > strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  border: 1px solid color-mix(in srgb, var(--crm-paid-card) 34%, var(--crm-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crm-paid-card) 12%, var(--crm-panel));
+  color: var(--crm-paid-card);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  padding: 8px 12px;
+}
+
+.crm-finance-booked-card.crm-finance-booked-card--link {
+  grid-template-columns: minmax(120px, 1.4fr) minmax(120px, 1fr) minmax(96px, 0.7fr) minmax(160px, 1fr) minmax(150px, 1fr);
+}
+
+.crm-finance-booked-card--link > :nth-child(3),
+.crm-finance-booked-card--link > :nth-child(4) {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Scheduled refunds (ADR-096): guest refunds inside the 60h cooldown, each with
@@ -2856,13 +3143,28 @@ h2 {
     padding: 10px;
   }
 
-  .crm-panel[data-panel="daily"].is-active {
+  .crm-panel[data-panel="daily"].is-active,
+  .crm-panel[data-panel="payment-links"].is-active {
     padding: 18px 10px 48px;
   }
 
   .crm-panel[data-panel="daily"] h1,
+  .crm-panel[data-panel="payment-links"] h1,
   .crm-panel[data-panel="towels"] h1 {
     font-size: 2.2rem;
+  }
+
+  .crm-finance-payment-links__header {
+    flex-wrap: wrap;
+  }
+
+  .crm-finance-booked-card.crm-finance-booked-card--link {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crm-finance-booked-card--link .crm-finance-booked-status {
+    justify-self: start;
+    text-align: left;
   }
 
   .crm-panel[data-panel="daily"] .crm-date-nav,

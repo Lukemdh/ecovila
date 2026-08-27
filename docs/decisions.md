@@ -3821,6 +3821,161 @@ Unit arithmetic and a successful API response cannot substitute for that provide
 The Terms effective-date clause (1 septembrie 2026) also warrants the owner's legal review before it
 is relied upon against bookings made earlier.
 
+### ADR-106 — Standalone payment links in the CRM (MIA + card), independent of reservations
+- **Date:** 2026-08-26 / 27.
+- **Decision:** Diana can mint a **standalone payment link** from a new Diana-only CRM tab
+  ("Linkuri de plată"): an amount in integer MDL, a rail chosen at creation (**MIA** or **card
+  MAIB**, immutable per link), an optional 120-char label, and an optional expiry
+  (`Fără expirare` — the default — / 1h / 3h / 8h). She copies
+  `https://ecovila.md/plata.html?p=<uuid>` and sends it herself (WhatsApp/Viber); the payer opens
+  it and pays. A link is **single-use** and touches **no reservation**: no availability, no
+  booking notification, no `Purchase` analytics event, no reservation refund/cancellation logic.
+  New tables `payment_links` + `payment_link_attempts`, new functions `payment-link-admin`
+  (staff) and `payment-link-public` (payer), a payment-link branch in both MAIB callbacks, and a
+  new guest page `plata.html`.
+- **Why standalone (owner's decision, asked explicitly):** the brief gave only amount and expiry.
+  Deposits, event advances, restaurant/spa bills and off-platform payments have no booking to
+  attach to, and reservations already have a complete automated rail
+  (`create-reservation` → `checkout.html`). Binding links to reservations would have re-entered
+  the audited settlement/refund path for no gain. Recorded as deliberate scope, not an oversight.
+- **The core mechanic — the provider session is minted LAZILY**, only when the payer presses
+  "Plătește" (`payment-link-public` action `start`), never when Diana creates the link. Four
+  reasons: a MAIB card session lives minutes while a link may never expire; we cannot expire a
+  MAIB checkout URL ourselves, so handing the raw provider URL out as "the link" would make
+  *Revocă* and the 1h/3h/8h options decorative; a WhatsApp/Viber preview crawler must not burn a
+  session; and a MIA QR has its own short provider lifetime, so minting at open time keeps the
+  displayed QR fresh. The accepted cost is 1–3 s on the payer's first press, and provider
+  misconfiguration surfacing to the payer rather than to Diana — bounded by the recovery paths
+  below. Both independent planners (Codex, Gemini) reached this design separately.
+- **Claim before mint.** The attempt row is inserted **before** MAIB is called and
+  `attempt.id` is the MAIB `orderId`. That ordering is what makes an orphaned provider session
+  recoverable: if the process dies after MAIB responds but before `pay_id` is stored, the later
+  callback still resolves the attempt by `orderId` and settles it. A partial unique index allows
+  one live (`creating|pending`) attempt per link; the loser of a race waits for and reuses the
+  winner's session, mirroring `maib-create-payment` (ADR-089). A stale `creating` older than two
+  minutes, or a `pending` past its own deadline, is superseded and best-effort cancelled at MAIB.
+- **Never trust a callback — both rails re-read MAIB.** MIA uses the existing
+  `GET /v2/mia/payments?orderId=`. For card this ADR adds **`GET /v2/checkouts/{id}`**
+  (`getMaibCheckout`), verified against docs.maibmerchants.md before being designed in: it
+  returns `status`, `amount`, `currency`, `order.id`, `payment.paymentId` and `payment.status`.
+  That closes the card callback-loss gap the plan had accepted as a manual-portal fallback — a
+  lost card callback is now recoverable authoritatively from the stored `checkoutId`.
+  **`POST /v2/checkouts/{id}/cancel`** (`cancelMaibCheckout`) was verified the same way and is
+  used on revoke/supersede; MAIB documents that it refuses terminal states, so it can never kill
+  a completed payment, and the helper swallows its own errors so cancellation is always
+  best-effort.
+- **Captured money always wins.** A capture landing after revoke or expiry is still recorded as
+  paid and flagged `manual_review` with a staff alert — never discarded, and never shown to the
+  payer as "expired"/"revoked". This invariant is enforced twice: in
+  `settle_payment_link_attempt` (`late_capture`) and in the read path, where an in-flight attempt
+  outranks expiry/revocation and a terminal "no money" answer re-reads MAIB before being
+  returned. A MAIB lookup failure holds the answer at `pending` rather than latching a terminal
+  state. **This was the review's critical find** — the first implementation ranked link expiry
+  above the in-flight attempt, so one transient lookup failure near expiry could tell a payer who
+  had already paid that the link expired, permanently, because the page treats that as terminal
+  and stops polling.
+- **Settlement is one RPC**, `settle_payment_link_attempt`, locking link-then-attempt (the same
+  order in every RPC, so deadlock is impossible). It asserts the attempt belongs to the link,
+  verifies amount **and** currency against the attempt snapshot, and is status-monotonic. Its
+  outcomes are `settled` / `already` / `duplicate_capture` / `late_capture` / `amount_mismatch`;
+  a second, different capture is recorded and flagged rather than overwriting the first.
+- **`revoked_at` survives a late capture.** The constraint is one-directional
+  (`status <> 'revoked' or revoked_at is not null`), because the earlier bi-directional form
+  forced the `late_capture` branch to null the column — erasing, on precisely the row that most
+  needs an audit trail, the proof that staff had revoked the link before the money arrived.
+- **Refunds are recorded, not executed (v1).** Diana refunds in the maibmerchants portal; the CRM
+  offers *Marchează ca restituit* (amount + note), which moves no money. This is **required** by
+  the Finance decision below, not a nicety: without it the first portal refund would leave the
+  Online total permanently overstated with no way to tell retained income from returned money.
+- **Finance folds link income into Online (owner's decision, made with the consequence stated).**
+  Net per link (`paid_amount − refunded_amount`) is added to `onlineTotal` and `commercialTotal`
+  in **`Încasări` mode only** — links have no nights, so they are absent from
+  `Nopți în perioadă` — following the existing `changeRows` precedent for paid "add guests"
+  differences exactly. Deliberately **not** touched: `occupiedNights`, `roomTypeTotals`, and
+  `paidBookings`. **`Valoare medie rezervare` keeps a reservation-only numerator**; dividing the
+  link-inflated `commercialTotal` by the unchanged booking count would have silently inflated the
+  average. An Online sub-line ("din care N MDL din linkuri") and a separate
+  "Plăți din linkuri" block keep the merged figure explainable; link payments are kept out of
+  "Rezervări create în ziua selectată", which counts reservation `created_at`, not income.
+  Day boundaries reuse the existing `isPaidAtInRange` so links and reservations bin identically —
+  including its pre-existing UTC-midnight basis, which is deliberately NOT corrected here (see
+  the bugs log) because changing it would move every historical Finance figure.
+- **The link id is a plain UUID in a normal query parameter**, not an HMAC-signed token and not a
+  URL fragment. 122 unguessable bits already match the `maib-mia-status` precedent (keyed by an
+  unguessable server-minted UUID); an HMAC would add a secret, a rotation hazard that would
+  silently kill every outstanding never-expiring link, and no protection against the real threat
+  (a forwarded or screenshotted link is a bearer capability either way). A fragment would keep
+  the id out of the static host's access logs, but fragment survival through messaging-app
+  linkification is unverified and **B-17 proves MAIB does not preserve our parameters on the card
+  return** — it appends its own `checkoutId`/`checkoutStatus`/`orderId`. Since the worst outcome
+  of a leaked id is that someone pays us money, functionality beat log hygiene. The card return
+  recovers identity from `?p=` → matching `sessionStorage` → MAIB's `orderId` (which *is* our
+  attempt id).
+- **Security / access.** Both tables have RLS with a **`diana`-only SELECT** policy and **no**
+  insert/update/delete policy at all — every write goes through the service-role Edge Functions.
+  All four RPCs are `security invoker` with `set search_path = ''`, fully-qualified names,
+  `revoke execute from public` and a `service_role` grant. `payment-link-admin` is
+  `requireStaffRole(['diana'])` and, per ADR-103, carries no IP rate limit; `payment-link-public`
+  is rate-limited per IP and per link, tighter on `start` than on `status`. Angela cannot see the
+  tab and is refused server-side. The public status response exposes only the link's own amount,
+  currency, rail, label, expiry and a coarse status — no staff fields, no provider payloads.
+- **Guest page.** `plata.html` + `js/plata.js` + `css/payment-link.css`, RO/RU/EN, `noindex`, no
+  analytics, no third-party scripts, terms/privacy acceptance line and the payment-brand marks
+  (MAIB integration requirement) — an inline acceptance line rather than `checkout.html`'s
+  required checkbox, because this page collects no personal data. MIA is **never** navigated by
+  script (an async-fired deeplink is blocked on iOS); it renders the QR plus a user-tappable
+  anchor, as `plata-mia.html` already does. Card uses `location.assign` with a visible fallback.
+- **How it was built.** Planned by two independent agents from a deliberately unbiased brief,
+  merged, then stress-tested by both before any code. Implemented in parallel slices against a
+  written contract, then **cross-verified — each agent auditing the code the other wrote**. That
+  round produced the critical status-precedence find above, a MIA reconcile reading
+  `payment.raw.currency` instead of the normalised `payment.currency` (which would have flagged
+  valid payments as `amount_mismatch` and refused to settle them), and overlapping browser poll
+  chains that could overwrite a "paid" screen with "expired". Two lead-raised concerns were
+  **disproved** by verification rather than "fixed": `gen_random_uuid` resolves from `pg_catalog`
+  so the migration's absent `search_path` is harmless (checked against the live database), and
+  `cancelMaibCheckout` already swallows its own errors.
+- **Deliberately not built:** executing refunds, reservation binding, reusable/open-amount/
+  partial links, a payer-chosen rail on one link, SMS/email delivery of the link, PDF invoices,
+  bulk generation, and an expiry cron — expiry is derived from the timestamp, so there is no
+  `expired` row state to drift.
+- **QA gate before commit (2026-08-27).** A final two-lens QA — one reviewer on money
+  correctness, one on regression/docs, plus the lead's own arithmetic harness over
+  `summarizeFinanceRows` — produced seven findings, all fixed before commit. Three mattered:
+  (1) **a payment-link table lookup could block a real booking.** Both live MAIB callbacks now
+  resolve a payment-link attempt before the reservation path, and the lookup threw on any
+  PostgREST error — so a callback deployed ahead of the migration, or a stale schema cache, would
+  have thrown before reservation settlement and stranded a paid guest for the expiry cron.
+  `findPaymentLinkAttemptForCallbackFailOpen` now swallows lookup failures and falls through to
+  the untouched reservation routing: the link path is additive and must fail open.
+  (2) **a superseded card attempt that captured was never re-read.** The recheck only fired when
+  the LINK was revoked/expired, so an attempt superseded on a still-active link (whose
+  best-effort MAIB cancel had failed) could take money that the poll never reconciled.
+  `shouldReconcilePaymentLinkAttempt` is now status-agnostic — any attempt holding a `pay_id`
+  that is not authoritatively resolved is re-read, bounded to seven days past the checkout
+  deadline so a dead attempt is not queried forever.
+  (3) **the crash-recovery promise above was not true for card.** Reconciliation returned early
+  when `pay_id` was blank, which is exactly the state a death between the MAIB call and
+  `persistSession` leaves behind. A signed callback now adopts and persists its `checkoutId`
+  before reconciling, making the promise real rather than aspirational.
+  Also fixed: the CRM discarded the list cursor, so after 51 links an older paid link fell out of
+  the only UI that can record its refund (Finance would have stayed overstated); a second refund
+  could not be recorded after a partial one; MIA minted a provider session on page load rather
+  than on the payer's press, contradicting the lazy-mint decision above; and two buttons stayed
+  Romanian for RU/EN payers.
+- **One deliberate divergence from the build contract:** the browser poll cap is 300, not the
+  contract's 112. 112 × 3.5 s ends polling at ~6.5 min, before a 15-minute MIA attempt expires;
+  300 covers it. The contract number was inherited from `plata-mia.js`, whose session is five
+  minutes.
+- **Status at commit:** built, reviewed and green — `npm test` → **412 Node + 186 Deno**,
+  `deno lint` and `deno fmt --check` clean, asset token bumped to `?v=2026082701`, `dist/tophost`
+  regenerated. **NOTHING IS DEPLOYED.** No migration applied, no function deployed, no TopHost
+  upload, and the owner has not yet signed off on the deploy. Deploy order when he does:
+  migration first (the callbacks now fail open, but the table should exist before they look for
+  it), then `payment-link-admin`, `payment-link-public`, `maib-callback`, `maib-mia-callback`,
+  then the TopHost upload — which will also finally land the still-pending ADR-105 frontend, so
+  the `ECOVILA_REFUND_COMMISSION_BPS` decision belongs in the same session.
+
 ---
 
 ## Open questions for the owner (decisions not yet made)

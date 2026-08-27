@@ -19,6 +19,10 @@ import {
 } from '../_shared/bookingSettlement.ts';
 import { sendStaffAlert } from '../_shared/alerts.ts';
 import {
+  findPaymentLinkAttemptForCallbackFailOpen,
+  reconcilePaymentLinkAttempt,
+} from '../_shared/paymentLinks.ts';
+import {
   findChangeById,
   findChangeByPayId,
   markChangePaymentPaid,
@@ -92,6 +96,37 @@ Deno.serve(async (request) => {
     }
 
     const client = createServiceClient();
+
+    // Standalone payment links are resolved before every reservation-backed
+    // payment path. Their orderId is the attempt id, and a matching callback
+    // must never be allowed to enter reservation settlement.
+    const paymentLinkAttempt = await findPaymentLinkAttemptForCallbackFailOpen(
+      client,
+      { payId, providerPaymentId, orderId },
+      'maib-callback',
+    );
+    if (paymentLinkAttempt) {
+      // A signed MAIB callback can recover the checkout id if the process died
+      // after MAIB created it but before persistSession stored it (ADR-106).
+      const callbackCheckoutId = String(payload.checkoutId || '').trim();
+      const result = await reconcilePaymentLinkAttempt(
+        client,
+        paymentLinkAttempt,
+        'maib-callback',
+        { checkoutId: callbackCheckoutId },
+      );
+      console.info('Payment-link card callback processed', {
+        attemptId: paymentLinkAttempt.id,
+        status: result.status,
+        outcome: result.outcome || null,
+      });
+      return jsonResponse(
+        { ok: true, status: result.status, outcome: result.outcome || null },
+        {},
+        request,
+      );
+    }
+
     const payment = await findPayment(client, { payId, providerPaymentId, orderId });
 
     // Short-circuit ONLY a fully processed paid payment (settlement included —

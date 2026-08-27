@@ -120,14 +120,18 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `YYYYMMDDHHMMSS_snake_case_description.sql`, applied in filename order. Never edit a
   migration that has shipped — add a new one.
 - RLS is enabled on all tables; access is by role (`anon` / `diana` / `angela`). Public
-  reads of guest data must go through safe RPCs, not direct table selects.
+  reads of guest data must go through safe RPCs, not direct table selects. Sensitive tables
+  such as `payment_links` and `payment_link_attempts` grant SELECT only to `diana` with no
+  client write policies; all mutations execute through service-role Edge Functions.
 - Migrations that use extensions must create/enable those extensions explicitly before
   first use. The current Maib `cron.schedule` migrations assume `pg_cron` exists and are
   tracked as B-11.
 - Avoid `security definer` functions in exposed schemas. If a public RPC truly needs
   elevated privileges, keep its return shape minimal, set an explicit `search_path`, use
   fully qualified table names, grant only required roles, and document the reason in
-  `docs/security.md`.
+  `docs/security.md`. Service-role-only internal RPCs (such as payment-link attempt claiming
+  and settlement) use `security invoker` with `set search_path = ''` and are granted exclusively
+  to `service_role`.
 
 ## Tests
 - Root `package.json` is allowed only for dependency-free test scripts. It must not add

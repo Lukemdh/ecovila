@@ -58,6 +58,8 @@ export const RATE_LIMITS = {
   miaStatusGroup: { bucket: 'mia-status:group', limit: 40, windowSeconds: MIN },
   changeStatusIp: { bucket: 'change-status:ip', limit: 150, windowSeconds: MIN },
   changeStatusKey: { bucket: 'change-status:change', limit: 40, windowSeconds: MIN },
+  paymentLinkStatusIp: { bucket: 'payment-link-status:ip', limit: 150, windowSeconds: MIN },
+  paymentLinkStatusLink: { bucket: 'payment-link-status:link', limit: 40, windowSeconds: MIN },
 
   // --- Provider callback ---------------------------------------------------
   // maib-mia-callback is unsigned (decisions.md): each valid id triggers an
@@ -72,6 +74,8 @@ export const RATE_LIMITS = {
   // token (see the function), so this just bounds provider load per IP + group.
   createPaymentIp: { bucket: 'create-payment:ip', limit: 30, windowSeconds: TEN_MIN },
   createPaymentGroup: { bucket: 'create-payment:group', limit: 12, windowSeconds: TEN_MIN },
+  paymentLinkStartIp: { bucket: 'payment-link-start:ip', limit: 20, windowSeconds: TEN_MIN },
+  paymentLinkStartLink: { bucket: 'payment-link-start:link', limit: 10, windowSeconds: TEN_MIN },
   changeCreateIp: { bucket: 'change-create:ip', limit: 20, windowSeconds: TEN_MIN },
   // Manage-token-gated guest actions (cancel / extend / details). The token is a
   // 256-bit capability; a light IP cap blunts token-guessing / DB-probe floods.

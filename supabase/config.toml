@@ -37,6 +37,12 @@ verify_jwt = false
 [functions.maib-mia-status]
 verify_jwt = true
 
+[functions.payment-link-admin]
+verify_jwt = true
+
+[functions.payment-link-public]
+verify_jwt = true
+
 [functions.track-event]
 verify_jwt = true
 

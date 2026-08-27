@@ -9,7 +9,9 @@ export const MAIB_SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
 
 export type MaibCheckoutPayloadInput = {
   amount: number;
-  bookingGroupId: string;
+  bookingGroupId?: string;
+  orderId?: string;
+  itemExternalId?: string;
   description: string;
   guestEmail: string;
   guestName: string;
@@ -26,6 +28,16 @@ export type MaibCheckoutPayloadInput = {
 export type MaibCheckoutResult = {
   payId: string;
   payUrl: string;
+  raw: Record<string, unknown>;
+};
+
+export type MaibCheckout = {
+  status: string;
+  amount: number | null;
+  currency: string;
+  orderId: string;
+  paymentId: string;
+  paymentStatus: string;
   raw: Record<string, unknown>;
 };
 
@@ -85,6 +97,100 @@ export async function createMaibCheckout(
   }
 
   return { payId, payUrl, raw: body };
+}
+
+export async function getMaibCheckout(
+  checkoutId: string,
+  options: MaibFetchOptions = {},
+): Promise<MaibCheckout> {
+  const fetcher = options.fetcher || fetch;
+  const baseUrl = (options.baseUrl || getMaibBaseUrl()).replace(/\/+$/, '');
+  const token = await getMaibAccessToken({ ...options, fetcher, baseUrl });
+  const response = await fetcher(
+    `${baseUrl}/v2/checkouts/${encodeURIComponent(trim(checkoutId))}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `${token.tokenType} ${token.accessToken}` },
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok || body?.ok === false) {
+    throw new Error(formatMaibError(body, 'Maib checkout could not be read.'));
+  }
+
+  const result = isRecord(body?.result) ? body.result : {};
+  const order = isRecord(result.order) ? result.order : {};
+  const payment = isRecord(result.payment) ? result.payment : {};
+  const rawAmount = Number(result.amount);
+
+  return {
+    status: trim(result.status),
+    amount: Number.isFinite(rawAmount) ? rawAmount : null,
+    currency: trim(result.currency),
+    orderId: trim(order.id),
+    paymentId: trim(payment.paymentId),
+    paymentStatus: trim(payment.status),
+    raw: isRecord(body) ? body : {},
+  };
+}
+
+export function normalizeMaibCheckoutStatus(
+  checkout: Pick<MaibCheckout, 'status' | 'paymentStatus'> | Record<string, unknown>,
+): MaibCallbackStatus {
+  const value = checkout as Record<string, unknown>;
+  const result = isRecord(value.result) ? value.result : value;
+  const payment = isRecord(result.payment) ? result.payment : {};
+  const checkoutStatus = trim(result.status).toLowerCase();
+  const paymentStatus = (trim(result.paymentStatus) || trim(payment.status)).toLowerCase();
+
+  if (paymentStatus === 'executed' || checkoutStatus === 'completed') {
+    return 'paid';
+  }
+  if (checkoutStatus === 'cancelled' || checkoutStatus === 'canceled') {
+    return 'cancelled';
+  }
+  if (
+    ['expired', 'abandoned', 'failed'].includes(checkoutStatus) ||
+    ['declined', 'failed', 'rejected'].includes(paymentStatus)
+  ) {
+    return 'failed';
+  }
+
+  return 'pending';
+}
+
+export async function cancelMaibCheckout(
+  checkoutId: string,
+  reason: string,
+  options: MaibFetchOptions = {},
+): Promise<boolean> {
+  try {
+    const fetcher = options.fetcher || fetch;
+    const baseUrl = (options.baseUrl || getMaibBaseUrl()).replace(/\/+$/, '');
+    const token = await getMaibAccessToken({ ...options, fetcher, baseUrl });
+    const response = await fetcher(
+      `${baseUrl}/v2/checkouts/${encodeURIComponent(trim(checkoutId))}/cancel`,
+      {
+        method: 'POST',
+        headers: { Authorization: `${token.tokenType} ${token.accessToken}` },
+      },
+    );
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok || body?.ok === false) {
+      throw new Error(formatMaibError(body, 'Maib checkout could not be cancelled.'));
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Could not cancel Maib checkout', {
+      checkoutId,
+      reason,
+      message: error instanceof Error ? error.message : 'cancel failed',
+    });
+    return false;
+  }
 }
 
 export async function refundMaibPayment(
@@ -347,6 +453,10 @@ export async function getMaibAccessToken(options: MaibFetchOptions = {}) {
 
 export function buildMaibCheckoutPayload(input: MaibCheckoutPayloadInput) {
   const amount = normalizeAmount(input.amount);
+  const orderId = trim(input.orderId || input.bookingGroupId);
+  if (!orderId) {
+    throw new Error('Maib checkout order id is required.');
+  }
   const description = trim(input.description).slice(0, 125) ||
     `EcoVila booking ${input.bookingGroupId}`;
 
@@ -354,7 +464,7 @@ export function buildMaibCheckoutPayload(input: MaibCheckoutPayloadInput) {
     amount,
     currency: 'MDL',
     orderInfo: {
-      id: trim(input.bookingGroupId),
+      id: orderId,
       description,
       date: input.createdAt || new Date().toISOString(),
       orderAmount: amount,
@@ -363,7 +473,7 @@ export function buildMaibCheckoutPayload(input: MaibCheckoutPayloadInput) {
       deliveryCurrency: null,
       items: [
         {
-          externalId: 'ecovila-booking',
+          externalId: trim(input.itemExternalId) || 'ecovila-booking',
           title: description,
           amount,
           currency: 'MDL',

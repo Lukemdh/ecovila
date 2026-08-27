@@ -7,7 +7,7 @@
   // The active tab is mirrored to the URL hash (#finance, #daily, ...) so a page
   // refresh restores the view the user was on instead of snapping back to the
   // dashboard/calendar. The dashboard is the default and stays on a clean URL.
-  const TAB_NAMES = ['dashboard', 'finance', 'daily', 'towels', 'photos', 'pricing', 'probleme'];
+  const TAB_NAMES = ['dashboard', 'finance', 'payment-links', 'daily', 'towels', 'photos', 'pricing', 'probleme'];
   // Per-role visible tabs. Angela operates a read-only dashboard plus the daily
   // ("Situația zilnică"), towels and complaints ("Probleme") tabs; finance,
   // photos and pricing are hidden for her. Roles not listed here (e.g. diana)
@@ -90,6 +90,9 @@
     }
     if (target === 'finance') {
       root.EcoVilaCrmFinance?.showToday?.();
+    }
+    if (target === 'payment-links') {
+      root.EcoVilaCrmPaymentLinks?.showPanel?.();
     }
     if (target === 'towels') {
       root.EcoVilaCrmTowels?.showToday?.();
@@ -191,6 +194,9 @@
       root.EcoVilaCrmComplaints?.init?.(context);
       if (isTabAllowed('finance')) {
         root.EcoVilaCrmFinance?.init?.(context);
+      }
+      if (isTabAllowed('payment-links')) {
+        root.EcoVilaCrmPaymentLinks?.init?.(context);
       }
       if (isTabAllowed('photos')) {
         root.EcoVilaCrmPhotos?.init?.(context);

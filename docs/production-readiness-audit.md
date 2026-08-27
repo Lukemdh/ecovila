@@ -28,11 +28,29 @@ MAIB session amount reuse), B-30 (`.or()` filter injection in `maib-refund`), B-
 
 Live verification: tampered total → 409; direct anon insert → `42501`; correct total →
 booking created (test row removed); `maib-callback` reachable without JWT and rejecting
-unsigned payloads. `npm test` → **205 Node + 48 Deno tests pass**. Outstanding launch
+unsigned payloads. `npm test` → **205 Node + 48 Deno tests pass** (as of 2026-06-11). Outstanding launch
 items: upload `dist/tophost/` to TopHost, run a MAIB sandbox payment end-to-end, rotate
 the access token used for the deploy, and resolve/accept S-12, S-9/S-10, B-10/B-11/
 B-12/B-13. ⚠️ Migration histories are drifted — never plain `supabase db push`
 (ADR-023).
+
+## 2026-08-27 addendum — standalone payment links (ADR-106)
+
+Implemented standalone single-use payment links in the CRM and guest page `plata.html`:
+- Security & RLS posture: `payment_links` and `payment_link_attempts` tables enforce Diana-only
+  SELECT RLS (`ecovila_app_role() = 'diana'`), no client insert/update/delete policies; all
+  mutations are executed by service-role Edge Functions. All 4 RPCs (`claim_payment_link_attempt`,
+  `settle_payment_link_attempt`, `revoke_payment_link`, `mark_payment_link_refunded`) are
+  `SECURITY INVOKER`, have `SET search_path = ''`, fully qualified references, and are granted
+  exclusively to `service_role`.
+- Access control: `payment-link-admin` verifies bearer token through Supabase Auth and enforces
+  `requireStaffRole(['diana'])`; Angela is refused server-side. Per ADR-103, staff endpoints have
+  no IP rate limit; `payment-link-public` is rate limited per IP and per link.
+- Capability model: plain UUID bearer ID in `plata.html?p=<uuid>` (122 unguessable bits, no secrets
+  subject to rotation, no PII or staff data exposed in public responses).
+- Deployment status: not yet deployed to production (migration `20260826120000_payment_links.sql`
+  and functions `payment-link-admin`, `payment-link-public` pending deploy; static files pending upload).
+- Test verification: `npm test` → **412 Node + 186 Deno tests pass**.
 
 ## Readiness verdict
 
@@ -42,8 +60,8 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 205 Node + 48 Deno tests pass on 2026-06-11 |
-| Payment integrity | Green (2026-06-11) | B-23/B-24/B-25 fixed and deployed; server-side price guard verified live |
+| Test suite | Green | `npm test` -> 412 Node + 186 Deno tests pass on 2026-08-27 |
+| Payment integrity | Green | B-23/B-24/B-25 fixed and deployed; ADR-106 standalone links tested locally |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
 | Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |

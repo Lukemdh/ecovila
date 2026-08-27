@@ -192,6 +192,36 @@ as standalone Step 20 in `docs/plan.md`.
   tokens are read server-side via `_shared/env.ts`. Server-side user match data is
   SHA-256 hashed before provider payload construction, and Purchase events dedupe with
   the browser event via a shared `tracking_event_id`.
+- **Standalone payment links RLS & RPC posture (ADR-106).**
+  `payment_links` and `payment_link_attempts` tables enforce RLS with Diana-only SELECT
+  policies (`ecovila_app_role() = 'diana'`). No client-facing INSERT, UPDATE, or DELETE
+  policies exist for either table; all mutations execute via service-role Edge Functions.
+  All four RPCs (`claim_payment_link_attempt`, `settle_payment_link_attempt`,
+  `revoke_payment_link`, `mark_payment_link_refunded`) are `SECURITY INVOKER`, declare
+  `SET search_path = ''`, use fully-qualified schema names (`pg_catalog.*`, `public.*`),
+  have `REVOKE EXECUTE ... FROM PUBLIC`, and grant execute exclusively to `service_role`.
+- **Standalone payment links capability model (ADR-106).**
+  The guest page `plata.html?p=<uuid>` is accessed via a plain UUID bearer ID in a query
+  parameter rather than an HMAC or URL fragment:
+  - *Why plain UUID over HMAC:* 122 unguessable bits provide sufficient entropy (matching
+    `maib-mia-status`). An HMAC adds a secret rotation hazard that would invalidate
+    never-expiring links, without mitigating the real bearer risk (forwarded/screenshotted links).
+  - *Why query param over fragment:* Fragment survival across messaging apps (WhatsApp, Viber)
+    is unverified, and B-17 proved MAIB Checkout does not preserve custom parameters on the card
+    return redirect (relying on `orderId` matching attempt id). Leaked IDs carry minimal risk
+    (at worst, paying money to EcoVila).
+  - *Data isolation:* Public responses expose only coarse status, amount, currency, rail,
+    label, and expiry; no provider payloads, staff notes, or personal data are accessible.
+- **Diana-only staff gating on payment links (ADR-106).**
+  `payment-link-admin` enforces `await requireStaffRole(request, ['diana'])`, validating bearer
+  tokens via Supabase Auth. Angela is refused server-side (HTTP 403) and has no UI tab. Per ADR-103,
+  staff endpoints carry no IP rate limiting, while `payment-link-public` is rate limited per IP
+  and per link (tighter on `start` than `status`).
+- **Payment link provider reconciliation & money invariants (ADR-106).**
+  Callbacks and status re-read MAIB authoritatively (`GET /v2/checkouts/{id}` for card,
+  `GET /v2/mia/payments?orderId=` for MIA). Settlement is atomic via `settle_payment_link_attempt`
+  (locking link-then-attempt). Captured money always wins: late captures after expiry or revocation
+  are recorded as paid and flagged `manual_review` with alert rather than discarded or shown as expired.
 - **Raw old hosting backups are ignored, not committed.** `Archive.zip` and
   `docs/old php/` stay local-only because the backup contains retired credentials and
   cPanel/mail/SSL artifacts; committed old-content context is limited to the sanitized

@@ -7,6 +7,10 @@ import {
 } from '../_shared/maib.ts';
 import { reconcileMiaBookingGroup } from '../_shared/miaReconcile.ts';
 import {
+  findPaymentLinkAttemptForCallbackFailOpen,
+  reconcilePaymentLinkAttempt,
+} from '../_shared/paymentLinks.ts';
+import {
   findChangeById,
   findChangeByPayId,
   reconcileMiaChange,
@@ -50,6 +54,32 @@ Deno.serve(async (request) => {
 
     const orderId = getMaibMiaCallbackOrderId(payload);
     const qrId = getMaibMiaCallbackQrId(payload);
+
+    // Payment links are standalone and their order id is the attempt id. They
+    // must be intercepted before reservation changes and reservations so a
+    // matching callback can never enter either settlement path.
+    const paymentLinkAttempt = await findPaymentLinkAttemptForCallbackFailOpen(
+      client,
+      { payId: qrId, orderId },
+      'maib-mia-callback',
+    );
+    if (paymentLinkAttempt) {
+      const result = await reconcilePaymentLinkAttempt(
+        client,
+        paymentLinkAttempt,
+        'maib-mia-callback',
+      );
+      console.info('Payment-link MIA callback processed', {
+        attemptId: paymentLinkAttempt.id,
+        status: result.status,
+        outcome: result.outcome || null,
+      });
+      return jsonResponse(
+        { ok: true, status: result.status, outcome: result.outcome || null },
+        {},
+        request,
+      );
+    }
 
     // A "add guests" MIA difference is tracked in reservation_changes (order id
     // = change id, qr id = its pay_id). Route it to the change reconcile, which

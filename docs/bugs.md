@@ -39,6 +39,7 @@ High / Medium / Low.
 | B-30 | PostgREST `.or()` filter injection in `maib-refund` payment lookup | Low | Fixed |
 | B-31 | CRM auth cookie missing the `Secure` flag | Low | Fixed |
 | B-32 | CRM edit dialog showed single-villa price for grouped bookings | Low | Fixed |
+| B-33 | Finance `paid_at` binning uses UTC midnight while queries use Europe/Chisinau | Low | Open |
 
 ---
 
@@ -494,3 +495,18 @@ High / Medium / Low.
   `openReservation(reservation, { groupTotal: total })`; the dialog renders `options.groupTotal`
   and falls back to `reservation.total_price` when opened outside the calendar grid. Display-only
   (`admin/js/crm-dashboard.js`); ships with the next TopHost upload.
+
+### B-33 — Finance `paid_at` binning uses UTC midnight while queries use Europe/Chisinau (Low) — Open
+- **Description:** `admin/js/crm-finance.js` bins `paid_at` timestamps using UTC midnight
+  (`isPaidAtInRange`), while the `created_at` and `cancelled_at` Finance queries in `js/supabase.js`
+  (`fetchFinanceReservations`, `fetchFinanceBookedReservations`, `fetchFinancePaymentLinks`) filter
+  using Europe/Chisinau local day boundaries.
+- **Context / ADR-106 decision:** Standalone payment links (ADR-106) deliberately reused the
+  existing `isPaidAtInRange` UTC helper so payment links and reservations bin identically rather than
+  diverging inside one report.
+- **Why it matters:** Payments recognized near midnight (within the 2–3 hour offset window between UTC
+  and Europe/Chisinau) may bin into an adjacent day compared to their local date.
+- **Fix direction / owner decision needed:** Correcting this binning to Europe/Chisinau local midnight
+  is a separate change because it would retroactively shift historical daily Finance figures across all
+  past reports, so it requires explicit owner decision and approval.
+

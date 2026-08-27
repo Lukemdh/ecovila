@@ -16,6 +16,7 @@ export const TOPHOST_UPLOAD_ENTRIES = [
   'checkout.html',
   'confirmare.html',
   'plata-mia.html',
+  'plata.html',
   'gestionare.html',
   'anulare.html',
   'complaints.html',

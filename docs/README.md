@@ -89,6 +89,7 @@ python3 -m http.server 8080
 Key pages: `index.html` (Romanian canonical homepage at `/`), `ru/index.html`,
 `en/index.html`, `site.html` (legacy transition source redirected by `.htaccess`),
 `rezervari.html` (booking), `checkout.html`, `confirmare.html`, `anulare.html`,
+`plata.html` (standalone payment link at `plata.html?p=<uuid>`),
 `politica-confidentialitate.html`, `termeni-conditii.html`, `admin/index.html`
 (CRM login), `admin/dashboard.html` (CRM).
 
@@ -113,7 +114,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 205 Node + 48 Deno tests, all passing (2026-06-11)
+# → 412 Node + 186 Deno tests, all passing (2026-08-27)
 ```
 
 The suites can also be run independently.
@@ -123,14 +124,14 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 205 tests, 21 suites, all passing
+# → 407 tests, 36 suites, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 48 tests, all passing
+# → 181 tests, all passing
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named

@@ -18,6 +18,7 @@ ecovila/
 ├── confirmare.html             # Celebration-only confirmation: countdown, stay card, room tag, facilities (ADR-027)
 ├── gestionare.html             # Reservation management: cash countdown, extend, online cancel, refund (ADR-027)
 ├── anulare.html                # Token + phone self-service cancellation policy
+├── plata.html                  # Standalone payment link page for deposits/events/bills: ?p=<uuid> (ADR-106)
 ├── politica-confidentialitate.html  # Privacy policy (legal)
 ├── termeni-conditii.html       # Terms & conditions (legal)
 ├── design.md                   # Design language reference (palette, type, components)
@@ -41,6 +42,7 @@ ecovila/
 │   ├── booking.css             # rezervari.html
 │   ├── checkout.css            # checkout.html
 │   ├── confirmation.css        # confirmare.html + gestionare.html + anulare.html
+│   ├── payment-link.css        # plata.html standalone payment links (ADR-106)
 │   ├── legal.css               # legal pages
 │   └── crm.css                 # admin CRM
 │
@@ -59,18 +61,20 @@ ecovila/
 │   ├── checkout.js             # checkout.html controller (incl. Maib rail routing)
 │   ├── confirmare.js           # confirmare.html controller (celebration + card-status polling)
 │   ├── gestionare.js           # gestionare.html controller (cash timer, extend, cancel, refund)
-│   └── anulare.js              # anulare.html controller
+│   ├── anulare.js              # anulare.html controller
+│   └── plata.js                # plata.html controller (status polling, MIA QR rendering, card redirect) (ADR-106)
 │
 ├── admin/                      # Staff CRM (admin.ecovila.md)
 │   ├── index.html              # CRM login (Supabase Auth)
-│   ├── dashboard.html          # CRM shell; tabs: dashboard/finance/daily/towels/photos/pricing
+│   ├── dashboard.html          # CRM shell; tabs: dashboard/finance/payment-links/daily/towels/photos/pricing
 │   └── js/
 │       ├── crm-app.js          # Orchestrator: wires tabs, requires session, inits modules
 │       ├── crm-auth.js         # Supabase Auth login + role/session gating
 │       ├── crm-calendar.js     # Reservation calendar (rows 1–25)
 │       ├── crm-sidebar.js      # Add/search reservation sidebar
 │       ├── crm-dashboard.js    # Dashboard tab (calendar + pending cash)
-│       ├── crm-finance.js      # Finance reporting tab
+│       ├── crm-finance.js      # Finance reporting tab (incl. payment-link breakdown)
+│       ├── crm-payment-links.js# Linkuri de plată tab: mint, list, revoke, record refund (ADR-106)
 │       ├── crm-daily.js        # Daily reception/operations tab
 │       ├── crm-towels.js       # Towel/daily guest counts tab
 │       ├── crm-photos.js       # Photo draft/publish to public galleries
@@ -79,22 +83,23 @@ ecovila/
 ├── scripts/
 │   └── prepare-tophost-upload.mjs # cPanel-safe static upload folder builder
 │
-├── tests/                      # Node node:test contract/unit suites (*.test.mjs)
+├── tests/                      # Node node:test contract/unit suites (*.test.mjs, incl. payment-link-page.test.mjs)
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260611)
+│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260826_payment_links)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
-│       ├── _shared/            # cors, env, http, maib, notifications, pricing (copy of js/pricing.js),
-│       │                       #   pricingGuard, providers, reminders, reservationManage,
-│       │                       #   reservations, supabaseAdmin, tracking
+│       ├── _shared/            # cors, env, http, maib, notifications, paymentLinks (ADR-106),
+│       │                       #   pricing (copy of js/pricing.js), pricingGuard, providers,
+│       │                       #   reminders, reservationManage, reservations, supabaseAdmin, tracking
 │       ├── create-reservation/, confirm-reservation-payment/
 │       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
-│       ├── maib-create-payment/, maib-callback/, maib-refund/, track-event/
+│       ├── maib-create-payment/, maib-callback/, maib-refund/, maib-mia-callback/, track-event/
+│       ├── payment-link-admin/, payment-link-public/ (ADR-106)
 │       ├── reservation-lookup-start/, reservation-lookup-verify/
 │       ├── reservation-manage-details/, reservation-extend-cash/, reservation-cancel/
-│       └── tests/              # Deno tests (cors, http, maib, pricingGuard, reservation-manage, reservations, tracking)
+│       └── tests/              # Deno tests (cors, http, maib, paymentLinks, pricingGuard, reservation-manage, reservations, tracking)
 │
 └── docs/                       # Documentation only
     ├── AGENTS.md               # Standing agent rules (this audit)
@@ -122,18 +127,23 @@ ecovila/
 | `confirmare.html` + `js/confirmare.js` | Token-backed celebration page: confirmed-stay hero, check-in countdown, assigned room, ICS download, included facilities; polls card payments until the Maib callback settles them. |
 | `gestionare.html` + `js/gestionare.js` | Token-backed management page: cash timer, extend, pending-cash cancellation, online cancellation eligibility, refund display. |
 | `anulare.html` + `js/anulare.js` | Token + phone self-service cancellation with 7-day / 2-hour and cash-office rules. |
+| `plata.html` + `js/plata.js` | Standalone payment link UI and controller: status polling, MIA QR rendering, card checkout redirect. |
 | `js/pricing.js` | Pure pricing/billing/date engine. Shared by frontend + CRM + Node tests. |
 | `js/calendar.js` | Shared calendar/date logic (booking page + CRM calendar). |
-| `js/supabase.js` | All DB reads/writes and Edge Function calls from the browser, including staff Maib refund calls. |
+| `js/supabase.js` | All DB reads/writes and Edge Function calls from the browser, including staff Maib refund and payment link calls. |
 | `js/supabase-config.js` | Supabase URL + public anon key (frozen object). |
 | `js/tracking-config.js`, `js/tracking.js` | Public tracking config and consent-gated Meta/Google/event-id tracking. |
 | `js/translations.js` | RO/RU/EN string tables consumed via `data-i18n`. |
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
-| `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, daily, towels, photos, pricing, auth). The dashboard module owns the rolling scroll calendar, double-confirm reservation deletion, and staff MAIB refund-before-cancel path; the finance module owns revenue summaries plus the one-day `Încasări` booked-villas detail list. |
-| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, providers, reminder scheduling (`reminders.ts`), reservation logic, server-side pricing guard (`pricingGuard.ts` + `pricing.js`, a byte-identical copy of `js/pricing.js`), admin client. |
+| `admin/js/crm-payment-links.js` | Standalone payment links CRM module: creation form (MIA/card, expiry, label), recent links list, copy/open URL, revoke, record portal refund. |
+| `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, payment-links, daily, towels, photos, pricing, auth). The dashboard module owns the rolling scroll calendar, double-confirm reservation deletion, and staff MAIB refund-before-cancel path; the finance module owns revenue summaries plus the one-day `Încasări` booked-villas detail list and payment-link breakdowns. |
+| `supabase/functions/_shared/paymentLinks.ts` | Standalone payment links backend logic: status mapping, provider session minting, attempt claims and settlements, MAIB API integration (`getMaibCheckout`, `cancelMaibCheckout`). |
+| `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, paymentLinks, providers, reminder scheduling (`reminders.ts`), reservation logic, server-side pricing guard (`pricingGuard.ts` + `pricing.js`, a byte-identical copy of `js/pricing.js`), admin client. |
+| `supabase/functions/payment-link-admin/` | Diana-only staff Edge Function for minting, listing, and revoking payment links, and recording portal refunds. |
+| `supabase/functions/payment-link-public/` | Public rate-limited Edge Function for reading link status and lazily minting MAIB checkout / MIA QR payment attempts. |
 | `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
-| `supabase/migrations/` | DB schema evolution; apply in filename order. |
+| `supabase/migrations/` | DB schema evolution; apply in filename order (incl. `20260826120000_payment_links.sql`). |
 | `supabase/config.toml` | Declares which functions require a verified JWT. |
 | `tests/*.test.mjs` | Node contract/behavior tests (require browser JS via CommonJS shim). |
 | `supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
@@ -157,16 +167,19 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
 1. A page loads supabase-js (CDN) + `supabase-config.js` + `supabase.js`, establishing
    a browser Supabase client with the anon key.
 2. Read paths call public RPCs / RLS-guarded selects via `js/supabase.js`
-   (`fetchRooms`, `fetchPricingTiers`, `fetchHolidays`, `fetchAvailabilityBlocks`, …).
+   (`fetchRooms`, `fetchPricingTiers`, `fetchHolidays`, `fetchAvailabilityBlocks`, `fetchFinancePaymentLinks`, …).
 3. `js/pricing.js` computes billable guests and stay price client-side for display.
-4. Mutations (create reservation, manage details, cash extension, cancel, refund, lookup) call Edge Functions through
+4. Reservation mutations (create reservation, manage details, cash extension, cancel, refund, lookup) call Edge Functions through
    `js/supabase.js`, which enforce server-side rules, talk to Maib/SMS.md/Resend, and
    write with the service-role client (`_shared/supabaseAdmin.ts`). Guest cancellation is
    also enforced by the latest `cancel_reservation_by_token` RPC for legacy token links.
-5. Consent-gated conversion tracking stores a shared event ID and browser match
+5. Payment link mutations call `payment-link-admin` (Diana-only; mint, revoke, record refund) or `payment-link-public`
+   (start payment attempt); provider callbacks (`maib-callback`, `maib-mia-callback`) and client polling invoke
+   service-role RPCs (`claim_payment_link_attempt`, `settle_payment_link_attempt`, `revoke_payment_link`, `mark_payment_link_refunded`).
+6. Consent-gated conversion tracking stores a shared event ID and browser match
    metadata on reservation rows; `maib-callback` and `confirm-reservation-payment` emit
-   server-side `Purchase` through `_shared/tracking.ts`.
-6. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
+   server-side `Purchase` through `_shared/tracking.ts`. (Payment links emit no tracking events.)
+7. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
    role (`diana` full CRUD, `angela` read-only).
 
 ## Inferred / uncertain items

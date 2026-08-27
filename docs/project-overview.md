@@ -18,11 +18,11 @@ The product has two surfaces:
 ## Target users
 
 - **Guests** — book accommodation, pay by cash (hold) or card (Maib online), receive
-  SMS/email confirmations, and self-manage eligible online cancellations via a secure
-  token + phone lookup.
+  SMS/email confirmations, self-manage eligible online cancellations via a secure
+  token + phone lookup, and pay standalone payment links (`plata.html?p=<uuid>`).
 - **Diana** (role `diana`) — full CRUD staff operator: reservations, pricing, holidays,
-  photos, towels/daily counts, finance reporting.
-- **Angela** (role `angela`) — read-only staff role (partly implemented).
+  photos, towels/daily counts, finance reporting, and minting/managing standalone payment links.
+- **Angela** (role `angela`) — read-only staff role (partly implemented; blocked from payment links).
 
 ## Core features and flows
 
@@ -45,15 +45,22 @@ The product has two surfaces:
 - **Cancellation** (`anulare.html`): token-based + phone-verified self-service
   cancellation only at least 7 calendar days before arrival or within 2 hours of
   creation; cash reimbursements are office-only.
+- **Standalone payment links** (`plata.html`): single-use payment link (`plata.html?p=<uuid>`)
+  for deposits, events, and off-platform payments, independent of reservations (no booking
+  creation, no room inventory changes, no `Purchase` event). Provider sessions (MIA QR or
+  hosted card checkout) are minted lazily on "Plătește"; status updates re-read MAIB authoritatively.
 - **Legal** (`politica-confidentialitate.html`, `termeni-conditii.html`): Moldova
   privacy/consumer content, Romanian-only body copy.
 - **CRM** (`admin/dashboard.html`): tabbed dashboard — `dashboard` (reservation
   calendar + pending cash + add/search sidebar, double-confirm reservation deletion,
   MAIB refund-first cancellation for paid card groups, and scroll-preserving rolling
   month navigation), `finance` (revenue reporting, with a one-day `Încasări` view that
-  also lists villas booked/created that day), `daily` (reception), `towels`, `photos`
-  (draft/publish to the public galleries), `pricing` (tiers + holidays with effective
-  dates, plus a read-only **Program** sub-view listing each price timeframe — `DD.MM.YYYY
+  also lists villas booked/created that day, plus payment-link income folded into Online
+  and a separate "Plăți din linkuri" section), `payment-links` (Diana-only tab to mint
+  MIA/card standalone links with amount in MDL, optional label, and optional 1h/3h/8h expiry,
+  copy/open URLs, revoke active links, and record portal-executed refunds), `daily` (reception),
+  `towels`, `photos` (draft/publish to the public galleries), `pricing` (tiers + holidays with
+  effective dates, plus a read-only **Program** sub-view listing each price timeframe — `DD.MM.YYYY
   – DD.MM.YYYY` ranges derived from `effective_from` boundaries — so staff can see when a
   scheduled change overwrites the current tariff; ADR-040).
 
@@ -92,6 +99,12 @@ The product has two surfaces:
   short-lived manage token for pending status, cash extension, and cancellation actions.
   Paid cash reservations remain office-only for reimbursement; paid card cancellation is
   limited by the 7-day / 2-hour public window.
+- **Standalone payment links** (`payment_links`, `payment_link_attempts`): single-use links
+  created by Diana for arbitrary amounts in MDL (MIA or card), keyed by a plain UUID bearer ID
+  in the URL (`?p=<uuid>`). The MAIB provider session is minted lazily on "Plătește". Money
+  captured always wins (late capture after expiry/revoke settles as paid and flags `manual_review`).
+  Offline/portal refunds are recorded (*Marchează ca restituit*) to keep Finance net figures
+  accurate without moving funds.
 
 ## External services / dependencies
 
@@ -99,7 +112,7 @@ The product has two surfaces:
 |---------|------|------------|
 | **Supabase** | Postgres DB, Auth, Storage, RLS, Edge Functions | everywhere |
 | **@supabase/supabase-js@2** (CDN) | Browser DB/Auth client | every connected HTML page |
-| **Maib** | Online payments (MIA for `+373`, hosted card Checkout otherwise) | `maib-*` Edge Functions, `js/checkout.js` |
+| **Maib** | Online payments (MIA for `+373`, hosted card Checkout otherwise; payment links) | `maib-*`, `payment-link-*` Edge Functions, `js/checkout.js`, `js/plata.js` |
 | **SMS.md** | SMS notifications | `_shared/providers.ts`, `send-sms` |
 | **Resend** | Email notifications | `_shared/providers.ts`, `send-email` |
 | **Meta Pixel / CAPI** | Consent-gated browser + server conversion tracking | `js/tracking.js`, `track-event`, `_shared/tracking.ts` |
@@ -116,7 +129,8 @@ The product has two surfaces:
    loads supabase-js from CDN + js/supabase-config.js (anon key)
                      │                                      │
             js/*.js (booking, pricing,            admin/js/crm-*.js (calendar,
-            calendar, checkout, i18n)             sidebar, dashboard, finance, …)
+            calendar, checkout, plata, i18n)      sidebar, dashboard, finance,
+                     │                            payment-links, …)
                      │                                      │
                      └──────────────┬───────────────────────┘
                                     ▼
@@ -128,9 +142,12 @@ The product has two surfaces:
                    │   create-reservation, confirm-…,     │
                    │   reservation-lookup/-manage/-cancel,│
                    │   reservation-extend-cash,            │
-                  │   maib-create-payment/-callback/     │
-                  │   -refund, send-sms/-email/-reminders│
-                  │   track-event                        │
+                   │   maib-create-payment/-callback/     │
+                   │   -refund, maib-mia-callback,        │
+                   │   payment-link-admin,                │
+                   │   payment-link-public,               │
+                   │   send-sms/-email/-reminders,        │
+                   │   track-event,                       │
                    │   expire-cash-reservations           │
                    └───────┬───────────┬───────────┬──────┘
                            ▼           ▼           ▼
@@ -138,8 +155,8 @@ The product has two surfaces:
                     (payments)      (SMS)        (email)
 ```
 
-Data flow (guest booking, simplified):
-`rezervari.html` (availability via public RPC) → `checkout.html` →
+Data flows:
+1. **Guest booking (simplified):** `rezervari.html` (availability via public RPC) → `checkout.html` →
 `create-reservation` Edge Function inserts a pending reservation + cancellation token +
 hashed manage token → cash path redirects to `confirmare.html?id=…&manage=…`; card path
 passes the manage token to `maib-create-payment` so Maib success/failure URLs return to
@@ -153,6 +170,14 @@ can refund independently of the public guest window. Consent-gated browser track
 shares a generated `tracking_event_id` with reservation rows; payment confirmation
 functions emit server-side `Purchase` with `value` and `currency: MDL`, deduped by that
 event ID.
+
+2. **Standalone payment link (ADR-106):** Diana creates link via `payment-link-admin` (Diana-only,
+amount in MDL, MIA/card rail, optional label/expiry) → Diana copies and sends `plata.html?p=<uuid>` →
+payer opens `plata.html` → `payment-link-public` action `status` loads public details (coarse status,
+amount, rail, label, expiry) → payer clicks "Plătește" (`payment-link-public` action `start`) to lazily
+mint a provider session (`claim_payment_link_attempt`) → card redirects to MAIB Checkout / MIA displays
+live QR → MAIB callback (`maib-callback` or `maib-mia-callback`) or client polling triggers
+`settle_payment_link_attempt` RPC → payment confirmed on `plata.html` and reflected in CRM / Finance.
 
 ## Status (as of 2026-06-03)
 

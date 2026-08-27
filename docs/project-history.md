@@ -409,3 +409,25 @@ sessions append to the running log at the bottom.
   Tests asserting the old markup/transforms updated (`booking-page`, `landing`,
   `supabase-wiring`); only the pre-existing availability-lead failure remains (flagged
   as a separate task). `dist/tophost/` regenerated; still awaits the tophost upload.
+- 2026-08-27 — OFF-PLAN standalone payment links in CRM (ADR-106). Implemented standalone,
+  single-use payment links independent of reservations (for deposits, event advances, and
+  off-platform charges; no booking/room inventory, no guest booking notifications, no `Purchase`
+  tracking event). Diana mints links from a new Diana-only CRM tab ("Linkuri de plată") with
+  amount in integer MDL, rail (MIA or card MAIB, immutable per link), optional 120-char label,
+  and optional expiry (`Fără expirare` / 1h / 3h / 8h), then shares `https://ecovila.md/plata.html?p=<uuid>`.
+  Provider sessions are minted lazily on "Plătește" (`payment-link-public` action `start`) with
+  claim-before-mint attempt rows (`claim_payment_link_attempt`) keyed to MAIB `orderId`. Callbacks
+  and client polling re-read MAIB authoritatively (`GET /v2/checkouts/{id}` for card,
+  `GET /v2/mia/payments?orderId=` for MIA) and settle atomically via `settle_payment_link_attempt` RPC;
+  captured money always wins, settling late captures as paid under `manual_review`. Staff portal
+  refunds are recorded (*Marchează ca restituit*) without moving money, ensuring Finance net figures
+  remain accurate. Finance folds net link income (`paid_amount − refunded_amount`) into `onlineTotal`
+  and `commercialTotal` in `Încasări` mode only, with an Online sub-line and a dedicated "Plăți din linkuri"
+  block, preserving reservation-only metrics (`occupiedNights`, `roomTypeTotals`, `paidBookings`, and average
+  booking value). Added `plata.html` (`noindex`, no analytics), `js/plata.js`, `css/payment-link.css`,
+  `admin/js/crm-payment-links.js`, `_shared/paymentLinks.ts`, `payment-link-admin`, `payment-link-public`,
+  and migration `20260826120000_payment_links.sql` (Diana-only SELECT RLS, no client write policies,
+  service-role-only `SECURITY INVOKER` RPCs with `search_path = ''`). Added B-33 (Finance UTC vs Europe/Chisinau
+  binning). Verified with `npm run test:node` (412 passing) and `npm run test:deno` (186 passing); nothing
+  deployed or pushed yet.
+

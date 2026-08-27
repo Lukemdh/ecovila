@@ -4545,4 +4545,530 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     assert.match(gestionare, /const stillBooked = summary\.paymentStatus === 'paid'/);
     assert.match(gestionare, /if \(!stillBooked && \(payment\?\.status === 'refunded'/);
   });
+
+  it('summarizes finance rows with standalone payment links in MODE_PAID only', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js');
+
+    // In MODE_PAID: link rows fold into commercialTotal, onlineTotal, and linksTotal
+    const summaryPaid = finance.summarizeFinanceRows({
+      mode: 'paid',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-06-01',
+      rows: [
+        {
+          id: 'res-1',
+          room_id: 'room-1',
+          check_in: '2026-05-10',
+          check_out: '2026-05-12',
+          total_price: 3000,
+          payment_type: 'card',
+          payment_status: 'paid',
+          paid_at: '2026-05-05T10:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+      ],
+      changeRows: [
+        {
+          id: 'change-1',
+          booking_group_id: 'res-1',
+          difference_amount: 500,
+          paid_at: '2026-05-06T10:00:00.000Z',
+          room_type: 'small',
+        },
+      ],
+      linkRows: [
+        {
+          id: 'link-1',
+          amount: 2000,
+          paid_amount: 2000,
+          paid_at: '2026-05-15T12:00:00.000Z',
+          payment_rail: 'mia',
+        },
+        {
+          id: 'link-2-refunded',
+          amount: 1500,
+          paid_amount: 1500,
+          refunded_amount: 500,
+          paid_at: '2026-05-20T12:00:00.000Z',
+          payment_rail: 'card',
+        },
+        {
+          id: 'link-3-full-refund',
+          amount: 1000,
+          paid_amount: 1000,
+          refunded_amount: 1000,
+          paid_at: '2026-05-22T12:00:00.000Z',
+          payment_rail: 'mia',
+        },
+        {
+          id: 'link-out-of-range',
+          amount: 5000,
+          paid_amount: 5000,
+          paid_at: '2026-06-05T12:00:00.000Z',
+          payment_rail: 'mia',
+        },
+      ],
+    });
+
+    assert.equal(summaryPaid.commercialTotal, 6500);
+    assert.equal(summaryPaid.onlineTotal, 6500);
+    assert.equal(summaryPaid.linksTotal, 3000);
+    assert.equal(summaryPaid.paidBookings, 1);
+    assert.equal(summaryPaid.averageBookingValue, 3500);
+    assert.equal(summaryPaid.occupiedNights, 2);
+    assert.equal(summaryPaid.roomTypeTotals.small, 3500);
+
+    // In MODE_NIGHTS: links are completely absent
+    const summaryNights = finance.summarizeFinanceRows({
+      mode: 'nights',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-06-01',
+      rows: [
+        {
+          id: 'res-1',
+          room_id: 'room-1',
+          check_in: '2026-05-10',
+          check_out: '2026-05-12',
+          total_price: 3000,
+          payment_type: 'card',
+          payment_status: 'paid',
+          paid_at: '2026-05-05T10:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+      ],
+      linkRows: [
+        {
+          id: 'link-1',
+          amount: 2000,
+          paid_amount: 2000,
+          paid_at: '2026-05-15T12:00:00.000Z',
+          payment_rail: 'mia',
+        },
+      ],
+    });
+
+    assert.equal(summaryNights.commercialTotal, 3000);
+    assert.equal(summaryNights.onlineTotal, 3000);
+    assert.equal(summaryNights.linksTotal, 0);
+    assert.equal(summaryNights.averageBookingValue, 3000);
+  });
+
+  it('provides payment link admin helpers in js/supabase.js', async () => {
+    const { EcoVilaSupabase: supabase } = loadAdminModule('js/supabase.js');
+
+    assert.equal(typeof supabase.createPaymentLink, 'function');
+    assert.equal(typeof supabase.listPaymentLinks, 'function');
+    assert.equal(typeof supabase.revokePaymentLink, 'function');
+    assert.equal(typeof supabase.markPaymentLinkRefunded, 'function');
+    assert.equal(typeof supabase.fetchFinancePaymentLinks, 'function');
+
+    const calls = [];
+    const builder = {
+      select() { return builder; },
+      eq() { return builder; },
+      not() { return builder; },
+      gte() { return builder; },
+      lt() { return builder; },
+      order() { return builder; },
+      range() { return Promise.resolve({ data: [{ id: 'link-1', paid_amount: 1000 }] }); },
+    };
+    const mockClient = {
+      functions: {
+        async invoke(name, options) {
+          calls.push({ name, options });
+          return { data: { ok: true } };
+        },
+      },
+      from(table) {
+        return builder;
+      },
+    };
+
+    await supabase.createPaymentLink(mockClient, {
+      amount: 1500,
+      paymentRail: 'mia',
+      expiresInHours: 3,
+      label: 'Avans',
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {
+      name: 'payment-link-admin',
+      options: {
+        body: {
+          action: 'create',
+          amount: 1500,
+          paymentRail: 'mia',
+          expiresInHours: 3,
+          label: 'Avans',
+        },
+      },
+    });
+
+    await supabase.listPaymentLinks(mockClient, { limit: 20 });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[1])), {
+      name: 'payment-link-admin',
+      options: {
+        body: {
+          action: 'list',
+          limit: 20,
+        },
+      },
+    });
+
+    await supabase.revokePaymentLink(mockClient, { id: 'test-link-id' });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[2])), {
+      name: 'payment-link-admin',
+      options: {
+        body: {
+          action: 'revoke',
+          id: 'test-link-id',
+        },
+      },
+    });
+
+    await supabase.markPaymentLinkRefunded(mockClient, {
+      id: 'test-link-id',
+      amount: 1000,
+      note: 'Restituire cash',
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[3])), {
+      name: 'payment-link-admin',
+      options: {
+        body: {
+          action: 'markRefunded',
+          id: 'test-link-id',
+          amount: 1000,
+          note: 'Restituire cash',
+        },
+      },
+    });
+
+    const financeRows = await supabase.fetchFinancePaymentLinks(mockClient, {
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-06-01',
+    });
+    assert.equal(financeRows.length, 1);
+    assert.equal(financeRows[0].id, 'link-1');
+  });
+
+  it('exports EcoVilaCrmPaymentLinks module and handles UI contracts', () => {
+    const { EcoVilaCrmPaymentLinks: mod } = loadAdminModule('admin/js/crm-payment-links.js', {
+      EcoVilaPricing: pricing,
+    });
+
+    assert.equal(typeof mod.init, 'function');
+    assert.equal(typeof mod.showPanel, 'function');
+    assert.equal(typeof mod.loadLinks, 'function');
+    assert.equal(typeof mod.renderLinkList, 'function');
+    assert.equal(typeof mod.formatMDL, 'function');
+    assert.equal(typeof mod.formatCreatedAt, 'function');
+  });
+
+  it('keeps payment-link presentation out of the JavaScript module', () => {
+    const moduleSource = read('admin/js/crm-payment-links.js');
+
+    assert.doesNotMatch(moduleSource, /\.style\./, 'payment-link JavaScript must not assign inline styles');
+    assert.doesNotMatch(moduleSource, /#[0-9a-f]{3,8}\b/i, 'payment-link JavaScript must not contain raw hex colours');
+    // No other CRM module uses emoji; the manual-review strip carries its urgency
+    // through the --crm-danger rail and pill, not a glyph.
+    assert.doesNotMatch(
+      moduleSource,
+      /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u,
+      'payment-link JavaScript must not use emoji markers',
+    );
+  });
+
+  it('wires payment-links tab and panel in admin/dashboard.html and admin/js/crm-app.js', () => {
+    const html = read('admin/dashboard.html');
+    const app = read('admin/js/crm-app.js');
+
+    // Tab button placed right after Finance tab
+    assert.match(
+      html,
+      /<button class="crm-tab" type="button" data-tab="finance">Finance<\/button>\s*\n\s*<button class="crm-tab" type="button" data-tab="payment-links">Linkuri de plată<\/button>/,
+    );
+
+    // Panel placed right after Finance panel
+    assert.match(
+      html,
+      /<\/section>\s*\n\s*<section class="crm-panel" data-panel="payment-links"/,
+    );
+
+    // Script tag placed before crm-auth.js. The ?v= token is bumped every release
+    // (ADR-067), so match any stamp rather than pinning one.
+    assert.match(
+      html,
+      /<script src="js\/crm-payment-links\.js\?v=\d+"><\/script>\s*\n\s*<script src="js\/crm-auth\.js/,
+    );
+
+    // TAB_NAMES contains payment-links
+    assert.match(app, /'payment-links'/);
+    // ROLE_TABS.angela does NOT contain payment-links (Diana-only)
+    assert.doesNotMatch(app, /angela:\s*\[[^\]]*'payment-links'[^\]]*\]/);
+  });
+
+  it('paginates payment links using the nextBefore cursor and appends subsequent pages', async () => {
+    const page1Links = Array.from({ length: 50 }, (_, i) => ({
+      id: `link-p1-${i + 1}`,
+      amount: 1000 + i * 10,
+      paymentRail: 'card',
+      status: 'paid',
+      effectiveStatus: 'paid',
+      createdAt: `2026-08-20T12:${String(i).padStart(2, '0')}:00Z`,
+      payUrl: `https://ecovila.md/plata.html?p=link-p1-${i + 1}`,
+    }));
+
+    const page2Links = Array.from({ length: 15 }, (_, i) => ({
+      id: `link-p2-${i + 1}`,
+      amount: 2000 + i * 10,
+      paymentRail: 'mia',
+      status: 'paid',
+      effectiveStatus: 'paid',
+      createdAt: `2026-08-19T10:${String(i).padStart(2, '0')}:00Z`,
+      payUrl: `https://ecovila.md/plata.html?p=link-p2-${i + 1}`,
+    }));
+
+    const listCalls = [];
+    const mockSupabase = {
+      listPaymentLinks: async (_client, params) => {
+        listCalls.push(params);
+        if (params.before === '2026-08-20T12:00:00Z') {
+          return { ok: true, links: page2Links, nextBefore: null };
+        }
+        return { ok: true, links: page1Links, nextBefore: '2026-08-20T12:00:00Z' };
+      },
+    };
+
+    const elements = new Map();
+    function register(selector, tagName = 'div') {
+      const el = createFakeElement(tagName);
+      elements.set(selector, el);
+      return el;
+    }
+
+    const list = register('[data-link-list]', 'div');
+    const empty = register('[data-link-empty]', 'p');
+    register('[data-link-create-form]', 'form');
+    register('[data-link-amount]', 'input');
+    register('[data-link-label]', 'input');
+    register('[data-link-create]', 'button');
+    register('[data-link-create-error]', 'p');
+    register('[data-link-result]', 'div');
+    register('[data-link-url]', 'input');
+    register('[data-link-copy]', 'button');
+    register('[data-link-open]', 'a');
+    register('[data-link-rail-hint]', 'p');
+
+    const container = createFakeElement('section');
+    list.parentNode = container;
+    container.children = [list, empty];
+    container.insertBefore = function (newChild, refChild) {
+      const idx = this.children.indexOf(refChild);
+      if (idx >= 0) this.children.splice(idx, 0, newChild);
+      else this.children.push(newChild);
+      newChild.parentNode = this;
+      return newChild;
+    };
+
+    const fakeDoc = {
+      createElement(tag) {
+        return createFakeElement(tag);
+      },
+      querySelector(sel) {
+        if (elements.has(sel)) return elements.get(sel);
+        if (sel === '[data-link-load-more]') {
+          return container.children.find((c) => c.dataset?.linkLoadMore !== undefined) || null;
+        }
+        return null;
+      },
+      querySelectorAll(sel) {
+        if (sel === '[data-link-rail]' || sel === '[data-link-expiry]') return [];
+        if (elements.has(sel)) return [elements.get(sel)];
+        return [];
+      },
+    };
+
+    const { EcoVilaCrmPaymentLinks: mod } = loadAdminModule('admin/js/crm-payment-links.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaSupabase: mockSupabase,
+      document: fakeDoc,
+    });
+
+    mod.init({ client: { id: 'test-client' } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(listCalls.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(listCalls[0])), { limit: 50 });
+    assert.equal(mod.state.links.length, 50);
+    assert.equal(list.children.length, 50);
+    assert.equal(mod.state.nextBefore, '2026-08-20T12:00:00Z');
+
+    const loadMoreBtn = fakeDoc.querySelector('[data-link-load-more]');
+    assert.ok(loadMoreBtn, 'Load more button must be rendered');
+    assert.equal(loadMoreBtn.hidden, false, 'Load more button must be visible when nextBefore exists');
+    assert.equal(loadMoreBtn.textContent, 'Încarcă mai multe');
+
+    // Click load more button to fetch page 2
+    loadMoreBtn.click();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(listCalls.length, 2);
+    assert.deepEqual(JSON.parse(JSON.stringify(listCalls[1])), { limit: 50, before: '2026-08-20T12:00:00Z' });
+    assert.equal(mod.state.links.length, 65, 'Page 2 items must be appended to list');
+    assert.equal(list.children.length, 65);
+    assert.equal(mod.state.nextBefore, null);
+    assert.equal(loadMoreBtn.hidden, true, 'Load more button must be hidden when nextBefore is null');
+  });
+
+  it('keeps refund action available after partial refund and caps new total at paidAmount', async () => {
+    const refundCalls = [];
+    const mockSupabase = {
+      listPaymentLinks: async () => ({ ok: true, links: [] }),
+      markPaymentLinkRefunded: async (_client, payload) => {
+        refundCalls.push(payload);
+        return {
+          ok: true,
+          link: {
+            id: payload.id,
+            status: 'paid',
+            effectiveStatus: 'paid',
+            amount: 1000,
+            paidAmount: 1000,
+            refundedAmount: payload.amount,
+            refundedAt: '2026-08-27T10:00:00Z',
+            refundNote: payload.note,
+          },
+        };
+      },
+    };
+
+    const elements = new Map();
+    function register(selector, tagName = 'div') {
+      const el = createFakeElement(tagName);
+      elements.set(selector, el);
+      return el;
+    }
+
+    const list = register('[data-link-list]', 'div');
+    const empty = register('[data-link-empty]', 'p');
+    register('[data-link-create-form]', 'form');
+    register('[data-link-amount]', 'input');
+    register('[data-link-label]', 'input');
+    register('[data-link-create]', 'button');
+    register('[data-link-create-error]', 'p');
+    register('[data-link-result]', 'div');
+    register('[data-link-url]', 'input');
+    register('[data-link-copy]', 'button');
+    register('[data-link-open]', 'a');
+    register('[data-link-rail-hint]', 'p');
+
+    const refundDialog = register('[data-link-refund-dialog]', 'dialog');
+    const refundForm = register('[data-link-refund-form]', 'form');
+    const refundAmountInput = register('[data-link-refund-amount]', 'input');
+    const refundNoteInput = register('[data-link-refund-note]', 'input');
+    const refundError = register('[data-link-refund-error]', 'p');
+    const refundCancel = register('[data-link-refund-cancel]', 'button');
+    const refundSubmit = register('[data-link-refund-submit]', 'button');
+
+    const labelSpan = createFakeElement('span');
+    const amountLabel = createFakeElement('label');
+    amountLabel.children = [labelSpan, refundAmountInput];
+    amountLabel.querySelector = (sel) => (sel === 'span' ? labelSpan : null);
+    refundAmountInput.closest = (sel) => (sel === 'label' ? amountLabel : null);
+
+    refundDialog.showModal = () => {};
+    refundDialog.close = () => {};
+
+    let submitHandler = null;
+    refundForm.addEventListener = function (eventName, handler) {
+      if (eventName === 'submit') submitHandler = handler;
+    };
+
+    const container = createFakeElement('section');
+    list.parentNode = container;
+    container.children = [list, empty];
+
+    const fakeDoc = {
+      createElement(tag) {
+        return createFakeElement(tag);
+      },
+      querySelector(sel, scope) {
+        if (scope && scope === refundDialog) {
+          if (sel === '[data-link-refund-amount]') return refundAmountInput;
+          if (sel === '[data-link-refund-note]') return refundNoteInput;
+          if (sel === '[data-link-refund-error]') return refundError;
+        }
+        if (elements.has(sel)) return elements.get(sel);
+        return null;
+      },
+      querySelectorAll(sel) {
+        if (sel === '[data-link-rail]' || sel === '[data-link-expiry]') return [];
+        if (elements.has(sel)) return [elements.get(sel)];
+        return [];
+      },
+    };
+
+    refundDialog.querySelector = (sel) => fakeDoc.querySelector(sel, refundDialog);
+    refundDialog.querySelectorAll = (sel) => fakeDoc.querySelectorAll(sel);
+
+    const { EcoVilaCrmPaymentLinks: mod } = loadAdminModule('admin/js/crm-payment-links.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaSupabase: mockSupabase,
+      document: fakeDoc,
+      confirm: () => true,
+    });
+
+    mod.init({ client: { id: 'test-client' } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // Link with 1000 MDL paid, 400 MDL partially refunded
+    const link = {
+      id: 'link-partial-1',
+      status: 'paid',
+      effectiveStatus: 'paid',
+      amount: 1000,
+      paidAmount: 1000,
+      refundedAmount: 400,
+      refundedAt: '2026-08-25T10:00:00Z',
+      refundNote: 'Avans anulat parțial',
+      payUrl: 'https://ecovila.md/plata.html?p=link-partial-1',
+    };
+
+    mod.state.links = [link];
+    mod.renderLinkList();
+
+    // 1. Assert card renders with refund action button
+    const card = list.children[0];
+    assert.ok(card);
+    const refundBtn = card.children.flatMap((c) => c.children || []).find((c) => c.dataset?.action === 'refund');
+    assert.ok(refundBtn, 'Refund button must be present for partially refunded link');
+
+    // 2. Open refund dialog: pre-fills with recorded 400 and caps at 1000
+    refundBtn.click();
+    assert.equal(refundAmountInput.value, '400', 'Pre-fills with existing cumulative refund');
+    assert.equal(refundAmountInput.max, '1000', 'Capped at paidAmount');
+    assert.match(labelSpan.textContent, /Total nou restituit/i);
+
+    // 3. Attempting to refund more than 1000 is blocked by form validation
+    refundAmountInput.value = '1200';
+    submitHandler?.({ preventDefault() {} });
+    assert.equal(refundCalls.length, 0, 'Must not submit refund above paidAmount');
+    assert.equal(refundError.hidden, false);
+
+    // 4. Record new total refund of 1000 (remaining 600)
+    refundAmountInput.value = '1000';
+    refundNoteInput.value = 'Restituire integrală finalizată';
+    await submitHandler?.({ preventDefault() {} });
+
+    assert.equal(refundCalls.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(refundCalls[0])), {
+      id: 'link-partial-1',
+      amount: 1000,
+      note: 'Restituire integrală finalizată',
+    });
+
+    // 5. Fully refunded link (1000 / 1000) no longer renders refund action
+    const updatedCard = list.children[0];
+    const updatedRefundBtn = updatedCard.children.flatMap((c) => c.children || []).find((c) => c.dataset?.action === 'refund');
+    assert.equal(updatedRefundBtn, undefined, 'Refund action must be hidden after 100% refund');
+  });
 });
