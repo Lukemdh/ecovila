@@ -350,12 +350,84 @@
     return Boolean(leftReservation?.room_explicitly_selected || rightReservation?.room_explicitly_selected);
   }
 
+  function boundLinkNet(link) {
+    if (!link) return 0;
+    if (link.purpose !== 'accommodation_difference') {
+      return 0;
+    }
+    if (link.status !== 'paid') {
+      return 0;
+    }
+    const paid = Number(link.paid_amount);
+    if (!Number.isInteger(paid) || paid <= 0) {
+      return 0;
+    }
+    const refunded = Number(link.refunded_amount || 0);
+    return Math.max(0, paid - (refunded > 0 ? refunded : 0));
+  }
+
+  function effectiveTotal(reservations, links) {
+    const resList = Array.isArray(reservations) ? reservations : reservations ? [reservations] : [];
+    const linkList = Array.isArray(links) ? links : links ? [links] : [];
+
+    const liveReservations = resList.filter((r) => !isCancelled(r));
+    const baseTotal = liveReservations.reduce((sum, r) => sum + Number(r.total_price || 0), 0);
+
+    const liveResIds = new Set(liveReservations.map((r) => r.id).filter(Boolean));
+
+    const linksTotal = linkList.reduce((sum, link) => {
+      if (!link) return sum;
+      if (link.purpose !== 'accommodation_difference') {
+        return sum;
+      }
+      if (!link.reservation_id || !liveResIds.has(link.reservation_id)) {
+        return sum;
+      }
+      return sum + boundLinkNet(link);
+    }, 0);
+
+    return baseTotal + linksTotal;
+  }
+
+  function pendingDifference(links, now = Date.now()) {
+    const linkList = Array.isArray(links) ? links : links ? [links] : [];
+    const nowTime = typeof now === 'number' ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
+    return linkList.reduce((sum, link) => {
+      if (!link) return sum;
+      if (link.purpose !== 'accommodation_difference') {
+        return sum;
+      }
+      if (link.status === 'paid' || link.paid_at) {
+        return sum;
+      }
+      if (link.status === 'revoked' || link.revoked_at) {
+        return sum;
+      }
+      if (link.status === 'expired') {
+        return sum;
+      }
+      if (link.expires_at && new Date(link.expires_at).getTime() <= nowTime) {
+        return sum;
+      }
+      const isOpen = link.status === 'active' || (!link.status && !link.paid_at && !link.revoked_at);
+      if (isOpen) {
+        const amount = Number(link.amount);
+        if (Number.isInteger(amount) && amount > 0) {
+          return sum + amount;
+        }
+      }
+      return sum;
+    }, 0);
+  }
+
   return {
     addDays,
     addMonths,
+    boundLinkNet,
     buildReservationBlocks,
     calculateDragMove,
     daysInMonth,
+    effectiveTotal,
     enumerateDates,
     enumerateMonthDates,
     escapeHtml,
@@ -368,6 +440,7 @@
     isCancelled,
     isTemporaryHold,
     overlapsDate,
+    pendingDifference,
     requiresSwapConfirmation,
     roomLabel,
     roomNumber,

@@ -3978,6 +3978,194 @@ is relied upon against bookings made earlier.
 
 ---
 
+### ADR-107 — Move one reservation row to another accommodation type; optionally bill the difference through ADR-106
+
+- **Date:** 2026-08-27.
+- **Owner decisions / shipped shape:** Diana can move a booking row to another free
+  accommodation. A calendar **drag** opens the move flow only when the card represents
+  exactly one villa; a contiguous multi-villa card still has one primary drag payload,
+  so it stays blocked as ambiguous. Multi-villa bookings are nonetheless fully
+  supported through the reservation dialog's new **Mută cazarea** picker, where Diana
+  chooses both the exact villa that moves and the free destination for the whole stay.
+  Same-type picker moves are allowed without billing; a cross-type move opens the same
+  confirmation/billing dialog. Cross-type drops onto occupied rooms remain refused.
+  Second owner decision: the move may carry an **optional, hand-typed** integer-MDL
+  difference (1..1,000,000) collected through a single-use ADR-106 MIA or card link;
+  empty means move without a bill, and no standalone "bill without moving" shortcut was
+  added. Third owner decision: **Anunță clientul prin SMS** is a per-move checkbox and
+  defaults **off**. The post-commit localized SMS is best-effort and never rolls a room
+  move back.
+- **Why this was cheap enough to be one operation:** ADR-106 creates only a database
+  link row when staff issues a link; the short-lived MAIB provider session is minted
+  **lazily**, after the payer presses "Plătește." Therefore
+  `move_reservation_accommodation` can move the reservation and insert the optional
+  `payment_links` bill in **one PostgreSQL transaction**, with no network call or
+  provider session held across a lock. Settlement remains the already-audited
+  `settle_payment_link_attempt`; ADR-107 does not fork or edit that money state machine.
+- **Binding schema (actual migration wins over the earlier plan wording):**
+  `payment_links.purpose` defaults to `standalone` and allows
+  `standalone|accommodation_difference`. Standalone rows require all binding fields
+  null. A difference row requires `reservation_id` and `room_type`; its
+  `booking_group_id` snapshot is stored when present but deliberately remains nullable
+  so historical/legacy ungrouped reservations are not rejected. The reservation FK is
+  `ON DELETE RESTRICT`; rooms are soft-cancelled, and nulling the FK would risk turning
+  booking income into a standalone-looking row. A partial unique index permits at most
+  one active difference per reservation; reservation/group partial indexes support the
+  CRM reads. `room_type` is the destination snapshot, so a later room edit/move cannot
+  rewrite Finance history. Angela gains SELECT only for
+  `purpose = 'accommodation_difference'`: she can write Daily `total_price`, so hiding
+  these rows would let her recompute against a false base. She still cannot see
+  standalone links or attempts.
+- **The transaction's assertion order is deliberate:** (1) validate UUID/scalar,
+  amount/rail/expiry/label shape before taking locks; (2) lock the reservation row and
+  derive group/source state; (3) assert it is still live in the **expected source room**
+  supplied by the browser — otherwise a stale tab could move a row that another Diana
+  already moved or cancelled; (4) if a bill was requested, require
+  `payment_status = 'paid'`, because an unpaid booking has no settled base above which a
+  difference can honestly ride; (5) lock the target `rooms` row and derive its number,
+  type and active flag server-side, because Diana can edit `rooms.type`/`is_active`
+  while another tab is moving; (6) refuse a pending `reservation_changes` add-guests
+  row, whose later settlement would apply an old party snapshot to the now-changed
+  accommodation group; if issuing a replacement bill, lock the previous active link row
+  and assert that no attempt on it is currently `creating` or `pending` (or captured in
+  flight), refusing reissue while an attempt is live; then revoke any older active bound
+  link for this reservation; (7) vacate `room_id`, assign the locked target, and insert
+  the optional link using the server-derived binding; (8) return the authoritative target
+  number/type and link id. The vacate/assign ordering leaves the exclusion constraint to
+  detect only another booking; `23P01` becomes Romanian HTTP 409 "tocmai a fost ocupată,"
+  while stale/dead `P0002` becomes 409 "nu mai este activă." Every failure rolls back both
+  inventory and bill.
+- **Replacement billing attempt locking:** ADR-106 deliberately converts late captures
+  on `revoked` links into `paid`. Therefore, if staff moves an accommodation and revokes
+  the previous link to reissue a replacement while a provider attempt on the old link is
+  `creating` or `pending`, the guest could pay the old link and also pay the new active
+  link — paying twice. The unique partial index did not prevent this because only one
+  link was in `active` status at any given time. `move_reservation_accommodation` now
+  explicitly locks the prior link (`FOR UPDATE`) and refuses replacement billing while
+  any attempt is live.
+- **Dialog safety:** the summary names what moves and what stays, source/destination
+  type, dates, guest, the whole booking group's effective total and breakdown, any open
+  unpaid difference, and a capacity warning that warns without blocking. If the
+  difference-link fetch failed, the dialog indicates an unverified effective total
+  (`Preț efectiv neverificat`) rather than printing an authoritative figure as fact. The
+  label is prefilled from `roomLabel` (`Căsuța #3` / `Camera #18`), never the guest's
+  name. The downgrade path disables billing and points staff to **Anulare parțială** for
+  money going back; same-type and unpaid rows likewise cannot emit a difference. Buttons
+  say `Anulează`, `Mută fără diferență`, and `Mută și emite link (X MDL)`. The
+  returned copy URL is built server-side from `ECOVILA_SITE_URL`, not from the browser
+  origin.
+- **`reservations.total_price` is never mutated. Five independent source-verified
+  reasons:** (1) Finance already folds the bound link, so adding the same difference to
+  the reservation would double-count it; (2) `Încasări` bins the reservation total by
+  the booking's **original `paid_at`**, reporting August difference money in May; (3) an
+  online difference on a cash/office booking would be misclassified as cash/office
+  income; (4) `saveDailyGuestEdit` is the repo's only post-creation `total_price` writer
+  and overwrites the total on a Daily edit, silently erasing an embedded difference;
+  (5) guest email totals (`aggregateTotalPrice`) and the `Purchase` tracking value are
+  built from it, so mutation would rewrite the original booking receipt/conversion.
+  Instead, as with ADR-057 paid add-guests differences, staff sees an **effective
+  total**: sum of live booking rows' base `total_price` plus net settled bound links
+  (`paid_amount - refunded_amount`). The dialog and calendar/Daily figures show the
+  breakdown; an active unpaid link is a separate `Diferență neachitată`, never money
+  inside the total. Guest self-service continues to show the base transaction plus its
+  separate link receipt.
+- **Database trigger enforces "no repricing while a difference exists":** A database
+  trigger, `prevent_repricing_with_accommodation_difference` (BEFORE UPDATE OF
+  `total_price` ON `public.reservations` FOR EACH ROW WHEN `new.total_price IS DISTINCT
+  FROM old.total_price`), rejects any `UPDATE` that changes `reservations.total_price`
+  while that reservation carries an `accommodation_difference` link. The client-side
+  refusal in Situația zilnică was not concurrency-safe: a Daily tab opened BEFORE the
+  link existed passed its own client-side guard and overwrote the price, after which the
+  settling link double-counted. The client-side guard is now only the friendly UX message
+  and the database trigger is the true, authoritative enforcement point.
+- **Finance:** in `Încasări`, an `accommodation_difference` link follows
+  `changeRows`, not ADR-106 standalone links: its net amount enters
+  `commercialTotal`, `onlineTotal`, the destination `roomTypeTotals`, the
+  reservation-average numerator, and booking-group dedupe by its own `paid_at`; it has
+  zero nights and appears as a difference card in the one-day detail. It is excluded
+  from `linksTotal`, the "din care ... din linkuri" sub-line, and the **Plăți din
+  linkuri** block, all of which remain standalone-only. It is deliberately absent from
+  **Nopți în perioadă**, exactly as paid add-guests `changeRows` are: there is no safe
+  rule for distributing an independently dated difference across historical nights.
+  Recorded bound-link refunds are fetched strictly by cancelled `reservation_id` (not by
+  booking group), so legacy reservations with no `booking_group_id` whose only refund
+  truth is their bound link no longer disappear from the Finance cancellation list, and a
+  surviving sibling's difference is never borrowed through `booking_group_id`.
+- **Situația zilnică:** `calculateDailySupplement` now subtracts the effective total,
+  so reception is not told to collect an accommodation difference a second time.
+  `Achitat` shows base + net paid difference and open money stays separate. More
+  importantly, Daily **refuses to save any repricing** for a booking that carries an
+  accommodation-difference link, and also refuses when the link read failed. Trying to
+  reverse a ledger amount into a rewritten base was rejected: an unpaid link could be
+  baked into base then counted again on settlement, subtracting paid differences can
+  produce a negative value that the current split helper silently clamps to zero, and
+  the group save is sequential/non-atomic. Turning Daily repricing into a proper
+  collection/ledger transaction is a separate accounting redesign, explicitly out of
+  ADR-107. The audit also exposed older B-34/B-35, documented but not fixed here.
+- **Mixed-type groups & optimistic add-guests check:** moving one row can make a group
+  heterogeneous. The existing add-guests quote priced/capacity-checked every unit as the
+  first row's type, so `quoteBookingChange` now rejects more than one live room type with
+  localized 409 copy directing the guest to reception. That guard runs before pricing
+  reads. Furthermore, `insertChangeRow` in `_shared/reservationChanges.ts` re-reads the
+  group's current room types immediately before inserting a pending change row and refuses
+  (409) if the accommodation was moved since the quote. This check is **optimistic**: it
+  narrows but does not fully close the quote-to-insert window without a shared advisory
+  lock, and the move RPC's own pending-change check covers the opposite ordering once the
+  insert wins. This rollout therefore redeploys `reservation-change-create`.
+- **Cancellation and the owner's refund decision:** the owner chose **flag it, refund
+  by hand**, not automatic portal execution. A reservation trigger revokes every
+  **active/open** bound link inside the same transaction that changes the row to
+  `cancelled`. The trigger performs no provider network call; ADR-106's settlement
+  defenses remain the backstop if a capture races that database revocation. The audit
+  traced all six repo paths: CRM direct update;
+  `cancel_reservation_by_token`; `cancel_reservation_rows` (partial/full); the
+  `reservation-partial-cancel` Edge Function that invokes that RPC; cash expiry in
+  `expire-cash-reservations`; and temporary-hold expiry/release. All update
+  `payment_status` to `cancelled`, so the trigger fires per row. Paid outstanding money
+  is shown **before** both destructive CRM flows (`Șterge rezervarea` and ADR-104
+  partial cancellation, scoped to the selected reservation ids), in honest RO/RU/EN
+  guest cancellation SMS/email, and in staff alerts naming link/balance; failed reads
+  use pessimistic copy plus an alert rather than pretending zero. Money comes strictly
+  from `paid_amount`: a `status='paid'` link with a missing or invalid `paid_amount`
+  (legal under ADR-106 CHECK constraints) is treated as UNVERIFIED and routed through
+  pessimistic copy plus staff alert, never falling back to requested `amount`. Finance
+  keeps a cancellation visible until the portal refund is recorded. Crucially,
+  `prepare_full_refund_intent` still sees only the original `maib_payments` and paid
+  `reservation_changes` by design: it neither increases nor claims to return payment
+  link money.
+- **Two pre-existing ADR-106 defects fixed here:**
+  `mark_payment_link_refunded` was not monotonic. A stale CRM tab could submit a lower
+  cumulative refund after a newer one and make the removed amount reappear as net
+  Finance income. The RPC now locks the paid row and permits only an equal (note
+  correction) or greater amount, never a decrease. Also, ADR-106's CRM already
+  subscribed to `payment_links`, but the table had never been added to the
+  `supabase_realtime` publication, so the subscription could not fire. The migration
+  adds it idempotently; dashboard and Finance subscriptions now receive the events too.
+- **How it was planned, reviewed, and finalized:** two agents produced independent
+  plans; both were subjected to two adversarial passes each (**four before any code**).
+  Implementation then ran in slices, with each agent auditing the other's slice. A final
+  two-lens QA round surfaced six additional edge cases that were fixed and covered: (1)
+  a `prevent_repricing_with_accommodation_difference` DB trigger enforcing the repricing
+  ban server-side against concurrent Daily edits; (2) move RPC locking of prior active
+  links to prevent double billing when a provider attempt is live; (3) optimistic
+  room-type re-reading before inserting pending add-guests changes; (4) strict
+  `paid_amount` verification (never falling back to requested `amount`); (5) fetching
+  cancellation bound-link refunds strictly by `reservation_id` rather than booking group;
+  and (6) move dialog rendering unverified totals when difference reads fail.
+- **Status / deploy order:** built, reviewed and green — `npm test` → **426 Node +
+  202 Deno**, `deno lint` and `deno fmt --check` clean, asset token
+  `?v=2026082702`, `dist/tophost/` regenerated. **NOTHING IS DEPLOYED OR COMMITTED.**
+  ADR-106 migration `20260826120000_payment_links.sql` is still undeployed and is a
+  hard prerequisite. Roll out: (1) `20260826120000`; (2)
+  `20260827120000_payment_link_reservation_binding.sql`; (3)
+  `payment-link-admin`, `payment-link-public`, `maib-callback`, `maib-mia-callback`,
+  `reservation-accommodation-move`, `reservation-change-create`,
+  `reservation-cancel`; (4) TopHost upload of the `?v=2026082702` bundle, which also
+  finally lands the pending ADR-105 frontend. **Do not set
+  `ECOVILA_REFUND_COMMISSION_BPS`.**
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

@@ -15,6 +15,6 @@
     ]
   },
   "tasks": {
-    "test": "deno test --allow-env --allow-net tests"
+    "test": "deno test --allow-env --allow-net --allow-read=../migrations tests"
   }
 }

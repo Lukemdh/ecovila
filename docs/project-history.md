@@ -430,4 +430,25 @@ sessions append to the running log at the bottom.
   service-role-only `SECURITY INVOKER` RPCs with `search_path = ''`). Added B-33 (Finance UTC vs Europe/Chisinau
   binning). Verified with `npm run test:node` (412 passing) and `npm run test:deno` (186 passing); nothing
   deployed or pushed yet.
-
+- 2026-08-27 — OFF-PLAN accommodation-type moves + optional difference bill
+  (ADR-107; no plan step advanced). Diana can move a single-villa card across types by
+  drag, or select one row and a free target in the reservation dialog for multi-villa
+  bookings. The move can atomically insert an optional hand-typed ADR-106 MIA/card link;
+  the per-move guest SMS is opt-in and defaults off. Added
+  `20260827120000_payment_link_reservation_binding.sql`, the Diana-only
+  `reservation-accommodation-move` Edge Function, bound-link effective totals in the
+  calendar/dialog/Daily/Finance, cancellation-trigger revocation plus manual-refund
+  warnings/guest copy/staff alerts, a mixed-room-type add-guests guard, and fail-closed
+  money displays. Fixed two ADR-106 defects: recorded refunds are now monotonic and
+  `payment_links` is published to `supabase_realtime`. Logged B-34/B-35 as pre-existing,
+  deliberately unfixed Daily/Finance defects. A final two-lens QA round added six fixes:
+  a database trigger (`prevent_repricing_with_accommodation_difference`) enforcing the
+  repricing ban server-side; move RPC locking of prior links to prevent double billing
+  when a provider attempt is live; optimistic room-type re-reading before inserting
+  pending add-guests changes; strict `paid_amount` verification (missing/invalid values fail
+  closed with pessimistic copy + staff alert); fetching cancellation bound-link refunds
+  strictly by `reservation_id` (so legacy ungrouped bookings are not dropped); and move
+  dialog indication of unverified effective prices. Logged B-36 for pre-existing fail-open
+  Finance refund reads. Verified `npm test` (426 Node + 202 Deno), clean Deno lint/format,
+  `?v=2026082702`, and regenerated `dist/tophost/`. Nothing committed or deployed;
+  ADR-106's migration remains the hard first prerequisite.

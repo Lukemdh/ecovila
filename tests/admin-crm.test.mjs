@@ -5071,4 +5071,1316 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     const updatedRefundBtn = updatedCard.children.flatMap((c) => c.children || []).find((c) => c.dataset?.action === 'refund');
     assert.equal(updatedRefundBtn, undefined, 'Refund action must be hidden after 100% refund');
   });
+
+  it('implements ADR-107 bound link helpers and effectiveTotal in crm-calendar.js', () => {
+    const { EcoVilaCrmCalendar: cal } = loadAdminModule('admin/js/crm-calendar.js', {
+      EcoVilaPricing: pricing,
+    });
+
+    assert.equal(typeof cal.boundLinkNet, 'function');
+    assert.equal(typeof cal.effectiveTotal, 'function');
+    assert.equal(typeof cal.pendingDifference, 'function');
+
+    // boundLinkNet calculations (strictly require purpose and positive integer paid_amount)
+    assert.equal(cal.boundLinkNet(null), 0);
+    assert.equal(cal.boundLinkNet({ status: 'active', amount: 500, purpose: 'accommodation_difference' }), 0, 'unpaid link net is 0');
+    assert.equal(cal.boundLinkNet({ status: 'revoked', amount: 500, purpose: 'accommodation_difference' }), 0, 'revoked link net is 0');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 500, purpose: 'accommodation_difference' }), 500);
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 500, refunded_amount: 200, purpose: 'accommodation_difference' }), 300);
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 500, refunded_amount: 500, purpose: 'accommodation_difference' }), 0);
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 500, purpose: 'standalone' }), 0, 'standalone link is not a bound link');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 500 }), 0, 'link without purpose is not a bound link');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, purpose: 'accommodation_difference' }), 0, 'link without paid_amount is 0');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: null, purpose: 'accommodation_difference' }), 0, 'null paid_amount is 0');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 0, purpose: 'accommodation_difference' }), 0, 'zero paid_amount is 0');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: -50, purpose: 'accommodation_difference' }), 0, 'negative paid_amount is 0');
+    assert.equal(cal.boundLinkNet({ status: 'paid', amount: 500, paid_amount: 'abc', purpose: 'accommodation_difference' }), 0, 'non-integer paid_amount is 0');
+
+    // pendingDifference calculations (exclude expired, revoked, paid, standalone, and purposeless links)
+    const futureExpiry = new Date(Date.now() + 3600000).toISOString();
+    const pastExpiry = '2020-01-01T00:00:00.000Z';
+    assert.equal(cal.pendingDifference([]), 0);
+    assert.equal(cal.pendingDifference([{ status: 'active', amount: 400, purpose: 'accommodation_difference' }]), 400);
+    assert.equal(cal.pendingDifference([{ status: 'active', amount: 400, purpose: 'accommodation_difference', expires_at: futureExpiry }]), 400);
+    assert.equal(cal.pendingDifference([{ status: 'active', amount: 400, purpose: 'accommodation_difference', expires_at: pastExpiry }]), 0, 'expired link is excluded');
+    assert.equal(cal.pendingDifference([{ status: 'active', amount: 400, purpose: 'accommodation_difference', revoked_at: '2026-08-01T00:00:00.000Z' }]), 0, 'revoked_at link is excluded');
+    assert.equal(cal.pendingDifference([{ status: 'revoked', amount: 400, purpose: 'accommodation_difference' }]), 0, 'status revoked link is excluded');
+    assert.equal(cal.pendingDifference([{ status: 'expired', amount: 400, purpose: 'accommodation_difference' }]), 0, 'status expired link is excluded');
+    assert.equal(cal.pendingDifference([{ status: 'active', amount: 400 }]), 0, 'link without purpose is excluded');
+    assert.equal(cal.pendingDifference([
+      { status: 'active', amount: 400, purpose: 'accommodation_difference' },
+      { status: 'active', amount: 700, purpose: 'accommodation_difference', expires_at: pastExpiry },
+      { status: 'active', amount: 800, purpose: 'accommodation_difference', revoked_at: '2026-08-01T00:00:00.000Z' },
+      { status: 'paid', amount: 600, paid_amount: 600, purpose: 'accommodation_difference' },
+      { status: 'active', amount: 300, purpose: 'standalone' },
+    ]), 400);
+
+    // effectiveTotal calculations
+    const live1 = { id: 'res-1', total_price: 3000, payment_status: 'paid' };
+    const live2 = { id: 'res-2', total_price: 3000, payment_status: 'paid' };
+    const cancelled = { id: 'res-3', total_price: 3000, payment_status: 'cancelled', cancelled_at: '2026-08-01' };
+
+    const boundLink1 = { id: 'l1', reservation_id: 'res-1', status: 'paid', paid_amount: 500, purpose: 'accommodation_difference' };
+    const boundLinkCancelled = { id: 'l2', reservation_id: 'res-3', status: 'paid', paid_amount: 800, purpose: 'accommodation_difference' };
+    const unpaidLink = { id: 'l3', reservation_id: 'res-2', status: 'active', amount: 400, purpose: 'accommodation_difference' };
+    const linkNoPurpose = { id: 'l4', reservation_id: 'res-1', status: 'paid', paid_amount: 500 };
+    const linkStandalone = { id: 'l5', reservation_id: 'res-1', status: 'paid', paid_amount: 500, purpose: 'standalone' };
+    const linkNoPaidAmount = { id: 'l6', reservation_id: 'res-1', status: 'paid', amount: 500, purpose: 'accommodation_difference' };
+
+    assert.equal(
+      cal.effectiveTotal([live1, live2, cancelled], [boundLink1, boundLinkCancelled, unpaidLink, linkNoPurpose, linkStandalone, linkNoPaidAmount]),
+      6500, // 3000 + 3000 + 500 (cancelled villa link, unpaid link, purposeless link, standalone link, and link without paid_amount excluded)
+    );
+  });
+
+  it('implements ADR-107 Supabase helpers for difference links and refunded amounts', async () => {
+    const { EcoVilaSupabase: supabase } = loadAdminModule('js/supabase.js');
+
+    assert.equal(typeof supabase.fetchReservationDifferenceLinks, 'function');
+    assert.equal(typeof supabase.fetchRefundedBoundLinkAmounts, 'function');
+
+    const selectCalls = [];
+    const mockBuilder = {
+      select(cols) { selectCalls.push(cols); return mockBuilder; },
+      eq() { return mockBuilder; },
+      gt() { return mockBuilder; },
+      in() { return mockBuilder; },
+      order() { return mockBuilder; },
+      range() { return Promise.resolve({ data: [{ id: 'diff-1', paid_amount: 500 }] }); },
+    };
+    const mockClient = {
+      from() { return mockBuilder; },
+    };
+
+    const diffRows = await supabase.fetchReservationDifferenceLinks(mockClient, {
+      reservationIds: ['res-1', 'res-2'],
+    });
+    assert.equal(diffRows.length, 1);
+    assert.equal(diffRows[0].id, 'diff-1');
+    assert.match(selectCalls[0], /purpose/);
+    assert.match(selectCalls[0], /reservation_id/);
+    assert.match(selectCalls[0], /booking_group_id/);
+    assert.match(selectCalls[0], /room_type/);
+
+    const refundedBoundRows = await supabase.fetchRefundedBoundLinkAmounts(mockClient, {
+      bookingGroupIds: ['grp-1'],
+    });
+    assert.equal(refundedBoundRows.length, 1);
+  });
+
+  it('partitions bound accommodation_difference links in Finance summary and single-day cards', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      EcoVilaPricing: pricing,
+    });
+
+    const summary = finance.summarizeFinanceRows({
+      mode: 'paid',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-06-01',
+      rows: [
+        {
+          id: 'res-1',
+          booking_group_id: 'grp-1',
+          room_id: 'room-1',
+          check_in: '2026-05-10',
+          check_out: '2026-05-12',
+          total_price: 3000,
+          payment_type: 'card',
+          payment_status: 'paid',
+          paid_at: '2026-05-05T10:00:00.000Z',
+          rooms: { type: 'small' },
+        },
+      ],
+      linkRows: [
+        // Standalone link
+        {
+          id: 'link-standalone',
+          amount: 2000,
+          status: 'paid',
+          paid_amount: 2000,
+          paid_at: '2026-05-15T12:00:00.000Z',
+          payment_rail: 'mia',
+          purpose: 'standalone',
+        },
+        // Accommodation difference link
+        {
+          id: 'link-diff',
+          booking_group_id: 'grp-1',
+          reservation_id: 'res-1',
+          room_type: 'small',
+          amount: 500,
+          status: 'paid',
+          paid_amount: 500,
+          paid_at: '2026-05-16T12:00:00.000Z',
+          payment_rail: 'card',
+          purpose: 'accommodation_difference',
+        },
+        // Refunded difference link
+        {
+          id: 'link-diff-refunded',
+          booking_group_id: 'grp-1',
+          reservation_id: 'res-1',
+          room_type: 'small',
+          amount: 400,
+          status: 'paid',
+          paid_amount: 400,
+          refunded_amount: 100,
+          paid_at: '2026-05-18T12:00:00.000Z',
+          payment_rail: 'card',
+          purpose: 'accommodation_difference',
+        },
+        // Link with amount but missing paid_amount (must contribute 0)
+        {
+          id: 'link-diff-unpaid-amount',
+          booking_group_id: 'grp-1',
+          reservation_id: 'res-1',
+          room_type: 'small',
+          amount: 999,
+          status: 'paid',
+          paid_at: '2026-05-19T12:00:00.000Z',
+          purpose: 'accommodation_difference',
+        },
+      ],
+    });
+
+    // commercialTotal = 3000 (res) + 2000 (standalone) + 500 (diff) + 300 (diff net 400-100) = 5800
+    assert.equal(summary.commercialTotal, 5800);
+    assert.equal(summary.onlineTotal, 5800);
+    // linksTotal contains ONLY standalone links = 2000
+    assert.equal(summary.linksTotal, 2000);
+    // paidBookings deduped by booking_group_id = 1
+    assert.equal(summary.paidBookings, 1);
+    // averageBookingValue numerator includes res + diff links = (3000 + 500 + 300) / 1 = 3800
+    assert.equal(summary.averageBookingValue, 3800);
+    // roomTypeTotals.small includes res + diff links = 3000 + 500 + 300 = 3800
+    assert.equal(summary.roomTypeTotals.small, 3800);
+    assert.equal(summary.occupiedNights, 2);
+  });
+
+  it('handles cancellation list with bound link refunds in crm-finance.js', () => {
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      EcoVilaPricing: pricing,
+    });
+
+    const cancelledRow = {
+      id: 'res-cancel-1',
+      booking_group_id: 'grp-cancel-1',
+      check_in: '2026-05-10',
+      check_out: '2026-05-12',
+      total_price: 3000,
+      payment_type: 'card',
+      payment_status: 'cancelled',
+      paid_at: '2026-05-01T10:00:00.000Z',
+      cancelled_at: '2026-05-02T10:00:00.000Z',
+      rooms: { number: 1, type: 'small' },
+    };
+
+    const boundLinksMap = new Map([
+      ['res-cancel-1', [{ amount: 500, grossAmount: 500, withheldCommission: 0 }]],
+    ]);
+
+    const summary = finance.summarizeCancellationRows({
+      rows: [cancelledRow],
+      refundedGroupIds: new Map([
+        ['grp-cancel-1', { amount: 3000, grossAmount: 3000, withheldCommission: 0 }],
+      ]),
+      refundedChangesByGroup: new Map(),
+      refundedBoundLinksByReservation: boundLinksMap,
+    });
+
+    assert.equal(summary.count, 1);
+    assert.equal(summary.refundedTotal, 3500); // 3000 base + 500 bound link
+    assert.equal(summary.grossTotal, 3500);
+  });
+
+  it('implements ADR-107 daily supplement honest quoting and refuses repricing in crm-daily.js', async () => {
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaCrmCalendar: loadAdminModule('admin/js/crm-calendar.js', { EcoVilaPricing: pricing }).EcoVilaCrmCalendar,
+      EcoVilaCrmSidebar: {
+        calculateStaffTotal: () => ({ total: 4000 }),
+        splitTotalPrice: (total) => [total],
+      },
+    });
+
+    const res = {
+      id: 'res-upgrade-1',
+      booking_group_id: 'grp-upgrade-1',
+      check_in: '2026-05-10',
+      check_out: '2026-05-12',
+      adults: 2,
+      kids_ages: [],
+      total_price: 3000,
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'large' },
+    };
+
+    const diffLink = {
+      id: 'link-diff-1',
+      booking_group_id: 'grp-upgrade-1',
+      reservation_id: 'res-upgrade-1',
+      purpose: 'accommodation_difference',
+      status: 'paid',
+      paid_amount: 1000,
+    };
+
+    // Calculate supplement with paid difference link: effective total is 3000 + 1000 = 4000
+    // Staff total for large room is 4000 => balance is 4000 - 4000 = 0 MDL supplement!
+    const quote = daily.calculateDailySupplement({
+      reservations: [res],
+      reservation: res,
+      adults: 2,
+      childBuckets: [],
+      differenceLinks: [diffLink],
+      pricingTiers: [],
+      holidays: [],
+    });
+
+    assert.equal(quote.existingTotal, 4000, 'existingTotal must be the effective total');
+    assert.equal(quote.quotedTotal, 4000);
+    assert.equal(quote.supplement, 0, 'reception must NOT be told to collect already-paid difference');
+
+    // saveDailyGuestEdit must refuse repricing when booking carries an accommodation_difference link
+    const fakeState = {
+      editor: {
+        reservation: res,
+        childBuckets: [],
+        differenceLinks: [diffLink],
+      },
+      reservations: [res],
+      differenceLinks: [diffLink],
+    };
+
+    await assert.rejects(
+      () => daily.saveDailyGuestEdit({ client: {} }, fakeState),
+      /diferență de cazare emisă prin link de plată/i,
+      'saveDailyGuestEdit must refuse repricing with clear Romanian reason',
+    );
+
+    // Fail-closed guard: saveDailyGuestEdit must refuse repricing when difference link read failed
+    const errorState = {
+      editor: {
+        reservation: res,
+        childBuckets: [],
+      },
+      reservations: [res],
+      differenceLinks: [],
+      differenceLinksError: new Error('RLS denied'),
+    };
+
+    await assert.rejects(
+      () => daily.saveDailyGuestEdit({ client: {} }, errorState),
+      /Verificarea diferențelor de cazare a eșuat/i,
+      'saveDailyGuestEdit must refuse repricing when differenceLinksError is set (fail-closed)',
+    );
+
+    // loadDaily records differenceLinksError on failure and refuses repricing
+    const mockClientWithError = {};
+    const mockSupabase = {
+      fetchAdminReservations: () => Promise.resolve([res]),
+      fetchPricingTiers: () => Promise.resolve([]),
+      fetchHolidays: () => Promise.resolve([]),
+      fetchDailyStatuses: () => Promise.resolve([]),
+      fetchReservationDifferenceLinks: () => Promise.reject(new Error('Network error')),
+    };
+
+    const { EcoVilaCrmDaily: dailyWithMock } = loadAdminModule('admin/js/crm-daily.js', {
+      EcoVilaPricing: pricing,
+      EcoVilaSupabase: mockSupabase,
+      EcoVilaCrmCalendar: loadAdminModule('admin/js/crm-calendar.js', { EcoVilaPricing: pricing }).EcoVilaCrmCalendar,
+    });
+
+    const stateFromLoad = {
+      selectedDate: '2026-05-10',
+      reservations: [],
+      checkIns: [],
+      checkOuts: [],
+      statuses: [],
+      differenceLinks: [],
+      differenceLinksError: null,
+    };
+
+    await dailyWithMock.loadDaily({ client: mockClientWithError, formatDate: () => '' }, stateFromLoad);
+    assert.ok(stateFromLoad.differenceLinksError, 'differenceLinksError must be captured');
+    assert.equal(stateFromLoad.differenceLinks.length, 0, 'differenceLinks must be empty array');
+
+    stateFromLoad.editor = {
+      reservation: res,
+      childBuckets: [],
+    };
+
+    await assert.rejects(
+      () => dailyWithMock.saveDailyGuestEdit({ client: mockClientWithError }, stateFromLoad),
+      /Verificarea diferențelor de cazare a eșuat/i,
+      'saveDailyGuestEdit must refuse repricing following a failed loadDaily difference link read',
+    );
+  });
+
+  it('ADR-107 Slice F: surfaces paid difference warning in full cancellation preflight ("Șterge rezervarea")', async () => {
+    const deleteDiffWarning = createFakeElement('p');
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.close = () => {};
+
+    const fields = {
+      '[data-edit-check-in]': createFakeElement('input'),
+      '[data-edit-check-out]': createFakeElement('input'),
+      '[data-edit-adults]': createFakeElement('input'),
+      '[data-edit-kids-ages]': createFakeElement('input'),
+      '[data-edit-name]': createFakeElement('input'),
+      '[data-edit-phone]': createFakeElement('input'),
+      '[data-edit-notes]': createFakeElement('textarea'),
+      '[data-edit-payment]': createFakeElement('p'),
+      '[data-edit-total]': createFakeElement('strong'),
+      '[data-edit-total-breakdown]': createFakeElement('span'),
+      '[data-edit-pending-difference]': createFakeElement('span'),
+      '[data-delete-difference-warning]': deleteDiffWarning,
+      '[data-delete-reservation]': createFakeElement('button'),
+      '[data-refund-full-override]': createFakeElement('input'),
+      '[data-send-payment-confirmation]': createFakeElement('button'),
+    };
+    dialog.querySelector = (selector) => fields[selector] || null;
+
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js', { EcoVilaPricing: pricing });
+    let fetchedLinks = [];
+
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: {
+        createElement: createFakeElement,
+        querySelector: (selector) => (selector === '[data-reservation-dialog]' ? dialog : null),
+        querySelectorAll: () => [],
+        addEventListener: () => {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: {
+        formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`,
+      },
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        fetchReservationDifferenceLinks: (_client, _options) => Promise.resolve(fetchedLinks),
+      },
+    });
+
+    const res = {
+      id: 'res-full-1',
+      booking_group_id: 'grp-full-1',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      total_price: 3000,
+      payment_type: 'card',
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+
+    EcoVilaCrmDashboard.initStateForTests({
+      context: { client: {}, formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL` },
+      reservations: [res],
+      differenceLinks: [],
+      differenceLinksError: null,
+      reload: async () => {},
+    });
+
+    // 1. With paid difference link (500 MDL)
+    fetchedLinks = [
+      {
+        id: 'link-1',
+        reservation_id: 'res-full-1',
+        booking_group_id: 'grp-full-1',
+        purpose: 'accommodation_difference',
+        status: 'paid',
+        paid_amount: 500,
+      },
+    ];
+
+    await EcoVilaCrmDashboard.openReservation(res);
+    assert.equal(deleteDiffWarning.hidden, false, 'Warning must be visible before delete');
+    assert.equal(
+      deleteDiffWarning.textContent,
+      'Atenție: 500 MDL achitați prin link de plată se restituie separat, din portalul MAIB.',
+    );
+
+    // 2. With partially refunded difference link (500 MDL paid, 200 MDL refunded -> 300 MDL net)
+    fetchedLinks = [
+      {
+        id: 'link-1',
+        reservation_id: 'res-full-1',
+        booking_group_id: 'grp-full-1',
+        purpose: 'accommodation_difference',
+        status: 'paid',
+        paid_amount: 500,
+        refunded_amount: 200,
+      },
+    ];
+
+    await EcoVilaCrmDashboard.openReservation(res);
+    assert.equal(deleteDiffWarning.hidden, false);
+    assert.equal(
+      deleteDiffWarning.textContent,
+      'Atenție: 300 MDL achitați prin link de plată se restituie separat, din portalul MAIB.',
+    );
+
+    // 3. With fully refunded difference link (500 MDL paid, 500 MDL refunded -> 0 MDL net)
+    fetchedLinks = [
+      {
+        id: 'link-1',
+        reservation_id: 'res-full-1',
+        booking_group_id: 'grp-full-1',
+        purpose: 'accommodation_difference',
+        status: 'paid',
+        paid_amount: 500,
+        refunded_amount: 500,
+      },
+    ];
+
+    await EcoVilaCrmDashboard.openReservation(res);
+    assert.equal(deleteDiffWarning.hidden, true, 'Warning must be hidden when fully refunded');
+    assert.equal(deleteDiffWarning.textContent, '');
+
+    // 4. With unpaid/active link (revoked on cancel, net 0 MDL -> warning hidden)
+    fetchedLinks = [
+      {
+        id: 'link-1',
+        reservation_id: 'res-full-1',
+        booking_group_id: 'grp-full-1',
+        purpose: 'accommodation_difference',
+        status: 'active',
+        amount: 500,
+      },
+    ];
+
+    await EcoVilaCrmDashboard.openReservation(res);
+    assert.equal(deleteDiffWarning.hidden, true, 'Unpaid links must not show as refundable');
+  });
+
+  it('ADR-107 Slice F: scopes partial-cancellation difference warning to the selected villas only', async () => {
+    const deleteDiffWarning = createFakeElement('p');
+    const partialDiffWarning = createFakeElement('p');
+    const list = createFakeElement('ul');
+    const partialCheckboxes = [];
+    const sectionFields = {
+      '[data-partial-body]': createFakeElement('div'),
+      '[data-partial-toggle]': createFakeElement('button'),
+      '[data-partial-villas]': list,
+      '[data-partial-amount]': createFakeElement('input'),
+      '[data-partial-confirm]': createFakeElement('input'),
+      '[data-partial-error]': createFakeElement('p'),
+      '[data-partial-warning]': createFakeElement('p'),
+      '[data-partial-difference-warning]': partialDiffWarning,
+      '[data-partial-submit]': createFakeElement('button'),
+      '[data-partial-selected]': createFakeElement('p'),
+      '[data-partial-hint]': createFakeElement('p'),
+    };
+    const section = createFakeElement('section');
+    section.querySelector = (selector) => sectionFields[selector] || null;
+    section.querySelectorAll = (selector) => {
+      if (selector === '[data-partial-villa]') return partialCheckboxes;
+      if (selector === 'input') return partialCheckboxes;
+      return [];
+    };
+    list.appendChild = (item) => {
+      list.children.push(item);
+      partialCheckboxes.push(item.children[0].children[0]);
+      return item;
+    };
+
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.close = () => {};
+
+    const fields = {
+      '[data-edit-check-in]': createFakeElement('input'),
+      '[data-edit-check-out]': createFakeElement('input'),
+      '[data-edit-adults]': createFakeElement('input'),
+      '[data-edit-kids-ages]': createFakeElement('input'),
+      '[data-edit-name]': createFakeElement('input'),
+      '[data-edit-phone]': createFakeElement('input'),
+      '[data-edit-notes]': createFakeElement('textarea'),
+      '[data-edit-payment]': createFakeElement('p'),
+      '[data-edit-total]': createFakeElement('strong'),
+      '[data-delete-difference-warning]': deleteDiffWarning,
+      '[data-delete-reservation]': createFakeElement('button'),
+      '[data-refund-full-override]': createFakeElement('input'),
+      '[data-partial-cancel]': section,
+    };
+    dialog.querySelector = (selector) => fields[selector] || null;
+
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js', { EcoVilaPricing: pricing });
+
+    const res1 = {
+      id: 'res-part-1',
+      booking_group_id: 'grp-part-1',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      total_price: 3000,
+      payment_type: 'card',
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+    const res2 = {
+      id: 'res-part-2',
+      booking_group_id: 'grp-part-1',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      total_price: 4000,
+      payment_type: 'card',
+      payment_status: 'paid',
+      rooms: { id: 'room-2', number: 2, type: 'large' },
+    };
+
+    const diffLinks = [
+      {
+        id: 'link-res1',
+        reservation_id: 'res-part-1',
+        booking_group_id: 'grp-part-1',
+        purpose: 'accommodation_difference',
+        status: 'paid',
+        paid_amount: 600,
+      },
+      {
+        id: 'link-res2',
+        reservation_id: 'res-part-2',
+        booking_group_id: 'grp-part-1',
+        purpose: 'accommodation_difference',
+        status: 'paid',
+        paid_amount: 400,
+      },
+    ];
+
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: {
+        createElement: createFakeElement,
+        querySelector: (selector) => (selector === '[data-reservation-dialog]' ? dialog : null),
+        querySelectorAll: () => [],
+        addEventListener: () => {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: {
+        formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`,
+      },
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        fetchReservationDifferenceLinks: (_client, _options) => Promise.resolve(diffLinks),
+      },
+    });
+
+    EcoVilaCrmDashboard.initStateForTests({
+      context: { client: {}, formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL` },
+      reservations: [res1, res2],
+      differenceLinks: diffLinks,
+      differenceLinksError: null,
+      reload: async () => {},
+    });
+
+    await EcoVilaCrmDashboard.openReservation(res1);
+
+    // Full cancel warning sees both villas (1000 MDL total)
+    assert.equal(deleteDiffWarning.hidden, false);
+    assert.match(deleteDiffWarning.textContent, /1[.\s\u00a0\u202f]?000 MDL/);
+
+    // 1. Initial partial cancel: 0 villas selected => partial diff warning hidden
+    assert.equal(partialDiffWarning.hidden, true);
+
+    // 2. Select only Vila 1 (res-part-1) with 600 MDL diff
+    partialCheckboxes[0].checked = true;
+    list.onchange();
+
+    assert.equal(partialDiffWarning.hidden, false);
+    assert.equal(
+      partialDiffWarning.textContent,
+      'Atenție: 600 MDL achitați prin link de plată se restituie separat, din portalul MAIB.',
+    );
+
+    // 3. Select both Vila 1 and Vila 2 (600 + 400 = 1000 MDL diff)
+    partialCheckboxes[1].checked = true;
+    list.onchange();
+
+    assert.equal(partialDiffWarning.hidden, false);
+    assert.match(partialDiffWarning.textContent, /1[.\s\u00a0\u202f]?000 MDL/);
+
+    // 4. Deselect Vila 1, leaving only Vila 2 (res-part-2) with 400 MDL diff
+    partialCheckboxes[0].checked = false;
+    list.onchange();
+
+    assert.equal(partialDiffWarning.hidden, false);
+    assert.equal(
+      partialDiffWarning.textContent,
+      'Atenție: 400 MDL achitați prin link de plată se restituie separat, din portalul MAIB.',
+    );
+
+    // 5. Deselect all villas => warning hidden
+    partialCheckboxes[1].checked = false;
+    list.onchange();
+
+    assert.equal(partialDiffWarning.hidden, true);
+    assert.equal(partialDiffWarning.textContent, '');
+  });
+
+  it('ADR-107 Slice F: fails closed when difference-link read fails on dialog open or load', async () => {
+    const deleteDiffWarning = createFakeElement('p');
+    const partialDiffWarning = createFakeElement('p');
+    const totalEl = createFakeElement('strong');
+    const list = createFakeElement('ul');
+    const partialCheckboxes = [];
+
+    const sectionFields = {
+      '[data-partial-body]': createFakeElement('div'),
+      '[data-partial-toggle]': createFakeElement('button'),
+      '[data-partial-villas]': list,
+      '[data-partial-amount]': createFakeElement('input'),
+      '[data-partial-confirm]': createFakeElement('input'),
+      '[data-partial-error]': createFakeElement('p'),
+      '[data-partial-warning]': createFakeElement('p'),
+      '[data-partial-difference-warning]': partialDiffWarning,
+      '[data-partial-submit]': createFakeElement('button'),
+      '[data-partial-selected]': createFakeElement('p'),
+      '[data-partial-hint]': createFakeElement('p'),
+    };
+    const section = createFakeElement('section');
+    section.querySelector = (selector) => sectionFields[selector] || null;
+    section.querySelectorAll = (selector) => {
+      if (selector === '[data-partial-villa]') return partialCheckboxes;
+      return [];
+    };
+    list.appendChild = (item) => {
+      list.children.push(item);
+      partialCheckboxes.push(item.children[0].children[0]);
+      return item;
+    };
+
+    const dialog = createFakeElement('dialog');
+    dialog.showModal = () => {};
+    dialog.close = () => {};
+
+    const fields = {
+      '[data-edit-check-in]': createFakeElement('input'),
+      '[data-edit-check-out]': createFakeElement('input'),
+      '[data-edit-adults]': createFakeElement('input'),
+      '[data-edit-kids-ages]': createFakeElement('input'),
+      '[data-edit-name]': createFakeElement('input'),
+      '[data-edit-phone]': createFakeElement('input'),
+      '[data-edit-notes]': createFakeElement('textarea'),
+      '[data-edit-payment]': createFakeElement('p'),
+      '[data-edit-total]': totalEl,
+      '[data-delete-difference-warning]': deleteDiffWarning,
+      '[data-delete-reservation]': createFakeElement('button'),
+      '[data-refund-full-override]': createFakeElement('input'),
+      '[data-partial-cancel]': section,
+    };
+    dialog.querySelector = (selector) => fields[selector] || null;
+
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js', { EcoVilaPricing: pricing });
+
+    const res = {
+      id: 'res-err-1',
+      booking_group_id: 'grp-err-1',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      total_price: 3000,
+      payment_type: 'card',
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: {
+        createElement: createFakeElement,
+        querySelector: (selector) => (selector === '[data-reservation-dialog]' ? dialog : null),
+        querySelectorAll: () => [],
+        addEventListener: () => {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: {
+        formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`,
+      },
+      EcoVilaCrmCalendar,
+      EcoVilaSupabase: {
+        fetchReservationDifferenceLinks: (_client, _options) => Promise.reject(new Error('Fetch failed: network down')),
+      },
+    });
+
+    EcoVilaCrmDashboard.initStateForTests({
+      context: { client: {}, formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL` },
+      reservations: [res],
+      differenceLinks: [],
+      differenceLinksError: null,
+      reload: async () => {},
+    });
+
+    await EcoVilaCrmDashboard.openReservation(res);
+
+    // Full cancel warning fails closed
+    assert.equal(deleteDiffWarning.hidden, false, 'Delete warning must show fail-closed message');
+    assert.match(deleteDiffWarning.textContent, /diferențele de cazare nu au putut fi verificate/i);
+    assert.match(deleteDiffWarning.textContent, /se restituie separat, din portalul MAIB/i);
+
+    // Partial cancel warning fails closed
+    assert.equal(partialDiffWarning.hidden, false, 'Partial cancel warning must show fail-closed message');
+    assert.match(partialDiffWarning.textContent, /diferențele de cazare nu au putut fi verificate/i);
+    assert.match(partialDiffWarning.textContent, /se restituie separat, din portalul MAIB/i);
+
+    // Total indicates unverified price
+    assert.match(totalEl.textContent, /Preț efectiv neverificat/i);
+  });
+
+  it('ADR-107 Slice F: declares data-delete-difference-warning and data-partial-difference-warning in dashboard.html', () => {
+    const dashboard = read('admin/dashboard.html');
+    const dialogMarkup = dashboard.slice(
+      dashboard.indexOf('data-reservation-dialog'),
+      dashboard.indexOf('data-swap-dialog'),
+    );
+    assert.match(dialogMarkup, /data-delete-difference-warning/, 'data-delete-difference-warning must exist in reservation dialog');
+    assert.match(dialogMarkup, /data-partial-difference-warning/, 'data-partial-difference-warning must exist in partial cancel section');
+  });
+
+  it('ADR-107 Audit Finding 1: effectiveTotal and calculateDailySupplement prevent links bound to other bookings from entering quotes', () => {
+    const fakeDoc = {
+      createElement: createFakeElement,
+      querySelector: () => createFakeElement('div'),
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      documentElement: createFakeElement('html'),
+    };
+    const { EcoVilaCrmCalendar: cal } = loadAdminModule('admin/js/crm-calendar.js', {
+      EcoVilaPricing: pricing,
+    });
+
+    const bookingA = { id: 'res-A', total_price: 3000, payment_status: 'paid' };
+    const bookingB = { id: 'res-B', total_price: 3000, payment_status: 'paid' };
+    const bookingCancelled = { id: 'res-C', total_price: 3000, payment_status: 'cancelled', cancelled_at: '2026-08-01' };
+
+    const linkA = { id: 'link-A', reservation_id: 'res-A', status: 'paid', paid_amount: 500, purpose: 'accommodation_difference' };
+    const linkB = { id: 'link-B', reservation_id: 'res-B', status: 'paid', paid_amount: 200, purpose: 'accommodation_difference' };
+    const linkCancelled = { id: 'link-C', reservation_id: 'res-C', status: 'paid', paid_amount: 800, purpose: 'accommodation_difference' };
+    const linkNoResId = { id: 'link-orphan', status: 'paid', paid_amount: 500, purpose: 'accommodation_difference' };
+
+    // 1. A link bound to booking A MUST NOT enter booking B's effectiveTotal
+    assert.equal(
+      cal.effectiveTotal([bookingB], [linkA]),
+      3000,
+      'effectiveTotal must not count a link belonging to a different reservation',
+    );
+
+    // 2. A link without reservation_id contributes nothing
+    assert.equal(
+      cal.effectiveTotal([bookingB], [linkNoResId]),
+      3000,
+      'effectiveTotal must not count a link without reservation_id',
+    );
+
+    // 3. A link belonging to a cancelled reservation contributes nothing
+    assert.equal(
+      cal.effectiveTotal([bookingCancelled], [linkCancelled]),
+      0,
+      'effectiveTotal must not count links belonging to cancelled reservations',
+    );
+
+    // 4. A link belonging to booking B contributes correctly
+    assert.equal(
+      cal.effectiveTotal([bookingB], [linkB]),
+      3200,
+      'effectiveTotal must count links belonging to live reservations in the list',
+    );
+
+    // 5. Passing window of all links into booking B only includes booking B's links
+    assert.equal(
+      cal.effectiveTotal([bookingB], [linkA, linkB, linkCancelled, linkNoResId]),
+      3200,
+      'effectiveTotal must filter links window strictly to the live reservations supplied',
+    );
+
+    // 6. Test calculateDailySupplement isolation
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+      EcoVilaCrmCalendar: cal,
+      EcoVilaCrmSidebar: {
+        calculateStaffTotal: () => ({ total: 4000 }),
+        splitTotalPrice: (total) => [total],
+      },
+    });
+
+    const resB = {
+      id: 'res-B',
+      booking_group_id: 'grp-B',
+      check_in: '2026-05-10',
+      check_out: '2026-05-12',
+      adults: 2,
+      kids_ages: [],
+      total_price: 3000,
+      payment_status: 'paid',
+      rooms: { id: 'room-2', number: 2, type: 'large' },
+    };
+
+    // calculateDailySupplement with window of links including linkA:
+    // Staff total 4000, booking base 3000 => supplement must be 800 MDL (4000 - 3200), NOT including linkA!
+    const quote = daily.calculateDailySupplement({
+      reservations: [resB],
+      reservation: resB,
+      adults: 2,
+      childBuckets: [],
+      differenceLinks: [linkA, linkB],
+      pricingTiers: [],
+      holidays: [],
+    });
+
+    // linkB has res-B, linkA has res-A. existingTotal = 3000 (base) + 200 (linkB) = 3200
+    assert.equal(quote.existingTotal, 3200, 'existingTotal must only include res-B difference link');
+    assert.equal(quote.supplement, 800, 'supplement must be 4000 - 3200 = 800 MDL');
+
+    // 7. Group fallback isolation: cancelled villa difference link in same booking group is not misattributed to surviving villa
+    const survivingVilla = {
+      id: 'res-surviving',
+      booking_group_id: 'grp-split',
+      check_in: '2026-05-10',
+      check_out: '2026-05-12',
+      total_price: 3000,
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+    const cancelledVilla = {
+      id: 'res-cancelled',
+      booking_group_id: 'grp-split',
+      check_in: '2026-05-10',
+      check_out: '2026-05-12',
+      total_price: 3000,
+      payment_status: 'cancelled',
+      cancelled_at: '2026-05-01',
+      rooms: { id: 'room-2', number: 2, type: 'small' },
+    };
+    const cancelledVillaLink = {
+      id: 'link-cancelled-villa',
+      booking_group_id: 'grp-split',
+      reservation_id: 'res-cancelled',
+      status: 'paid',
+      paid_amount: 500,
+      purpose: 'accommodation_difference',
+    };
+
+    const card = daily.buildDailyCard(
+      { formatMDL: (n) => `${n} MDL` },
+      {
+        reservations: [survivingVilla, cancelledVilla],
+        differenceLinks: [cancelledVillaLink],
+        differenceLinksError: null,
+      },
+      survivingVilla,
+      'in',
+      {},
+    );
+
+    assert.match(card.innerHTML, /Achitat: 3000 MDL/);
+    assert.doesNotMatch(card.innerHTML, /diferență/);
+  });
+
+  it('ADR-107 Audit Finding 2: fetchRefundedBoundLinksSafe fails visibly on error instead of silently deleting cancellations', async () => {
+    const fakeDoc = {
+      createElement: createFakeElement,
+      querySelector: () => createFakeElement('div'),
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      documentElement: createFakeElement('html'),
+    };
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+    });
+
+    const mockClient = {};
+    const failingSupabase = {
+      fetchRefundedBoundLinkAmounts: () => Promise.reject(new Error('RLS denied')),
+    };
+
+    const { EcoVilaCrmFinance: financeWithFailingFetch } = loadAdminModule('admin/js/crm-finance.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+      EcoVilaSupabase: failingSupabase,
+    });
+
+    // 1. fetchRefundedBoundLinksSafe must reject with error rather than silently returning empty Map
+    await assert.rejects(
+      () => financeWithFailingFetch.fetchRefundedBoundLinksSafe(
+        { client: mockClient },
+        [{ id: 'res-1', booking_group_id: 'grp-1' }],
+      ),
+      /RLS denied/,
+      'fetchRefundedBoundLinksSafe must throw when fetch fails',
+    );
+
+    // 2. loadFinance must reject and surface error via context.setAlert
+    let alertCalledWith = null;
+    const mockContext = {
+      client: mockClient,
+      formatDate: () => '',
+      formatMDL: (n) => `${n} MDL`,
+      setAlert: (msg) => { alertCalledWith = msg; },
+    };
+
+    const fullFailingSupabase = {
+      fetchFinanceReservations: () => Promise.resolve([]),
+      fetchFinanceChangePayments: () => Promise.resolve([]),
+      fetchFinancePaymentLinks: () => Promise.resolve([]),
+      fetchFinanceCancellations: () => Promise.resolve([
+        {
+          id: 'res-office-1',
+          booking_group_id: 'grp-office-1',
+          payment_type: 'office',
+          payment_status: 'cancelled',
+          total_price: 3000,
+          cancelled_at: '2026-05-01',
+          rooms: { number: 1, type: 'small' },
+        },
+      ]),
+      fetchScheduledRefunds: () => Promise.resolve([]),
+      fetchRefundedGroups: () => Promise.resolve([]),
+      fetchRefundedBoundLinkAmounts: () => Promise.reject(new Error('Bound links read failed')),
+    };
+
+    const { EcoVilaCrmFinance: financeFullMock } = loadAdminModule('admin/js/crm-finance.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+      EcoVilaSupabase: fullFailingSupabase,
+    });
+
+    const state = {
+      mode: 'paid',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-05-31',
+      cancellationRows: [],
+      refundedGroupIds: new Map(),
+      refundedChangesByGroup: new Map(),
+      refundedBoundLinksByReservation: new Map(),
+      refundedBoundLinksError: null,
+    };
+
+    await assert.rejects(
+      () => financeFullMock.loadFinance(mockContext, state),
+      /Bound links read failed/,
+      'loadFinance must reject when bound links read fails',
+    );
+    assert.ok(alertCalledWith, 'context.setAlert must be called on failure');
+
+    // 3. summarizeCancellationRows reports unverified when refundedBoundLinksError is set
+    const summary = finance.summarizeCancellationRows({
+      rows: [
+        {
+          id: 'res-office-1',
+          booking_group_id: 'grp-office-1',
+          payment_type: 'office',
+          payment_status: 'cancelled',
+          total_price: 3000,
+          cancelled_at: '2026-05-01',
+          rooms: { number: 1, type: 'small' },
+        },
+      ],
+      refundedGroupIds: new Map(),
+      refundedChangesByGroup: new Map(),
+      refundedBoundLinksByReservation: new Map(),
+      refundedBoundLinksError: new Error('Read failed'),
+    });
+
+    assert.equal(summary.unverified, true);
+    assert.equal(summary.reliable, false);
+
+    // 4. A cancelled cash/office booking whose only refund is its bound link is recognized as refunded: true
+    const boundLinksMap = new Map([
+      ['res-office-1', [{ amount: 500, grossAmount: 500, withheldCommission: 0 }]],
+    ]);
+    const groups = finance.groupCancellationRows(
+      [
+        {
+          id: 'res-office-1',
+          booking_group_id: 'grp-office-1',
+          payment_type: 'office',
+          payment_status: 'cancelled',
+          total_price: 3000,
+          cancelled_at: '2026-05-01',
+          rooms: { number: 1, type: 'small' },
+        },
+      ],
+      new Map(),
+      new Map(),
+      boundLinksMap,
+    );
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].refunded, true, 'Office booking with bound link refund must be recognized as refunded');
+    assert.equal(groups[0].refundedAmount, 500);
+  });
+
+  it('ADR-107 Audit Finding 3: daily cards show unverified status rather than base totals after failed difference read', () => {
+    const fakeDoc = {
+      createElement: createFakeElement,
+      querySelector: () => createFakeElement('div'),
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      documentElement: createFakeElement('html'),
+    };
+    const { EcoVilaCrmCalendar: cal } = loadAdminModule('admin/js/crm-calendar.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+    });
+    const { EcoVilaCrmDaily: daily } = loadAdminModule('admin/js/crm-daily.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+      EcoVilaCrmCalendar: cal,
+    });
+
+    const res = {
+      id: 'res-daily-1',
+      booking_group_id: 'grp-daily-1',
+      check_in: '2026-05-10',
+      check_out: '2026-05-12',
+      total_price: 3000,
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+    };
+
+    // When differenceLinksError is set, buildDailyCard must show 'Achitat: neverificat'
+    const cardWithError = daily.buildDailyCard(
+      { formatMDL: (n) => `${n} MDL` },
+      {
+        reservations: [res],
+        differenceLinks: [],
+        differenceLinksError: new Error('RLS denied'),
+      },
+      res,
+      'in',
+      {},
+    );
+
+    assert.match(cardWithError.innerHTML, /Achitat:\s*neverificat/i, 'Card must state figure is unverified');
+    assert.doesNotMatch(cardWithError.innerHTML, /Achitat:\s*3\s*000\s*MDL/i, 'Card must not print base total as if verified');
+
+    // When differenceLinks loaded successfully with a paid difference:
+    const diffLink = {
+      id: 'diff-1',
+      reservation_id: 'res-daily-1',
+      purpose: 'accommodation_difference',
+      status: 'paid',
+      paid_amount: 500,
+    };
+    const cardSuccess = daily.buildDailyCard(
+      { formatMDL: (n) => `${n} MDL` },
+      {
+        reservations: [res],
+        differenceLinks: [diffLink],
+        differenceLinksError: null,
+      },
+      res,
+      'in',
+      {},
+    );
+
+    assert.match(cardSuccess.innerHTML, /Achitat:\s*3500\s*MDL\s*\(3000\s*MDL\s*\+\s*500\s*MDL\s*diferență\)/i);
+  });
+
+  it('ADR-107 QA Finding 1: Finance cancellation path derives bound-link refunds by cancelled reservation_id, capturing ungrouped reservations', async () => {
+    const fakeDoc = {
+      createElement: createFakeElement,
+      querySelector: () => createFakeElement('div'),
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      documentElement: createFakeElement('html'),
+    };
+
+    const { EcoVilaSupabase: supabase } = loadAdminModule('js/supabase.js');
+
+    // 1. Verify supabase.fetchRefundedBoundLinkAmounts queries by reservation_id
+    const inCalls = [];
+    const mockBuilder = {
+      select() { return mockBuilder; },
+      eq() { return mockBuilder; },
+      gt() { return mockBuilder; },
+      in(col, val) { inCalls.push({ col, val }); return mockBuilder; },
+      order() { return mockBuilder; },
+      range() {
+        return Promise.resolve({
+          data: [
+            {
+              id: 'diff-link-ungrouped',
+              reservation_id: 'res-ungrouped-1',
+              booking_group_id: null,
+              paid_amount: 2000,
+              refunded_amount: 2000,
+              status: 'refunded',
+              purpose: 'accommodation_difference',
+            },
+          ],
+        });
+      },
+    };
+    const mockClient = {
+      from() { return mockBuilder; },
+    };
+
+    const fetchedRows = await supabase.fetchRefundedBoundLinkAmounts(mockClient, {
+      reservationIds: ['res-ungrouped-1'],
+    });
+    assert.equal(fetchedRows.length, 1);
+    assert.equal(fetchedRows[0].reservation_id, 'res-ungrouped-1');
+    assert.equal(inCalls.length, 1);
+    assert.equal(inCalls[0].col, 'reservation_id', 'fetchRefundedBoundLinkAmounts must query reservation_id column');
+    assert.deepEqual(inCalls[0].val, ['res-ungrouped-1']);
+
+    // 2. Ungrouped reservation (booking_group_id: null) with refunded bound link in loadFinance
+    const cancellationRowUngrouped = {
+      id: 'res-ungrouped-1',
+      booking_group_id: null,
+      payment_type: 'office',
+      payment_status: 'cancelled',
+      paid_at: '2026-05-01T10:00:00.000Z',
+      cancelled_at: '2026-05-05T12:00:00.000Z',
+      total_price: 3000,
+      rooms: { number: 1, type: 'small' },
+      guest_first_name: 'Denis',
+      guest_last_name: 'Vilcov',
+    };
+
+    let passedReservationIds = null;
+    const mockSupabaseForFinance = {
+      fetchFinanceReservations: () => Promise.resolve([]),
+      fetchFinanceChangePayments: () => Promise.resolve([]),
+      fetchFinancePaymentLinks: () => Promise.resolve([]),
+      fetchFinanceCancellations: () => Promise.resolve([cancellationRowUngrouped]),
+      fetchScheduledRefunds: () => Promise.resolve([]),
+      fetchRefundedGroups: () => Promise.resolve([]),
+      fetchRefundedBoundLinkAmounts: (_client, options) => {
+        passedReservationIds = options?.reservationIds;
+        return Promise.resolve([
+          {
+            id: 'diff-link-ungrouped',
+            reservation_id: 'res-ungrouped-1',
+            booking_group_id: null,
+            paid_amount: 2000,
+            refunded_amount: 2000,
+            status: 'refunded',
+            purpose: 'accommodation_difference',
+          },
+        ]);
+      },
+    };
+
+    const { EcoVilaCrmFinance: finance } = loadAdminModule('admin/js/crm-finance.js', {
+      document: fakeDoc,
+      EcoVilaPricing: pricing,
+      EcoVilaSupabase: mockSupabaseForFinance,
+    });
+
+    const mockContext = {
+      client: mockClient,
+      formatDate: () => '2026-05-05',
+      formatMDL: (n) => `${n} MDL`,
+      setAlert: () => {},
+    };
+
+    const state = {
+      mode: 'paid',
+      rangeStart: '2026-05-01',
+      rangeEnd: '2026-05-31',
+      cancellationRows: [],
+      refundedGroupIds: new Map(),
+      refundedChangesByGroup: new Map(),
+      refundedBoundLinksByReservation: new Map(),
+      refundedBoundLinksError: null,
+    };
+
+    await finance.loadFinance(mockContext, state);
+
+    assert.deepEqual(Array.from(passedReservationIds), ['res-ungrouped-1'], 'fetchRefundedBoundLinksSafe must pass cancelled reservation IDs');
+    assert.equal(state.refundedBoundLinksByReservation.has('res-ungrouped-1'), true);
+
+    const summary = finance.summarizeCancellationRows({
+      rows: state.cancellationRows,
+      refundedGroupIds: state.refundedGroupIds,
+      refundedChangesByGroup: state.refundedChangesByGroup,
+      refundedBoundLinksByReservation: state.refundedBoundLinksByReservation,
+      refundedBoundLinksError: null,
+    });
+
+    assert.equal(summary.count, 1, 'Ungrouped cancellation with refunded bound link must be included in refunded count');
+    assert.equal(summary.refundedTotal, 2000, 'Refunded bound link amount must be recognized in refunded total');
+  });
+
+  it('ADR-107 QA Finding 2: Move dialog summary indicates unverified figure when bookingMoney is not reliable', () => {
+    const summaryEl = createFakeElement('div');
+    const moveDialog = createFakeElement('dialog');
+    moveDialog.querySelector = (selector) => {
+      if (selector === '[data-move-summary]') return summaryEl;
+      return createFakeElement('div');
+    };
+    moveDialog.showModal = () => {};
+    moveDialog.close = () => {};
+
+    const { EcoVilaCrmCalendar } = loadAdminModule('admin/js/crm-calendar.js', { EcoVilaPricing: pricing });
+    const { EcoVilaCrmDashboard } = loadAdminModule('admin/js/crm-dashboard.js', {
+      document: {
+        createElement: createFakeElement,
+        querySelector: (selector) => (selector === '[data-move-dialog]' ? moveDialog : null),
+        querySelectorAll: () => [],
+        addEventListener: () => {},
+        documentElement: createFakeElement('html'),
+      },
+      EcoVilaCrmApp: {
+        formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`,
+      },
+      EcoVilaCrmCalendar,
+    });
+
+    const res = {
+      id: 'res-move-1',
+      booking_group_id: 'grp-move-1',
+      room_id: 'room-1',
+      check_in: '2026-06-10',
+      check_out: '2026-06-12',
+      total_price: 6000,
+      payment_type: 'card',
+      payment_status: 'paid',
+      rooms: { id: 'room-1', number: 1, type: 'small' },
+      guest_first_name: 'Elena',
+      guest_last_name: 'Popa',
+    };
+
+    const targetRoom = { id: 'room-2', number: 2, type: 'large' };
+
+    // Case 1: differenceLinks read failed (differenceLinksError is set)
+    EcoVilaCrmDashboard.initStateForTests({
+      context: { client: {}, formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL` },
+      reservations: [res],
+      rooms: [{ id: 'room-1', number: 1, type: 'small' }, targetRoom],
+      differenceLinks: [],
+      differenceLinksError: new Error('Network failure'),
+      reload: async () => {},
+    });
+
+    EcoVilaCrmDashboard.renderMoveSummary(moveDialog, res, res.rooms, targetRoom);
+    const summaryTextUnreliable = summaryEl.children.map((c) => c.textContent).join('\n');
+
+    assert.match(summaryTextUnreliable, /Preț efectiv neverificat:\s*6[.\s]*000\s*MDL/i, 'Move summary must state unverified effective price');
+    assert.match(summaryTextUnreliable, /Diferențele de cazare nu au putut fi verificate/i, 'Move summary must explain differences could not be verified');
+    assert.doesNotMatch(summaryTextUnreliable, /Preț efectiv rezervare:\s*6[.\s]*000\s*MDL/i, 'Move summary must not print authoritative effective total when unverified');
+
+    // Case 2: differenceLinks successfully loaded with paid 2 000 MDL difference
+    const diffLink = {
+      id: 'diff-move-1',
+      reservation_id: 'res-move-1',
+      booking_group_id: 'grp-move-1',
+      purpose: 'accommodation_difference',
+      status: 'paid',
+      paid_amount: 2000,
+    };
+
+    EcoVilaCrmDashboard.initStateForTests({
+      context: { client: {}, formatMDL: (amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL` },
+      reservations: [res],
+      rooms: [{ id: 'room-1', number: 1, type: 'small' }, targetRoom],
+      differenceLinks: [diffLink],
+      differenceLinksError: null,
+      reload: async () => {},
+    });
+
+    EcoVilaCrmDashboard.renderMoveSummary(moveDialog, res, res.rooms, targetRoom);
+    const summaryTextReliable = summaryEl.children.map((c) => c.textContent).join('\n');
+
+    assert.match(summaryTextReliable, /Preț efectiv rezervare:\s*8[.\s]*000\s*MDL/i, 'Move summary must state authoritative effective total when reliable');
+    assert.match(summaryTextReliable, /Calcul:\s*6[.\s]*000\s*MDL\s*\+\s*2[.\s]*000\s*MDL\s*diferență achitată/i, 'Move summary must show breakdown when reliable');
+  });
 });

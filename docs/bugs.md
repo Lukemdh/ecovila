@@ -40,6 +40,9 @@ High / Medium / Low.
 | B-31 | CRM auth cookie missing the `Secure` flag | Low | Fixed |
 | B-32 | CRM edit dialog showed single-villa price for grouped bookings | Low | Fixed |
 | B-33 | Finance `paid_at` binning uses UTC midnight while queries use Europe/Chisinau | Low | Open |
+| B-34 | Daily repricing asks reception to collect an already-paid add-guests difference again | Medium | Open |
+| B-35 | Saving a paid Daily repricing reports an uncollected supplement as historical income | High | Open |
+| B-36 | Finance refund reads silently swallow errors and under-report returned money | Medium | Open |
 
 ---
 
@@ -509,4 +512,57 @@ High / Medium / Low.
 - **Fix direction / owner decision needed:** Correcting this binning to Europe/Chisinau local midnight
   is a separate change because it would retroactively shift historical daily Finance figures across all
   past reports, so it requires explicit owner decision and approval.
+
+### B-34 — Daily repricing double-charges paid add-guests differences (Medium) — Open
+- **Description / evidence:** ADR-057 deliberately leaves `reservations.total_price`
+  at the original booking base when an add-guests `reservation_changes` row settles;
+  `applyBookingChange` updates only `adults` and `kids_ages`. In
+  `admin/js/crm-daily.js`, `calculateDailySupplement` reprices that now-larger party but
+  subtracts the unchanged base total and reads only ADR-107 accommodation-difference
+  links. It therefore presents the already-paid add-guests difference as money still to
+  collect.
+- **Reproduce:** create and pay a 3,000 MDL booking; use the guest add-people flow and
+  pay a 500 MDL difference; open that booking in `Situația zilnică` without changing
+  the party. The current-party quote is 3,500 MDL, the stored base remains 3,000 MDL,
+  and reception sees `De încasat suplimentar: 500 MDL` although MAIB already captured
+  that 500 MDL in the separate change payment.
+- **Why ADR-107 did not fix it:** ADR-107 makes accommodation-difference reads honest
+  and blocks writes for bookings carrying those links. Folding the separate
+  `reservation_changes` ledger into Daily and defining how that older flow should be
+  repriced/refunded is a distinct accounting change.
+
+### B-35 — Paid Daily repricing turns an uncollected supplement into historical income (High) — Open
+- **Description / evidence:** `saveDailyGuestEdit` directly and sequentially overwrites
+  each live row's `total_price` after a confirmation prompt; it does not collect money,
+  create a payment/change ledger row, or update `paid_at`. Finance `Încasări` reads the
+  current `total_price` of paid rows and bins it by the unchanged original `paid_at`.
+  The newly quoted supplement therefore appears as collected revenue on an earlier
+  payment date even when reception never received it.
+- **Reproduce:** pay a 3,000 MDL reservation on 1 August; in `Situația zilnică`, add a
+  guest or extension that reprices the stay to 3,500 MDL and accept the save prompt,
+  without recording any separate collection. Open Finance `Încasări` for 1 August:
+  the booking now contributes 3,500 MDL on its original `paid_at`, overstating income by
+  the uncollected 500 MDL.
+- **Fix direction:** Daily repricing needs an explicit collection/ledger operation (and
+  an atomic group write), not another direct rewrite of a paid booking base. ADR-107
+  deliberately refused repricing for bookings carrying accommodation differences and
+  left this broader redesign out of scope.
+
+### B-36 — Finance refund reads silently swallow errors and under-report returned money (Medium) — Open
+- **Description / evidence:** In `admin/js/crm-finance.js`, `fetchScheduledRefundsSafe` (~1351),
+  the refunded-booking-group truth read `fetchRefundedGroupsSafe` (~1362), and the refunded add-guests read
+  `fetchRefundedChangesByGroupSafe` (~1376) each swallow database/network/RLS errors via `.catch(() => [])` or
+  `.catch(() => new Map())` and return empty sets.
+- **Why it matters / reproduction:** A failed or RLS-denied read silently under-reports returned money and can make
+  a cancellation vanish from the cancellation list:
+  1. If `fetchRefundedGroupsSafe` fails or is denied by RLS, `state.refundedGroupIds` becomes empty;
+     `summarizeCancellationRows` filters out cancellations that have no refunded group truth, making those cancellations
+     silently vanish from the Finance cancellations list and dropping `refundedTotal` to 0.
+  2. If `fetchRefundedChangesByGroupSafe` fails, `state.refundedChangesByGroup` is empty, so refunded add-guests
+     differences are omitted from the cancellation quote and the calculation silently falls back to the base stay total.
+  3. If `fetchScheduledRefundsSafe` fails, the scheduled refunds list simply renders empty without alerting staff.
+- **Context & contrast with ADR-107:** This is a pre-existing fail-open pattern in legacy Finance reads (not introduced
+  by ADR-107 and deliberately not fixed here). By contrast, ADR-107's new bound-link read (`fetchRefundedBoundLinksSafe`
+  in `crm-finance.js` ~1409, invoked in `loadFinance` ~1500) deliberately does **NOT** swallow errors: it surfaces the failure,
+  alerts staff via `context.setAlert`, sets `state.refundedBoundLinksError`, displays `(neverificat)` in the UI, and rethrows.
 

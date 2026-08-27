@@ -1060,6 +1060,26 @@ h2 {
   text-overflow: clip;
 }
 
+.crm-difference-marker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--crm-moss);
+  border-radius: 999px;
+  background: #eef2df;
+  color: #34401f;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 3px 7px;
+}
+
+.crm-difference-marker--pending {
+  border-color: var(--crm-ochre);
+  background: #fff4d8;
+  color: #684d0e;
+}
+
 .crm-reservation-card--pending {
   background: var(--crm-pending);
   color: var(--crm-ink);
@@ -1275,6 +1295,81 @@ h2 {
 
 .crm-partial__body .crm-edit-error {
   font-size: 0.86rem;
+}
+
+.crm-total-breakdown {
+  display: grid;
+  gap: 4px;
+}
+
+.crm-total-breakdown > span:not(.crm-difference-marker) {
+  color: var(--crm-muted);
+  font-size: 0.82rem;
+}
+
+.crm-move-section__body select {
+  width: 100%;
+}
+
+.crm-move-dialog {
+  max-width: 760px;
+}
+
+.crm-move-dialog__panel {
+  display: grid;
+  gap: 12px;
+}
+
+.crm-move-dialog__panel h2,
+.crm-move-dialog__panel .crm-dialog-actions {
+  margin-top: 0;
+}
+
+.crm-move-summary {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: #fbf8f1;
+  padding: 12px;
+}
+
+.crm-move-summary p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.crm-move-summary p:first-child {
+  color: var(--crm-ink);
+  font-weight: 700;
+}
+
+.crm-move-billing {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--crm-line);
+  padding-top: 12px;
+}
+
+.crm-move-notify {
+  margin-top: 2px;
+}
+
+.crm-move-link-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.crm-move-link-result strong {
+  grid-column: 1 / -1;
+}
+
+.crm-move-link-result [data-move-result-close] {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
 .crm-panel:not([data-panel="dashboard"]) {

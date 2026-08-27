@@ -89,7 +89,8 @@ python3 -m http.server 8080
 Key pages: `index.html` (Romanian canonical homepage at `/`), `ru/index.html`,
 `en/index.html`, `site.html` (legacy transition source redirected by `.htaccess`),
 `rezervari.html` (booking), `checkout.html`, `confirmare.html`, `anulare.html`,
-`plata.html` (standalone payment link at `plata.html?p=<uuid>`),
+`plata.html` (standalone or reservation-difference payment link at
+`plata.html?p=<uuid>`),
 `politica-confidentialitate.html`, `termeni-conditii.html`, `admin/index.html`
 (CRM login), `admin/dashboard.html` (CRM).
 
@@ -114,7 +115,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 412 Node + 186 Deno tests, all passing (2026-08-27)
+# → 426 Node + 202 Deno tests, all passing (2026-08-27)
 ```
 
 The suites can also be run independently.
@@ -124,14 +125,14 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 407 tests, 36 suites, all passing
+# → 426 tests, all passing
 ```
 
 **Edge Function tests (Deno):**
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 181 tests, all passing
+# → 202 tests, all passing
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named
@@ -175,6 +176,18 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 
 ## Deployment
 
+> **2026-08-27 ADR-106/ADR-107 rollout gate:** standalone payment links and
+> reservation-bound accommodation-difference links are built and green locally, but
+> **nothing from either ADR is deployed**. Migration
+> `20260826120000_payment_links.sql` is a hard prerequisite and must be applied first,
+> followed by `20260827120000_payment_link_reservation_binding.sql`; then deploy, in
+> this rollout, `payment-link-admin`, `payment-link-public`, `maib-callback`,
+> `maib-mia-callback`, `reservation-accommodation-move`,
+> `reservation-change-create`, and `reservation-cancel`; finally upload the regenerated
+> `dist/tophost/` bundle carrying asset token `?v=2026082702`. That upload also lands
+> the still-pending ADR-105 frontend. **Do not set
+> `ECOVILA_REFUND_COMMISSION_BPS` for this rollout.**
+
 > 2026-06-11 production-readiness status: the Critical payment-flow findings
 > (S-13/S-14/S-15, B-23..B-25) are fixed and **deployed to production** (migration +
 > Edge Functions, verified live). The updated static site bundle in `dist/tophost/`
@@ -214,6 +227,9 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
   copy it to `supabase/functions/_shared/pricing.js` (byte-identity is test-enforced),
   redeploy `create-reservation`, and promptly upload the static site so client quotes
   and the server guard stay in agreement.
+  `reservation-accommodation-move` is Diana-only and must remain `verify_jwt = true`;
+  it moves the locked reservation row and optionally inserts its bound payment link in
+  one database transaction, then sends the opt-in SMS best-effort after commit.
 - **Cron:** schedule `expire-cash-reservations` and `send-reminders` (and the Maib
   session-expiry cron added by migration) passing `ECOVILA_CRON_SECRET`. Both expect a
   frequent (~1-minute) cadence: the cash-expiry warning window is ~2 minutes wide, and

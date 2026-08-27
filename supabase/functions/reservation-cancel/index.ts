@@ -3,6 +3,12 @@ import { assertMethod, errorResponse, HttpError, jsonResponse, readJson } from '
 import { alertRefundProblem, refundEligibleAtIso } from '../_shared/refunds.ts';
 import { aggregateRefundQuotes, prepareFullRefundIntent } from '../_shared/refundIntents.ts';
 import { activeCommissionBps, quoteRefund, type RefundQuote } from '../_shared/refundPolicy.ts';
+import {
+  alertAccommodationDifferenceVerificationFailure,
+  alertUnrefundedAccommodationDifferences,
+  findUnrefundedAccommodationDifferences,
+  sumUnrefundedDifferenceAmount,
+} from '../_shared/paymentLinks.ts';
 import { assertRateLimit, RATE_LIMITS, rateLimitIp } from '../_shared/rateLimit.ts';
 import { sendEmail, sendSms } from '../_shared/providers.ts';
 import {
@@ -80,7 +86,12 @@ type CancellationNotificationResult = {
   error?: string;
 };
 
-Deno.serve(async (request) => {
+type AccommodationDifferenceVerification = 'verified' | 'manual_refund' | 'failed';
+
+export async function handleCancelReservation(
+  request: Request,
+  client: SupabaseClient = createServiceClient(),
+) {
   const cors = handleCors(request);
   if (cors) return cors;
 
@@ -94,7 +105,6 @@ Deno.serve(async (request) => {
       throw new HttpError(400, 'manageToken and reservationId are required.');
     }
 
-    const client = createServiceClient();
     // Token-gated; an IP cap blunts token-guessing / DB-probe floods (ADR-060).
     await assertRateLimit(client, RATE_LIMITS.manageActionIp, rateLimitIp(request));
     const manageToken = await validateManageToken(client, token);
@@ -212,8 +222,7 @@ Deno.serve(async (request) => {
     }
 
     const now = new Date().toISOString();
-    const { error: cancelError } = await client
-      .from('reservations')
+    const { error: cancelError } = await table(client, 'reservations')
       .update({
         payment_status: 'cancelled',
         payment_in_progress: false,
@@ -231,11 +240,55 @@ Deno.serve(async (request) => {
 
     if (cancelError) throw new Error(cancelError.message);
 
+    // Look up paid accommodation_difference links with money still outstanding (ADR-107 Slice D).
+    // Scoped strictly to the cancelled reservation rows, never by booking_group_id alone.
+    let accommodationDifferenceVerification: AccommodationDifferenceVerification = 'verified';
+    const cancelledReservationIds = reservations.map((r) => r.id);
+    try {
+      const diffLinks = await findUnrefundedAccommodationDifferences(
+        client,
+        cancelledReservationIds,
+      );
+      const diffSum = sumUnrefundedDifferenceAmount(diffLinks);
+      if (diffSum > 0) {
+        accommodationDifferenceVerification = 'manual_refund';
+        const guestName =
+          `${reservations[0]?.guest_first_name || ''} ${reservations[0]?.guest_last_name || ''}`
+            .trim() || null;
+        await alertUnrefundedAccommodationDifferences({
+          bookingGroupId: summary.bookingGroupId,
+          reservationIds: cancelledReservationIds,
+          links: diffLinks,
+          totalAmount: diffSum,
+          guestName,
+          guestPhone: manageToken.phone,
+        }).catch((alertError) =>
+          console.error('Accommodation difference staff alert failed', alertError)
+        );
+      }
+    } catch (diffError) {
+      accommodationDifferenceVerification = 'failed';
+      const verificationError = diffError instanceof Error ? diffError.message : 'Lookup failed';
+      console.error('Accommodation difference link lookup failed; continuing with cancellation', {
+        bookingGroupId: summary.bookingGroupId,
+        message: verificationError,
+      });
+      await alertAccommodationDifferenceVerificationFailure({
+        bookingGroupId: summary.bookingGroupId,
+        reservationIds: cancelledReservationIds,
+        guestPhone: manageToken.phone,
+        error: verificationError,
+      }).catch((alertError) =>
+        console.error('Accommodation difference verification alert failed', alertError)
+      );
+    }
+
     const notificationResults = await notifyCancelledReservations(
       client,
       reservations,
       refundScheduled ? refundTotal : null,
       refundScheduled ? refundEta : null,
+      accommodationDifferenceVerification,
     );
 
     return jsonResponse(
@@ -263,7 +316,7 @@ Deno.serve(async (request) => {
   } catch (error) {
     return errorResponse(error, request);
   }
-});
+}
 
 async function validateManageToken(client: SupabaseClient, token: string) {
   const tokenHash = await hashManageToken(token);
@@ -327,6 +380,7 @@ async function notifyCancelledReservations(
   reservations: CancellationReservationRow[],
   refundTotal: RefundQuote | null,
   refundEta: string | null,
+  accommodationDifferenceVerification: AccommodationDifferenceVerification = 'verified',
 ) {
   const results: CancellationNotificationResult[] = [];
   // One notification per booking group: the owner reservation sends the SMS and
@@ -347,7 +401,13 @@ async function notifyCancelledReservations(
         continue;
       }
 
-      const message = composeCancellationConfirmation(reservation, group, refundTotal, refundEta);
+      const message = composeCancellationConfirmation(
+        reservation,
+        group,
+        refundTotal,
+        refundEta,
+        accommodationDifferenceVerification,
+      );
       const [sms, email] = await Promise.allSettled([
         message.sms ? sendSms(message.sms) : Promise.resolve({ skipped: true }),
         sendEmail(message.email),
@@ -447,6 +507,7 @@ function composeCancellationConfirmation(
   groupReservations: CancellationReservationRow[] = [reservation],
   refundTotal: RefundQuote | null = null,
   refundEta: string | null = null,
+  accommodationDifferenceVerification: AccommodationDifferenceVerification = 'verified',
 ): NotificationMessage {
   // The owner reservation's email lists every villa in the booking group.
   const group = groupReservations.length ? groupReservations : [reservation];
@@ -469,20 +530,36 @@ function composeCancellationConfirmation(
     refundStatus: refundTotal ? 'scheduled' : undefined,
     refundEta,
     siteUrl: getSiteUrl(),
+    hasManualDifferenceRefund: accommodationDifferenceVerification === 'manual_refund',
   });
+
+  if (accommodationDifferenceVerification === 'failed') {
+    const verificationCopy = accommodationDifferenceVerificationFailureCopy(lang);
+    email.text = `${email.text}\n\n${verificationCopy.email}`;
+    email.html = email.html.replace(
+      '</body>',
+      `<p style="margin:24px;color:#6f4e37">${verificationCopy.email}</p></body>`,
+    );
+  }
+
+  const sms = cancellationConfirmationSms({
+    checkIn: reservation.check_in,
+    checkOut: reservation.check_out,
+    refundAmount: refundTotal?.net,
+    withheldCommission: refundTotal?.withheld,
+    refundStatus: refundTotal ? 'scheduled' : undefined,
+    refundEta,
+    language: lang,
+    hasManualDifferenceRefund: accommodationDifferenceVerification === 'manual_refund',
+  });
+  const smsMessage = accommodationDifferenceVerification === 'failed'
+    ? `${sms} ${accommodationDifferenceVerificationFailureCopy(lang).sms}`
+    : sms;
 
   return {
     sms: {
       to: reservation.guest_phone,
-      message: cancellationConfirmationSms({
-        checkIn: reservation.check_in,
-        checkOut: reservation.check_out,
-        refundAmount: refundTotal?.net,
-        withheldCommission: refundTotal?.withheld,
-        refundStatus: refundTotal ? 'scheduled' : undefined,
-        refundEta,
-        language: lang,
-      }),
+      message: smsMessage,
     },
     email: {
       to: reservation.guest_email,
@@ -490,6 +567,31 @@ function composeCancellationConfirmation(
       text: email.text,
       html: email.html,
     },
+  };
+}
+
+function accommodationDifferenceVerificationFailureCopy(lang: 'ro' | 'ru' | 'en') {
+  if (lang === 'ru') {
+    return {
+      email:
+        'Мы не смогли проверить отдельно оплаченную разницу за проживание. Сотрудники свяжутся с вами.',
+      sms:
+        'Мы не смогли проверить отдельно оплаченную разницу за проживание. Сотрудники свяжутся с вами.',
+    };
+  }
+  if (lang === 'en') {
+    return {
+      email:
+        'We could not verify the separately paid accommodation difference. Our team will contact you.',
+      sms:
+        'We could not verify the separately paid accommodation difference. Our team will contact you.',
+    };
+  }
+  return {
+    email:
+      'Nu am putut verifica diferența de cazare achitată separat. Echipa noastră te va contacta.',
+    sms:
+      'Nu am putut verifica diferenta de cazare achitata separat. Echipa noastra va va contacta.',
   };
 }
 
@@ -520,3 +622,5 @@ async function findMaibPayment(client: SupabaseClient, bookingGroupId: string) {
 function table<T = unknown>(client: SupabaseClient, name: string) {
   return client.from(name) as QueryBuilder<T>;
 }
+
+Deno.serve((request) => handleCancelReservation(request));

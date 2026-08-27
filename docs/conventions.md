@@ -33,6 +33,19 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - All Supabase access from the browser goes through `js/supabase.js` helpers — do not
   call the raw client from feature scripts. Pure pricing/date math lives in
   `js/pricing.js`; keep it side-effect-free (it is unit-tested directly).
+- A reservation-bound accommodation difference is a separate `payment_links` ledger
+  entry, never an in-place mutation of `reservations.total_price`. Staff-facing totals
+  use `base + Σ net(paid_amount - refunded_amount)` only for links bound to the supplied
+  live reservation rows; unpaid links are shown separately. Never fall back from
+  `paid_amount` to the requested `amount` (missing or invalid `paid_amount` must fail closed as
+  UNVERIFIED), and never classify by nullable binding fields instead of `purpose`.
+- Client-side refusal to reprice bookings with bound differences in Situația zilnică provides
+  friendly feedback, but the authoritative enforcement point is the database trigger
+  `prevent_repricing_with_accommodation_difference`.
+- Money-critical link reads must distinguish a successful empty result from a failed
+  read. On failure, show an unavailable/unverified state and block destructive
+  repricing where the missing rows could change the decision; do not catch into `[]` or
+  an empty `Map` that looks like verified zero.
 - Any guest-controlled text rendered in the CRM must be assigned with `textContent` or a
   shared escaping helper before it reaches `innerHTML`. Treat reservation names, phones,
   notes, photo alt text, holiday labels, and any DB text field as untrusted. Shared CRM
@@ -104,6 +117,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Staff-only functions must `await requireStaffRole(request, [...])`; the helper validates
   the bearer token through Supabase Auth and reads `app_metadata.role` only from the
   verified user object. Do not parse JWT payloads by hand for authorization decisions.
+- Reservation accommodation moves use a Diana-only Edge Function and a service-role-only
+  database RPC. Derive mutable room number/type/active state and booking binding on the
+  server under row locks; browser source/target data is advisory and the SMS remains an
+  opt-in, post-commit best-effort side effect.
 - Shared helpers that accept a service-role Supabase client import the shared
   `SupabaseClient` / `SupabaseQueryResult` types from `_shared/supabaseAdmin.ts` and add
   local row/builder payload types where needed. Do not reintroduce `client: any` in
@@ -132,6 +149,15 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `docs/security.md`. Service-role-only internal RPCs (such as payment-link attempt claiming
   and settlement) use `security invoker` with `set search_path = ''` and are granted exclusively
   to `service_role`.
+- Cumulative manual-refund records are monotonic: a stale write may repeat the current
+  amount to correct metadata, but must never lower the recorded amount. Cancellation
+  cleanup that must cover direct staff writes and every server path belongs in a
+  narrowly scoped row trigger so it runs inside the same reservation transaction.
+- Repricing bans on bookings with accommodation differences are enforced at the DB level
+  via `prevent_repricing_with_accommodation_difference` (BEFORE UPDATE OF `total_price`
+  ON `reservations`). Replacement billing operations in RPCs must lock previous active
+  link rows and assert no attempts are `creating` or `pending` (or settled) before
+  issuing a replacement.
 
 ## Tests
 - Root `package.json` is allowed only for dependency-free test scripts. It must not add

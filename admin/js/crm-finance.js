@@ -265,15 +265,29 @@
         }
       });
 
+      const standaloneLinks = [];
+      const boundLinks = [];
+      (input?.linkRows || []).forEach((link) => {
+        if (link?.purpose !== 'accommodation_difference') {
+          standaloneLinks.push(link);
+        } else {
+          boundLinks.push(link);
+        }
+      });
+
       // Paid standalone payment links (ADR-106) fold into the commercial and
       // online totals by paid_at. They touch no nights, no rooms, and do NOT
       // inflate the reservation-only average booking value.
-      (input?.linkRows || []).forEach((link) => {
-        if (!link || !link.paid_at || !isPaidAtInRange(link, rangeStart, rangeEnd)) {
+      standaloneLinks.forEach((link) => {
+        if (!link || (link.status && link.status !== 'paid') || !link.paid_at || !isPaidAtInRange(link, rangeStart, rangeEnd)) {
           return;
         }
 
-        const paidAmount = Number(link.paid_amount || 0);
+        const paidAmount = Number(link.paid_amount);
+        if (!Number.isInteger(paidAmount) || paidAmount <= 0) {
+          return;
+        }
+
         const refundedAmount = Number(link.refunded_amount || 0);
         const net = paidAmount - (refundedAmount > 0 ? refundedAmount : 0);
         if (net <= 0) {
@@ -283,6 +297,40 @@
         summary.commercialTotal += net;
         summary.onlineTotal += net;
         summary.linksTotal += net;
+      });
+
+      // Paid accommodation difference links (ADR-107) fold into commercialTotal,
+      // onlineTotal, roomTypeTotals, and the reservation-average numerator by
+      // their own paid_at. Zero occupied nights.
+      boundLinks.forEach((link) => {
+        if (!link || link.status !== 'paid' || !link.paid_at || !isPaidAtInRange(link, rangeStart, rangeEnd)) {
+          return;
+        }
+
+        const paidAmount = Number(link.paid_amount);
+        if (!Number.isInteger(paidAmount) || paidAmount <= 0) {
+          return;
+        }
+
+        const refundedAmount = Number(link.refunded_amount || 0);
+        const net = paidAmount - (refundedAmount > 0 ? refundedAmount : 0);
+        if (net <= 0) {
+          return;
+        }
+
+        summary.commercialTotal += net;
+        reservationCommercialTotal += net;
+        summary.onlineTotal += net;
+
+        const roomType = link.room_type || '';
+        if (roomType in summary.roomTypeTotals) {
+          summary.roomTypeTotals[roomType] += net;
+        }
+
+        const key = link.booking_group_id || link.reservation_id || link.id;
+        if (key) {
+          commercialKeys.add(key);
+        }
       });
     }
 
@@ -573,6 +621,36 @@
     return breakdown;
   }
 
+  function buildBoundLinkCard(context, link) {
+    const card = root.document.createElement('article');
+    card.className = 'crm-finance-booked-card crm-finance-booked-card--change';
+
+    const title = root.document.createElement('strong');
+    title.textContent = link.label ? String(link.label) : 'Diferență cazare';
+
+    const meta = root.document.createElement('span');
+    meta.textContent = roomTypeLabel(link.room_type || '');
+
+    const total = root.document.createElement('span');
+    const rawPaid = Number(link.paid_amount);
+    const paidAmount = link.status === 'paid' && Number.isInteger(rawPaid) && rawPaid > 0 ? rawPaid : 0;
+    const refundedAmount = Number(link.refunded_amount || 0);
+    const net = paidAmount - (refundedAmount > 0 ? refundedAmount : 0);
+    total.textContent = formatMDL(context, net);
+
+    const paidAt = root.document.createElement('span');
+    paidAt.textContent = `Achitat: ${formatCreatedAt(link.paid_at)}`;
+
+    const status = root.document.createElement('span');
+    status.className = 'crm-finance-booked-status';
+    status.textContent = refundedAmount > 0
+      ? `online plătit diferență · restituit ${formatMDL(context, refundedAmount)}`
+      : 'online plătit diferență';
+
+    card.append(title, meta, total, paidAt, status);
+    return card;
+  }
+
   function renderBookedDayRows(context, state) {
     const section = qs('[data-finance-booked-day]');
     const list = qs('[data-finance-booked-list]');
@@ -594,10 +672,26 @@
 
     const groups = groupBookedDayRows(normalizeBookedDayRows(state.bookedDayRows));
     const changes = (state.changeRows || []).filter((change) => Number(change.difference_amount || 0) > 0);
+    const boundLinks = (state.linkRows || []).filter((link) => {
+      if (link?.purpose !== 'accommodation_difference' || link?.status !== 'paid') {
+        return false;
+      }
+      if (!link?.paid_at || !isPaidAtInRange(link, state.rangeStart, state.rangeEnd)) {
+        return false;
+      }
+      const paidAmount = Number(link.paid_amount);
+      if (!Number.isInteger(paidAmount) || paidAmount <= 0) {
+        return false;
+      }
+      const refundedAmount = Number(link.refunded_amount || 0);
+      return paidAmount - (refundedAmount > 0 ? refundedAmount : 0) > 0;
+    });
+
+    const totalCount = groups.length + changes.length + boundLinks.length;
     if (count) {
-      count.textContent = String(groups.length + changes.length);
+      count.textContent = String(totalCount);
     }
-    empty.hidden = groups.length + changes.length > 0;
+    empty.hidden = totalCount > 0;
     list.innerHTML = '';
 
     groups.forEach((group) => {
@@ -632,6 +726,10 @@
 
     changes.forEach((change) => {
       list.appendChild(buildChangeCard(context, change));
+    });
+
+    boundLinks.forEach((link) => {
+      list.appendChild(buildBoundLinkCard(context, link));
     });
   }
 
@@ -689,7 +787,8 @@
     meta.textContent = rail === 'MIA' ? 'MIA Plăți Instant' : 'Card bancar';
 
     const total = root.document.createElement('span');
-    const paidAmount = Number(link.paid_amount || 0);
+    const rawPaid = Number(link.paid_amount);
+    const paidAmount = link.status === 'paid' && Number.isInteger(rawPaid) && rawPaid > 0 ? rawPaid : 0;
     const refundedAmount = Number(link.refunded_amount || 0);
     const net = paidAmount - (refundedAmount > 0 ? refundedAmount : 0);
     total.textContent = formatMDL(context, net);
@@ -727,10 +826,16 @@
     }
 
     const links = (state.linkRows || []).filter((link) => {
+      if (link?.purpose === 'accommodation_difference' || link?.status !== 'paid') {
+        return false;
+      }
       if (!link?.paid_at || !isPaidAtInRange(link, state.rangeStart, state.rangeEnd)) {
         return false;
       }
-      const paidAmount = Number(link.paid_amount || 0);
+      const paidAmount = Number(link.paid_amount);
+      if (!Number.isInteger(paidAmount) || paidAmount <= 0) {
+        return false;
+      }
       const refundedAmount = Number(link.refunded_amount || 0);
       return paidAmount - (refundedAmount > 0 ? refundedAmount : 0) > 0;
     });
@@ -796,7 +901,7 @@
   // can now type their own amount for a partial cancellation, so "the cancelled
   // villas' price" is no longer a safe stand-in for the money returned; the real
   // figure wins whenever it exists and the old estimate remains the fallback.
-  function groupCancellationRows(rows, refundedGroupIds, refundedChangesByGroup) {
+  function groupCancellationRows(rows, refundedGroupIds, refundedChangesByGroup, refundedBoundLinksByReservation) {
     // Duck-typed, like changesByGroup below: a Map built in another realm fails
     // instanceof. A plain Set (legacy shape) works too — it just has no amounts.
     const refunded = typeof refundedGroupIds?.has === 'function'
@@ -828,6 +933,9 @@
     // realm, where instanceof Map is false for a perfectly good Map.
     const changesByGroup = typeof refundedChangesByGroup?.get === 'function'
       ? refundedChangesByGroup
+      : new Map();
+    const boundLinksByRes = typeof refundedBoundLinksByReservation?.get === 'function'
+      ? refundedBoundLinksByReservation
       : new Map();
     const groups = new Map();
     const order = [];
@@ -862,22 +970,55 @@
             return { amount, grossAmount: amount, withheldCommission: 0 };
           })
           .filter((quote) => quote.amount > 0);
-        const isRefunded = refunded.has(primary.bookingGroupId);
+
+        const boundLinkQuotes = [];
+        villas.forEach((villa) => {
+          const quotes = (boundLinksByRes.get(villa.id) || [])
+            .map((value) => {
+              if (value && typeof value === 'object') {
+                const amount = Number(value.amount || 0);
+                const withheldCommission = Number(value.withheldCommission || 0);
+                const grossAmount = Number(value.grossAmount || amount + withheldCommission);
+                return { amount, grossAmount, withheldCommission };
+              }
+              const amount = Number(value || 0);
+              return { amount, grossAmount: amount, withheldCommission: 0 };
+            })
+            .filter((quote) => quote.amount > 0);
+          boundLinkQuotes.push(...quotes);
+        });
+
+        const hasGroupRefund = refunded.has(primary.bookingGroupId);
+        const hasBoundRefund = boundLinkQuotes.length > 0;
+        const isRefunded = hasGroupRefund || hasBoundRefund;
         const bookingQuote = refundQuoteFor(primary.bookingGroupId);
         // What came back on the booking payment itself: the recorded refund when
         // we have one (a partial refund returns less than the villas cost), the
-        // stay total otherwise. Add-guests differences are separate transfers and
-        // are never part of that record, so they always add on top.
-        const bookingRefund = isRefunded
+        // stay total otherwise. Add-guests and bound difference links are separate
+        // transfers and are never part of that record, so they always add on top.
+        const bookingRefund = hasGroupRefund
           ? (bookingQuote.amount ?? totalPrice)
           : 0;
-        const bookingGross = isRefunded
+        const bookingGross = hasGroupRefund
           ? (bookingQuote.grossAmount ?? bookingRefund + bookingQuote.withheldCommission)
           : 0;
         const changeAmounts = changeQuotes.map((quote) => quote.amount);
-        const grossAmount = bookingGross + changeQuotes.reduce((sum, quote) => sum + quote.grossAmount, 0);
-        const withheldCommission = bookingQuote.withheldCommission +
-          changeQuotes.reduce((sum, quote) => sum + quote.withheldCommission, 0);
+        const boundLinkAmounts = boundLinkQuotes.map((quote) => quote.amount);
+
+        const changeGross = changeQuotes.reduce((sum, quote) => sum + quote.grossAmount, 0);
+        const changeWithheld = changeQuotes.reduce((sum, quote) => sum + quote.withheldCommission, 0);
+        const boundGross = boundLinkQuotes.reduce((sum, quote) => sum + quote.grossAmount, 0);
+        const boundWithheld = boundLinkQuotes.reduce((sum, quote) => sum + quote.withheldCommission, 0);
+
+        const grossAmount = bookingGross + changeGross + boundGross;
+        const withheldCommission = bookingQuote.withheldCommission + changeWithheld + boundWithheld;
+        const refundedAmount = isRefunded
+          ? roundMoney(
+              bookingRefund +
+                changeAmounts.reduce((sum, amount) => sum + amount, 0) +
+                boundLinkAmounts.reduce((sum, amount) => sum + amount, 0),
+            )
+          : 0;
         return {
           key,
           villas,
@@ -886,12 +1027,11 @@
           // Refunded add-guests differences for the group; the money actually
           // returned is the booking refund plus these transfers.
           changeAmounts,
+          boundLinkAmounts,
           bookingRefund: roundMoney(bookingRefund),
           grossAmount: roundMoney(grossAmount),
           withheldCommission: roundMoney(withheldCommission),
-          refundedAmount: isRefunded
-            ? roundMoney(bookingRefund + changeAmounts.reduce((sum, amount) => sum + amount, 0))
-            : 0,
+          refundedAmount,
           adults: primary.adults,
           kids: primary.kids,
           nights: primary.nights,
@@ -912,6 +1052,7 @@
       normalizeCancellationRows(input?.rows || []),
       input?.refundedGroupIds,
       input?.refundedChangesByGroup,
+      input?.refundedBoundLinksByReservation,
     );
     let refundedCount = 0;
     let refundedTotal = 0;
@@ -919,7 +1060,7 @@
     let withheldCommission = 0;
     // The payout fee is a flat tier charged once per MAIB transfer: the main
     // booking refund is one transfer, and every refunded add-guests difference
-    // is another, so each carries its own fee at its own amount's tier.
+    // or bound difference is another, so each carries its own fee at its own amount's tier.
     let refundFees = 0;
     groups.forEach((group) => {
       if (group.refunded) {
@@ -929,8 +1070,13 @@
         withheldCommission += group.withheldCommission;
         // The fee tier follows the sum actually transferred, not the stay price:
         // a 850 MDL partial refund of a 12,200 MDL booking costs the 20 MDL tier.
-        refundFees += refundTransferFee(group.bookingRefund);
+        if (group.bookingRefund > 0) {
+          refundFees += refundTransferFee(group.bookingRefund);
+        }
         group.changeAmounts.forEach((amount) => {
+          refundFees += refundTransferFee(amount);
+        });
+        (group.boundLinkAmounts || []).forEach((amount) => {
           refundFees += refundTransferFee(amount);
         });
       }
@@ -949,6 +1095,8 @@
       refundedTotal,
       bankFees,
       netCost: roundMoney(bankFees - withheldCommission),
+      reliable: !input?.refundedBoundLinksError,
+      unverified: Boolean(input?.refundedBoundLinksError),
     };
   }
 
@@ -998,10 +1146,16 @@
       rows: state.cancellationRows,
       refundedGroupIds: state.refundedGroupIds,
       refundedChangesByGroup: state.refundedChangesByGroup,
+      refundedBoundLinksByReservation: state.refundedBoundLinksByReservation,
+      refundedBoundLinksError: state.refundedBoundLinksError,
     });
+    const refundedTotalText = state.refundedBoundLinksError
+      ? `${formatMDL(context, summary.refundedTotal)} (neverificat)`
+      : formatMDL(context, summary.refundedTotal);
+
     setText('[data-finance-refund-gross]', formatMDL(context, summary.grossTotal));
     setText('[data-finance-withheld-commission]', formatMDL(context, summary.withheldCommission));
-    setText('[data-finance-refunded-total]', formatMDL(context, summary.refundedTotal));
+    setText('[data-finance-refunded-total]', refundedTotalText);
     setText('[data-finance-bank-fees]', formatMDL(context, summary.bankFees));
     setText('[data-finance-net-cost]', formatMDL(context, summary.netCost));
 
@@ -1018,6 +1172,7 @@
       normalizeCancellationRows(state.cancellationRows),
       state.refundedGroupIds,
       state.refundedChangesByGroup,
+      state.refundedBoundLinksByReservation,
     ).filter((group) => group.refunded);
 
     setText('[data-finance-cancelled-count]', summary.count);
@@ -1251,6 +1406,39 @@
     }
   }
 
+  // Refunded bound links (ADR-107) for the cancelled reservations, as a Map of
+  // reservation_id -> [difference refund quotes]. Scoped strictly by reservation_id
+  // so a surviving villa's difference is never attributed to a cancelled villa.
+  async function fetchRefundedBoundLinksSafe(context, cancellationRows) {
+    const reservationIds = [
+      ...new Set((cancellationRows || []).map((row) => row?.id).filter(Boolean)),
+    ];
+    if (!reservationIds.length || typeof root.EcoVilaSupabase?.fetchRefundedBoundLinkAmounts !== 'function') {
+      return new Map();
+    }
+
+    const rows = await root.EcoVilaSupabase.fetchRefundedBoundLinkAmounts(context.client, {
+      reservationIds,
+    });
+    const byRes = new Map();
+    (rows || []).forEach((row) => {
+      const resId = row?.reservation_id;
+      const amount = Number(row?.refunded_amount || 0);
+      if (!resId || !(amount > 0)) {
+        return;
+      }
+      if (!byRes.has(resId)) {
+        byRes.set(resId, []);
+      }
+      byRes.get(resId).push({
+        amount,
+        grossAmount: amount,
+        withheldCommission: 0,
+      });
+    });
+    return byRes;
+  }
+
   async function loadFinance(context, state) {
     syncControls(context, state);
     const financeOptions = {
@@ -1309,6 +1497,20 @@
       context,
       state.cancellationRows,
     );
+    try {
+      state.refundedBoundLinksByReservation = await fetchRefundedBoundLinksSafe(
+        context,
+        state.cancellationRows,
+      );
+      state.refundedBoundLinksError = null;
+    } catch (error) {
+      state.refundedBoundLinksByReservation = new Map();
+      state.refundedBoundLinksError = error || new Error('Citirea restituirilor diferențelor de cazare a eșuat.');
+      if (typeof context?.setAlert === 'function') {
+        context.setAlert(error?.message || 'Restituirile pentru diferențele de cazare nu au putut fi citite.');
+      }
+      throw error;
+    }
     renderSummary(context, summarizeFinanceRows({
       rows: state.rows,
       changeRows: state.changeRows,
@@ -1433,6 +1635,8 @@
       scheduledRefunds: [],
       refundedGroupIds: new Map(),
       refundedChangesByGroup: new Map(),
+      refundedBoundLinksByReservation: new Map(),
+      refundedBoundLinksError: null,
     };
     activeFinance = { context, state };
 
@@ -1505,6 +1709,7 @@
     ROOM_TYPE_LABELS,
     addDays,
     addMonths,
+    fetchRefundedBoundLinksSafe,
     firstOfMonth,
     groupBookedDayRows,
     groupCancellationRows,

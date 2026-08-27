@@ -276,10 +276,18 @@ describe('EcoVila reservation lookup and refunds', () => {
 
     // ADR-039 relocated the cancellation SMS copy into the shared
     // cancellationConfirmationSms helper; reservation-cancel now calls it.
+    // ADR-107 builds it into a local first so the "difference could not be
+    // verified" sentence can be appended, so assert the helper still produces
+    // the copy that reaches `message:` rather than a single literal call site.
     assert.match(
       cancelFunction,
-      /message:\s*cancellationConfirmationSms\(/,
-      'managed cancellation should send the shared cancellation SMS via cancellationConfirmationSms',
+      /const sms = cancellationConfirmationSms\(/,
+      'managed cancellation should build its SMS with the shared cancellationConfirmationSms helper',
+    );
+    assert.match(
+      cancelFunction,
+      /message:\s*smsMessage/,
+      'the SMS sent must be the one built from cancellationConfirmationSms',
     );
     // ADR-104 split the closing sentence out so a staff cancellation that
     // returned money can name the sum instead; the date-only wording is unchanged.

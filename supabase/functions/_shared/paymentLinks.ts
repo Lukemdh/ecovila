@@ -30,6 +30,7 @@ type RpcClient = SupabaseClient & {
 };
 
 export type PaymentLinkRail = 'mia' | 'card';
+export type PaymentLinkPurpose = 'standalone' | 'accommodation_difference';
 
 export type PaymentLinkRow = {
   id: string;
@@ -37,6 +38,10 @@ export type PaymentLinkRow = {
   currency: string;
   payment_rail: PaymentLinkRail;
   label?: string | null;
+  purpose: PaymentLinkPurpose;
+  reservation_id: string | null;
+  booking_group_id: string | null;
+  room_type: string | null;
   status: 'active' | 'paid' | 'revoked';
   expires_at?: string | null;
   paid_at?: string | null;
@@ -568,4 +573,112 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function table<T = unknown>(client: SupabaseClient, name: string) {
   return client.from(name) as QueryBuilder<T>;
+}
+
+export async function findUnrefundedAccommodationDifferences(
+  client: SupabaseClient,
+  reservationIds: string[],
+): Promise<PaymentLinkRow[]> {
+  if (!reservationIds.length) {
+    return [];
+  }
+
+  const { data, error } = await table<PaymentLinkRow[]>(client, 'payment_links')
+    .select('*')
+    .eq('purpose', 'accommodation_difference')
+    .eq('status', 'paid')
+    .in('reservation_id', reservationIds);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const unverified = (data || []).filter((link) => verifiedPaidAmount(link.paid_amount) === null);
+  if (unverified.length) {
+    throw new Error(
+      `Paid accommodation difference has missing or invalid paid_amount (UNVERIFIED): ${
+        unverified.map((link) => link.id).join(', ')
+      }`,
+    );
+  }
+
+  return (data || []).filter((link) => {
+    const paid = verifiedPaidAmount(link.paid_amount) ?? 0;
+    const refunded = Number(link.refunded_amount || 0);
+    return paid - refunded > 0;
+  });
+}
+
+export function sumUnrefundedDifferenceAmount(
+  links: Array<{
+    amount: number | string;
+    paid_amount?: number | string | null;
+    refunded_amount?: number | string | null;
+  }>,
+): number {
+  return links.reduce((sum, link) => {
+    const paid = verifiedPaidAmount(link.paid_amount) ?? 0;
+    const refunded = Number(link.refunded_amount || 0);
+    return sum + Math.max(0, paid - refunded);
+  }, 0);
+}
+
+export async function alertUnrefundedAccommodationDifferences(
+  input: {
+    bookingGroupId: string;
+    reservationIds: string[];
+    links: Array<{
+      id: string;
+      amount: number | string;
+      paid_amount?: number | string | null;
+      currency?: string | null;
+    }>;
+    totalAmount: number;
+    guestName?: string | null;
+    guestPhone?: string | null;
+  },
+  alertSender: typeof sendStaffAlert = sendStaffAlert,
+) {
+  const linkSummary = input.links
+    .map((link) => {
+      const paid = verifiedPaidAmount(link.paid_amount);
+      return `${link.id} (${paid === null ? 'UNVERIFIED' : paid} ${link.currency || 'MDL'})`;
+    })
+    .join(', ');
+
+  return await alertSender('Diferență cazare de restituit manual la anulare', [
+    'O rezervare cu diferență de cazare achitată prin link a fost anulată.',
+    'Suma din link nu este inclusă în restituirea automată și trebuie restituită manual în portalul MAIB.',
+    `Booking group: ${input.bookingGroupId}`,
+    `Rezervări: ${input.reservationIds.join(', ')}`,
+    `Payment link: ${linkSummary}`,
+    `Sumă de restituit manual: ${input.totalAmount} MDL`,
+    input.guestName ? `Client: ${input.guestName}` : null,
+    input.guestPhone ? `Telefon: ${input.guestPhone}` : null,
+  ]);
+}
+
+export async function alertAccommodationDifferenceVerificationFailure(
+  input: {
+    bookingGroupId: string;
+    reservationIds: string[];
+    guestPhone?: string | null;
+    error: string;
+  },
+  alertSender: typeof sendStaffAlert = sendStaffAlert,
+) {
+  return await alertSender('Verificare eșuată a diferenței de cazare la anulare', [
+    'Rezervarea a fost anulată, dar linkurile pentru diferența de cazare nu au putut fi verificate.',
+    'Restituirea de bază rămâne programată. Verifică manual payment_links și contactează clientul.',
+    `Booking group: ${input.bookingGroupId}`,
+    `Rezervări: ${input.reservationIds.join(', ')}`,
+    input.guestPhone ? `Telefon: ${input.guestPhone}` : null,
+    `Eroare verificare: ${input.error}`,
+  ]);
+}
+
+function verifiedPaidAmount(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const paid = Number(value);
+  return Number.isSafeInteger(paid) && paid > 0 ? paid : null;
 }

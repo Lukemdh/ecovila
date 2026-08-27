@@ -84,6 +84,14 @@ type ChangePricingApi = {
 };
 
 type RoomRelation = { number?: number | string | null; type?: string | null };
+type CurrentRoomTypeRow = { id: string; rooms?: RoomRelation | RoomRelation[] | null };
+
+const MIXED_ACCOMMODATION_TYPE_MESSAGES = {
+  ro: 'Rezervarea include tipuri diferite de cazare. Pentru modificări, contactează recepția.',
+  ru: 'Бронь включает разные типы размещения. Для изменений свяжитесь с администрацией.',
+  en:
+    'This reservation includes different accommodation types. Please contact reception to make changes.',
+};
 
 export type ChangeReservationRow = {
   id: string;
@@ -250,9 +258,16 @@ export async function quoteBookingChange(
     newKidsAges: number[];
   },
 ): Promise<ChangeQuote> {
-  const pricing = getPricing() as unknown as ChangePricingApi;
   const rows = input.reservations;
   const primary = rows[0];
+  const roomTypes = new Set(rows.map(roomTypeOf).filter(Boolean));
+
+  if (roomTypes.size > 1) {
+    const language = normalizeEmailLang(primary?.guest_language);
+    throw new HttpError(409, MIXED_ACCOMMODATION_TYPE_MESSAGES[language]);
+  }
+
+  const pricing = getPricing() as unknown as ChangePricingApi;
   const roomType = roomTypeOf(primary);
   const units = rows.length;
 
@@ -374,6 +389,37 @@ export async function insertChangeRow(
   },
 ): Promise<ReservationChangeRow> {
   const { quote } = input;
+
+  if (input.status === 'pending') {
+    // This optimistic re-read narrows, but cannot fully close, the quote-to-row
+    // window without a shared advisory lock. The accommodation-move RPC's
+    // pending-change check covers the opposite ordering once this insert wins.
+    const { data: currentRows, error: currentRowsError } = await table<CurrentRoomTypeRow[]>(
+      client,
+      'reservations',
+    )
+      .select('id, rooms(type)')
+      .eq('booking_group_id', input.bookingGroupId)
+      .in('id', input.reservationIds);
+
+    if (currentRowsError) throw new Error(currentRowsError.message);
+
+    const expectedIds = new Set(input.reservationIds);
+    const currentTypes = new Set((currentRows || []).map(roomTypeOf).filter(Boolean));
+    const quoteStillMatches = currentRows?.length === expectedIds.size &&
+      currentRows.every((row) => expectedIds.has(row.id) && roomTypeOf(row) === quote.roomType);
+
+    if (!quoteStillMatches) {
+      if (currentTypes.size > 1) {
+        throw new HttpError(409, MIXED_ACCOMMODATION_TYPE_MESSAGES.en);
+      }
+      throw new HttpError(
+        409,
+        'The accommodation changed while this guest change was being prepared. Please start again or contact reception.',
+      );
+    }
+  }
+
   const { data, error } = await table<ReservationChangeRow>(client, 'reservation_changes')
     .insert({
       booking_group_id: input.bookingGroupId,
@@ -930,7 +976,7 @@ export function minutesFromNowIso(minutes: number, now = new Date()) {
   return new Date(now.getTime() + minutes * 60 * 1000).toISOString();
 }
 
-function roomTypeOf(row: ChangeReservationRow): string {
+function roomTypeOf(row: Pick<ChangeReservationRow, 'rooms'>): string {
   const room = Array.isArray(row.rooms) ? row.rooms[0] : row.rooms;
   return String(room?.type || '');
 }

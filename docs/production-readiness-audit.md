@@ -52,6 +52,46 @@ Implemented standalone single-use payment links in the CRM and guest page `plata
   and functions `payment-link-admin`, `payment-link-public` pending deploy; static files pending upload).
 - Test verification: `npm test` → **412 Node + 186 Deno tests pass**.
 
+## 2026-08-27 addendum — accommodation moves + bound differences (ADR-107)
+
+Implemented and adversarially reviewed, but **not deployed**:
+
+- Diana-only cross-type moves: single-villa drag and an exact-villa/free-target picker
+  for multi-villa bookings. Optional integer-MDL difference billing reuses ADR-106;
+  lazy provider minting makes link creation a database insert, so the room move and
+  link commit in one transaction. SMS is per move, off by default, and best-effort after
+  commit.
+- `reservations.total_price` stays the original base. Paid net bound links form the
+  staff-visible effective total and Finance income by their own `paid_at`; guest totals
+  stay base. Daily quotes use the effective total and refuse any repricing write once a
+  booking carries a bound link or the link read is unverified. Concurrency is enforced at
+  the database level: the `prevent_repricing_with_accommodation_difference` DB trigger
+  rejects any UPDATE altering `reservations.total_price` while an accommodation difference
+  exists, making the DB the authoritative enforcement point.
+- Cancellation posture: a database trigger revokes open bound links inside every
+  cancellation transaction. Paid/unrefunded balances are not included in
+  `prepare_full_refund_intent`; the CRM full/partial preflights, localized guest copy,
+  and staff alerts state that staff must refund those link payments manually in MAIB.
+  Money calculations strictly use verified `paid_amount` (missing/invalid `paid_amount`
+  fails closed as UNVERIFIED with pessimistic copy + alert, never falling back to requested
+  `amount`). Bound-link refunds are fetched strictly by cancelled `reservation_id` so
+  legacy ungrouped bookings are not dropped.
+- ADR-106 hardening found here: `mark_payment_link_refunded` is monotonic, preventing a
+  stale CRM session from lowering the recorded cumulative refund, and `payment_links`
+  is added idempotently to `supabase_realtime` so the existing CRM subscriptions work.
+- Move & change concurrency hardening: `move_reservation_accommodation` locks prior links
+  and refuses replacement billing if a provider attempt is live (`creating`/`pending`/captured);
+  `insertChangeRow` optimistically re-reads room types before inserting pending add-guests changes.
+- Review hardening: difference reads no longer fail silently into plausible base-only
+  money figures, cross-booking links cannot enter a Daily quote, partial refunds keep
+  their outstanding warning, move dialog indicates unverified effective price on fetch
+  failure, and copied move-payment URLs come from `ECOVILA_SITE_URL`, not the browser origin.
+- Verification: `npm test` → **426 Node + 202 Deno tests pass**; `deno lint` and
+  `deno fmt --check` pass; asset token is `?v=2026082702`; `dist/tophost/` is regenerated.
+- Rollout remains blocked on order: `20260826120000_payment_links.sql` first, then
+  `20260827120000_payment_link_reservation_binding.sql`, then the seven affected
+  functions, then TopHost. Do not set `ECOVILA_REFUND_COMMISSION_BPS`.
+
 ## Readiness verdict
 
 **Not production-ready yet.** The automated suites are green, and Steps 15-16 fixed the
@@ -60,8 +100,8 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 412 Node + 186 Deno tests pass on 2026-08-27 |
-| Payment integrity | Green | B-23/B-24/B-25 fixed and deployed; ADR-106 standalone links tested locally |
+| Test suite | Green | `npm test` -> 426 Node + 202 Deno tests pass on 2026-08-27 |
+| Payment integrity | Green locally | B-23/B-24/B-25 deployed; ADR-106/107 payment links tested locally but still undeployed |
 | Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
 | Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
@@ -69,6 +109,7 @@ accepted before public launch:
 | Security hardening | Blocked | S-9 and S-10 remain open |
 | Deployment migrations | Blocked | B-11: Maib cron migration assumes `pg_cron`/`cron` exists |
 | CRM daily operations | Green | B-14 fixed: daily lists show only paid, non-cancelled reservations |
+| ADR-107 Daily repricing | Guarded / follow-up bugs open | Bound-link bookings cannot be repriced; B-34/B-35 document the older add-guests/uncollected-income defects |
 | CRM deletion/calendar operations | Green | B-22 fixed: double confirmation, MAIB refund-before-cancel coverage, and scroll-preserving rolling calendar |
 | Production content/assets | Partly ready | Root homepage is now live content; placeholder SVG photos remain fallback public imagery |
 | Privacy/compliance | Blocked | S-12: SMS provider URL-query PII remains open and out of scope for SEO/tracking work |

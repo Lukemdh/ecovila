@@ -19,7 +19,7 @@
   let activeDaily = null;
 
   function qs(selector, scope) {
-    return (scope || root.document).querySelector(selector);
+    return (scope || root.document)?.querySelector?.(selector) || null;
   }
 
   function sortByRoomWithCompletedLast(cards) {
@@ -273,7 +273,16 @@
     const kidsAges = bucketValuesToAges(input.childBuckets);
     const adults = Math.max(0, Number(input.adults || 0));
     const extraDays = normalizeExtraDays(input.extraDays);
-    const existingTotal = groupTotal(group);
+    const groupResIds = new Set(group.map((r) => r.id).filter(Boolean));
+    const rawLinks = input.differenceLinks || input.links || input.paymentLinks || [];
+    const links = rawLinks.filter((l) => l && groupResIds.has(l.reservation_id));
+    const differenceLinksError = input.differenceLinksError || null;
+    const baseTotal = groupTotal(group);
+    const existingTotal = !differenceLinksError && root.EcoVilaCrmCalendar?.effectiveTotal
+      ? root.EcoVilaCrmCalendar.effectiveTotal(group, links)
+      : differenceLinksError
+      ? null
+      : baseTotal;
     const rooms = groupRooms(group);
     const checkOut = addDays(reservation.check_out, extraDays);
     const sidebar = root.EcoVilaCrmSidebar;
@@ -289,11 +298,11 @@
         holidays: input.holidays || [],
         createdOn: reservation.created_at ? String(reservation.created_at).slice(0, 10) : reservation.check_in,
       })
-      : { total: existingTotal };
+      : { total: existingTotal ?? baseTotal };
     const quotedTotal = Math.max(0, Math.round(Number(quote.total || 0)));
-    const balance = quotedTotal - existingTotal;
-    const supplement = Math.max(0, balance);
-    const reimbursement = Math.max(0, -balance);
+    const balance = differenceLinksError ? null : quotedTotal - existingTotal;
+    const supplement = balance === null ? null : Math.max(0, balance);
+    const reimbursement = balance === null ? null : Math.max(0, -balance);
 
     return {
       adults,
@@ -304,6 +313,7 @@
       group,
       kidsAges,
       quotedTotal,
+      reliable: !differenceLinksError,
       reservation,
       reimbursement,
       supplement,
@@ -336,6 +346,32 @@
     const roomLabel = escapeHtml(root.EcoVilaCrmCalendar.roomLabel(reservation));
     const guestName = escapeHtml(root.EcoVilaCrmCalendar.guestName(reservation));
     const phoneLabel = escapeHtml(phone);
+
+    const baseTotal = groupTotal(group);
+    const groupResIds = new Set(group.map((r) => r.id).filter(Boolean));
+    const groupLinks = (state.differenceLinks || []).filter((l) =>
+      l.purpose === 'accommodation_difference' &&
+      groupResIds.has(l.reservation_id)
+    );
+    const calendar = root.EcoVilaCrmCalendar;
+    const effective = calendar?.effectiveTotal
+      ? calendar.effectiveTotal(group, groupLinks)
+      : baseTotal;
+    const paidDiff = effective - baseTotal;
+    const pendingDiff = calendar?.pendingDifference
+      ? calendar.pendingDifference(groupLinks)
+      : 0;
+
+    const achitatText = state.differenceLinksError
+      ? 'Achitat: neverificat'
+      : paidDiff > 0
+      ? `Achitat: ${context.formatMDL(effective)} (${context.formatMDL(baseTotal)} + ${context.formatMDL(paidDiff)} diferență)`
+      : `Achitat: ${context.formatMDL(baseTotal)}`;
+
+    const pendingLine = !state.differenceLinksError && pendingDiff > 0
+      ? `<span class="crm-daily-card__pending-diff">Diferență neachitată: ${context.formatMDL(pendingDiff)}</span>`
+      : '';
+
     card.className = [
       'crm-daily-card',
       `crm-daily-card--${type}`,
@@ -347,7 +383,8 @@
         <strong>${guestName}</strong>
         <span>${phoneLabel}</span>
         <span>${guestSummary(reservation)}</span>
-        <span>Achitat: ${context.formatMDL(groupTotal(group))}</span>
+        <span>${achitatText}</span>
+        ${pendingLine}
         <span class="crm-daily-card__towels">${towelCardLine(reservation, type)}</span>
       </div>
     `;
@@ -514,6 +551,13 @@
       return null;
     }
 
+    const group = groupReservations(state.reservations, editor.reservation);
+    const groupResIds = new Set(group.map((r) => r.id).filter(Boolean));
+    const groupLinks = (state.differenceLinks || []).filter((l) =>
+      l.purpose === 'accommodation_difference' &&
+      groupResIds.has(l.reservation_id)
+    );
+
     const quote = calculateDailySupplement({
       reservations: state.reservations,
       reservation: editor.reservation,
@@ -522,6 +566,8 @@
       extraDays: extraDaysInput?.value || 0,
       pricingTiers: state.pricingTiers,
       holidays: state.holidays,
+      differenceLinks: groupLinks,
+      differenceLinksError: state.differenceLinksError,
     });
     editor.quote = quote;
     if (extraDaysInput && Number(extraDaysInput.value || 0) !== quote.extraDays) {
@@ -535,12 +581,19 @@
         ? 'Disponibilitatea pentru zilele extra se verifică la salvare.'
         : 'Fără zile extra.';
     }
-    if (currentTotal) {
-      currentTotal.textContent = `Achitat: ${context.formatMDL(quote.existingTotal)}`;
+    if (!quote.reliable) {
+      if (currentTotal) {
+        currentTotal.textContent = 'Achitat: neverificat — diferențele de cazare nu au putut fi citite.';
+      }
+      supplement.textContent = 'Calcul indisponibil — nu încasa o diferență până la reîncărcarea datelor.';
+    } else {
+      if (currentTotal) {
+        currentTotal.textContent = `Achitat: ${context.formatMDL(quote.existingTotal)}`;
+      }
+      supplement.textContent = quote.reimbursement > 0
+        ? `De rambursat: ${context.formatMDL(quote.reimbursement)}`
+        : `De încasat suplimentar: ${context.formatMDL(quote.supplement)}`;
     }
-    supplement.textContent = quote.reimbursement > 0
-      ? `De rambursat: ${context.formatMDL(quote.reimbursement)}`
-      : `De încasat suplimentar: ${context.formatMDL(quote.supplement)}`;
     return quote;
   }
 
@@ -556,8 +609,32 @@
 
   async function saveDailyGuestEdit(context, state) {
     const editor = state.editor;
-    const quote = updateDailySupplement(context, state);
-    if (!editor || !quote) {
+    if (!editor) {
+      return;
+    }
+
+    if (state.differenceLinksError || editor.differenceLinksError || editor.reservation?.differenceLinksError) {
+      throw new Error(
+        'Verificarea diferențelor de cazare a eșuat. Recalcularea prețului din Situația zilnică nu este permisă.',
+      );
+    }
+
+    const group = editor.reservation ? groupReservations(state.reservations, editor.reservation) : [];
+    const groupResIds = new Set(group.map((r) => r.id));
+    const hasDifferenceLink = (state.differenceLinks || []).some((l) =>
+      l.purpose === 'accommodation_difference' &&
+      (groupResIds.has(l.reservation_id) || (editor.reservation?.booking_group_id && l.booking_group_id === editor.reservation.booking_group_id))
+    ) || (Array.isArray(editor.differenceLinks) && editor.differenceLinks.length > 0)
+      || (Array.isArray(editor.reservation?.differenceLinks) && editor.reservation.differenceLinks.length > 0);
+
+    if (hasDifferenceLink) {
+      throw new Error(
+        'Rezervarea conține o diferență de cazare emisă prin link de plată. Recalcularea prețului din Situația zilnică nu este permisă.',
+      );
+    }
+
+    const quote = updateDailySupplement(context, state) || editor.quote;
+    if (!quote) {
       return;
     }
 
@@ -720,6 +797,9 @@
   }
 
   function renderSection(context, state, container, reservations, statuses, type) {
+    if (!container) {
+      return;
+    }
     const visibleReservations = filterDailyReservations(reservations, state.dailySearchQuery);
     const cards = visibleReservations.map((reservation) => {
       const status = statusFor(statuses, reservation.id);
@@ -768,11 +848,21 @@
     const checkIns = confirmedReservations.filter((reservation) => reservation.check_in === state.selectedDate);
     const checkOuts = confirmedReservations.filter((reservation) => reservation.check_out === state.selectedDate);
     const ids = [...checkIns, ...checkOuts].map((reservation) => reservation.id);
-    const statuses = await root.EcoVilaSupabase.fetchDailyStatuses(context.client, state.selectedDate, ids);
+    const allResIds = reservations.map((r) => r.id).filter(Boolean);
+    const [statuses, differenceLinksResult] = await Promise.all([
+      root.EcoVilaSupabase.fetchDailyStatuses(context.client, state.selectedDate, ids),
+      allResIds.length && typeof root.EcoVilaSupabase?.fetchReservationDifferenceLinks === 'function'
+        ? root.EcoVilaSupabase.fetchReservationDifferenceLinks(context.client, { reservationIds: allResIds })
+            .then((data) => ({ data: data || [], error: null }))
+            .catch((error) => ({ data: [], error: error || new Error('Fetch failed') }))
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
     state.checkIns = checkIns;
     state.checkOuts = checkOuts;
     state.statuses = statuses;
+    state.differenceLinks = differenceLinksResult.data || [];
+    state.differenceLinksError = differenceLinksResult.error || null;
     renderDailySections(context, state);
   }
 
@@ -800,6 +890,8 @@
       checkIns: [],
       checkOuts: [],
       statuses: [],
+      differenceLinks: [],
+      differenceLinksError: null,
       pricingTiers: [],
       holidays: [],
       editor: null,
@@ -847,6 +939,7 @@
 
   return {
     bucketValuesToAges,
+    buildDailyCard,
     calculateDailySupplement,
     checkDailyExtensionAvailability,
     DAILY_STATUS_TABLE,
@@ -855,6 +948,7 @@
     init,
     kidsAgesToBuckets,
     loadDaily,
+    saveDailyGuestEdit,
     saveDailyStatus,
     showToday,
     sortByRoomWithCompletedLast,

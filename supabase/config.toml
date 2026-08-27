@@ -70,6 +70,9 @@ verify_jwt = true
 [functions.reservation-reschedule]
 verify_jwt = true
 
+[functions.reservation-accommodation-move]
+verify_jwt = true
+
 [functions.reservation-change-create]
 verify_jwt = true
 

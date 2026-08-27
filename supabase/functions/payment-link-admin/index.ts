@@ -24,7 +24,7 @@ import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdm
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_LINK_COLUMNS =
-  'id, amount, currency, payment_rail, label, status, expires_at, paid_at, paid_amount, revoked_at, settled_attempt_id, refunded_at, refunded_amount, refund_note, manual_review, created_at, updated_at';
+  'id, amount, currency, payment_rail, label, purpose, reservation_id, booking_group_id, room_type, status, expires_at, paid_at, paid_amount, revoked_at, settled_attempt_id, refunded_at, refunded_amount, refund_note, manual_review, created_at, updated_at';
 const ATTEMPT_COLUMNS =
   'id, payment_link_id, amount, currency, payment_rail, pay_id, provider_payment_id, status, checkout_url, provider_payload, expires_at, processed_at, manual_review, created_at, updated_at';
 
@@ -256,6 +256,10 @@ function toPublicLink(
     currency: row.currency,
     paymentRail: row.payment_rail,
     label: row.label ?? null,
+    purpose: row.purpose,
+    reservationId: row.reservation_id,
+    bookingGroupId: row.booking_group_id,
+    roomType: row.room_type,
     status: row.status,
     effectiveStatus: effectiveStatusOverride || effectiveStatus(row, lastAttempt, now),
     expiresAt: row.expires_at ?? null,

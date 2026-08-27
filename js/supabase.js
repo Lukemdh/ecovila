@@ -616,6 +616,42 @@
     return unwrapAllSupabaseRows(buildQuery);
   }
 
+  function fetchRefundedBoundLinkAmounts(client, options) {
+    const ids = Array.isArray(options)
+      ? options.filter(Boolean)
+      : Array.isArray(options?.reservationIds)
+      ? options.reservationIds.filter(Boolean)
+      : Array.isArray(options?.bookingGroupIds)
+      ? options.bookingGroupIds.filter(Boolean)
+      : [];
+    if (!ids.length) {
+      return Promise.resolve([]);
+    }
+
+    const buildQuery = () =>
+      client
+        .from('payment_links')
+        .select(
+          [
+            'id',
+            'reservation_id',
+            'booking_group_id',
+            'paid_amount',
+            'refunded_amount',
+            'refund_note',
+            'refunded_at',
+            'status',
+            'purpose',
+          ].join(', '),
+        )
+        .eq('purpose', 'accommodation_difference')
+        .gt('refunded_amount', 0)
+        .in('reservation_id', ids)
+        .order('id', { ascending: true });
+
+    return unwrapAllSupabaseRows(buildQuery);
+  }
+
   async function controlScheduledRefund(client, input) {
     if (!client?.functions?.invoke) {
       throw new Error('Supabase Edge Functions are not available on this client.');
@@ -683,6 +719,38 @@
       // Surface the function's own message (e.g. "no free villa of that type for
       // these dates", or "a villa was just taken — retry") so the edit dialog
       // shows why the move failed instead of a generic status line.
+      const detail = await readInvokeErrorDetail(result.error);
+      if (detail) {
+        const enriched = new Error(detail);
+        enriched.status = result.error.status ?? result.error.context?.status;
+        throw decorateInvokeError(enriched);
+      }
+      throw decorateInvokeError(result.error);
+    }
+
+    return result.data || {};
+  }
+
+  async function moveReservationAccommodation(client, input) {
+    if (!client?.functions?.invoke) {
+      throw new Error('Supabase Edge Functions are not available on this client.');
+    }
+
+    const body = {
+      reservationId: input?.reservationId || '',
+      expectedSourceRoomId: input?.expectedSourceRoomId || '',
+      targetRoomId: input?.targetRoomId || '',
+      notify: input?.notify === true,
+    };
+    if (input?.amount !== undefined && input?.amount !== null && input?.amount !== '') {
+      body.amount = input.amount;
+      body.paymentRail = input?.paymentRail || '';
+      body.expiresInHours = input?.expiresInHours ?? null;
+      body.label = input?.label ?? null;
+    }
+
+    const result = await client.functions.invoke('reservation-accommodation-move', { body });
+    if (result.error) {
       const detail = await readInvokeErrorDetail(result.error);
       if (detail) {
         const enriched = new Error(detail);
@@ -933,6 +1001,10 @@
             'manual_review',
             'created_at',
             'updated_at',
+            'purpose',
+            'reservation_id',
+            'booking_group_id',
+            'room_type',
           ].join(', '),
         )
         .eq('status', 'paid')
@@ -949,6 +1021,42 @@
         .order('paid_at', { ascending: true })
         .order('id', { ascending: true });
     };
+
+    return unwrapAllSupabaseRows(buildQuery);
+  }
+
+  function fetchReservationDifferenceLinks(client, options) {
+    const ids = Array.isArray(options)
+      ? options.filter(Boolean)
+      : Array.isArray(options?.reservationIds)
+      ? options.reservationIds.filter(Boolean)
+      : [];
+    if (!ids.length) {
+      return Promise.resolve([]);
+    }
+
+    const buildQuery = () =>
+      client
+        .from('payment_links')
+        .select(
+          [
+            'id',
+            'amount',
+            'status',
+            'paid_at',
+            'paid_amount',
+            'refunded_amount',
+            'reservation_id',
+            'booking_group_id',
+            'room_type',
+            'purpose',
+            'expires_at',
+            'revoked_at',
+          ].join(', '),
+        )
+        .eq('purpose', 'accommodation_difference')
+        .in('reservation_id', ids)
+        .order('id', { ascending: true });
 
     return unwrapAllSupabaseRows(buildQuery);
   }
@@ -1671,10 +1779,13 @@
     getActiveRefundCommissionBps,
     fetchRefundedGroups,
     fetchRefundedChangeAmounts,
+    fetchRefundedBoundLinkAmounts,
+    fetchReservationDifferenceLinks,
     controlScheduledRefund,
     notifyReservationCancellation,
     partialCancelReservation,
     rescheduleReservation,
+    moveReservationAccommodation,
     createReservationRequest,
     startReservationLookup,
     verifyReservationLookup,

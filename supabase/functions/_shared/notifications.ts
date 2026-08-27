@@ -326,7 +326,7 @@ export function composeExpiredCashCancellation(
 
 export function composeCancellationConfirmation(
   reservation: NotificationReservation,
-  options: { siteUrl?: string } = {},
+  options: { siteUrl?: string; hasManualDifferenceRefund?: boolean } = {},
 ): SmsNotificationMessage {
   const language = reservationLanguage(reservation) as EmailLang;
   const roomCopy = accommodationTypeLabel(reservation, language);
@@ -344,6 +344,7 @@ export function composeCancellationConfirmation(
     checkIn: reservation.check_in,
     checkOut: reservation.check_out,
     siteUrl,
+    hasManualDifferenceRefund: options.hasManualDifferenceRefund,
   });
 
   return {
@@ -353,6 +354,7 @@ export function composeCancellationConfirmation(
         checkIn: reservation.check_in,
         checkOut: reservation.check_out,
         language,
+        hasManualDifferenceRefund: options.hasManualDifferenceRefund,
       }),
     },
     email: {
@@ -962,6 +964,7 @@ export function cancellationConfirmationSms(input: {
   refundStatus?: 'completed' | 'scheduled' | 'processing';
   refundEta?: string | null;
   language: string;
+  hasManualDifferenceRefund?: boolean;
 }) {
   const language = SUPPORTED_LANGUAGES.has(input.language) ? input.language : 'ro';
   const checkIn = formatSmsDate(input.checkIn, language);
@@ -981,7 +984,10 @@ export function cancellationConfirmationSms(input: {
         ? ` Возврат в процессе: ${amount} MDL (комиссия ${fee} MDL).`
         : ` Возвращено: ${amount} MDL (комиссия ${fee} MDL).`
       : ' Надеемся снова увидеть вас!';
-    return `Ваша бронь отменена: ${checkIn} - ${checkOut}.${tail}`;
+    const diffNote = input.hasManualDifferenceRefund
+      ? ' Отдельно оплаченная разница за проживание возвращается отдельно, мы свяжемся с вами.'
+      : '';
+    return `Ваша бронь отменена: ${checkIn} - ${checkOut}.${tail}${diffNote}`;
   }
 
   if (language === 'en') {
@@ -992,7 +998,10 @@ export function cancellationConfirmationSms(input: {
         ? ` Refund in progress: ${amount} MDL (fee ${fee} MDL).`
         : ` Refunded: ${amount} MDL (fee ${fee} MDL).`
       : ' We hope to see you again soon!';
-    return `Your reservation is cancelled: ${checkIn} - ${checkOut}.${tail}`;
+    const diffNote = input.hasManualDifferenceRefund
+      ? ' The separately paid accommodation difference is returned separately and we will contact you.'
+      : '';
+    return `Your reservation is cancelled: ${checkIn} - ${checkOut}.${tail}${diffNote}`;
   }
 
   const tail = refund > 0
@@ -1004,7 +1013,10 @@ export function cancellationConfirmationSms(input: {
       ? ` Restituire in curs: ${amount} MDL (comision ${fee} MDL).`
       : ` Restituit: ${amount} MDL (comision ${fee} MDL).`
     : ' Speram sa ne mai vedem in curand!';
-  return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}.${tail}`;
+  const diffNote = input.hasManualDifferenceRefund
+    ? ' Diferenta de cazare achitata separat se restituie separat si va vom contacta.'
+    : '';
+  return `Rezervarea dvs este anulata: ${checkIn} - ${checkOut}.${tail}${diffNote}`;
 }
 
 function formatSmsRefundEta(value: string) {
@@ -1112,6 +1124,34 @@ export function reservationRescheduleSms(input: {
   }
 
   return `Rezervarea dvs a fost mutata: ${checkIn} (13.00) - ${checkOut} (10.00). Va asteptam la EcoVila!`;
+}
+
+// Staff accommodation-move SMS. The target type comes from the locked rooms
+// row, and its localized label stays consistent with the rest of guest copy.
+// RO is stripped to GSM-7; all three variants fit one SMS segment.
+export function reservationAccommodationMoveSms(input: {
+  language: string;
+  roomType: string;
+}) {
+  const language = normalizeEmailLang(input.language);
+  const roomCopy = accommodationTypeLabel({ room_type: input.roomType }, language);
+
+  if (language === 'ru') {
+    return `Ваша бронь перенесена: ${roomCopy}. Ждём вас в EcoVila!`;
+  }
+
+  if (language === 'en') {
+    return `Your reservation was moved to ${roomCopy}. See you at EcoVila!`;
+  }
+
+  const gsmRoomCopy = roomCopy
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ș/g, 's')
+    .replace(/ț/g, 't')
+    .replace(/Ș/g, 'S')
+    .replace(/Ț/g, 'T');
+  return `Rezervarea dvs a fost mutata la ${gsmRoomCopy}. Va asteptam la EcoVila!`;
 }
 
 function arrivalReminderSms(language: string) {
@@ -1795,6 +1835,16 @@ export function buildConfirmationEmail(args: {
   return { subject: copy.subject, text, html };
 }
 
+export function cancellationDifferenceRefundEmailCopy(lang: EmailLang): string {
+  if (lang === 'ru') {
+    return 'Отдельно оплаченная разница за проживание возвращается отдельно, мы свяжемся с вами.';
+  }
+  if (lang === 'en') {
+    return 'The separately paid accommodation difference is returned separately and we will contact you.';
+  }
+  return 'Diferența de cazare achitată separat se restituie separat și te vom contacta.';
+}
+
 export function buildCancellationEmail(args: {
   lang: EmailLang;
   firstName: string;
@@ -1810,6 +1860,7 @@ export function buildCancellationEmail(args: {
   refundStatus?: 'completed' | 'scheduled' | 'processing';
   refundEta?: string | null;
   siteUrl: string;
+  hasManualDifferenceRefund?: boolean;
 }): { subject: string; text: string; html: string } {
   const copy = CANCEL_COPY[args.lang];
   const refund = Number(args.refundAmount || 0);
@@ -1837,15 +1888,21 @@ export function buildCancellationEmail(args: {
   // rest of your booking stays paid" line, which is false when nothing is left.
   const refundCopy = PARTIAL_CANCEL_COPY[args.lang];
   const stateCopy = cancellationRefundStateCopy(args.lang, refundStatus, args.refundEta);
+  const refundInfoLines = refundLabel ? [...stateCopy.lines] : [];
+  if (args.hasManualDifferenceRefund) {
+    refundInfoLines.push(cancellationDifferenceRefundEmailCopy(args.lang));
+  }
   const refundInfo: EmailInfoCard = {
     title: stateCopy.title,
-    lines: stateCopy.lines,
+    lines: refundInfoLines,
     phoneLead: refundCopy.refundInfo.phoneLead,
   };
   if (refundLabel) {
     rows.push({ label: stateCopy.label, value: refundLabel, total: true });
     rows.push({ label: refundCopy.labels.withheld, value: withheldLabel });
   }
+
+  const showRefundInfo = Boolean(refundLabel || args.hasManualDifferenceRefund);
 
   const html = renderReservationEmail({
     lang: args.lang,
@@ -1859,7 +1916,7 @@ export function buildCancellationEmail(args: {
     intro: copy.intro,
     rows,
     primary: { label: copy.cta, url: rebookUrl },
-    info: refundLabel ? refundInfo : undefined,
+    info: showRefundInfo ? refundInfo : undefined,
     closing: copy.closing,
   });
 
@@ -1878,7 +1935,7 @@ export function buildCancellationEmail(args: {
     ...(refundLabel ? [`${refundCopy.labels.withheld}: ${withheldLabel}`] : []),
     '',
     `${copy.cta}: ${rebookUrl}`,
-    ...(refundLabel
+    ...(showRefundInfo
       ? [
         '',
         refundInfo.title,

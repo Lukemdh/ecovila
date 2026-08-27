@@ -184,6 +184,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
         'send-email',
         'reservation-reschedule',
         'reservation-partial-cancel',
+        'reservation-accommodation-move',
         'payment-link-admin',
       ]
     ) {
@@ -207,6 +208,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'reservation-cancel-notify',
       'reservation-reschedule',
       'reservation-partial-cancel',
+      'reservation-accommodation-move',
       'send-checkin-welcome',
       'payment-link-admin',
       // cron-secret gated

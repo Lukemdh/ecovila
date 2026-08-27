@@ -136,6 +136,36 @@ Deno.test('quoteBookingChange keeps the existing children when only adding new o
   assertEquals(quote.newKidsAges, [2, 5]);
 });
 
+Deno.test('quoteBookingChange refuses mixed accommodation types before pricing reads', async () => {
+  const { quoteBookingChange } = await import('../_shared/reservationChanges.ts');
+  let pricingRead = false;
+  const client = {
+    from() {
+      pricingRead = true;
+      throw new Error('mixed-type guard must run before pricing reads');
+    },
+  };
+
+  await assertRejects(
+    () =>
+      quoteBookingChange(client as never, {
+        reservations: [
+          reservationRow({ rooms: { number: 1, type: 'small' }, guest_language: 'ro' }),
+          reservationRow({
+            id: 'res-2',
+            room_id: 'room-b',
+            rooms: { number: 9, type: 'large' },
+          }),
+        ],
+        newAdults: 3,
+        newKidsAges: [],
+      }),
+    Error,
+    'contactează recepția',
+  );
+  assertEquals(pricingRead, false);
+});
+
 Deno.test('quoteBookingChange rejects a forged oversized adult count before any capacity scan', async () => {
   const { quoteBookingChange } = await import('../_shared/reservationChanges.ts');
   const { HttpError } = await import('../_shared/http.ts');
@@ -327,9 +357,32 @@ Deno.test('applyBookingChange applies the new party exactly once', async () => {
 
 // ── insertChangeRow: concurrent double-submit surfaces as a retryable 409 ────
 
-function insertMockClient(error: { code?: string; message: string } | null) {
+function insertMockClient(
+  error: { code?: string; message: string } | null,
+  currentRooms: Array<{ id: string; rooms: { type: string } }> = [
+    { id: 'res-1', rooms: { type: 'small' } },
+  ],
+) {
   return {
-    from() {
+    from(table: string) {
+      if (table === 'reservations') {
+        const builder = {
+          select() {
+            return builder;
+          },
+          eq() {
+            return builder;
+          },
+          in() {
+            return builder;
+          },
+          then(resolve: (value: unknown) => unknown) {
+            return Promise.resolve({ data: currentRooms, error: null }).then(resolve);
+          },
+        };
+        return builder;
+      }
+
       const builder = {
         insert() {
           return builder;
@@ -382,6 +435,19 @@ Deno.test('insertChangeRow maps the one-open-change unique violation to a 409', 
     () => insertChangeRow(client as never, insertInput()),
     HttpError,
     'already in progress',
+  );
+  assertEquals(error.status, 409);
+});
+
+Deno.test('insertChangeRow refuses a pending stale quote after staff moves the accommodation', async () => {
+  const { insertChangeRow } = await import('../_shared/reservationChanges.ts');
+  const { HttpError } = await import('../_shared/http.ts');
+  const client = insertMockClient(null, [{ id: 'res-1', rooms: { type: 'large' } }]);
+
+  const error = await assertRejects(
+    () => insertChangeRow(client as never, insertInput()),
+    HttpError,
+    'accommodation changed',
   );
   assertEquals(error.status, 409);
 });

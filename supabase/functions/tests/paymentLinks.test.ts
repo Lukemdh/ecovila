@@ -59,6 +59,10 @@ function link(overrides: Partial<PaymentLinkRow> = {}): PaymentLinkRow {
     currency: 'MDL',
     payment_rail: 'card',
     label: 'Avans eveniment',
+    purpose: 'standalone',
+    reservation_id: null,
+    booking_group_id: null,
+    room_type: null,
     status: 'active',
     expires_at: '2026-08-26T13:00:00.000Z',
     paid_at: null,
@@ -1214,6 +1218,10 @@ Deno.test('admin list paginates, keeps revokedAt on paid review rows, and shows 
     links: [
       link({
         id: secondLinkId,
+        purpose: 'accommodation_difference',
+        reservation_id: '44444444-4444-4444-8444-444444444444',
+        booking_group_id: '55555555-5555-4555-8555-555555555555',
+        room_type: 'large',
         status: 'paid',
         paid_at: '2026-08-26T12:05:00.000Z',
         paid_amount: 875,
@@ -1238,6 +1246,10 @@ Deno.test('admin list paginates, keeps revokedAt on paid review rows, and shows 
   assertEquals(result.links.length, 2);
   assertEquals(result.links[0].effectiveStatus, 'review');
   assertEquals(result.links[0].revokedAt, '2026-08-26T12:03:00.000Z');
+  assertEquals(result.links[0].purpose, 'accommodation_difference');
+  assertEquals(result.links[0].reservationId, '44444444-4444-4444-8444-444444444444');
+  assertEquals(result.links[0].bookingGroupId, '55555555-5555-4555-8555-555555555555');
+  assertEquals(result.links[0].roomType, 'large');
   assertEquals(result.links[1].effectiveStatus, 'pending');
   assertEquals(result.nextBefore, null);
 });

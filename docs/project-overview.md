@@ -20,8 +20,9 @@ The product has two surfaces:
 - **Guests** — book accommodation, pay by cash (hold) or card (Maib online), receive
   SMS/email confirmations, self-manage eligible online cancellations via a secure
   token + phone lookup, and pay standalone payment links (`plata.html?p=<uuid>`).
-- **Diana** (role `diana`) — full CRUD staff operator: reservations, pricing, holidays,
-  photos, towels/daily counts, finance reporting, and minting/managing standalone payment links.
+- **Diana** (role `diana`) — full CRUD staff operator: reservations, accommodation
+  moves, pricing, holidays, photos, towels/daily counts, finance reporting, and
+  minting/managing payment links.
 - **Angela** (role `angela`) — read-only staff role (partly implemented; blocked from payment links).
 
 ## Core features and flows
@@ -49,6 +50,12 @@ The product has two surfaces:
   for deposits, events, and off-platform payments, independent of reservations (no booking
   creation, no room inventory changes, no `Purchase` event). Provider sessions (MIA QR or
   hosted card checkout) are minted lazily on "Plătește"; status updates re-read MAIB authoritatively.
+- **Accommodation moves + optional difference links** (CRM): Diana can drag a
+  single-villa calendar card to a free accommodation of another type or choose the
+  exact source/destination in the reservation dialog for multi-villa bookings. The
+  move may carry an optional hand-typed MIA/card difference link and an opt-in guest
+  SMS (off by default). Paid differences remain separate from the immutable booking
+  base and are shown as an effective total in staff views.
 - **Legal** (`politica-confidentialitate.html`, `termeni-conditii.html`): Moldova
   privacy/consumer content, Romanian-only body copy.
 - **CRM** (`admin/dashboard.html`): tabbed dashboard — `dashboard` (reservation
@@ -100,11 +107,18 @@ The product has two surfaces:
   Paid cash reservations remain office-only for reimbursement; paid card cancellation is
   limited by the 7-day / 2-hour public window.
 - **Standalone payment links** (`payment_links`, `payment_link_attempts`): single-use links
-  created by Diana for arbitrary amounts in MDL (MIA or card), keyed by a plain UUID bearer ID
-  in the URL (`?p=<uuid>`). The MAIB provider session is minted lazily on "Plătește". Money
-  captured always wins (late capture after expiry/revoke settles as paid and flags `manual_review`).
-  Offline/portal refunds are recorded (*Marchează ca restituit*) to keep Finance net figures
-  accurate without moving funds.
+- **Payment links** (`payment_links`, `payment_link_attempts`): single-use links keyed
+  by a plain UUID bearer ID in the URL (`?p=<uuid>`). `purpose = 'standalone'` covers
+  arbitrary deposits/events/bills; `purpose = 'accommodation_difference'` binds a
+  typed move difference to the destination room-type snapshot and reservation. The
+  MAIB provider session is minted lazily on "Plătește". Money captured always wins
+  (late capture after expiry/revoke settles as paid and flags `manual_review`).
+  Offline/portal refunds are recorded (*Marchează ca restituit*) to keep Finance net
+  figures accurate without moving funds.
+- **Effective booking total:** `reservations.total_price` remains the original booking
+  base. Staff money views add the net paid accommodation-difference links bound to the
+  booking's live rows; unpaid links remain a separate warning. Guest-facing totals stay
+  at the base, matching paid add-guests differences.
 
 ## External services / dependencies
 
@@ -146,6 +160,7 @@ The product has two surfaces:
                    │   -refund, maib-mia-callback,        │
                    │   payment-link-admin,                │
                    │   payment-link-public,               │
+                   │   reservation-accommodation-move,    │
                    │   send-sms/-email/-reminders,        │
                    │   track-event,                       │
                    │   expire-cash-reservations           │
@@ -179,7 +194,19 @@ mint a provider session (`claim_payment_link_attempt`) → card redirects to MAI
 live QR → MAIB callback (`maib-callback` or `maib-mia-callback`) or client polling triggers
 `settle_payment_link_attempt` RPC → payment confirmed on `plata.html` and reflected in CRM / Finance.
 
-## Status (as of 2026-06-03)
+3. **Accommodation move + difference (ADR-107):** Diana selects one reservation row
+and a free target room in the calendar/dialog → `reservation-accommodation-move`
+derives the booking group, validates the Diana token, and calls
+`move_reservation_accommodation` → PostgreSQL locks the reservation, mutable target room,
+and any prior link, rejects stale/pending-change states or live provider attempts, moves the
+row and optionally inserts an `accommodation_difference` link atomically → Diana copies the
+canonical `ECOVILA_SITE_URL` payment URL; an explicitly checked SMS is attempted after commit.
+Settlement still uses ADR-106 unchanged. Finance treats the bound link like a paid
+`reservation_changes` difference, while cancellation revokes open links by trigger and
+flags settled money for a separate manual portal refund. Repricing while a bound difference exists
+is strictly blocked by database trigger `prevent_repricing_with_accommodation_difference`.
+
+## Status (as of 2026-08-27)
 
 Brief Steps 1–11 are implemented in code (landing, Supabase foundation, booking core,
 booking page, checkout, confirmation/cancellation, Edge Functions, legal pages, CRM,
@@ -198,3 +225,9 @@ or explicitly accepted. CRM stored-XSS hardening and UUID-only confirmation acti
 fixed; the remaining main blockers are public security-definer RPC review, plaintext
 legacy cancellation tokens, server-side child-age validation, the Maib `pg_cron`
 migration assumption, dependency/version posture, and production content/asset readiness.
+
+ADR-106 and ADR-107 are now built, reviewed, and green locally (`npm test`: 426 Node +
+202 Deno; Deno lint/format clean). They remain entirely undeployed. The required order
+is the ADR-106 migration, then the ADR-107 binding migration, then the seven affected
+Edge Functions, then the `?v=2026082702` TopHost bundle; the final upload also carries
+the pending ADR-105 frontend.

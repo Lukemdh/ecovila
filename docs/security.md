@@ -1,6 +1,6 @@
 # Security Posture & Findings — EcoVila
 
-Audit date: 2026-06-01; last updated 2026-06-03. This is a running log; future sessions update statuses and add
+Audit date: 2026-06-01; last updated 2026-08-27. This is a running log; future sessions update statuses and add
 findings. Severities: Critical / High / Medium / Low / Info.
 
 ## Summary table
@@ -222,6 +222,48 @@ as standalone Step 20 in `docs/plan.md`.
   `GET /v2/mia/payments?orderId=` for MIA). Settlement is atomic via `settle_payment_link_attempt`
   (locking link-then-attempt). Captured money always wins: late captures after expiry or revocation
   are recorded as paid and flagged `manual_review` with alert rather than discarded or shown as expired.
+- **Reservation-bound payment-link posture (ADR-107).**
+  Accommodation differences reuse the ADR-106 tables/settlement path, classified by
+  `purpose` and bound to a reservation plus destination room-type snapshot. Diana's
+  `reservation-accommodation-move` function keeps `verify_jwt = true`, awaits
+  `requireStaffRole(['diana'])`, derives the booking group server-side, and invokes the
+  service-role-only `SECURITY INVOKER` move RPC. The RPC locks the reservation and
+  mutable target-room row before moving inventory; its execution is revoked from
+  `public`/`anon`/`authenticated`. Angela receives SELECT only for
+  `purpose = 'accommodation_difference'`, which is required for accurate Daily totals,
+  and still cannot see standalone links or payment attempts.
+- **Replacement billing concurrency lock (ADR-107).**
+  `move_reservation_accommodation` explicitly locks any previous active difference link row
+  (`FOR UPDATE`) and rejects replacement billing if a provider attempt is currently
+  `creating` or `pending` (or settled in flight). This prevents a race where a late capture
+  on a revoked link settles as paid while a new active link is simultaneously paid by the guest.
+- **Database trigger enforces "no repricing with difference" (ADR-107).**
+  A narrowly scoped `SECURITY DEFINER` trigger, `prevent_repricing_with_accommodation_difference`
+  (BEFORE UPDATE OF `total_price` ON `public.reservations`), acts as the authoritative
+  enforcement point rejecting any price modification when an `accommodation_difference` link
+  exists. This eliminates race conditions where a stale Daily tab could pass client-side checks
+  and overwrite the base price.
+- **Optimistic room-type re-read on guest changes (ADR-107).**
+  `insertChangeRow` in `_shared/reservationChanges.ts` re-reads the group's live room types
+  immediately prior to inserting a pending add-guests change row and refuses (409) if the
+  room types moved since quote generation, preventing stale quotes from settling against
+  a different accommodation type.
+- **Cancellation/refund honesty & strict paid_amount validation (ADR-107).**
+  The narrowly scoped `SECURITY DEFINER` trigger has no executable grant and only
+  revokes active difference links when a reservation changes to `cancelled`, inside the
+  writer's transaction. Paid link money is deliberately outside
+  `prepare_full_refund_intent`; outstanding balances are surfaced to staff/guest for a
+  separate portal refund. Money calculations strictly use verified `paid_amount`: a
+  `status='paid'` link with a missing or invalid `paid_amount` fails closed as UNVERIFIED,
+  routed to pessimistic copy plus staff alert, never falling back to requested `amount`.
+  Failed reads are not treated as proof of zero: CRM money displays/preflights become
+  unverified, Finance fails visibly, Daily repricing is refused, and guest cancellation
+  sends pessimistic localized copy plus a staff alert while preserving the already-committed
+  cancellation/base refund.
+- **Recorded link refunds are monotonic (ADR-107 hardening).**
+  `mark_payment_link_refunded` locks the paid link and rejects a cumulative amount below
+  the stored value (equality remains allowed for correcting the note), so a stale CRM
+  session cannot make refunded money reappear as Finance income.
 - **Raw old hosting backups are ignored, not committed.** `Archive.zip` and
   `docs/old php/` stay local-only because the backup contains retired credentials and
   cPanel/mail/SSL artifacts; committed old-content context is limited to the sanitized

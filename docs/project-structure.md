@@ -1,8 +1,8 @@
 # Project Structure — EcoVila
 
 Audit snapshot of the repository (excluding `node_modules`, build artifacts, large
-binaries, and gitignored `.superpowers/` / `.claude/`). Updated after the 2026-06-03
-SEO/AEO and tracking implementation pass.
+binaries, and gitignored `.superpowers/` / `.claude/`). Updated after the 2026-08-27
+ADR-107 accommodation-move implementation.
 
 ## Annotated tree
 
@@ -18,7 +18,7 @@ ecovila/
 ├── confirmare.html             # Celebration-only confirmation: countdown, stay card, room tag, facilities (ADR-027)
 ├── gestionare.html             # Reservation management: cash countdown, extend, online cancel, refund (ADR-027)
 ├── anulare.html                # Token + phone self-service cancellation policy
-├── plata.html                  # Standalone payment link page for deposits/events/bills: ?p=<uuid> (ADR-106)
+├── plata.html                  # Standalone + accommodation-difference payment page: ?p=<uuid> (ADR-106/107)
 ├── politica-confidentialitate.html  # Privacy policy (legal)
 ├── termeni-conditii.html       # Terms & conditions (legal)
 ├── design.md                   # Design language reference (palette, type, components)
@@ -70,12 +70,12 @@ ecovila/
 │   └── js/
 │       ├── crm-app.js          # Orchestrator: wires tabs, requires session, inits modules
 │       ├── crm-auth.js         # Supabase Auth login + role/session gating
-│       ├── crm-calendar.js     # Reservation calendar (rows 1–25)
+│       ├── crm-calendar.js     # Reservation calendar + bound-link effective-total helpers
 │       ├── crm-sidebar.js      # Add/search reservation sidebar
-│       ├── crm-dashboard.js    # Dashboard tab (calendar + pending cash)
-│       ├── crm-finance.js      # Finance reporting tab (incl. payment-link breakdown)
+│       ├── crm-dashboard.js    # Calendar, pending cash, move/difference dialog, cancellation preflight
+│       ├── crm-finance.js      # Finance reporting (standalone vs bound-link accounting)
 │       ├── crm-payment-links.js# Linkuri de plată tab: mint, list, revoke, record refund (ADR-106)
-│       ├── crm-daily.js        # Daily reception/operations tab
+│       ├── crm-daily.js        # Reception totals + guarded repricing for bound differences
 │       ├── crm-towels.js       # Towel/daily guest counts tab
 │       ├── crm-photos.js       # Photo draft/publish to public galleries
 │       └── crm-pricing.js      # Pricing tiers + holidays editor
@@ -87,19 +87,20 @@ ecovila/
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260826_payment_links)
+│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260827 link binding)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
-│       ├── _shared/            # cors, env, http, maib, notifications, paymentLinks (ADR-106),
+│       ├── _shared/            # cors, env, http, maib, notifications, paymentLinks (ADR-106/107),
 │       │                       #   pricing (copy of js/pricing.js), pricingGuard, providers,
 │       │                       #   reminders, reservationManage, reservations, supabaseAdmin, tracking
 │       ├── create-reservation/, confirm-reservation-payment/
 │       ├── expire-cash-reservations/, send-reminders/, send-sms/, send-email/
 │       ├── maib-create-payment/, maib-callback/, maib-refund/, maib-mia-callback/, track-event/
-│       ├── payment-link-admin/, payment-link-public/ (ADR-106)
+│       ├── payment-link-admin/, payment-link-public/ (ADR-106/107)
+│       ├── reservation-accommodation-move/ # Diana-only atomic move + optional bound link
 │       ├── reservation-lookup-start/, reservation-lookup-verify/
 │       ├── reservation-manage-details/, reservation-extend-cash/, reservation-cancel/
-│       └── tests/              # Deno tests (cors, http, maib, paymentLinks, pricingGuard, reservation-manage, reservations, tracking)
+│       └── tests/              # Deno tests incl. move RPC mapping/SMS and guest-cancellation honesty
 │
 └── docs/                       # Documentation only
     ├── AGENTS.md               # Standing agent rules (this audit)
@@ -127,7 +128,7 @@ ecovila/
 | `confirmare.html` + `js/confirmare.js` | Token-backed celebration page: confirmed-stay hero, check-in countdown, assigned room, ICS download, included facilities; polls card payments until the Maib callback settles them. |
 | `gestionare.html` + `js/gestionare.js` | Token-backed management page: cash timer, extend, pending-cash cancellation, online cancellation eligibility, refund display. |
 | `anulare.html` + `js/anulare.js` | Token + phone self-service cancellation with 7-day / 2-hour and cash-office rules. |
-| `plata.html` + `js/plata.js` | Standalone payment link UI and controller: status polling, MIA QR rendering, card checkout redirect. |
+| `plata.html` + `js/plata.js` | Payment-link UI and controller shared by standalone and accommodation-difference links: status polling, MIA QR rendering, card checkout redirect. |
 | `js/pricing.js` | Pure pricing/billing/date engine. Shared by frontend + CRM + Node tests. |
 | `js/calendar.js` | Shared calendar/date logic (booking page + CRM calendar). |
 | `js/supabase.js` | All DB reads/writes and Edge Function calls from the browser, including staff Maib refund and payment link calls. |
@@ -137,13 +138,14 @@ ecovila/
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
 | `admin/js/crm-payment-links.js` | Standalone payment links CRM module: creation form (MIA/card, expiry, label), recent links list, copy/open URL, revoke, record portal refund. |
-| `admin/js/crm-*.js` | One module per CRM concern (calendar, sidebar, dashboard, finance, payment-links, daily, towels, photos, pricing, auth). The dashboard module owns the rolling scroll calendar, double-confirm reservation deletion, and staff MAIB refund-before-cancel path; the finance module owns revenue summaries plus the one-day `Încasări` booked-villas detail list and payment-link breakdowns. |
-| `supabase/functions/_shared/paymentLinks.ts` | Standalone payment links backend logic: status mapping, provider session minting, attempt claims and settlements, MAIB API integration (`getMaibCheckout`, `cancelMaibCheckout`). |
+| `admin/js/crm-*.js` | One module per CRM concern. The dashboard owns the rolling calendar, single-card drag and multi-villa move picker, optional difference-link dialog (with unverified total indicator on read failures), cancellation preflight, and group reloads; Finance partitions standalone and bound links; Daily shows effective totals and refuses unsafe repricing (enforced by DB trigger). |
+| `supabase/functions/_shared/paymentLinks.ts` | Payment-link backend logic: status mapping, provider session minting, attempt claims/settlements, MAIB API integration, and outstanding accommodation-difference refund lookup/alerts based strictly on verified `paid_amount`. |
 | `supabase/functions/_shared/` | Cross-function helpers: CORS, env, HTTP/auth, Maib, notifications, paymentLinks, providers, reminder scheduling (`reminders.ts`), reservation logic, server-side pricing guard (`pricingGuard.ts` + `pricing.js`, a byte-identical copy of `js/pricing.js`), admin client. |
 | `supabase/functions/payment-link-admin/` | Diana-only staff Edge Function for minting, listing, and revoking payment links, and recording portal refunds. |
 | `supabase/functions/payment-link-public/` | Public rate-limited Edge Function for reading link status and lazily minting MAIB checkout / MIA QR payment attempts. |
+| `supabase/functions/reservation-accommodation-move/` | Diana-only Edge Function for validating one reservation move, invoking the atomic move/link RPC, returning the canonical payment URL, and sending the opt-in SMS best-effort. |
 | `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
-| `supabase/migrations/` | DB schema evolution; apply in filename order (incl. `20260826120000_payment_links.sql`). |
+| `supabase/migrations/` | DB schema evolution; apply in filename order. ADR-107's `20260827120000_payment_link_reservation_binding.sql` requires `20260826120000_payment_links.sql` first. |
 | `supabase/config.toml` | Declares which functions require a verified JWT. |
 | `tests/*.test.mjs` | Node contract/behavior tests (require browser JS via CommonJS shim). |
 | `supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |
@@ -176,10 +178,16 @@ file. HTML pages load scripts in dependency order via `<script>` tags (supabase-
 5. Payment link mutations call `payment-link-admin` (Diana-only; mint, revoke, record refund) or `payment-link-public`
    (start payment attempt); provider callbacks (`maib-callback`, `maib-mia-callback`) and client polling invoke
    service-role RPCs (`claim_payment_link_attempt`, `settle_payment_link_attempt`, `revoke_payment_link`, `mark_payment_link_refunded`).
-6. Consent-gated conversion tracking stores a shared event ID and browser match
+6. An accommodation move calls `reservation-accommodation-move`; the service-role-only
+   `move_reservation_accommodation` RPC locks source/target state, locks previous active
+   links to prevent replacement billing while provider attempts are live, moves the reservation,
+   revokes any stale open bound link, and optionally inserts the new difference link in
+   one transaction. The link's provider session remains lazy under step 5. Repricing while a
+   difference exists is rejected by database trigger `prevent_repricing_with_accommodation_difference`.
+7. Consent-gated conversion tracking stores a shared event ID and browser match
    metadata on reservation rows; `maib-callback` and `confirm-reservation-payment` emit
    server-side `Purchase` through `_shared/tracking.ts`. (Payment links emit no tracking events.)
-7. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
+8. CRM pages additionally authenticate via Supabase Auth (`crm-auth.js`) and gate UI by
    role (`diana` full CRUD, `angela` read-only).
 
 ## Inferred / uncertain items

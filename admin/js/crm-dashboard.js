@@ -487,9 +487,68 @@
     return colorByGroup;
   }
 
+  function bookingGroupRows(reservation) {
+    const rows = activeState?.reservations || [];
+    const groupId = reservation?.booking_group_id;
+    const grouped = groupId
+      ? rows.filter((row) => row.booking_group_id === groupId)
+      : rows.filter((row) => row.id === reservation?.id);
+    return grouped.length ? grouped : (reservation ? [reservation] : []);
+  }
+
+  function liveBookingRows(reservation) {
+    const grouped = bookingGroupRows(reservation);
+    const live = grouped.filter((row) => !root.EcoVilaCrmCalendar.isCancelled(row));
+    return live.length ? live : (reservation ? [reservation] : []);
+  }
+
+  function differenceLinksForRows(rows, links, includeWholeGroup = true) {
+    const reservations = Array.isArray(rows) ? rows : [];
+    const ids = new Set(reservations.map((row) => row.id).filter(Boolean));
+    const groupIds = includeWholeGroup
+      ? new Set(reservations.map((row) => row.booking_group_id).filter(Boolean))
+      : new Set();
+    return (links || []).filter((link) =>
+      link?.purpose === 'accommodation_difference' &&
+      (ids.has(link.reservation_id) || (link.booking_group_id && groupIds.has(link.booking_group_id))));
+  }
+
+  function bookingMoney(reservation) {
+    const allRows = bookingGroupRows(reservation);
+    const rows = liveBookingRows(reservation);
+    const links = differenceLinksForRows(allRows, activeState?.differenceLinks || []);
+    const base = rows.reduce((sum, row) => sum + Number(row.total_price || 0), 0);
+    const effective = root.EcoVilaCrmCalendar.effectiveTotal(allRows, links);
+    const pending = root.EcoVilaCrmCalendar.pendingDifference(links);
+    return {
+      base,
+      effective,
+      links,
+      paidDifference: Math.max(0, effective - base),
+      pending,
+      reliable: !activeState?.differenceLinksError,
+      rows,
+    };
+  }
+
+  function moveRoomLabel(room) {
+    return root.EcoVilaCrmCalendar.roomLabel({
+      room_number: room?.number,
+      room_type: room?.type,
+    });
+  }
+
   function reservationCard(context, block, groupColorClass) {
     const reservation = block.primary;
-    const total = block.reservations.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+    const blockLinks = differenceLinksForRows(
+      block.reservations,
+      activeState?.differenceLinks || [],
+      false,
+    );
+    const baseTotal = block.reservations.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+    const total = root.EcoVilaCrmCalendar.effectiveTotal(block.reservations, blockLinks);
+    const paidDifference = Math.max(0, total - baseTotal);
+    const pendingDifference = root.EcoVilaCrmCalendar.pendingDifference(blockLinks);
     const totalLabel = context.formatMDL(total);
     const phone = escapeHtml(root.EcoVilaCrmCalendar.formatCalendarPhone(reservation.guest_phone));
     const expiresAt = escapeHtml(reservation.cash_expires_at || '');
@@ -514,8 +573,14 @@
     card.dataset.roomIds = block.roomIds.join(',');
     card.dataset.roomExplicitlySelected = String(Boolean(reservation.room_explicitly_selected));
     const isHold = root.EcoVilaCrmCalendar.isTemporaryHold(reservation);
+    const paidDifferenceTitle = paidDifference > 0
+      ? `Include ${context.formatMDL(paidDifference)} diferență de cazare achitată.`
+      : '';
     card.innerHTML = `
       <strong>${escapeHtml(totalLabel)}</strong>
+      ${paidDifference > 0 ? `<span class="crm-difference-marker" title="${escapeHtml(paidDifferenceTitle)}">+${escapeHtml(context.formatMDL(paidDifference))} diferență</span>` : ''}
+      ${pendingDifference > 0 ? `<span class="crm-difference-marker crm-difference-marker--pending" title="Diferență de cazare neachitată">Neachitat: ${escapeHtml(context.formatMDL(pendingDifference))}</span>` : ''}
+      ${activeState?.differenceLinksError ? '<span class="crm-difference-marker crm-difference-marker--pending" title="Diferențele de cazare nu au putut fi citite">Total neverificat</span>' : ''}
       <span>${guestSummary(reservation)}</span>
       <span class="crm-reservation-card__phone">${phone}</span>
       ${isHold ? `<span data-hold-countdown data-expires-at="${expiresAt}">${formatHoldCountdown(reservation.cash_expires_at)}</span>` : ''}
@@ -587,6 +652,7 @@
     const blocks = root.EcoVilaCrmCalendar.buildReservationBlocks(state.reservations, state.rooms, dates, {
       showCancelled: qs('[data-show-cancelled]')?.checked,
     });
+    state.reservationBlocks = blocks;
     const groupColors = assignGroupColors(blocks);
     blocks.forEach((block) => {
       const colorIndex = groupColors.get(block.bookingGroupId);
@@ -617,29 +683,33 @@
       return;
     }
 
-    // A multi-villa booking renders one draggable card per villa but the drag
-    // payload only carries that card's row, so a drop would silently split the
-    // group across rooms. Those bookings are moved from the edit dialog instead.
-    const groupSize = state.reservations.filter((item) => {
-      return item.booking_group_id === reservation.booking_group_id && !root.EcoVilaCrmCalendar.isCancelled(item);
-    }).length;
-    if (groupSize > 1) {
-      context.setAlert('Rezervările cu mai multe vile se mută din dialogul de editare.');
+    const block = (state.reservationBlocks || []).find((item) => item.primary?.id === reservation.id);
+    const cardHasOneAccommodation = block?.reservations.length === 1;
+    // A contiguous card may span several accommodations while its drag payload
+    // names only the primary reservation row. Moving that row would silently
+    // split an ambiguous card, so choose the exact accommodation in the editor.
+    if (!cardHasOneAccommodation) {
+      context.setAlert('Cardul conține mai multe cazări. Mută una dintre ele din dialogul de editare.');
       return;
     }
 
-    // Dropping on a row of another villa type would change what the guest booked
-    // without any repricing — block it instead of applying it silently.
     const sourceRoom = state.rooms.find((room) => room.id === reservation.room_id);
     const targetRoom = state.rooms.find((room) => room.id === cell.dataset.roomId);
+    const targetReservation = state.reservations.find((item) => {
+      return item.id !== reservation.id &&
+        item.room_id === cell.dataset.roomId &&
+        !root.EcoVilaCrmCalendar.isCancelled(item) &&
+        item.check_in < reservation.check_out && reservation.check_in < item.check_out;
+    });
+
     if (sourceRoom && targetRoom && sourceRoom.type !== targetRoom.type) {
-      context.setAlert('Nu poți muta rezervarea pe alt tip de cazare — prețul nu se recalculează automat.');
+      if (targetReservation) {
+        context.setAlert('Cazarea de alt tip este ocupată în acest sejur. Alege o cazare liberă.');
+        return;
+      }
+      openMoveDialog(reservation, targetRoom);
       return;
     }
-
-    const targetReservation = state.reservations.find((item) => {
-      return item.id !== reservation.id && item.room_id === cell.dataset.roomId && root.EcoVilaCrmCalendar.overlapsDate(item, cell.dataset.date);
-    });
 
     if (targetReservation && root.EcoVilaCrmCalendar.requiresSwapConfirmation(reservation, targetReservation)) {
       const dialog = qs('[data-swap-dialog]');
@@ -736,13 +806,7 @@
         }
         : null;
     }
-    // Grouped (multi-villa) bookings: show the booking-group total to match the
-    // calendar card. Falls back to the single reservation price when no group
-    // total is supplied (e.g. the dialog opened outside the calendar grid).
-    const totalPrice = Number.isFinite(options.groupTotal)
-      ? options.groupTotal
-      : Number(reservation.total_price || 0);
-    qs('[data-edit-total]', dialog).textContent = `Preț total: ${root.EcoVilaCrmApp.formatMDL(totalPrice)}`;
+    updateReservationDifferenceViews(dialog, reservation, options);
     const sendConfirmation = qs('[data-send-payment-confirmation]', dialog);
     if (sendConfirmation) {
       const canSendConfirmation = !readOnly && reservation.payment_type === 'cash' && reservation.payment_status === 'paid';
@@ -778,7 +842,9 @@
     }
 
     setupPartialCancel(dialog, reservation, readOnly, isHold);
+    setupMoveSection(dialog, reservation, readOnly, isHold);
     refreshRefundCommissionRate(activeState?.context, dialog, readOnly);
+    const differenceLinksPromise = loadBookingDifferenceLinks(activeState?.context, reservation, dialog, options);
 
     const editError = qs('[data-edit-error]', dialog);
     if (editError) {
@@ -790,6 +856,120 @@
       editorForm.onsubmit = (event) => handleReservationEditSubmit(event, reservation, dialog, readOnly);
     }
     dialog.showModal?.();
+    return differenceLinksPromise;
+  }
+
+  function updateDeleteDifferenceWarning(dialog, reservation) {
+    const warning = qs('[data-delete-difference-warning]', dialog);
+    if (!warning) return;
+    const money = bookingMoney(reservation);
+    if (!money.reliable) {
+      warning.hidden = false;
+      warning.textContent =
+        'Atenție: diferențele de cazare nu au putut fi verificate — pot exista sume achitate prin link de plată care se restituie separat, din portalul MAIB.';
+      return;
+    }
+    if (money.paidDifference > 0) {
+      const formatMDL = activeState?.context?.formatMDL || root.EcoVilaCrmApp?.formatMDL || root.EcoVilaPricing?.formatMDL || ((amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`);
+      warning.hidden = false;
+      warning.textContent =
+        `Atenție: ${formatMDL(money.paidDifference)} achitați prin link de plată se restituie separat, din portalul MAIB.`;
+      return;
+    }
+    warning.hidden = true;
+    warning.textContent = '';
+  }
+
+  function updateReservationDifferenceViews(dialog, reservation, options = {}) {
+    const money = bookingMoney(reservation);
+    const formatMDL = activeState?.context?.formatMDL || root.EcoVilaCrmApp?.formatMDL || root.EcoVilaPricing?.formatMDL || ((amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`);
+    // Tests and out-of-calendar callers can still supply a group total without
+    // dashboard state. In the live dashboard the loaded group rows and bound
+    // links are always authoritative; a card block's subtotal is never reused
+    // as the whole booking's total.
+    const hasLoadedRows = Array.isArray(activeState?.reservations) && activeState.reservations.length > 0;
+    const fallbackTotal = Number.isFinite(options.groupTotal)
+      ? options.groupTotal
+      : Number(reservation.total_price || 0);
+    const totalEl = qs('[data-edit-total]', dialog);
+    if (totalEl) {
+      totalEl.textContent = hasLoadedRows
+        ? money.reliable
+          ? `Preț efectiv: ${formatMDL(money.effective)}`
+          : `Preț efectiv neverificat: ${formatMDL(money.base)}`
+        : `Preț total: ${formatMDL(fallbackTotal)}`;
+    }
+    const totalBreakdown = qs('[data-edit-total-breakdown]', dialog);
+    if (totalBreakdown) {
+      totalBreakdown.textContent = money.paidDifference > 0
+        ? `Preț rezervare: ${formatMDL(money.base)} + diferență achitată: ${formatMDL(money.paidDifference)}`
+        : `Preț rezervare: ${formatMDL(money.base)}`;
+    }
+    const pendingDifference = qs('[data-edit-pending-difference]', dialog);
+    if (pendingDifference) {
+      pendingDifference.hidden = money.reliable && money.pending <= 0;
+      pendingDifference.textContent = !money.reliable
+        ? 'Diferențele de cazare nu au putut fi verificate.'
+        : money.pending > 0
+        ? `Diferență neachitată: ${formatMDL(money.pending)}`
+        : '';
+    }
+
+    updateDeleteDifferenceWarning(dialog, reservation);
+
+    const partialSection = qs('[data-partial-cancel]', dialog);
+    if (partialSection && !partialSection.hidden) {
+      const candidates = partialCancelCandidates(reservation);
+      const paidOnline = candidates.some((row) =>
+        row.payment_type === 'card' && row.payment_status === 'paid');
+      const paidTotal = partialCancelGroup(reservation).reduce((sum, row) => {
+        return row.payment_status === 'paid' || row.cancelled_at
+          ? sum + Number(row.total_price || 0)
+          : sum;
+      }, 0);
+      const refundOverride = qs('[data-refund-full-override]', dialog);
+      refreshPartialCancel(partialSection, {
+        candidates,
+        paidOnline,
+        paidTotal,
+        refundOverride,
+      });
+    }
+  }
+
+  function loadBookingDifferenceLinks(context, reservation, dialog, options) {
+    if (
+      !context?.client ||
+      typeof root.EcoVilaSupabase?.fetchReservationDifferenceLinks !== 'function'
+    ) {
+      return Promise.resolve(null);
+    }
+
+    const groupRows = bookingGroupRows(reservation);
+    const reservationIds = groupRows.map((r) => r.id).filter(Boolean);
+    if (!reservationIds.length) {
+      return Promise.resolve(null);
+    }
+
+    return root.EcoVilaSupabase.fetchReservationDifferenceLinks(context.client, { reservationIds })
+      .then((fetchedLinks) => {
+        const fetchedSet = new Set(reservationIds);
+        const otherLinks = (activeState?.differenceLinks || []).filter(
+          (link) => !fetchedSet.has(link.reservation_id)
+        );
+        if (activeState) {
+          activeState.differenceLinks = [...otherLinks, ...(fetchedLinks || [])];
+          activeState.differenceLinksError = null;
+        }
+        updateReservationDifferenceViews(dialog, reservation, options);
+        return fetchedLinks;
+      })
+      .catch((error) => {
+        if (activeState) {
+          activeState.differenceLinksError = error || new Error('Citirea diferențelor de cazare a eșuat.');
+        }
+        updateReservationDifferenceViews(dialog, reservation, options);
+      });
   }
 
   function refreshRefundCommissionRate(context, dialog, readOnly) {
@@ -1075,6 +1255,32 @@
       }
     }
 
+    const diffWarning = qs('[data-partial-difference-warning]', section);
+    if (diffWarning) {
+      const reliable = !activeState?.differenceLinksError;
+      if (!reliable) {
+        diffWarning.hidden = false;
+        diffWarning.textContent =
+          'Atenție: diferențele de cazare nu au putut fi verificate — pot exista sume achitate prin link de plată care se restituie separat, din portalul MAIB.';
+      } else {
+        const selectedIds = new Set(selected.map((row) => row.id));
+        const selectedLinks = (activeState?.differenceLinks || []).filter((link) =>
+          link?.purpose === 'accommodation_difference' && selectedIds.has(link.reservation_id)
+        );
+        const selectedPaidDiff = selectedLinks.reduce((sum, link) => {
+          return sum + (root.EcoVilaCrmCalendar?.boundLinkNet ? root.EcoVilaCrmCalendar.boundLinkNet(link) : 0);
+        }, 0);
+        if (selectedPaidDiff > 0) {
+          diffWarning.hidden = false;
+          diffWarning.textContent =
+            `Atenție: ${formatMDL(selectedPaidDiff)} achitați prin link de plată se restituie separat, din portalul MAIB.`;
+        } else {
+          diffWarning.hidden = true;
+          diffWarning.textContent = '';
+        }
+      }
+    }
+
     if (submit) {
       const confirmed = String(confirmField?.value || '').trim().toLowerCase() === PARTIAL_CONFIRM_WORD;
       submit.disabled = !selected.length || !confirmed || Number.isNaN(amount);
@@ -1159,6 +1365,398 @@
     }
 
     return parts.join(' ');
+  }
+
+  function moveTargetsFor(reservation) {
+    return (activeState?.rooms || []).filter((room) => {
+      if (!room?.id || room.id === reservation.room_id || room.is_active === false) {
+        return false;
+      }
+      return !(activeState?.reservations || []).some((row) =>
+        row.id !== reservation.id &&
+        row.room_id === room.id &&
+        !root.EcoVilaCrmCalendar.isCancelled(row) &&
+        row.check_in < reservation.check_out && reservation.check_in < row.check_out);
+    });
+  }
+
+  function setupMoveSection(dialog, reservation, readOnly, isHold) {
+    const section = qs('[data-move-accommodation]', dialog);
+    if (!section) return;
+
+    const candidates = partialCancelCandidates(reservation);
+    const available = !readOnly && !isHold && candidates.length > 0 &&
+      typeof root.EcoVilaSupabase?.moveReservationAccommodation === 'function';
+    section.hidden = !available;
+    const openButton = qs('[data-move-open]', section);
+    if (!available) {
+      if (openButton) openButton.onclick = null;
+      return;
+    }
+
+    const body = qs('[data-move-body]', section);
+    const toggle = qs('[data-move-toggle]', section);
+    const sourceSelect = qs('[data-move-source]', section);
+    const targetSelect = qs('[data-move-target]', section);
+    const status = qs('[data-move-picker-status]', section);
+    if (body) body.hidden = true;
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+
+    if (sourceSelect) {
+      sourceSelect.innerHTML = '';
+      candidates.forEach((row) => {
+        const option = root.document.createElement('option');
+        option.value = row.id;
+        option.textContent = root.EcoVilaCrmCalendar.roomLabel(row);
+        sourceSelect.appendChild(option);
+      });
+      sourceSelect.value = candidates.some((row) => row.id === reservation.id)
+        ? reservation.id
+        : candidates[0].id;
+    }
+
+    const refreshTargets = () => {
+      const selected = candidates.find((row) => row.id === sourceSelect?.value) || candidates[0];
+      const targets = selected ? moveTargetsFor(selected) : [];
+      if (targetSelect) {
+        targetSelect.innerHTML = '';
+        targets.forEach((room) => {
+          const option = root.document.createElement('option');
+          option.value = room.id;
+          option.textContent = moveRoomLabel(room);
+          targetSelect.appendChild(option);
+        });
+        targetSelect.disabled = targets.length === 0;
+      }
+      if (status) {
+        status.textContent = targets.length
+          ? `${targets.length} ${targets.length === 1 ? 'cazare liberă' : 'cazări libere'} pentru întregul sejur.`
+          : 'Nu există nicio altă cazare liberă pentru întregul sejur.';
+      }
+      if (openButton) openButton.disabled = targets.length === 0;
+    };
+    refreshTargets();
+
+    if (toggle) {
+      toggle.onclick = () => {
+        const open = Boolean(body?.hidden);
+        if (body) body.hidden = !open;
+        toggle.setAttribute('aria-expanded', String(open));
+      };
+    }
+    if (sourceSelect) sourceSelect.onchange = refreshTargets;
+    if (openButton) {
+      openButton.onclick = () => {
+        const selected = candidates.find((row) => row.id === sourceSelect?.value);
+        const target = (activeState?.rooms || []).find((room) => room.id === targetSelect?.value);
+        if (!selected || !target) return;
+        dialog.close?.('move');
+        openMoveDialog(selected, target);
+      };
+    }
+  }
+
+  function moveTypeLabel(type) {
+    return ({
+      small: 'căsuță mică',
+      large: 'căsuță mare',
+      hotel: 'cameră în hotel',
+    })[type] || 'cazare';
+  }
+
+  function isMoveDowngrade(sourceRoom, targetRoom) {
+    const roomTypes = root.EcoVilaPricing?.ROOM_TYPES || {};
+    const sourceCapacity = Number(roomTypes[sourceRoom?.type]?.maxAdults || 0);
+    const targetCapacity = Number(roomTypes[targetRoom?.type]?.maxAdults || 0);
+    return sourceCapacity > 0 && targetCapacity > 0 && targetCapacity < sourceCapacity;
+  }
+
+  function moveAmount(field) {
+    if (!field || field.disabled) return null;
+    if (field.validity?.badInput) return NaN;
+    const raw = String(field.value || '').trim();
+    if (!raw) return null;
+    const amount = Number(raw);
+    return Number.isInteger(amount) && amount >= 1 && amount <= 1000000 ? amount : NaN;
+  }
+
+  function showMoveError(dialog, message) {
+    const field = qs('[data-move-error]', dialog);
+    if (!field) return;
+    field.textContent = message || '';
+    field.hidden = !message;
+  }
+
+  function refreshMoveBilling(dialog) {
+    const moveContext = dialog?._ecoVilaMove;
+    if (!moveContext) return;
+    const amountField = qs('[data-move-amount]', dialog);
+    const withoutButton = qs('[data-move-without-difference]', dialog);
+    const withButton = qs('[data-move-with-link]', dialog);
+    const amount = moveAmount(amountField);
+    const hasAmount = Number.isInteger(amount) && amount > 0;
+    const invalid = Number.isNaN(amount);
+
+    withoutButton?.classList.toggle('crm-button--primary', amount === null);
+    withButton?.classList.toggle('crm-button--primary', hasAmount);
+    if (withButton) {
+      withButton.disabled = moveContext.billingDisabled || !hasAmount || invalid || moveContext.submitting;
+      withButton.textContent = hasAmount
+        ? `Mută și emite link (${root.EcoVilaCrmApp.formatMDL(amount)})`
+        : 'Mută și emite link';
+    }
+    if (withoutButton) withoutButton.disabled = Boolean(moveContext.submitting);
+    showMoveError(dialog, invalid
+      ? 'Diferența trebuie să fie un număr întreg între 1 și 1.000.000 MDL.'
+      : '');
+  }
+
+  function renderMoveSummary(dialog, reservation, sourceRoom, targetRoom) {
+    const summary = qs('[data-move-summary]', dialog);
+    if (!summary) return;
+    const money = bookingMoney(reservation);
+    const formatMDL = activeState?.context?.formatMDL || root.EcoVilaCrmApp?.formatMDL || root.EcoVilaPricing?.formatMDL || ((amount) => `${Number(amount || 0).toLocaleString('ro-MD')} MDL`);
+    const staying = money.rows
+      .filter((row) => row.id !== reservation.id)
+      .map((row) => root.EcoVilaCrmCalendar.roomLabel(row));
+    const guest = root.EcoVilaCrmCalendar.guestName(reservation) || 'Client fără nume';
+    const lines = [
+      `Se mută: ${moveRoomLabel(sourceRoom)} → ${moveRoomLabel(targetRoom)}`,
+      `Tip: ${moveTypeLabel(sourceRoom?.type)} → ${moveTypeLabel(targetRoom?.type)}`,
+      `Rămân: ${staying.length ? staying.join(', ') : 'nicio altă cazare'}`,
+      `Sejur: ${reservation.check_in} → ${reservation.check_out}`,
+      `Client: ${guest}`,
+      money.reliable
+        ? `Preț efectiv rezervare: ${formatMDL(money.effective)}`
+        : `Preț efectiv neverificat: ${formatMDL(money.base)}`,
+      money.reliable
+        ? (money.paidDifference > 0
+            ? `Calcul: ${formatMDL(money.base)} + ${formatMDL(money.paidDifference)} diferență achitată`
+            : `Preț rezervare: ${formatMDL(money.base)}`)
+        : 'Diferențele de cazare nu au putut fi verificate.',
+    ];
+    if (money.reliable && money.pending > 0) {
+      lines.push(`Diferență neachitată: ${formatMDL(money.pending)}`);
+    }
+    summary.innerHTML = '';
+    lines.forEach((line) => {
+      const paragraph = root.document.createElement('p');
+      paragraph.textContent = line;
+      summary.appendChild(paragraph);
+    });
+  }
+
+  function renderMoveWarnings(dialog, reservation, targetRoom) {
+    const capacityWarning = qs('[data-move-capacity-warning]', dialog);
+    const roomType = root.EcoVilaPricing?.ROOM_TYPES?.[targetRoom?.type];
+    const adults = Number(reservation.adults || 0);
+    const kids = Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0;
+    const overCapacity = Boolean(roomType) &&
+      (adults > Number(roomType.maxAdults || 0) || kids > Number(roomType.maxKids || 0));
+    if (capacityWarning) {
+      capacityWarning.hidden = !overCapacity;
+      capacityWarning.textContent = overCapacity
+        ? `Atenție: rezervarea are ${adults} adulți și ${kids} copii, iar ${moveRoomLabel(targetRoom)} are capacitate de ${roomType.maxAdults} adulți și ${roomType.maxKids} copii. Mutarea rămâne permisă; verifică repartizarea oaspeților.`
+        : '';
+    }
+
+    const reservationLinks = differenceLinksForRows(
+      [reservation],
+      activeState?.differenceLinks || [],
+      false,
+    );
+    const pending = root.EcoVilaCrmCalendar.pendingDifference(reservationLinks);
+    const linkWarning = qs('[data-move-existing-link]', dialog);
+    if (linkWarning) {
+      linkWarning.hidden = !activeState?.differenceLinksError && pending <= 0;
+      linkWarning.textContent = activeState?.differenceLinksError
+        ? 'Diferențele existente nu au putut fi verificate. Operația de mutare va aplica regulile serverului.'
+        : pending > 0
+        ? `Există deja o diferență neachitată de ${root.EcoVilaCrmApp.formatMDL(pending)} pentru această cazare. Mutarea o va revoca.`
+        : '';
+    }
+  }
+
+  function openMoveDialog(reservation, targetRoom) {
+    const state = activeState;
+    if (!reservation || !targetRoom || state?.context?.permissions?.dashboardReadOnly) return;
+    const dialog = qs('[data-move-dialog]');
+    const sourceRoom = (state?.rooms || []).find((room) => room.id === reservation.room_id) || reservation.rooms;
+    if (!dialog || !sourceRoom || sourceRoom.id === targetRoom.id) return;
+
+    const sameType = sourceRoom.type === targetRoom.type;
+    const downgrade = isMoveDowngrade(sourceRoom, targetRoom);
+    const unpaid = reservation.payment_status !== 'paid';
+    const billingDisabled = sameType || downgrade || unpaid;
+    dialog._ecoVilaMove = {
+      reservation,
+      sourceRoom,
+      targetRoom,
+      billingDisabled,
+      submitting: false,
+    };
+
+    renderMoveSummary(dialog, reservation, sourceRoom, targetRoom);
+    renderMoveWarnings(dialog, reservation, targetRoom);
+    showMoveError(dialog, '');
+    const amount = qs('[data-move-amount]', dialog);
+    const rail = qs('[data-move-rail]', dialog);
+    const expiry = qs('[data-move-expiry]', dialog);
+    const label = qs('[data-move-label]', dialog);
+    const notify = qs('[data-move-notify]', dialog);
+    const billingNote = qs('[data-move-billing-note]', dialog);
+    const resultBlock = qs('[data-move-link-result]', dialog);
+    const actions = qs('[data-move-actions]', dialog);
+    if (amount) amount.value = '';
+    if (rail) rail.value = 'mia';
+    if (expiry) expiry.value = '';
+    if (label) label.value = moveRoomLabel(targetRoom);
+    if (notify) notify.checked = false;
+    [amount, rail, expiry, label].forEach((field) => {
+      if (field) field.disabled = billingDisabled;
+    });
+    if (billingNote) {
+      billingNote.textContent = downgrade
+        ? 'Mutare către o cazare mai mică — diferența nu se poate factura; pentru restituire folosește Anulare parțială.'
+        : sameType
+        ? 'Tipul cazării nu se schimbă — mutarea se face fără diferență de plată.'
+        : unpaid
+        ? 'Diferența poate fi facturată numai pentru o rezervare achitată.'
+        : 'Lasă suma goală pentru a muta fără emiterea unui link de plată.';
+    }
+    if (resultBlock) resultBlock.hidden = true;
+    if (actions) actions.hidden = false;
+    refreshMoveBilling(dialog);
+
+    if (amount) amount.oninput = () => refreshMoveBilling(dialog);
+    const cancel = qs('[data-move-cancel]', dialog);
+    if (cancel) cancel.onclick = () => dialog.close?.('cancel');
+    const withoutButton = qs('[data-move-without-difference]', dialog);
+    const withButton = qs('[data-move-with-link]', dialog);
+    if (withoutButton) withoutButton.onclick = () => submitMove(dialog, null);
+    if (withButton) withButton.onclick = () => submitMove(dialog, moveAmount(amount));
+    const form = qs('[data-move-form]', dialog);
+    if (form) form.onsubmit = (event) => event.preventDefault();
+    const copy = qs('[data-move-copy]', dialog);
+    const url = qs('[data-move-link-url]', dialog);
+    if (copy) copy.onclick = () => copyMoveLink(url?.value || '', copy, url);
+    const resultClose = qs('[data-move-result-close]', dialog);
+    if (resultClose) resultClose.onclick = () => dialog.close?.('done');
+    dialog.showModal?.();
+  }
+
+  function movePaymentUrl(result) {
+    // The server builds the canonical URL from ECOVILA_SITE_URL; prefer it always.
+    // The origin-relative fallback below is only for an older deployed function
+    // and would hand staff a localhost/staging link if the CRM is not on the
+    // production host.
+    if (result?.payUrl) return result.payUrl;
+    if (result?.link?.payUrl) return result.link.payUrl;
+    const linkId = result?.linkId || result?.link?.id;
+    if (!linkId) return '';
+    const relative = `/plata.html?p=${encodeURIComponent(linkId)}`;
+    try {
+      return new URL(relative, root.location?.origin || root.location?.href).toString();
+    } catch (_error) {
+      return relative;
+    }
+  }
+
+  async function copyMoveLink(text, button, input) {
+    let copied = false;
+    if (root.navigator?.clipboard?.writeText) {
+      try {
+        await root.navigator.clipboard.writeText(text);
+        copied = true;
+      } catch (_error) {
+        copied = false;
+      }
+    }
+    if (!copied && input) {
+      try {
+        input.focus?.();
+        input.select?.();
+        copied = Boolean(root.document?.execCommand?.('copy'));
+      } catch (_error) {
+        copied = false;
+      }
+    }
+    if (button && copied) {
+      const originalText = button.textContent;
+      button.textContent = 'Copiat!';
+      root.setTimeout?.(() => {
+        button.textContent = originalText;
+      }, 2000);
+    } else if (!copied) {
+      input?.select?.();
+    }
+  }
+
+  async function submitMove(dialog, requestedAmount) {
+    const state = activeState;
+    const moveContext = dialog?._ecoVilaMove;
+    if (!state?.context?.client || !moveContext || moveContext.submitting) return;
+    if (Number.isNaN(requestedAmount)) {
+      showMoveError(dialog, 'Diferența trebuie să fie un număr întreg între 1 și 1.000.000 MDL.');
+      return;
+    }
+    if (requestedAmount && moveContext.billingDisabled) {
+      showMoveError(dialog, 'Diferența nu poate fi emisă pentru această mutare.');
+      return;
+    }
+
+    moveContext.submitting = true;
+    refreshMoveBilling(dialog);
+    showMoveError(dialog, '');
+    try {
+      const input = {
+        reservationId: moveContext.reservation.id,
+        expectedSourceRoomId: moveContext.sourceRoom.id,
+        targetRoomId: moveContext.targetRoom.id,
+        notify: qs('[data-move-notify]', dialog)?.checked === true,
+      };
+      if (requestedAmount) {
+        input.amount = requestedAmount;
+        input.paymentRail = qs('[data-move-rail]', dialog)?.value || 'mia';
+        const expiry = String(qs('[data-move-expiry]', dialog)?.value || '');
+        input.expiresInHours = expiry ? Number(expiry) : null;
+        input.label = String(qs('[data-move-label]', dialog)?.value || '').trim() || null;
+      }
+      const result = await root.EcoVilaSupabase.moveReservationAccommodation(
+        state.context.client,
+        input,
+      );
+      let reloadNotice = '';
+      try {
+        await state.reload();
+      } catch (_reloadError) {
+        reloadNotice = ' Calendarul nu s-a putut reîncărca — apasă Reîmprospătează.';
+      }
+
+      const payUrl = movePaymentUrl(result);
+      const notice = result?.smsSent
+        ? ' Clientul a fost anunțat prin SMS.'
+        : input.notify
+        ? ' SMS-ul nu a putut fi trimis — anunță clientul manual.'
+        : '';
+      if (payUrl) {
+        const resultBlock = qs('[data-move-link-result]', dialog);
+        const url = qs('[data-move-link-url]', dialog);
+        const actions = qs('[data-move-actions]', dialog);
+        if (url) url.value = payUrl;
+        if (resultBlock) resultBlock.hidden = false;
+        if (actions) actions.hidden = true;
+        state.context.setAlert?.(`Cazarea a fost mutată și linkul de plată a fost emis.${notice}${reloadNotice}`);
+      } else {
+        dialog.close?.('moved');
+        state.context.setAlert?.(`Cazarea a fost mutată fără diferență de plată.${notice}${reloadNotice}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mutarea cazării a eșuat.';
+      showMoveError(dialog, message.slice(0, 220));
+      moveContext.submitting = false;
+      refreshMoveBilling(dialog);
+    }
   }
 
   // "Salvează modificări": persists the dialog edits. A date change routes through
@@ -1508,6 +2106,19 @@
         helpers.fetchTemporaryHolds(context.client),
       ]);
 
+      const reservationIds = reservations.map((reservation) => reservation.id).filter(Boolean);
+      let differenceLinks = [];
+      let differenceLinksError = null;
+      if (reservationIds.length && typeof helpers.fetchReservationDifferenceLinks === 'function') {
+        try {
+          differenceLinks = await helpers.fetchReservationDifferenceLinks(context.client, {
+            reservationIds,
+          });
+        } catch (error) {
+          differenceLinksError = error || new Error('Citirea diferențelor de cazare a eșuat.');
+        }
+      }
+
       // A newer reload started while these queries were in flight — its results
       // are the current truth, so drop these ones rather than rendering them.
       if (state.loadGeneration !== generation) {
@@ -1516,6 +2127,8 @@
 
       state.rooms = rooms;
       state.reservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
+      state.differenceLinks = differenceLinks || [];
+      state.differenceLinksError = differenceLinksError;
       state.todayReservations = root.EcoVilaCrmCalendar.sortReservations(todayReservations);
       state.pricingTiers = pricingTiers;
       state.holidays = holidays;
@@ -1561,6 +2174,9 @@
       realtimeTimer: null,
       rooms: [],
       reservations: [],
+      reservationBlocks: [],
+      differenceLinks: [],
+      differenceLinksError: null,
       todayReservations: [],
       pricingTiers: [],
       holidays: [],
@@ -1640,19 +2256,21 @@
     // One realtime event per ROW: confirming or expiring a multi-villa booking
     // fires several within milliseconds, and each reload is seven queries wide
     // (including the two-year availability scan). Coalesce them into one.
+    const scheduleRealtimeReload = () => {
+      if (state.realtimeTimer) {
+        root.clearTimeout(state.realtimeTimer);
+      }
+      state.realtimeTimer = root.setTimeout(() => {
+        state.realtimeTimer = null;
+        state.reload().catch((error) => {
+          context.setAlert(error?.message || 'Dashboardul nu s-a putut actualiza.');
+        });
+      }, REALTIME_RELOAD_DEBOUNCE_MS);
+    };
     context.client
       .channel('crm-dashboard-reservations')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
-        if (state.realtimeTimer) {
-          root.clearTimeout(state.realtimeTimer);
-        }
-        state.realtimeTimer = root.setTimeout(() => {
-          state.realtimeTimer = null;
-          state.reload().catch((error) => {
-            context.setAlert(error?.message || 'Dashboardul nu s-a putut actualiza.');
-          });
-        }, REALTIME_RELOAD_DEBOUNCE_MS);
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, scheduleRealtimeReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, scheduleRealtimeReload)
       .subscribe();
   }
 
@@ -1667,8 +2285,11 @@
     },
     formatHoldCountdown,
     markPaid,
+    moveAmount,
+    openMoveDialog,
     openReservation,
     renderCalendar,
+    renderMoveSummary,
     renderTodayStats,
     renderPendingCash,
     renderTemporaryHolds,
