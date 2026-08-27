@@ -580,7 +580,6 @@
       <strong>${escapeHtml(totalLabel)}</strong>
       ${paidDifference > 0 ? `<span class="crm-difference-marker" title="${escapeHtml(paidDifferenceTitle)}">+${escapeHtml(context.formatMDL(paidDifference))} diferență</span>` : ''}
       ${pendingDifference > 0 ? `<span class="crm-difference-marker crm-difference-marker--pending" title="Diferență de cazare neachitată">Neachitat: ${escapeHtml(context.formatMDL(pendingDifference))}</span>` : ''}
-      ${activeState?.differenceLinksError ? '<span class="crm-difference-marker crm-difference-marker--pending" title="Diferențele de cazare nu au putut fi citite">Total neverificat</span>' : ''}
       <span>${guestSummary(reservation)}</span>
       <span class="crm-reservation-card__phone">${phone}</span>
       ${isHold ? `<span data-hold-countdown data-expires-at="${expiresAt}">${formatHoldCountdown(reservation.cash_expires_at)}</span>` : ''}
@@ -893,10 +892,14 @@
       : Number(reservation.total_price || 0);
     const totalEl = qs('[data-edit-total]', dialog);
     if (totalEl) {
+      // When the difference read failed we show the booking price plainly rather
+      // than labelling the total itself "unverified" — the destructive actions in
+      // this dialog (delete, partial cancel) carry their own explicit warning, and
+      // stamping every total was noise on the calendar.
       totalEl.textContent = hasLoadedRows
-        ? money.reliable
+        ? money.reliable && money.paidDifference > 0
           ? `Preț efectiv: ${formatMDL(money.effective)}`
-          : `Preț efectiv neverificat: ${formatMDL(money.base)}`
+          : `Preț total: ${formatMDL(money.reliable ? money.effective : money.base)}`
         : `Preț total: ${formatMDL(fallbackTotal)}`;
     }
     const totalBreakdown = qs('[data-edit-total-breakdown]', dialog);
@@ -1528,7 +1531,7 @@
       `Client: ${guest}`,
       money.reliable
         ? `Preț efectiv rezervare: ${formatMDL(money.effective)}`
-        : `Preț efectiv neverificat: ${formatMDL(money.base)}`,
+        : `Preț rezervare: ${formatMDL(money.base)}`,
       money.reliable
         ? (money.paidDifference > 0
             ? `Calcul: ${formatMDL(money.base)} + ${formatMDL(money.paidDifference)} diferență achitată`

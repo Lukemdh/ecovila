@@ -4166,6 +4166,33 @@ is relied upon against bookings made earlier.
 
 ---
 
+### ADR-107 follow-up — the fail-closed state was unreadable on screen (B-37)
+
+- **Date:** 2026-08-27, straight after the prod deploy.
+- **Reported:** every card on the live CRM calendar carried a `Total neverificat` badge.
+- **Root cause, measured against prod:** `fetchReservationDifferenceLinks` put every reservation
+  id of the visible window into one PostgREST `in.(...)` filter, which travels in the URL. 600 ids
+  (~22KB) answered 200; **900 ids (~33KB) answered 400**. On a busy calendar the read threw, so the
+  ADR-107 fail-closed display was correct to fire — the defect was the query, not the guard. Both
+  bound-link reads now chunk ids at 200 per request and merge (regression test: 950 ids must split,
+  cover everything, and keep each batch bounded).
+- **The design correction that matters more:** expressing "unverified" as a badge on every calendar
+  card, a label on every daily card, and a relabelled total in two dialogs was noise, and noise on
+  a money screen is its own hazard — staff stop reading warnings that are always present. Display
+  now shows the booking price plainly. The guarantee was NOT weakened; it stays where it changes an
+  outcome: the daily repricing save is refused outright while the read is unreliable, the cancel and
+  partial-cancel preflights still name the amount, and the move dialog still states in words that
+  differences could not be verified before staff type a bill against the figure.
+- **Rule of thumb this leaves behind:** fail closed on the WRITE, stay quiet on the READ. A guard
+  that decorates every row teaches people to ignore it.
+- **Surface.** `js/supabase.js` (both chunked reads), `admin/js/crm-dashboard.js` (card badge
+  removed, dialog + move-summary totals plain), `admin/js/crm-daily.js` (card shows the price),
+  `tests/admin-crm.test.mjs` (chunking guard + the three display tests re-pointed at the new
+  intent). Token `?v=2026082703`, `dist/tophost` regenerated. `npm test` → 427 Node + 202 Deno.
+  Backend untouched — this is a frontend-only fix and needs a TopHost re-upload.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

@@ -5133,6 +5133,37 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     );
   });
 
+  it('chunks difference-link reads so a busy calendar cannot blow the request URL', async () => {
+    // Every id travels inside a PostgREST `in.(...)` filter in the URL. A three
+    // month window holds hundreds of reservations; at ~900 ids the request is
+    // ~33KB and the gateway answered 400, which surfaced in the CRM as a failed
+    // read and stamped every calendar card. Chunking keeps each request small.
+    const { EcoVilaSupabase: supabase } = loadAdminModule('js/supabase.js');
+
+    for (const helper of ['fetchReservationDifferenceLinks', 'fetchRefundedBoundLinkAmounts']) {
+      const batches = [];
+      const mockBuilder = {
+        select() { return mockBuilder; },
+        eq() { return mockBuilder; },
+        gt() { return mockBuilder; },
+        in(_column, values) { batches.push(values.length); return mockBuilder; },
+        order() { return mockBuilder; },
+        range() { return Promise.resolve({ data: [] }); },
+      };
+      const mockClient = { from() { return mockBuilder; } };
+      const ids = Array.from({ length: 950 }, (_, index) => `res-${index}`);
+
+      await supabase[helper](mockClient, { reservationIds: ids });
+
+      assert.ok(batches.length > 1, `${helper} must split a 950-id read into several requests`);
+      assert.equal(batches.reduce((sum, size) => sum + size, 0), 950, `${helper} must cover every id`);
+      assert.ok(
+        batches.every((size) => size <= 200),
+        `${helper} must keep each request within the chunk size`,
+      );
+    }
+  });
+
   it('implements ADR-107 Supabase helpers for difference links and refunded amounts', async () => {
     const { EcoVilaSupabase: supabase } = loadAdminModule('js/supabase.js');
 
@@ -5818,8 +5849,10 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     assert.match(partialDiffWarning.textContent, /diferențele de cazare nu au putut fi verificate/i);
     assert.match(partialDiffWarning.textContent, /se restituie separat, din portalul MAIB/i);
 
-    // Total indicates unverified price
-    assert.match(totalEl.textContent, /Preț efectiv neverificat/i);
+    // The total itself reads plainly; the fail-closed warning above is what
+    // tells staff the differences could not be checked.
+    assert.match(totalEl.textContent, /Preț total/i);
+    assert.doesNotMatch(totalEl.textContent, /neverificat/i);
   });
 
   it('ADR-107 Slice F: declares data-delete-difference-warning and data-partial-difference-warning in dashboard.html', () => {
@@ -6134,7 +6167,9 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
       rooms: { id: 'room-1', number: 1, type: 'small' },
     };
 
-    // When differenceLinksError is set, buildDailyCard must show 'Achitat: neverificat'
+    // A failed read shows the booking price plainly. Blanking every card to
+    // "neverificat" was pure noise on screen; the guarantee lives on the WRITE
+    // path instead, where saveDailyGuestEdit refuses to reprice at all.
     const cardWithError = daily.buildDailyCard(
       { formatMDL: (n) => `${n} MDL` },
       {
@@ -6147,8 +6182,12 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
       {},
     );
 
-    assert.match(cardWithError.innerHTML, /Achitat:\s*neverificat/i, 'Card must state figure is unverified');
-    assert.doesNotMatch(cardWithError.innerHTML, /Achitat:\s*3\s*000\s*MDL/i, 'Card must not print base total as if verified');
+    assert.match(cardWithError.innerHTML, /Achitat:\s*3000\s*MDL/i, 'Card shows the booking price plainly');
+    assert.doesNotMatch(
+      cardWithError.innerHTML,
+      /neverificat/i,
+      'no per-card unverified badge — the refusal lives on the write path',
+    );
 
     // When differenceLinks loaded successfully with a paid difference:
     const diffLink = {
@@ -6354,8 +6393,8 @@ describe('EcoVila CRM partial cancellation and partial refund', () => {
     EcoVilaCrmDashboard.renderMoveSummary(moveDialog, res, res.rooms, targetRoom);
     const summaryTextUnreliable = summaryEl.children.map((c) => c.textContent).join('\n');
 
-    assert.match(summaryTextUnreliable, /Preț efectiv neverificat:\s*6[.\s]*000\s*MDL/i, 'Move summary must state unverified effective price');
-    assert.match(summaryTextUnreliable, /Diferențele de cazare nu au putut fi verificate/i, 'Move summary must explain differences could not be verified');
+    assert.match(summaryTextUnreliable, /Preț rezervare:\s*6[.\s]*000\s*MDL/i, 'Move summary shows the booking price plainly');
+    assert.match(summaryTextUnreliable, /Diferențele de cazare nu au putut fi verificate/i, 'Move summary must still explain differences could not be verified');
     assert.doesNotMatch(summaryTextUnreliable, /Preț efectiv rezervare:\s*6[.\s]*000\s*MDL/i, 'Move summary must not print authoritative effective total when unverified');
 
     // Case 2: differenceLinks successfully loaded with paid 2 000 MDL difference

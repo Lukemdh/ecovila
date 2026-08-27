@@ -362,8 +362,11 @@
       ? calendar.pendingDifference(groupLinks)
       : 0;
 
+    // A failed difference read shows the booking price plainly instead of blanking
+    // every card to "neverificat". The write path is where it must bite: the
+    // repricing save is refused outright while the read is unreliable.
     const achitatText = state.differenceLinksError
-      ? 'Achitat: neverificat'
+      ? `Achitat: ${context.formatMDL(baseTotal)}`
       : paidDiff > 0
       ? `Achitat: ${context.formatMDL(effective)} (${context.formatMDL(baseTotal)} + ${context.formatMDL(paidDiff)} diferență)`
       : `Achitat: ${context.formatMDL(baseTotal)}`;

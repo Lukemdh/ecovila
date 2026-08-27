@@ -628,7 +628,15 @@
       return Promise.resolve([]);
     }
 
-    const buildQuery = () =>
+    // Chunked for the same reason as fetchReservationDifferenceLinks: a wide
+    // Finance range can hold more cancelled rows than fit in one request URL.
+    const CHUNK = 200;
+    const chunks = [];
+    for (let index = 0; index < ids.length; index += CHUNK) {
+      chunks.push(ids.slice(index, index + CHUNK));
+    }
+
+    const buildQuery = (chunk) => () =>
       client
         .from('payment_links')
         .select(
@@ -646,10 +654,11 @@
         )
         .eq('purpose', 'accommodation_difference')
         .gt('refunded_amount', 0)
-        .in('reservation_id', ids)
+        .in('reservation_id', chunk)
         .order('id', { ascending: true });
 
-    return unwrapAllSupabaseRows(buildQuery);
+    return Promise.all(chunks.map((chunk) => unwrapAllSupabaseRows(buildQuery(chunk))))
+      .then((pages) => pages.flat());
   }
 
   async function controlScheduledRefund(client, input) {
@@ -1035,7 +1044,18 @@
       return Promise.resolve([]);
     }
 
-    const buildQuery = () =>
+    // Every id travels in the URL of a PostgREST `in.(...)` filter. A three-month
+    // calendar window holds hundreds of reservations, and at ~900 ids the request
+    // is ~33KB and the gateway answers 400 — which surfaced as a failed read on a
+    // busy calendar. Chunk the ids so one request can never outgrow the URL limit,
+    // then merge; the per-chunk read stays paginated for the row cap.
+    const CHUNK = 200;
+    const chunks = [];
+    for (let index = 0; index < ids.length; index += CHUNK) {
+      chunks.push(ids.slice(index, index + CHUNK));
+    }
+
+    const buildQuery = (chunk) => () =>
       client
         .from('payment_links')
         .select(
@@ -1055,10 +1075,11 @@
           ].join(', '),
         )
         .eq('purpose', 'accommodation_difference')
-        .in('reservation_id', ids)
+        .in('reservation_id', chunk)
         .order('id', { ascending: true });
 
-    return unwrapAllSupabaseRows(buildQuery);
+    return Promise.all(chunks.map((chunk) => unwrapAllSupabaseRows(buildQuery(chunk))))
+      .then((pages) => pages.flat());
   }
 
   // "Today" in the CRM is the Moldova (Europe/Chisinau) calendar day, but

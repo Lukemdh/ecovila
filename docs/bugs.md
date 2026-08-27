@@ -43,6 +43,7 @@ High / Medium / Low.
 | B-34 | Daily repricing asks reception to collect an already-paid add-guests difference again | Medium | Open |
 | B-35 | Saving a paid Daily repricing reports an uncollected supplement as historical income | High | Open |
 | B-36 | Finance refund reads silently swallow errors and under-report returned money | Medium | Open |
+| B-37 | Difference-link reads sent every visible reservation id in one URL (400 on a busy calendar) | High | Fixed |
 
 ---
 
@@ -566,3 +567,25 @@ High / Medium / Low.
   in `crm-finance.js` ~1409, invoked in `loadFinance` ~1500) deliberately does **NOT** swallow errors: it surfaces the failure,
   alerts staff via `context.setAlert`, sets `state.refundedBoundLinksError`, displays `(neverificat)` in the UI, and rethrows.
 
+
+### B-37 — Difference-link reads sent every visible reservation id in one URL (High) — Fixed 2026-08-27
+
+**Symptom (reported from live prod).** Every card on the CRM calendar rendered a
+`Total neverificat` badge.
+
+**Cause.** `fetchReservationDifferenceLinks` put every reservation id of the visible window into a
+single PostgREST `in.(...)` filter, which travels in the URL. A three-month window holds hundreds of
+reservations; measured against prod, 600 ids (~22KB) returned 200 but **900 ids (~33KB) returned
+400**. The read therefore threw on a busy calendar, `differenceLinksError` was set, and the ADR-107
+fail-closed display stamped every card.
+
+**Fix.** Both bound-link reads (`fetchReservationDifferenceLinks` and
+`fetchRefundedBoundLinkAmounts`) chunk their ids at 200 per request and merge, so no single request
+can outgrow the URL limit. Guarded by a regression test that feeds 950 ids and asserts several
+requests, full coverage, and a bounded batch size.
+
+**Also corrected here (UI).** The fail-closed state was being expressed as a badge on every calendar
+card, a label on every daily card, and a relabelled total in two dialogs — noise that made the whole
+calendar unreadable. Display now shows the booking price plainly; the guarantee stays where it
+changes an outcome: the daily repricing save is still refused outright, the cancel and partial-cancel
+preflights still warn, and the move dialog still states that differences could not be verified.

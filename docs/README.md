@@ -115,7 +115,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 426 Node + 202 Deno tests, all passing (2026-08-27)
+# → 427 Node + 202 Deno tests, all passing (2026-08-27)
 ```
 
 The suites can also be run independently.
