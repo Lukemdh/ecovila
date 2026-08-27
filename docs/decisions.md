@@ -4193,6 +4193,30 @@ is relied upon against bookings made earlier.
 
 ---
 
+### ADR-110 — A MIA payment link must not be branded as a card payment
+
+- **Date:** 2026-08-27. Owner spotted it on the live payer page.
+- **The bug:** `plata.html`'s pre-payment screen (`[data-pay-link-pay]`) is shown for BOTH rails —
+  for card it is the whole flow, for MIA it is the screen the payer presses before the QR is minted.
+  It carried the maib + Mastercard + Visa marks and a `Plătește cu cardul` button regardless of rail.
+  A MIA link is an instant bank transfer, so both told the payer the wrong thing about what was
+  about to happen, and it contradicted the MIA QR screen directly below it.
+- **Fix:** the pay screen now carries two brand blocks and shows the one matching the rail — for MIA
+  the same `MIA + maib` pair the QR screen already uses. The button follows too, reusing the existing
+  `payLink.miaButton` string ("Click aici pentru a plăti"), which already exists in all three
+  languages — no new copy was written.
+- **Why the i18n key is swapped, not just the text:** the button carries `data-i18n`, so a later
+  language switch would have restored the card wording on a MIA link. `renderRailIdentity` sets the
+  key and the text together.
+- **Also fixed in passing:** the failed-start path restored the button label only for the card rail
+  (`if (effectiveRail === 'card')`), so a failed MIA start left the button on whatever it last said.
+  It now restores whichever rail the link is.
+- **Verified** by rendering the real pay section for both rails: a card link shows maib/Mastercard/
+  Visa with `Plătește cu cardul`, a MIA link shows MIA + maib with `Click aici pentru a plăti`.
+  `npm test` → 430 Node + 202 Deno. Frontend-only; token `?v=2026082704`.
+
+---
+
 ### ADR-109 — Calendar loading overlay that does not strobe
 
 - **Date:** 2026-08-27. Owner: the calendar takes a moment to load and said nothing while it did.

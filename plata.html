@@ -53,10 +53,18 @@
 
         <!-- Card Pay Section -->
         <section class="cb-status-card pl-card" data-pay-link-pay hidden>
-          <div class="pl-brands">
+          <!-- A MIA link is an instant bank transfer, not a card payment, so it
+               shows the same MIA + maib pair as the QR screen below. The card
+               scheme marks belong only to a card link. -->
+          <div class="pl-brands" data-pay-link-brands-card>
             <img src="/assets/maib.png" alt="maib">
             <img src="/assets/mastercard.png" alt="Mastercard">
             <img src="/assets/visa.png" alt="Visa">
+          </div>
+          <div class="mia-card__brand" data-pay-link-brands-mia hidden>
+            <img src="/assets/mia.webp" alt="MIA" width="66" height="26" decoding="async">
+            <span class="mia-card__brand-sep" aria-hidden="true"></span>
+            <img src="/assets/maib.png" alt="maib">
           </div>
 
           <h2 data-i18n="payLink.payTitle">Plată online</h2>

@@ -173,6 +173,27 @@
     setText('[data-pay-link-review-amount]', text);
   }
 
+  // A MIA link is an instant bank transfer. Showing the card scheme marks and a
+  // "pay by card" button on its pre-payment screen told the payer the wrong thing
+  // about what is about to happen, so both follow the rail. The i18n key is
+  // swapped as well as the text, otherwise a later language switch would restore
+  // the card wording on a MIA link.
+  function renderRailIdentity(rail) {
+    const isMia = rail === 'mia';
+
+    const cardBrands = el('[data-pay-link-brands-card]');
+    const miaBrands = el('[data-pay-link-brands-mia]');
+    if (cardBrands) cardBrands.hidden = isMia;
+    if (miaBrands) miaBrands.hidden = !isMia;
+
+    const startBtn = el('[data-pay-link-start]');
+    if (startBtn) {
+      const key = isMia ? 'payLink.miaButton' : 'payLink.cardButton';
+      startBtn.dataset.i18n = key;
+      startBtn.textContent = t(key);
+    }
+  }
+
   function renderLabel(label) {
     const cardLabelNode = el('[data-pay-link-label]');
     const miaLabelNode = el('[data-pay-link-mia-label]');
@@ -356,6 +377,7 @@
 
     if (result.paymentRail) {
       _currentRail = result.paymentRail;
+      renderRailIdentity(result.paymentRail);
     }
 
     if (result.amount !== undefined && result.amount !== null) {
@@ -570,9 +592,9 @@
     } catch (error) {
       if (startBtn) {
         startBtn.disabled = false;
-        if (effectiveRail === 'card') {
-          startBtn.textContent = t('payLink.cardButton');
-        }
+        // Restore the label for whichever rail this link is, not just card:
+        // a failed MIA start used to leave the button on its previous wording.
+        renderRailIdentity(effectiveRail);
       }
 
       const helpers = root.EcoVilaSupabase || supabaseHelpers;

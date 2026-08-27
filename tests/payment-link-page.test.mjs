@@ -265,6 +265,48 @@ describe('EcoVila standalone payment links — translations', () => {
   });
 });
 
+describe('EcoVila standalone payment links — branding follows the rail (ADR-110)', () => {
+  const readFile = read;
+
+  it('offers a MIA brand pair on the pay screen, not the card scheme marks', () => {
+    const page = readFile('plata.html');
+    const paySection = page.slice(
+      page.indexOf('data-pay-link-pay'),
+      page.indexOf('<!-- MIA QR Section -->'),
+    );
+
+    // A MIA link is an instant bank transfer; Mastercard/Visa on its screen tell
+    // the payer the wrong thing about what is about to happen.
+    assert.match(paySection, /data-pay-link-brands-card/);
+    assert.match(paySection, /data-pay-link-brands-mia hidden/);
+    const miaBrands = paySection.slice(paySection.indexOf('data-pay-link-brands-mia'));
+    assert.match(miaBrands, /assets\/mia\.webp/);
+    assert.match(miaBrands, /assets\/maib\.png/);
+    assert.doesNotMatch(
+      miaBrands.slice(0, miaBrands.indexOf('</div>')),
+      /mastercard|visa/i,
+      'the MIA brand pair must not carry card scheme marks',
+    );
+  });
+
+  it('switches the pay button wording and its i18n key with the rail', () => {
+    const script = readFile('js/plata.js');
+
+    assert.match(script, /function renderRailIdentity\(rail\)/);
+    assert.match(script, /renderRailIdentity\(result\.paymentRail\)/);
+    // The key must move with the text, or a later language switch would restore
+    // the card wording on a MIA link.
+    assert.match(
+      script,
+      /startBtn\.dataset\.i18n = key;\s*startBtn\.textContent = t\(key\);/,
+    );
+    assert.match(script, /isMia \? 'payLink\.miaButton' : 'payLink\.cardButton'/);
+    // Reuses strings that already exist in all three languages.
+    const translations = readFile('js/translations.js');
+    assert.equal((translations.match(/'payLink\.miaButton'/g) || []).length, 3);
+  });
+});
+
 describe('EcoVila standalone payment links — client module (js/plata.js)', () => {
   const translations = require('../js/translations.js');
   const pricing = require('../js/pricing.js');
