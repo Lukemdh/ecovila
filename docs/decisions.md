@@ -4414,8 +4414,22 @@ is on screen, so nothing can become flagged and the sweeper stays a no-op.
 - **`recordNotificationEvent` runs only after a successful send,** so a provider failure leaves the
   guest eligible for the next run instead of quietly retiring them. That also makes the batches
   self-sequencing: each run takes the next N without an event.
-- **This function is disposable.** `backfill-review-requests` is invoked by hand, is never
-  scheduled, and is to be deleted — code and deployment — once the runs are done.
+- **Run 1 sent 2026-08-31:** 36 sent, 0 failed, 108 remaining; verified in the database, not from
+  the response — 36 `review_request` rows, all `delivery_status = 'sent'`, all tagged
+  `metadata.backfill = true`, delivered in 7 seconds.
+- **The remaining three runs are paced by a BOUNDED cron** (`20260831140000`), at the owner's
+  request so this needs no hand-running. `'0 10 1-4 9 *'` fires at 10:00 UTC (13:00 Chișinău) on
+  1-4 September and then never again — an open-ended daily job would keep calling a function whose
+  work is finished and would outlive anyone's memory of why it existed. Three runs clear the 108;
+  the fourth is a deliberate spare, expected to return `{"sent":0}`, which is the intended end
+  state rather than a fault. A failed run simply leaves the backlog for the next day, because the
+  event is written only after a successful send.
+- **The backfill and the live flow cannot double-send.** The backfill window includes yesterday's
+  checkouts, which the normal 18:30 job also targets. Both key their dedup on the booking group's
+  stable owner id, so whichever runs first makes the other skip — and the schedules do not share a
+  window in any case (10:00 UTC vs 15:00-16:59 UTC).
+- **This function is disposable.** `backfill-review-requests`, its cron job
+  `ecovila-review-backfill`, and `20260831140000` are all to be deleted once the runs finish.
 
 ---
 
