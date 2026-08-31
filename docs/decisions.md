@@ -4357,9 +4357,14 @@ is relied upon against bookings made earlier.
   without overflowing, the dossier list caps at 180px and scrolls, and neither the dossier nor the
   640px panel overflows horizontally. `npm test` → 440 Node + 214 Deno. Token `?v=2026083101`,
   `dist/tophost` regenerated.
-- **NOT DEPLOYED.** No migration applied, no function deployed, no cron scheduled. See the
-  deployment order in `docs/plan.md`; the live `notification_events_event_type_check` must be read
-  before the migration runs (see B-39).
+- **Preflight against production (2026-08-31), before anything was applied:** 2,796 reservations,
+  **0** phones failing `^\+[0-9]{8,15}$` and **0** mixed-case emails, so the new CHECK is safe on
+  historical data. The `notification_events` constraint check found something worse than the
+  expected drift — see B-39: `review_request` is absent from the LIVE constraint too, `0` such rows
+  exist, and ADR-082's review email has therefore never sent since 2026-06-23 (552 eligible booking
+  groups missed). This migration's allowlist repairs it. Owner's call: let review requests resume
+  from the next evening's checkouts, and work out a catch-up proposal for the 552 separately rather
+  than mailing them.
 
 ---
 

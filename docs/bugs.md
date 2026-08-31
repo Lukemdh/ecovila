@@ -591,15 +591,36 @@ out-of-window history. A contract test asserts the select string keeps `booking_
 
 ---
 
-### B-39 — `review_request` is missing from the repo's `notification_events` event-type constraint (Medium) — Open
+### B-39 — ADR-082 review-request emails have never sent: `review_request` is missing from the `notification_events` CHECK (High) — Fixed 2026-08-31
 
-The most recent recreation of `notification_events_event_type_check`
-(`supabase/migrations/20260619170000_complaints.sql`) lists eight event types and does NOT include
-`review_request`, which `send-review-requests` has been emitting in production since ADR-082. Either
-production drifted from the repo (most likely — see the known migration-history drift) or those
-inserts have been failing. The ADR-111 migration recreates the constraint with the complete
-allowlist plus `guest_flag_alert`, so applying it repairs the drift — but the live constraint must
-be read and compared BEFORE it runs, not assumed. Not otherwise addressed here.
+**Confirmed against production, not inferred.**
+
+- The live `notification_events_event_type_check` allows exactly eight values and does NOT include
+  `review_request`. The repo's latest copy
+  (`supabase/migrations/20260619170000_complaints.sql`) is identical, so this was never drift — the
+  constraint shipped without the value the feature needs.
+- `notification_events` holds **0** `review_request` rows. For comparison: `arrival_24h` 742,
+  `checkin_welcome` 706, `payment_confirmation` 567.
+- The `ecovila-review-requests` cron job is active and has run **8,160 times, every one
+  "succeeded"** (that is the `net.http_post` succeeding). `send-review-requests` wraps each guest in
+  a `try/catch` that logs to `console.error` and pushes `{ sent: false, error }`, so the CHECK
+  violation is swallowed per guest and the function still answers HTTP 200. Nothing anywhere
+  surfaced the failure.
+- Between 2026-06-24 and 2026-08-30, **552 booking groups** were eligible (paid, not cancelled, an
+  email on file, no checkout note in situația zilnică). None received the invitation.
+
+**Why it hid for ten weeks.** Three layers each did something individually reasonable: the constraint
+rejected the insert, the function caught the error per guest so one bad row could not abort a batch,
+and the cron reported success because the HTTP call worked. There was no signal above `console.error`.
+
+**Fix (shipped with ADR-111).** `20260831120000_guest_notes.sql` recreates the constraint with the
+complete allowlist plus `review_request` and `guest_flag_alert`. Review requests resume from the next
+evening's checkouts; the function only ever targets yesterday's checkout date, so the 552 past guests
+are not retroactively mailed. Owner asked for a catch-up proposal to be worked out separately before
+anything is sent to them.
+
+**Lesson recorded in `docs/conventions.md`:** read the LIVE definition before recreating an
+enumerated CHECK, and do not let a cron's HTTP success stand in for its business outcome.
 
 ---
 

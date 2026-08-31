@@ -167,9 +167,13 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   make the invariant one-directional instead.
 - A view over an RLS-protected table must be declared `set (security_invoker = true)`, otherwise it
   runs with the view owner's rights and bypasses the policies of the table beneath it.
-- Before recreating an enumerated CHECK constraint, read the LIVE definition. The repo's most recent
-  copy of `notification_events_event_type_check` is missing `review_request` (B-39), so appending to
-  the repo's copy would silently drop a production event type.
+- Before recreating an enumerated CHECK constraint, read the LIVE definition. `review_request` was
+  missing from BOTH the repo's and production's copy of `notification_events_event_type_check`, so
+  ADR-082's review email silently failed for ten weeks (B-39).
+- A cron's `net.http_post` reporting "succeeded" says only that the HTTP call worked. When a function
+  catches per-item failures so one bad row cannot abort a batch — the right shape — the batch result
+  must still be observable somewhere above `console.error`, or a total failure looks identical to a
+  quiet day. B-39 ran 8,160 successful cron invocations while sending nothing.
 - Avoid `security definer` functions in exposed schemas. If a public RPC truly needs
   elevated privileges, keep its return shape minimal, set an explicit `search_path`, use
   fully qualified table names, grant only required roles, and document the reason in
