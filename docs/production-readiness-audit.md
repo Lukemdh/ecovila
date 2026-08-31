@@ -48,7 +48,10 @@ Implemented standalone single-use payment links in the CRM and guest page `plata
   no IP rate limit; `payment-link-public` is rate limited per IP and per link.
 - Capability model: plain UUID bearer ID in `plata.html?p=<uuid>` (122 unguessable bits, no secrets
   subject to rotation, no PII or staff data exposed in public responses).
-- Deployment status: not yet deployed to production (migration `20260826120000_payment_links.sql`
+- Deployment status: **LIVE in production since 2026-08-27** — migrations applied, all 30 Edge
+  Functions redeployed, TopHost upload content-verified on the live host. No payment link has been
+  paid and no cross-type move billed with real money yet. (Historic note: migration
+  `20260826120000_payment_links.sql`
   and functions `payment-link-admin`, `payment-link-public` pending deploy; static files pending upload).
 - Test verification: `npm test` → **412 Node + 186 Deno tests pass**.
 

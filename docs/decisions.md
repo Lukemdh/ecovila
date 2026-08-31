@@ -3976,6 +3976,8 @@ is relied upon against bookings made earlier.
   then the TopHost upload — which will also finally land the still-pending ADR-105 frontend, so
   the `ECOVILA_REFUND_COMMISSION_BPS` decision belongs in the same session.
 
+**DEPLOY STATUS — FULLY LIVE 2026-08-27** (supersedes the status line above). Migrations `20260826120000` + `20260827120000` applied to prod via `db query --linked` + `migration repair`, ledger aligned; all 30 Edge Functions redeployed (a full redeploy was required because `_shared/notifications.ts`, `paymentLinks.ts` and `reservationChanges.ts` all changed); TopHost upload landed and was content-verified on the live host, not just by version stamp. ADR-105's `ECOVILA_REFUND_COMMISSION_BPS=140` was activated in the same session after its three disclosure gates passed, so the 1.4% withholding is live. Later frontend-only work (B-37, ADR-108/109/110) shipped under `?v=2026082704`, also verified live. **Not yet exercised with real money:** no payment link has been paid and no cross-type move has been billed in production.
+
 ---
 
 ### ADR-107 — Move one reservation row to another accommodation type; optionally bill the difference through ADR-106
@@ -4163,6 +4165,8 @@ is relied upon against bookings made earlier.
   `reservation-cancel`; (4) TopHost upload of the `?v=2026082702` bundle, which also
   finally lands the pending ADR-105 frontend. **Do not set
   `ECOVILA_REFUND_COMMISSION_BPS`.**
+
+**DEPLOY STATUS — FULLY LIVE 2026-08-27** (supersedes the status line above). Migrations `20260826120000` + `20260827120000` applied to prod via `db query --linked` + `migration repair`, ledger aligned; all 30 Edge Functions redeployed (a full redeploy was required because `_shared/notifications.ts`, `paymentLinks.ts` and `reservationChanges.ts` all changed); TopHost upload landed and was content-verified on the live host, not just by version stamp. ADR-105's `ECOVILA_REFUND_COMMISSION_BPS=140` was activated in the same session after its three disclosure gates passed, so the 1.4% withholding is live. Later frontend-only work (B-37, ADR-108/109/110) shipped under `?v=2026082704`, also verified live. **Not yet exercised with real money:** no payment link has been paid and no cross-type move has been billed in production.
 
 ---
 
