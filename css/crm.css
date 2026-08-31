@@ -1287,13 +1287,25 @@ h2 {
 
 /* Keep the price clear of the badges. Driven by the card's own flag classes
    rather than :has(), so the reserved space is deterministic and testable. */
-.crm-reservation-card--flagged-attention strong,
-.crm-reservation-card--flagged-vip strong {
+/* The badges sit top-right over the first TWO lines, so the guest line needs the
+   same reserved space as the price — otherwise "2 adulți · 1 copil" runs under them
+   on a narrow one-night card. */
+.crm-reservation-card--flagged-attention > strong,
+.crm-reservation-card--flagged-attention > span,
+.crm-reservation-card--flagged-vip > strong,
+.crm-reservation-card--flagged-vip > span {
   margin-right: 22px;
 }
 
-.crm-reservation-card--flagged-attention.crm-reservation-card--flagged-vip strong {
+.crm-reservation-card--flagged-attention.crm-reservation-card--flagged-vip > strong,
+.crm-reservation-card--flagged-attention.crm-reservation-card--flagged-vip > span {
   margin-right: 44px;
+}
+
+/* The countdown pills are their own row lower down and must not be indented. */
+.crm-reservation-card > span[data-countdown],
+.crm-reservation-card > span[data-hold-countdown] {
+  margin-right: 0;
 }
 
 .crm-dialog {
