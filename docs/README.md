@@ -60,6 +60,8 @@ without exposing credentials. Canonical environment variable **names**:
 - `ECOVILA_CRON_SECRET` — shared secret for cron-triggered functions (`x-ecovila-secret` header or bearer)
 - `ECOVILA_SITE_URL` (alias accepted: `SITE_URL`) — defaults to `https://ecovila.md`
 - `ECOVILA_ALLOWED_ORIGINS` (optional, comma-separated) — CORS origin allowlist override; defaults to `https://ecovila.md`, `https://www.ecovila.md`, `https://admin.ecovila.md`, `null`, `http://localhost:3000`, `http://localhost:5173`, `http://127.0.0.1:3000`, and `http://127.0.0.1:5173`
+- `ECOVILA_ALERT_EMAIL` — operational staff alerts (ADR-088) and the fallback recipient for guest flag alerts
+- `ECOVILA_GUEST_FLAG_EMAIL` (optional) — recipient for the returning-guest alert (ADR-111); falls back to `ECOVILA_ALERT_EMAIL`. With NEITHER set, `send-guest-flag-alerts` logs and returns without reserving a notification event, so a later fix still delivers
 - `SMSMD_API_TOKEN`, `SMSMD_FROM`, `SMSMD_API_URL` (URL optional; defaults to `https://api.sms.md/v1/send`)
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_API_URL` (URL optional; defaults to `https://api.resend.com/emails`)
 - `MAIB_CLIENT_ID`, `MAIB_CLIENT_SECRET`, `MAIB_SIGNATURE_KEY`, `MAIB_BASE_URL`

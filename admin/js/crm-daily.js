@@ -1,5 +1,10 @@
 (function (root, factory) {
   const api = factory(root);
+
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+  }
+
   root.EcoVilaCrmDaily = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
@@ -338,6 +343,10 @@
 
   function buildDailyCard(context, state, reservation, type, status) {
     const card = root.document.createElement('article');
+    const guestFlag = root.EcoVilaCrmCalendar.guestFlagFor(
+      reservation,
+      state.guestFlagIndex,
+    );
     const completed = type === 'in' ? Boolean(status.checked_in_at) : Boolean(status.checked_out_at);
     const group = groupReservations(state.reservations, reservation);
     const phone = root.EcoVilaCrmCalendar.formatCalendarPhone
@@ -391,6 +400,20 @@
         <span class="crm-daily-card__towels">${towelCardLine(reservation, type)}</span>
       </div>
     `;
+    const details = card.querySelector('.crm-daily-card__details');
+    if (guestFlag && details) {
+      const flag = root.document.createElement('span');
+      flag.className = `crm-daily-card__flag crm-daily-card__flag--${guestFlag.severity}`;
+      flag.title = guestFlag.preview;
+      const glyph = root.document.createElement('span');
+      glyph.className = 'crm-daily-card__flag-glyph';
+      glyph.textContent = root.EcoVilaCrmCalendar.GUEST_FLAG_GLYPHS[guestFlag.severity];
+      const preview = root.document.createElement('span');
+      preview.className = 'crm-daily-card__flag-text';
+      preview.textContent = guestFlag.preview;
+      flag.append(glyph, preview);
+      details.insertBefore(flag, details.firstChild);
+    }
     card.addEventListener('click', () => openDailyGuestEditor(context, state, reservation));
 
     if (!completed) {
@@ -757,6 +780,7 @@
     const dialog = qs('[data-checkout-note-dialog]');
     const form = qs('[data-checkout-note-form]');
     const note = qs('[data-checkout-note]');
+    const copyToDossier = qs('[data-checkout-to-dossier]');
     if (!dialog || !form || !note) {
       saveDailyStatus(context, state, reservation, { checked_out_at: new Date().toISOString() })
         .catch((error) => reportCheckoutSaveError(context, error));
@@ -764,6 +788,7 @@
     }
 
     note.value = '';
+    if (copyToDossier) copyToDossier.checked = false;
     form.onsubmit = async (event) => {
       event.preventDefault();
       if (event.submitter?.value !== 'save') {
@@ -779,17 +804,33 @@
       // silently losing both the checkout mark and the note — and with them the
       // ADR-082 review-request gate. On failure the dialog stays open so staff
       // can retry.
+      const noteText = note.value.trim();
       try {
         await saveDailyStatus(context, state, reservation, {
           checked_out_at: new Date().toISOString(),
-          checkout_note: note.value.trim() || null,
+          checkout_note: noteText || null,
         });
-        dialog.close();
       } catch (error) {
         reportCheckoutSaveError(context, error);
-      } finally {
         if (submitButton) submitButton.disabled = false;
+        return;
       }
+      if (copyToDossier?.checked && noteText) {
+        try {
+          await root.EcoVilaSupabase.createGuestNote(context.client, {
+            guestPhone: reservation.guest_phone,
+            guestEmail: reservation.guest_email,
+            severity: 'info',
+            body: noteText,
+            sourceReservationId: reservation.id,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'eroare necunoscută';
+          context.setAlert(`Check-out salvat, dar nota nu a fost copiată în istoricul clientului: ${message.slice(0, 160)}`);
+        }
+      }
+      if (submitButton) submitButton.disabled = false;
+      dialog.close();
     };
     dialog.showModal?.();
   }
@@ -836,17 +877,21 @@
     syncDateControl(context, state);
     const nextDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, 1);
     const previousDay = root.EcoVilaCrmCalendar.addDays(state.selectedDate, -1);
-    const [reservations, pricingTiers, holidays] = await Promise.all([
+    const [reservations, pricingTiers, holidays, guestFlagMarkers] = await Promise.all([
       root.EcoVilaSupabase.fetchAdminReservations(context.client, {
         startDate: previousDay,
         endDate: nextDay,
       }),
       root.EcoVilaSupabase.fetchPricingTiers(context.client),
       root.EcoVilaSupabase.fetchHolidays(context.client),
+      typeof root.EcoVilaSupabase.fetchGuestFlagMarkers === 'function'
+        ? root.EcoVilaSupabase.fetchGuestFlagMarkers(context.client).catch(() => [])
+        : Promise.resolve([]),
     ]);
     state.reservations = reservations;
     state.pricingTiers = pricingTiers;
     state.holidays = holidays;
+    state.guestFlagIndex = root.EcoVilaCrmCalendar.buildGuestFlagIndex(guestFlagMarkers);
     const confirmedReservations = reservations.filter(isConfirmedDailyReservation);
     const checkIns = confirmedReservations.filter((reservation) => reservation.check_in === state.selectedDate);
     const checkOuts = confirmedReservations.filter((reservation) => reservation.check_out === state.selectedDate);
@@ -895,6 +940,7 @@
       statuses: [],
       differenceLinks: [],
       differenceLinksError: null,
+      guestFlagIndex: root.EcoVilaCrmCalendar.buildGuestFlagIndex([]),
       pricingTiers: [],
       holidays: [],
       editor: null,

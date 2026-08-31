@@ -1,5 +1,10 @@
 (function (root, factory) {
   const api = factory(root);
+
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+  }
+
   root.EcoVilaCrmSidebar = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
@@ -952,6 +957,29 @@
     updateHoldUi(form);
     renderAddTotal(form, 0);
 
+    const renderGuestFlag = () => {
+      const flagElement = qs('[data-add-guest-flag]', form);
+      if (!flagElement) {
+        return;
+      }
+      const flag = root.EcoVilaCrmCalendar.guestFlagFor({
+        guest_phone: normalizeStaffPhone(qs('[data-add-phone]', form)?.value),
+        guest_email: root.EcoVilaCrmCalendar.normalizeGuestEmail(qs('[data-add-email]', form)?.value),
+      }, state.guestFlagIndex);
+      flagElement.className = 'crm-add-flag';
+      flagElement.hidden = !flag;
+      flagElement.textContent = flag
+        ? `${root.EcoVilaCrmCalendar.GUEST_FLAG_GLYPHS[flag.severity]} Client cu note: ${flag.preview}`
+        : '';
+      if (flag) {
+        flagElement.classList.add(`crm-add-flag--${flag.severity}`);
+      }
+    };
+
+    qs('[data-add-phone]', form)?.addEventListener('input', renderGuestFlag);
+    qs('[data-add-email]', form)?.addEventListener('input', renderGuestFlag);
+    renderGuestFlag();
+
     qs('[data-add-kids]', form)?.addEventListener('input', () => {
       renderChildBuckets(context, state, form, formState);
     });
@@ -1019,6 +1047,7 @@
         renderAddCalendar(context, state, form, formState);
         updateHoldUi(form);
         updateAddTotal(context, state, form, formState);
+        renderGuestFlag();
       },
     };
   }

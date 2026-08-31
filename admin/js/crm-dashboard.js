@@ -1,5 +1,10 @@
 (function (root, factory) {
   const api = factory(root);
+
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+  }
+
   root.EcoVilaCrmDashboard = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
@@ -540,6 +545,10 @@
 
   function reservationCard(context, block, groupColorClass) {
     const reservation = block.primary;
+    const guestFlag = root.EcoVilaCrmCalendar.guestFlagFor(
+      reservation,
+      activeState?.guestFlagIndex,
+    );
     const blockLinks = differenceLinksForRows(
       block.reservations,
       activeState?.differenceLinks || [],
@@ -559,6 +568,8 @@
       'crm-reservation-card--block',
       block.rowSpan > 1 ? 'crm-reservation-card--multi-row' : '',
       statusClass,
+      guestFlag?.hasAttention ? 'crm-reservation-card--flagged-attention' : '',
+      guestFlag?.hasVip ? 'crm-reservation-card--flagged-vip' : '',
       // Cancelled stays grey; otherwise the booking-group accent wins over the status fill.
       statusClass === 'crm-reservation-card--cancelled' ? '' : (groupColorClass || ''),
     ].filter(Boolean).join(' ');
@@ -585,6 +596,26 @@
       ${isHold ? `<span data-hold-countdown data-expires-at="${expiresAt}">${formatHoldCountdown(reservation.cash_expires_at)}</span>` : ''}
       ${!isHold && reservation.payment_type === 'cash' && reservation.payment_status === 'pending' ? `<span data-countdown data-expires-at="${expiresAt}">${formatCountdown(reservation.cash_expires_at)}</span>` : ''}
     `;
+    if (guestFlag) {
+      const severities = [
+        ...(guestFlag.hasAttention ? ['attention'] : []),
+        ...(guestFlag.hasVip ? ['vip'] : []),
+      ];
+      severities.forEach((severity) => {
+        const label = root.EcoVilaCrmCalendar.GUEST_FLAG_LABELS[severity];
+        const badge = root.document.createElement('button');
+        badge.className = `crm-flag crm-flag--${severity}`;
+        badge.type = 'button';
+        badge.textContent = root.EcoVilaCrmCalendar.GUEST_FLAG_GLYPHS[severity];
+        badge.setAttribute('aria-label', `Client cu notă: ${label}`);
+        badge.title = `${label}: ${guestFlag.preview}`;
+        badge.addEventListener('click', (event) => {
+          event.stopPropagation();
+          openReservation(reservation, { focusDossier: true });
+        });
+        card.appendChild(badge);
+      });
+    }
     card.addEventListener('click', () => openReservation(reservation, { groupTotal: total }));
     return card;
   }
@@ -767,9 +798,222 @@
     await activeState?.reload?.();
   }
 
-  function openReservation(reservation, options = {}) {
+  function showDossierError(dialog, message) {
+    const error = qs('[data-dossier-error]', dialog);
+    if (!error) {
+      return;
+    }
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+
+  function dossierDate(value) {
+    const date = String(value || '').slice(0, 10);
+    if (!date) {
+      return '-';
+    }
+    if (activeState?.context?.formatDate) {
+      return activeState.context.formatDate(date);
+    }
+    return date;
+  }
+
+  function updateDossierDirtyPhoneGuard(dialog, reservation) {
+    const phoneInput = qs('[data-edit-phone]', dialog);
+    const addButton = qs('[data-dossier-add]', dialog);
+    const hint = qs('[data-dossier-hint]', dialog);
+    const dirty = Boolean(phoneInput) &&
+      String(phoneInput.value || '').trim() !== String(reservation.guest_phone || '').trim();
+    if (addButton) {
+      addButton.disabled = dirty;
+    }
+    if (hint) {
+      hint.textContent = dirty
+        ? 'Salvează întâi numărul de telefon — nota s-ar lega de numărul vechi.'
+        : '';
+      hint.hidden = !dirty;
+    }
+    return dirty;
+  }
+
+  function renderDossierNote(dialog, reservation, note) {
+    const item = root.document.createElement('li');
+    item.className = `crm-dossier__item crm-dossier__item--${note.severity}`;
+
+    const body = root.document.createElement('p');
+    body.className = 'crm-dossier__body';
+    body.textContent = note.body || '';
+    item.appendChild(body);
+
+    const meta = root.document.createElement('div');
+    meta.className = 'crm-dossier__meta';
+    const detail = root.document.createElement('span');
+    const label = root.EcoVilaCrmCalendar.GUEST_FLAG_LABELS[note.severity] || 'Notă';
+    const source = (activeState?.reservations || []).find((row) => row.id === note.source_reservation_id);
+    const sourceStay = source
+      ? ` · sejur ${dossierDate(source.check_in)}–${dossierDate(source.check_out)}`
+      : '';
+    detail.textContent = `${label} · ${note.created_by_role || '-'} · ${dossierDate(note.created_at)}${sourceStay}`;
+    meta.appendChild(detail);
+
+    if (activeState?.context?.role === 'diana') {
+      const archive = root.document.createElement('button');
+      archive.className = 'crm-dossier__archive';
+      archive.type = 'button';
+      archive.textContent = 'Arhivează';
+      archive.addEventListener('click', async () => {
+        archive.disabled = true;
+        showDossierError(dialog, '');
+        try {
+          await root.EcoVilaSupabase.archiveGuestNote(activeState.context.client, {
+            id: note.id,
+            archivedBy: activeState.context.session.user.id,
+          });
+          await renderGuestDossier(dialog, reservation);
+          await activeState.reload?.();
+        } catch (error) {
+          showDossierError(dialog, error?.message || 'Nota nu a putut fi arhivată.');
+        } finally {
+          archive.disabled = false;
+        }
+      });
+      meta.appendChild(archive);
+    }
+
+    item.appendChild(meta);
+    return item;
+  }
+
+  async function renderGuestDossier(dialog, reservation, options = {}) {
+    const panel = qs('[data-guest-dossier]', dialog);
+    if (!panel) {
+      return [];
+    }
+    const phone = String(reservation?.guest_phone || '').trim();
+    const email = root.EcoVilaCrmCalendar.normalizeGuestEmail(reservation?.guest_email);
+    const list = qs('[data-dossier-list]', panel);
+    const count = qs('[data-dossier-count]', panel);
+    const empty = qs('[data-dossier-empty]', panel);
+    const body = qs('[data-dossier-body]', panel);
+    const addButton = qs('[data-dossier-add]', panel);
+    const phoneInput = qs('[data-edit-phone]', dialog);
+
+    panel.hidden = !(phone || email);
+    panel.dataset.reservationId = reservation?.id || '';
+    if (!phone && !email) {
+      if (list) list.innerHTML = '';
+      if (count) count.textContent = '';
+      return [];
+    }
+
+    showDossierError(dialog, '');
+    if (list) list.innerHTML = '';
+    if (empty) empty.hidden = true;
+    if (body) body.disabled = false;
+    qsa('[data-dossier-severity]', panel).forEach((field) => {
+      field.disabled = false;
+    });
+    if (phoneInput) {
+      phoneInput.oninput = () => updateDossierDirtyPhoneGuard(dialog, reservation);
+    }
+    updateDossierDirtyPhoneGuard(dialog, reservation);
+
+    if (addButton) {
+      addButton.onclick = async () => {
+        const noteBody = String(body?.value || '').trim();
+        const severity = qsa('[data-dossier-severity]', panel)
+          .find((field) => field.checked)?.value || 'info';
+        showDossierError(dialog, '');
+        if (!noteBody) {
+          showDossierError(dialog, 'Scrie nota înainte de a o adăuga.');
+          return;
+        }
+        if (noteBody.length > 2000) {
+          showDossierError(dialog, 'Nota poate avea cel mult 2000 de caractere.');
+          return;
+        }
+        if (updateDossierDirtyPhoneGuard(dialog, reservation)) {
+          return;
+        }
+        addButton.disabled = true;
+        try {
+          await root.EcoVilaSupabase.createGuestNote(activeState.context.client, {
+            guestPhone: phone,
+            guestEmail: email,
+            severity,
+            body: noteBody,
+            sourceReservationId: reservation.id,
+          });
+          if (body) body.value = '';
+          qsa('[data-dossier-severity]', panel).forEach((field) => {
+            field.checked = field.value === 'info';
+          });
+          await renderGuestDossier(dialog, reservation);
+          await activeState.reload?.();
+        } catch (error) {
+          showDossierError(dialog, error?.message || 'Nota nu a putut fi adăugată.');
+        } finally {
+          updateDossierDirtyPhoneGuard(dialog, reservation);
+        }
+      };
+    }
+
+    if (options.focusDossier) {
+      panel.scrollIntoView?.({ block: 'nearest' });
+      body?.focus?.();
+    }
+
+    try {
+      const notes = await root.EcoVilaSupabase.fetchGuestNotes(activeState.context.client, {
+        phone,
+        email,
+      });
+      if (panel.dataset.reservationId !== reservation.id) {
+        return [];
+      }
+      if (list) {
+        list.innerHTML = '';
+        notes.forEach((note) => list.appendChild(renderDossierNote(dialog, reservation, note)));
+      }
+      if (count) count.textContent = notes.length === 1 ? '1 notă' : `${notes.length} note`;
+      if (empty) empty.hidden = notes.length > 0;
+      return notes;
+    } catch (error) {
+      if (count) count.textContent = '0 note';
+      if (empty) empty.hidden = false;
+      showDossierError(dialog, error?.message || 'Istoricul clientului nu a putut fi încărcat.');
+      return [];
+    }
+  }
+
+  async function openReservation(reservation, options = {}) {
     if (!reservation) {
       return;
+    }
+
+    const stateRows = activeState?.reservations;
+    if (Array.isArray(stateRows) && !stateRows.some((row) => row.id === reservation.id)) {
+      try {
+        const hydratedRows = await root.EcoVilaSupabase.fetchReservationGroupById(
+          activeState.context.client,
+          reservation.id,
+        );
+        const currentRows = Array.isArray(activeState?.reservations)
+          ? activeState.reservations
+          : stateRows;
+        const byId = new Map(currentRows.map((row) => [row.id, row]));
+        hydratedRows.forEach((row) => byId.set(row.id, row));
+        activeState.reservations = root.EcoVilaCrmCalendar.sortReservations(Array.from(byId.values()));
+        reservation = activeState.reservations.find((row) => row.id === reservation.id);
+        if (!reservation) {
+          throw new Error('Rezervarea nu a fost găsită.');
+        }
+      } catch (error) {
+        activeState?.context?.setAlert?.(
+          error?.message || 'Rezervarea completă nu a putut fi încărcată.',
+        );
+        return;
+      }
     }
 
     const dialog = qs('[data-reservation-dialog]');
@@ -816,7 +1060,15 @@
     // Read-only roles (Angela) open the dialog to inspect a reservation, but the
     // fields are locked and the save/cancel actions are removed. The server
     // rejects these writes too, so this is purely to keep the UI honest.
-    qsa('input, textarea', dialog).forEach((field) => {
+    qsa([
+      '[data-edit-name]',
+      '[data-edit-phone]',
+      '[data-edit-check-in]',
+      '[data-edit-check-out]',
+      '[data-edit-adults]',
+      '[data-edit-kids-ages]',
+      '[data-edit-notes]',
+    ].join(', '), dialog).forEach((field) => {
       field.disabled = readOnly;
     });
     const saveButton = qs('[data-save-reservation]', dialog);
@@ -855,7 +1107,8 @@
       editorForm.onsubmit = (event) => handleReservationEditSubmit(event, reservation, dialog, readOnly);
     }
     dialog.showModal?.();
-    return differenceLinksPromise;
+    const dossierPromise = renderGuestDossier(dialog, reservation, options);
+    return Promise.all([differenceLinksPromise, dossierPromise]);
   }
 
   function updateDeleteDifferenceWarning(dialog, reservation) {
@@ -2136,6 +2389,7 @@
         holidays,
         addReservations,
         holds,
+        guestFlagMarkers,
       ] = await Promise.all([
         helpers.fetchRooms(context.client),
         helpers.fetchAdminReservations(context.client, { startDate: state.dates[0], endDate }),
@@ -2145,6 +2399,9 @@
         helpers.fetchHolidays(context.client),
         helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
         helpers.fetchTemporaryHolds(context.client),
+        typeof helpers.fetchGuestFlagMarkers === 'function'
+          ? helpers.fetchGuestFlagMarkers(context.client).catch(() => [])
+          : Promise.resolve([]),
       ]);
 
       const reservationIds = reservations.map((reservation) => reservation.id).filter(Boolean);
@@ -2174,6 +2431,7 @@
       state.pricingTiers = pricingTiers;
       state.holidays = holidays;
       state.addReservations = root.EcoVilaCrmCalendar.sortReservations(addReservations);
+      state.guestFlagIndex = root.EcoVilaCrmCalendar.buildGuestFlagIndex(guestFlagMarkers);
       state.addAvailabilityEnd = addAvailabilityEnd;
       renderCalendar(context, state);
       renderPendingCash(context, pending);
@@ -2227,6 +2485,7 @@
       pricingTiers: [],
       holidays: [],
       addReservations: [],
+      guestFlagIndex: root.EcoVilaCrmCalendar.buildGuestFlagIndex([]),
       addAvailabilityEnd: '',
       reload: () => loadDashboard(context, state),
       openReservation,
@@ -2317,6 +2576,7 @@
       .channel('crm-dashboard-reservations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, scheduleRealtimeReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, scheduleRealtimeReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_notes' }, scheduleRealtimeReload)
       .subscribe();
   }
 
@@ -2334,6 +2594,7 @@
     moveAmount,
     openMoveDialog,
     openReservation,
+    renderGuestDossier,
     renderCalendar,
     renderMoveSummary,
     renderTodayStats,

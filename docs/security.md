@@ -313,3 +313,41 @@ captured.
 `admin/js/crm-auth.js` now appends `Secure` to the `/admin` session cookies except on
 plain-HTTP local development hosts; `SameSite=Lax` and the `/admin` path scope were
 already in place, and `.htaccess` sends HSTS.
+
+---
+
+## ADR-111 — guest dossier notes (2026-08-31, not yet deployed)
+
+**What the data is.** `public.guest_notes` holds staff-authored commentary about identifiable
+people, keyed by phone and/or email. This is personal data under GDPR: a data subject can request
+access to it, and the marking notes leave the CRM by email to the staff mailbox. Notes should stay
+factual and operational. Retention is an open owner decision (see the open-questions list in
+`docs/decisions.md`). Erasure is cheap by construction — a single delete by `guest_phone` /
+`guest_email` removes a person's whole dossier — which is a point in favour of contact-keyed
+identity, not against it.
+
+**Access control.**
+- RLS enabled; `revoke all ... from anon, authenticated, public` precedes the explicit grants, so a
+  Supabase default privilege cannot leave `DELETE` behind.
+- Diana: SELECT / INSERT / UPDATE. Angela: SELECT / INSERT only. `anon`: nothing.
+- **No role has DELETE**, service role included. "Never hard delete" is therefore structural rather
+  than a convention. A genuine erasure request requires a direct privileged connection, which is the
+  intended friction.
+- Authorship cannot be forged: a BEFORE INSERT trigger overwrites `created_by` with `auth.uid()` and
+  `created_by_role` with `ecovila_app_role()` rather than validating what the client sent. The same
+  trigger rejects a note pre-marked as archived, rejects the excluded office contacts, and rejects a
+  `source_reservation_id` whose reservation does not carry the note's phone or email.
+- Bodies are immutable. A BEFORE UPDATE column guard (the ADR-056 `enforce_angela_reservation_columns`
+  pattern) allows only `archived_at` / `archived_by` / `updated_at`, and forces the first two from
+  `auth.uid()` / `now()` so an archive cannot be backdated or attributed to someone else.
+- `public.guest_flag_markers` is declared `security_invoker = true`. Without it the view would run
+  with the owner's rights and silently bypass RLS.
+- All note text reaching the CRM is written with `textContent`, and every interpolation in the alert
+  email goes through the module's `escapeHtml` / `escapeAttribute`.
+
+**Injection.** The case-insensitive reservation lookup escapes LIKE metacharacters before calling
+`ilike`: guest emails are only validated against `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`, which admits `%`
+and `_`. The results are re-filtered in JS regardless, so a wildcard could not have produced a wrong
+match — but it could have filled the row limit with the wrong reservations. The `guest_notes` lookup
+uses equality (the column is CHECK-enforced lowercase). No `.or()` string is built from
+user-controlled values anywhere in this feature (B-30).

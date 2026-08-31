@@ -2492,6 +2492,295 @@ export function buildReviewRequestEmail(args: {
   return { subject: copy.subject, text, html };
 }
 
+type GuestFlagAlertNoteSource = {
+  check_in: string;
+  check_out: string;
+};
+
+type GuestFlagAlertNote = {
+  severity: 'info' | 'attention' | 'vip';
+  body: string;
+  created_by_role: string;
+  created_at: string;
+  source_reservation_id?: string | null;
+  source_reservation?: GuestFlagAlertNoteSource | GuestFlagAlertNoteSource[] | null;
+};
+
+type GuestFlagAlertReservation = NotificationReservation & {
+  adults: number;
+  kids_ages?: number[] | null;
+  payment_status: string;
+};
+
+type GuestFlagAlertPreviousStay = {
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  kidsCount: number;
+  accommodation: string;
+  status: string;
+};
+
+export function buildGuestFlagAlertEmail(args: {
+  fullName: string;
+  phone: string;
+  email: string;
+  notes: GuestFlagAlertNote[];
+  groupReservations: GuestFlagAlertReservation[];
+  previousStays: GuestFlagAlertPreviousStay[];
+  siteUrl: string;
+}): { subject: string; html: string; text: string } {
+  // Every alert used to carry an identical subject, so a phone notification said
+  // nothing and the mail client threaded unrelated guests together. The heading
+  // inside stays generic; only the subject names the guest.
+  const heading = 'Alertă EcoVila: oaspete cu marcaj';
+  const group = args.groupReservations;
+  const booking = group[0];
+  // Severity first, then recency. Sorting by date alone let five recent `info`
+  // notes push the attention note that actually raised the alert out of the email.
+  const notes = [...args.notes]
+    .sort((left, right) =>
+      noteSeverityRank(left.severity) - noteSeverityRank(right.severity) ||
+      Date.parse(right.created_at) - Date.parse(left.created_at)
+    )
+    .slice(0, 5);
+  const previousStays = args.previousStays.slice(0, 3);
+  // The severity is the point of the alert, so it belongs in the inbox line —
+  // "Atenție" and "VIP" call for very different reactions.
+  const topSeverity: GuestFlagAlertNote['severity'] =
+    args.notes.some((note) => note.severity === 'attention')
+      ? 'attention'
+      : args.notes.some((note) => note.severity === 'vip')
+      ? 'vip'
+      : 'info';
+  const subject = args.fullName
+    ? `Alertă EcoVila · ${severityLabel(topSeverity)}: ${args.fullName} a rezervat din nou`
+    : heading;
+  const checkIn = booking?.check_in || '';
+  const checkOut = booking?.check_out || '';
+  const adults = group.reduce(
+    (sum, reservation) => sum + Math.max(0, Number(reservation.adults) || 0),
+    0,
+  );
+  const kidsCount = group.reduce(
+    (sum, reservation) =>
+      sum + (Array.isArray(reservation.kids_ages) ? reservation.kids_ages.length : 0),
+    0,
+  );
+  const bookingPeriod = emailPeriod(checkIn, checkOut);
+  const bookingNights = nightsLabel(nightsBetween(checkIn, checkOut), 'ro');
+  const bookingAccommodation = aggregateRoomLabel(group, 'ro');
+  const bookingParty = staffPartyLabel(adults, kidsCount);
+  const payment = `${paymentTypeLabel(booking?.payment_type)} · ${
+    paymentStatusLabel(booking?.payment_status)
+  }`;
+  const total = `${formatEmailMoney(aggregateTotalPrice(group))} MDL`;
+  const logoUrl = `${args.siteUrl.replace(/\/+$/, '')}${EMAIL_LOGO_PATH}`;
+
+  const whoRows = [
+    ['Nume', args.fullName || '—'],
+    ['Telefon', args.phone || '—'],
+    ['Email', args.email || '—'],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:10px 14px; color:#6E6760; border-bottom:1px solid #EFE8DC;">${
+          escapeHtml(label)
+        }</td><td style="padding:10px 14px; font-weight:600; text-align:right; border-bottom:1px solid #EFE8DC;">${
+          escapeHtml(value)
+        }</td></tr>`,
+    )
+    .join('');
+
+  const noteCards = notes.length
+    ? notes.map((note) => {
+      const source = noteSourceReservation(note.source_reservation);
+      const sourcePeriod = source ? emailPeriod(source.check_in, source.check_out) : '';
+      const metadata = [
+        severityLabel(note.severity),
+        authorRoleLabel(note.created_by_role),
+        formatEmailDate(String(note.created_at || '').slice(0, 10), 'ro'),
+        ...(sourcePeriod ? [`Sejur: ${sourcePeriod}`] : []),
+      ].join(' · ');
+      return `<div style="margin:0 0 10px 0; padding:14px 16px; background:#FFFFFF; border:1px solid #E7DFD2; border-radius:14px;">
+        <div style="margin:0 0 7px 0; color:#8B7564; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">${
+        escapeHtml(metadata)
+      }</div>
+        <div style="color:#332F2C; font-size:14px; line-height:1.55; white-space:pre-wrap;">${
+        escapeHtml(truncateNoteBody(note.body))
+      }</div>
+      </div>`;
+    }).join('')
+    : '<p style="margin:0; color:#6E6760;">Nu sunt note active.</p>';
+
+  const bookingRows = [
+    ['Perioada', bookingPeriod],
+    ['Durată', bookingNights],
+    ['Cazare', bookingAccommodation],
+    ['Oaspeți', bookingParty],
+    ['Plată', payment],
+    ['Prețul rezervării', total],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:10px 14px; color:#6E6760; border-bottom:1px solid #EFE8DC;">${
+          escapeHtml(label)
+        }</td><td style="padding:10px 14px; font-weight:600; text-align:right; border-bottom:1px solid #EFE8DC;">${
+          escapeHtml(value)
+        }</td></tr>`,
+    )
+    .join('');
+
+  const previousCards = previousStays.length
+    ? previousStays.map((stay) => {
+      const lines = [
+        emailPeriod(stay.checkIn, stay.checkOut),
+        stay.accommodation,
+        staffPartyLabel(stay.adults, stay.kidsCount),
+        paymentStatusLabel(stay.status),
+      ];
+      return `<div style="margin:0 0 10px 0; padding:14px 16px; background:#FFFFFF; border:1px solid #E7DFD2; border-radius:14px; color:#332F2C; font-size:14px; line-height:1.55;">${
+        lines.map((line) => escapeHtml(line)).join('<br>')
+      }</div>`;
+    }).join('')
+    : '<p style="margin:0; color:#6E6760;">Nu există sejururi anterioare.</p>';
+
+  const html = `<!doctype html>
+<html lang="ro">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light only"><title>${
+    escapeHtml(heading)
+  }</title></head>
+<body style="margin:0; padding:0; background:#F7F4EF; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color:#332F2C;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">${
+    escapeHtml('Un oaspete cu note active a creat o rezervare nouă.')
+  }</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" style="padding:28px 14px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px; width:100%;">
+      <tr><td align="center" style="padding:8px 18px 16px;"><img src="${
+    escapeAttribute(logoUrl)
+  }" width="148" alt="EcoVila" style="display:block; max-width:148px; height:auto; border:0;"></td></tr>
+      <tr><td style="background:#FFFAF2; border:1px solid #E7DFD2; border-radius:24px; padding:30px 24px;">
+        <h1 style="margin:0 0 8px; font-size:27px; line-height:1.22; text-align:center;">${
+    escapeHtml(heading)
+  }</h1>
+        <p style="margin:0 0 24px; color:#6E6760; font-size:15px; line-height:1.55; text-align:center;">${
+    escapeHtml('Verifică dosarul înainte de a contacta oaspetele.')
+  }</p>
+        <h2 style="margin:22px 0 10px; font-size:18px;">${escapeHtml('Cine')}</h2>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FFFFFF; border:1px solid #E7DFD2; border-radius:16px; overflow:hidden;">${whoRows}</table>
+        <h2 style="margin:26px 0 10px; font-size:18px;">${escapeHtml('Note')}</h2>
+        ${noteCards}
+        <h2 style="margin:26px 0 10px; font-size:18px;">${escapeHtml('Rezervarea nouă')}</h2>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FFFFFF; border:1px solid #E7DFD2; border-radius:16px; overflow:hidden;">${bookingRows}</table>
+        <h2 style="margin:26px 0 10px; font-size:18px;">${escapeHtml('Sejururi anterioare')}</h2>
+        ${previousCards}
+      </td></tr>
+      <tr><td align="center" style="padding:20px; color:#9A9085; font-size:12px;">EcoVila · alertă internă</td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+  const noteText = notes.length
+    ? notes.flatMap((note) => {
+      const source = noteSourceReservation(note.source_reservation);
+      const sourceLine = source
+        ? ` · Sejur: ${emailPeriod(source.check_in, source.check_out)}`
+        : '';
+      return [
+        `${severityLabel(note.severity)} · ${authorRoleLabel(note.created_by_role)} · ${
+          formatEmailDate(String(note.created_at || '').slice(0, 10), 'ro')
+        }${sourceLine}`,
+        truncateNoteBody(note.body),
+      ];
+    })
+    : ['Nu sunt note active.'];
+  const previousText = previousStays.length
+    ? previousStays.map((stay) =>
+      `${emailPeriod(stay.checkIn, stay.checkOut)} · ${stay.accommodation} · ${
+        staffPartyLabel(stay.adults, stay.kidsCount)
+      } · ${paymentStatusLabel(stay.status)}`
+    )
+    : ['Nu există sejururi anterioare.'];
+  const text = [
+    subject,
+    '',
+    'Cine',
+    `Nume: ${args.fullName || '—'}`,
+    `Telefon: ${args.phone || '—'}`,
+    `Email: ${args.email || '—'}`,
+    '',
+    'Note',
+    ...noteText,
+    '',
+    'Rezervarea nouă',
+    `Perioada: ${bookingPeriod}`,
+    `Durată: ${bookingNights}`,
+    `Cazare: ${bookingAccommodation}`,
+    `Oaspeți: ${bookingParty}`,
+    `Plată: ${payment}`,
+    `Prețul rezervării: ${total}`,
+    '',
+    'Sejururi anterioare',
+    ...previousText,
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
+function noteSourceReservation(
+  value: GuestFlagAlertNote['source_reservation'],
+): GuestFlagAlertNoteSource | null {
+  if (Array.isArray(value)) {
+    return value[0] || null;
+  }
+  return value || null;
+}
+
+function truncateNoteBody(value: string): string {
+  const chars = [...String(value || '').trim()];
+  return chars.length > 300 ? `${chars.slice(0, 299).join('')}…` : chars.join('');
+}
+
+function noteSeverityRank(value: GuestFlagAlertNote['severity']): number {
+  if (value === 'attention') return 0;
+  if (value === 'vip') return 1;
+  return 2;
+}
+
+function severityLabel(value: GuestFlagAlertNote['severity']): string {
+  if (value === 'attention') return 'Atenție';
+  if (value === 'vip') return 'VIP';
+  return 'Notă';
+}
+
+function authorRoleLabel(value: string): string {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === 'diana') return 'Diana';
+  if (role === 'angela') return 'Angela';
+  return 'Echipă';
+}
+
+function emailPeriod(checkIn: string, checkOut: string): string {
+  return `${formatEmailDate(checkIn, 'ro')} – ${formatEmailDate(checkOut, 'ro')}`;
+}
+
+function staffPartyLabel(adults: number, kidsCount: number): string {
+  const adultWord = adults === 1 ? 'adult' : 'adulți';
+  const kidsWord = kidsCount === 1 ? 'copil' : 'copii';
+  return `${adults} ${adultWord}, ${kidsCount} ${kidsWord}`;
+}
+
+function paymentTypeLabel(value: unknown): string {
+  return String(value || '').trim().toLowerCase() === 'cash' ? 'Cash' : 'Card';
+}
+
+function paymentStatusLabel(value: unknown): string {
+  const status = String(value || '').trim().toLowerCase();
+  if (status === 'paid') return 'Achitată';
+  if (status === 'cancelled') return 'Anulată';
+  return 'În așteptare';
+}
+
 export function buildBookingChangeEmail(args: {
   lang: EmailLang;
   firstName: string;

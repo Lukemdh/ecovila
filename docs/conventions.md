@@ -46,6 +46,14 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   read. On failure, show an unavailable/unverified state and block destructive
   repricing where the missing rows could change the decision; do not catch into `[]` or
   an empty `Map` that looks like verified zero.
+- Guest-dossier notes (`guest_notes`, ADR-111) are keyed by phone AND/OR email and either match
+  flags the guest; attention always outranks vip, and a tooltip preview must come from the newest
+  note OF THE REPORTED SEVERITY, never the newest overall. The calendar flag may use neither a card
+  background (already pending/paid-cash/paid-card/cancelled/hold plus five group accents) nor
+  Situația zilnică's `border-left-color` (already check-in/check-out/complete): it composes an inset
+  ring onto the card's existing `box-shadow` and adds a ringed badge. Client-side flag matching must
+  stay semantically identical to `_shared/guestNotes.ts:matchGuestFlags`, or the calendar and the
+  alert email will disagree about who is flagged.
 - Any guest-controlled text rendered in the CRM must be assigned with `textContent` or a
   shared escaping helper before it reaches `innerHTML`. Treat reservation names, phones,
   notes, photo alt text, holiday labels, and any DB text field as untrusted. Shared CRM
@@ -109,6 +117,14 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   `cancellation_tokens.token` column is an open exception tracked as S-10.
 - Declare each function's `verify_jwt` in `supabase/config.toml`. Public/cron
   functions (`verify_jwt = false`) must enforce their own signature or shared-secret.
+- A notification that must survive provider failures belongs in a cron-swept function, not inline in
+  a request path: only a repeating caller can re-enter `dispatchScheduledNotificationOnce`, and
+  `create-reservation` in particular commits reservations, cancellation tokens and the manage token
+  as separate statements, so awaiting a provider after them can strand a booking behind a failed
+  response. A cron sweep also catches staff-created bookings, which are a direct table insert and
+  reach no Edge Function at all. Delivery through this path is at-least-once; do not document it as
+  exactly-once. Any per-contact cooldown must count only `delivery_status = 'sent'` rows, or a
+  failed attempt will suppress its own retry.
 - Cron-triggered functions run on a frequent (~1-minute) external schedule and must be
   idempotent: rely on `notification_events` dedup and gate time-of-day behaviour in code,
   not on the cron cadence. Business-hour logic uses the `Europe/Chisinau` zone
@@ -143,6 +159,17 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - Migrations that use extensions must create/enable those extensions explicitly before
   first use. The current Maib `cron.schedule` migrations assume `pg_cron` exists and are
   tracked as B-11.
+- A nullable FK declared `ON DELETE SET NULL` performs an UPDATE on the referencing row, so a
+  column-immutability trigger must exempt it or the parent row can never be deleted. Grant the
+  exemption only when the nulled column is the ONLY one that changed — a referential action changes
+  exactly one, so a client UPDATE cannot launder a wipe through it. For the same reason, a
+  both-or-neither CHECK across a value and its nullable FK author column will abort that deletion;
+  make the invariant one-directional instead.
+- A view over an RLS-protected table must be declared `set (security_invoker = true)`, otherwise it
+  runs with the view owner's rights and bypasses the policies of the table beneath it.
+- Before recreating an enumerated CHECK constraint, read the LIVE definition. The repo's most recent
+  copy of `notification_events_event_type_check` is missing `review_request` (B-39), so appending to
+  the repo's copy would silently drop a production event type.
 - Avoid `security definer` functions in exposed schemas. If a public RPC truly needs
   elevated privileges, keep its return shape minimal, set an explicit `search_path`, use
   fully qualified table names, grant only required roles, and document the reason in

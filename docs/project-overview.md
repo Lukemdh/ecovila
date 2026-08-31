@@ -50,6 +50,15 @@ The product has two surfaces:
   for deposits, events, and off-platform payments, independent of reservations (no booking
   creation, no room inventory changes, no `Purchase` event). Provider sessions (MIA QR or
   hosted card checkout) are minted lazily on "Plătește"; status updates re-read MAIB authoritatively.
+- **Guest dossier + returning-guest alert** (CRM, ADR-111): staff attach persistent notes to a
+  PERSON, identified by phone OR email (either match flags them), separate from the existing
+  per-reservation `notes` field. Notes are append-only with immutable bodies; "remove" archives.
+  Severity `info` shows only in the reservation popup, while `attention` and `vip` also mark the
+  calendar (composed inset ring plus a badge — never a card background, which already encodes
+  payment state) and both halves of Situația zilnică, and trigger one staff email per booking when
+  that guest books again. The email is sent by the per-minute `send-guest-flag-alerts` cron, so it
+  covers staff-created bookings and never sits in the guest's checkout path. The office phone and
+  mailbox are excluded at the database level and can neither hold a note nor raise a flag.
 - **Accommodation moves + optional difference links** (CRM): Diana can drag a
   single-villa calendar card to a free accommodation of another type or choose the
   exact source/destination in the reservation dialog for multi-villa bookings. The

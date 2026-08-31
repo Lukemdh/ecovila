@@ -12,6 +12,8 @@
   --crm-panel: #fffdf9;
   --crm-line: #ded7c9;
   --crm-danger: #a83232;
+  --crm-flag-attention: #a83232;
+  --crm-flag-vip: #273027;
   --crm-pending: #f0cc4b;
   --crm-paid-cash: #7560a8;
   --crm-paid-card: #4f8b5b;
@@ -543,6 +545,43 @@ h2 {
   color: #fff;
 }
 
+/* Guest flag notice in sidebar add-reservation form (ADR-111) */
+.crm-add-flag {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  border-left: 3px solid var(--crm-line);
+  background: #fbf8f1;
+  padding: 6px 10px;
+  color: var(--crm-ink);
+  font-size: 0.8rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-add-flag--attention {
+  border-left-color: var(--crm-flag-attention);
+  background: #fdf2f2;
+  color: var(--crm-flag-attention);
+}
+
+.crm-add-flag--vip {
+  border-left-color: var(--crm-flag-vip);
+  background: #f2f3ef;
+  color: var(--crm-flag-vip);
+}
+
+.crm-add-flag span,
+.crm-add-flag strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .crm-holds-count {
   color: var(--crm-ochre);
   font-size: 1.5rem;
@@ -985,6 +1024,10 @@ h2 {
   .crm-spinner {
     animation-duration: 2.4s;
   }
+
+  .crm-dossier__level span {
+    transition: none;
+  }
 }
 
 .crm-calendar {
@@ -1064,6 +1107,7 @@ h2 {
 }
 
 .crm-reservation-card {
+  position: relative;
   display: grid;
   gap: 0;
   border-radius: 6px;
@@ -1184,6 +1228,72 @@ h2 {
 .crm-reservation-card--group-5 {
   background: var(--crm-group-5);
   color: #fff;
+}
+
+/* Guest dossier flags (ADR-111): composed elevation + 2px inset ring.
+   Attention wins over VIP when both classes are present. */
+.crm-reservation-card--flagged-vip {
+  box-shadow: 0 8px 14px rgba(39, 48, 39, 0.1), inset 0 0 0 2px var(--crm-flag-vip);
+}
+
+.crm-reservation-card--flagged-attention {
+  box-shadow: 0 8px 14px rgba(39, 48, 39, 0.1), inset 0 0 0 2px var(--crm-flag-attention);
+}
+
+/* Card flag badges: ~18px circular button top-right inside the card.
+   2px --crm-panel ring keeps it legible on every fill. */
+.crm-flag {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  z-index: 3;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--crm-panel);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  white-space: normal;
+  text-decoration: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.crm-flag:focus-visible {
+  outline: 2px solid var(--crm-moss);
+  outline-offset: 2px;
+}
+
+.crm-flag--attention {
+  background: var(--crm-flag-attention);
+}
+
+.crm-flag--vip {
+  background: var(--crm-flag-vip);
+}
+
+/* A second badge stacks to the left of the first. */
+.crm-flag + .crm-flag {
+  right: 25px;
+}
+
+/* Keep the price clear of the badges. Driven by the card's own flag classes
+   rather than :has(), so the reserved space is deterministic and testable. */
+.crm-reservation-card--flagged-attention strong,
+.crm-reservation-card--flagged-vip strong {
+  margin-right: 22px;
+}
+
+.crm-reservation-card--flagged-attention.crm-reservation-card--flagged-vip strong {
+  margin-right: 44px;
 }
 
 .crm-dialog {
@@ -1386,6 +1496,206 @@ h2 {
 
 .crm-dialog__head .crm-total-breakdown > span:not(.crm-difference-marker) {
   font-size: 0.76rem;
+}
+
+/* Guest dossier in reservation dialog (ADR-111): calm context panel under the dialog header */
+.crm-dossier {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: #fbf8f1;
+  padding: 12px 14px;
+}
+
+.crm-dossier__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crm-dossier__title {
+  margin: 0;
+  font-family: Montserrat, system-ui, sans-serif;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--crm-ink);
+}
+
+.crm-dossier__count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--crm-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-dossier__list {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crm-dossier__empty {
+  margin: 0;
+  color: var(--crm-muted);
+  font-size: 0.84rem;
+  font-style: italic;
+}
+
+.crm-dossier__item {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--crm-line);
+  border-radius: 0 4px 4px 0;
+  background: var(--crm-panel);
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.crm-dossier__item--attention {
+  border-left-color: var(--crm-flag-attention);
+}
+
+.crm-dossier__item--vip {
+  border-left-color: var(--crm-flag-vip);
+}
+
+.crm-dossier__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--crm-muted);
+  font-size: 0.74rem;
+}
+
+.crm-dossier__body {
+  margin: 0;
+  color: var(--crm-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.crm-dossier__archive {
+  border: 0;
+  background: transparent;
+  color: var(--crm-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.crm-dossier__archive:hover {
+  color: var(--crm-danger);
+}
+
+.crm-dossier__archive:focus-visible {
+  outline: 2px solid var(--crm-moss);
+  outline-offset: 2px;
+}
+
+.crm-dossier__compose {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--crm-line);
+  padding-top: 10px;
+}
+
+.crm-dossier__levels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.crm-dossier__level {
+  position: relative;
+  display: block;
+}
+
+.crm-dossier__level input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.crm-dossier__level span {
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  border: 1px solid var(--crm-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--crm-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.crm-dossier__level:hover span {
+  border-color: var(--crm-moss);
+}
+
+.crm-dossier__level input:checked + span {
+  border-color: var(--crm-moss);
+  background: var(--crm-moss);
+  color: #fff;
+}
+
+.crm-dossier__level--attention input:checked + span {
+  border-color: var(--crm-flag-attention);
+  background: var(--crm-flag-attention);
+  color: #fff;
+}
+
+.crm-dossier__level--vip input:checked + span {
+  border-color: var(--crm-flag-vip);
+  background: var(--crm-flag-vip);
+  color: #fff;
+}
+
+.crm-dossier__level input:focus-visible + span {
+  outline: 3px solid rgba(96, 108, 56, 0.18);
+  outline-offset: 1px;
+}
+
+.crm-dossier__compose textarea {
+  width: 100%;
+  border: 1px solid var(--crm-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--crm-ink);
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  resize: vertical;
+}
+
+.crm-dossier__compose textarea:focus {
+  outline: 2px solid var(--crm-moss);
+  outline-offset: 1px;
+}
+
+.crm-dossier__compose .crm-button {
+  justify-self: start;
+  padding: 6px 14px;
+  font-size: 0.84rem;
+}
+
+.crm-dossier__hint {
+  margin: 0;
+  color: var(--crm-muted);
+  font-size: 0.78rem;
 }
 
 /* The two rare operations share one divider and sit side by side while closed;
@@ -2647,6 +2957,77 @@ h2 {
 .crm-daily-card__towels {
   color: var(--crm-moss);
   font-weight: 800;
+}
+
+/* Guest dossier flag on Situația zilnică cards (ADR-111) */
+.crm-daily-card__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  width: fit-content;
+  min-width: 0;
+  border-radius: 999px;
+  padding: 4px 12px 4px 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
+  border: 1px solid var(--crm-line);
+  background: #fff;
+  color: var(--crm-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-daily-card__flag--attention {
+  border-color: rgba(168, 50, 50, 0.3);
+  background: #fdf2f2;
+  color: var(--crm-flag-attention);
+}
+
+.crm-daily-card__flag--vip {
+  border-color: rgba(39, 48, 39, 0.3);
+  background: #f2f3ef;
+  color: var(--crm-flag-vip);
+}
+
+.crm-daily-card__flag span,
+.crm-daily-card__flag strong {
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.crm-daily-card__flag span.crm-daily-card__flag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Qualified with `span`: the generic `.crm-daily-card__flag span { display: inline }`
+   rule above is more specific than a bare class, and would defeat place-items. */
+.crm-daily-card__flag span.crm-daily-card__flag-glyph {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.crm-daily-card__flag--attention span.crm-daily-card__flag-glyph {
+  background: var(--crm-flag-attention);
+}
+
+.crm-daily-card__flag--vip span.crm-daily-card__flag-glyph {
+  background: var(--crm-flag-vip);
 }
 
 .crm-daily-check {

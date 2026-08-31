@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="../css/crm.css?v=2026082704">
+    <link rel="stylesheet" href="../css/crm.css?v=2026083101">
   </head>
   <body class="crm-page">
     <div class="crm-mobile-block">
@@ -168,6 +168,7 @@
                 <span>Email <span class="crm-field-optional">(opțional)</span></span>
                 <input type="email" data-add-email>
               </label>
+              <p class="crm-add-flag" data-add-guest-flag hidden></p>
               <label class="crm-field">
                 <span>Note</span>
                 <textarea rows="3" data-add-notes></textarea>
@@ -332,6 +333,25 @@
                 <span class="crm-difference-marker" data-edit-pending-difference hidden>Diferență neachitată: 0 MDL</span>
               </div>
             </div>
+            <section class="crm-dossier" data-guest-dossier hidden>
+              <div class="crm-dossier__head">
+                <h3 class="crm-dossier__title">Istoric client</h3>
+                <span class="crm-dossier__count" data-dossier-count></span>
+              </div>
+              <ul class="crm-dossier__list" data-dossier-list></ul>
+              <p class="crm-dossier__empty" data-dossier-empty hidden>Nu există note despre acest client.</p>
+              <div class="crm-dossier__compose" data-dossier-compose>
+                <div class="crm-dossier__levels" role="radiogroup" aria-label="Tip notă client">
+                  <label class="crm-dossier__level"><input type="radio" name="crm-dossier-severity" value="info" checked data-dossier-severity><span>Notă</span></label>
+                  <label class="crm-dossier__level crm-dossier__level--attention"><input type="radio" name="crm-dossier-severity" value="attention" data-dossier-severity><span>Atenție</span></label>
+                  <label class="crm-dossier__level crm-dossier__level--vip"><input type="radio" name="crm-dossier-severity" value="vip" data-dossier-severity><span>VIP</span></label>
+                </div>
+                <textarea rows="2" data-dossier-body placeholder="Ce trebuie să știm despre acest client la următoarea rezervare?"></textarea>
+                <p class="crm-dossier__hint" data-dossier-hint hidden></p>
+                <p class="crm-edit-error" data-dossier-error role="alert" hidden></p>
+                <button class="crm-button" type="button" data-dossier-add>Adaugă notă</button>
+              </div>
+            </section>
             <!-- Field order follows a phone call: who → when → how many → notes. -->
             <div class="crm-form-grid crm-form-grid--two">
               <label class="crm-field">
@@ -364,7 +384,7 @@
               </label>
             </div>
             <label class="crm-field">
-              <span>Note</span>
+              <span>Notă despre această rezervare</span>
               <textarea rows="2" data-edit-notes></textarea>
             </label>
             <p class="crm-edit-error" data-edit-error role="alert" hidden></p>
@@ -888,6 +908,10 @@
               <span>Feedback opțional</span>
               <textarea rows="5" data-checkout-note></textarea>
             </label>
+            <label class="crm-check">
+              <input type="checkbox" data-checkout-to-dossier>
+              <span>Păstrează și în istoricul clientului</span>
+            </label>
             <menu class="crm-dialog-actions">
               <button class="crm-button" value="cancel">Anulează</button>
               <button class="crm-button crm-button--primary" value="save">Salvează</button>
@@ -1104,22 +1128,22 @@
       </section>
     </main>
 
-    <script src="../js/vendor/supabase.js?v=2026082704"></script>
-    <script src="../js/supabase-config.js?v=2026082704"></script>
-    <script src="../js/supabase.js?v=2026082704"></script>
-    <script src="../js/pricing.js?v=2026082704"></script>
-    <script src="../js/calendar.js?v=2026082704"></script>
-    <script src="js/crm-calendar.js?v=2026082704"></script>
-    <script src="js/crm-sidebar.js?v=2026082704"></script>
-    <script src="js/crm-dashboard.js?v=2026082704"></script>
-    <script src="js/crm-finance.js?v=2026082704"></script>
-    <script src="js/crm-daily.js?v=2026082704"></script>
-    <script src="js/crm-towels.js?v=2026082704"></script>
-    <script src="js/crm-photos.js?v=2026082704"></script>
-    <script src="js/crm-pricing.js?v=2026082704"></script>
-    <script src="js/crm-complaints.js?v=2026082704"></script>
-    <script src="js/crm-payment-links.js?v=2026082704"></script>
-    <script src="js/crm-auth.js?v=2026082704"></script>
-    <script src="js/crm-app.js?v=2026082704"></script>
+    <script src="../js/vendor/supabase.js?v=2026083101"></script>
+    <script src="../js/supabase-config.js?v=2026083101"></script>
+    <script src="../js/supabase.js?v=2026083101"></script>
+    <script src="../js/pricing.js?v=2026083101"></script>
+    <script src="../js/calendar.js?v=2026083101"></script>
+    <script src="js/crm-calendar.js?v=2026083101"></script>
+    <script src="js/crm-sidebar.js?v=2026083101"></script>
+    <script src="js/crm-dashboard.js?v=2026083101"></script>
+    <script src="js/crm-finance.js?v=2026083101"></script>
+    <script src="js/crm-daily.js?v=2026083101"></script>
+    <script src="js/crm-towels.js?v=2026083101"></script>
+    <script src="js/crm-photos.js?v=2026083101"></script>
+    <script src="js/crm-pricing.js?v=2026083101"></script>
+    <script src="js/crm-complaints.js?v=2026083101"></script>
+    <script src="js/crm-payment-links.js?v=2026083101"></script>
+    <script src="js/crm-auth.js?v=2026083101"></script>
+    <script src="js/crm-app.js?v=2026083101"></script>
   </body>
 </html>

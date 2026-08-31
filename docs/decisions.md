@@ -4281,6 +4281,103 @@ is relied upon against bookings made earlier.
 
 ---
 
+### ADR-111 — Guest dossier: notes about a person, flag markers, returning-guest alert
+
+- **Date:** 2026-08-31. Owner asked for notes attached to customers (including past ones), an email
+  when a noted customer books again, a colour + exclamation marker on the calendar, and the same
+  signal on both halves of Situația zilnică. Planned with Codex and Gemini proposing independently,
+  then both attacking the merged plan; several of their findings changed the design materially.
+- **Identity is the contact pair, not one field.** A note carries `guest_phone` and/or
+  `guest_email`, and a reservation is flagged when EITHER matches — the owner's own requirement:
+  "if a problematic guest books with someone else's phone but still uses their email, we get
+  flagged". Phone is canonical on every path (`normalizeInternationalPhone`, and the byte-identical
+  `normalizeStaffPhone`); email is optional (ADR-065) so it cannot be the sole key. The office
+  contacts `+37360120220` / `office@ecovila.md` sit in `guest_flag_exclusions`: they can neither
+  collect a note nor raise a flag, because walk-ins are sometimes booked under them.
+- **The phone CHECK mirrors the LIVE database (`^\+[0-9]{8,15}$`), not ADR-081.** ADR-081 tightened
+  the application guards without a backfill, so historical rows can hold values its stricter pattern
+  rejects. Using it here would have made "leave a note on a past guest" fail with 23514 on exactly
+  the guests this feature exists for.
+- **Notes are an append-only log, not one editable textarea.** Two staff writing into a shared field
+  would clobber each other; an INSERT cannot. The body is immutable — a correction is an archive
+  plus a new note — and there is no DELETE grant for any role, so "never hard delete" is structural
+  rather than a convention. A BEFORE INSERT trigger FORCES `created_by`/`created_by_role` from
+  `auth.uid()`/`ecovila_app_role()`, so Angela cannot post a note as Diana; a BEFORE UPDATE column
+  guard (the ADR-056 pattern) allows only `archived_at`/`archived_by`, and forces those too.
+- **`ON DELETE SET NULL` had to be carved out of both.** `source_reservation_id`, `created_by` and
+  `archived_by` are all nullable FKs. A both-or-neither archive pair check would have aborted the
+  deletion of any staff user who had archived a note, and a blanket immutability guard would have
+  aborted the deletion of any reservation a note pointed at. The pair check is now one-directional,
+  and the guard exempts an FK-null only when it is the ONLY column that moved — a referential action
+  changes exactly one, so a client UPDATE cannot launder a wipe through the exemption.
+- **Three severities, one switch.** `info` shows in the popup only; `attention` and `vip` mark the
+  calendar and trigger the email. A separate `alert_on_return` boolean was rejected as two controls
+  for one decision. The default is `info`, deliberately: defaulting to `attention` would turn every
+  note typed without a thought into a red marker and a future email.
+- **The alert is a cron sweeper, not a hook in `create-reservation`.** That choice fixed three
+  problems at once. `create-reservation` is the synchronous checkout path and its writes are several
+  separate commits, so awaiting Resend there can strand a booking that already exists behind a
+  failed HTTP response. Staff bookings are a direct table insert (`js/supabase.js` ←
+  `crm-sidebar.js`) and would have been missed entirely. And a one-shot caller can never retry,
+  while a per-minute cron re-entering `dispatchScheduledNotificationOnce` does. `create-reservation`
+  is untouched by this ADR.
+- **Delivery is at-least-once and the ADR says so.** The provider send happens before the event is
+  marked sent, exactly like every other notification here. No exactly-once claim is made anywhere.
+- **Three guards that each close a specific hole:** (1) with no recipient configured the sweeper
+  returns without reserving anything — `providers.ts` resolves an empty recipient as a successful
+  `{skipped:true}`, which would have marked the event `sent` and consumed the dedup slot forever;
+  (2) the 6-hour per-contact cooldown counts only `delivery_status = 'sent'` rows, so a provider
+  hiccup cannot mute a guest for six hours by masquerading as a delivered alert; (3) dedup is keyed
+  on `resolveStableGroupOwnerIds`, so a partial cancellation (ADR-104) inside the 24h window cannot
+  promote a new owner and re-send.
+- **The email carries no money for previous stays.** `reservations.total_price` excludes ADR-057
+  add-guests and ADR-106/107 difference links, so any historical figure would be wrong; the owner
+  asked for dates and party size, not totals. Previous stays are grouped by `booking_group_id` — a
+  row-level `limit(3)` would have returned three villas of one booking as three stays. Notes are
+  ordered by severity before recency, so five recent `info` notes cannot push the attention note
+  that actually raised the alert out of the five shown, and the subject names both the severity and
+  the guest so the inbox line is useful on its own.
+- **The colour channel was already full, so the flag uses a different one.** Card backgrounds
+  already mean pending / paid-cash / paid-card / cancelled / hold plus five group accents that
+  override the status fill, and Situația zilnică's `border-left-color` already means
+  check-in / check-out / complete. The flag is therefore a composed `box-shadow` (the existing
+  elevation PLUS a 2px inset ring) and an 18px badge ringed in `--crm-panel` so it reads on all ten
+  fills. `--crm-flag-vip` is ink, not green: a green badge on the green `--crm-paid-card` fill reads
+  as a payment tick. Attention beats VIP for the ring, both badges render when both exist, and the
+  tooltip shows the newest note OF THE REPORTED SEVERITY — never the newest overall, or a fresh
+  compliment under a red badge would make staff dismiss a real warning.
+- **Angela can add notes but not edit or archive them** (owner's call). Her read-only lock in the
+  dialog had to be narrowed: `qsa('input, textarea', dialog)` would have disabled her own composer.
+  The scoped selector lists the reservation fields explicitly; the partial-cancel and move sections
+  are already `hidden` for her, and the refund override has its own disable.
+- **Verified** by rendering the real card and dialog markup against the real `css/crm.css` in a
+  browser and measuring: a flagged card computes
+  `rgba(39,48,39,.1) 0 8px 14px, rgb(168,50,50) 0 0 0 2px inset` (elevation preserved), the 18×18
+  badge sits fully inside the 126px card with the price clear of it, two badges sit 3px apart
+  without overflowing, the dossier list caps at 180px and scrolls, and neither the dossier nor the
+  640px panel overflows horizontally. `npm test` → 440 Node + 214 Deno. Token `?v=2026083101`,
+  `dist/tophost` regenerated.
+- **NOT DEPLOYED.** No migration applied, no function deployed, no cron scheduled. See the
+  deployment order in `docs/plan.md`; the live `notification_events_event_type_check` must be read
+  before the migration runs (see B-39).
+
+---
+
+### B-38 — Opening a past reservation from search wiped its guest counts and notes (High) — Fixed 2026-08-31
+
+`searchReservations` selected only summary columns, so clicking a result opened the dialog with
+`adults` 0, empty child ages, empty notes and no `booking_group_id`. Pressing **Salvează
+modificări** then called `rescheduleReservation` with `adults: 0`, `kidsAges: []` and `notes: ''`,
+all of which the server accepts (`reservation-reschedule/index.ts` validates `adults >= 0` and
+maps an empty note to `null`). A real reservation silently lost its party size, child ages and
+Diana's own note. Pre-existing, and found while making search the main route to a past guest.
+Fixed by selecting the full admin column set AND hydrating the whole booking group through
+`fetchReservationGroupById` before the dialog opens — a wider SELECT alone is not enough, because
+`openReservation` derives group membership and money from `activeState.reservations`, which never
+contains out-of-window history.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

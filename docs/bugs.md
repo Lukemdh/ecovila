@@ -568,6 +568,41 @@ High / Medium / Low.
   alerts staff via `context.setAlert`, sets `state.refundedBoundLinksError`, displays `(neverificat)` in the UI, and rethrows.
 
 
+### B-38 — Opening a past reservation from sidebar search wiped guest counts, child ages and notes (High) — Fixed 2026-08-31
+
+**Symptom.** Search a guest by name or phone, click a past result, press `Salvează modificări` —
+the reservation loses its party size, its child ages and Diana's note.
+
+**Cause.** `searchReservations` (`js/supabase.js`) selected only
+`id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, payment_status,
+rooms(number, type)`. `openReservation` (`admin/js/crm-dashboard.js`) then populated the dialog from
+that partial row, so `adults` rendered as 0, kids as empty and notes as empty. The save path passes
+those form values straight into `rescheduleReservation`, and the server accepts all three
+(`reservation-reschedule/index.ts` validates `adults >= 0` and maps an empty note to `null`).
+`booking_group_id` and `payment_type` were missing too, so the money, partial-cancel and move
+sections were computed from an empty group.
+
+**Fix (ADR-111).** `searchReservations` now selects the full admin column set, and
+`openReservation` hydrates the entire booking group via `fetchReservationGroupById` before opening
+whenever the row is not already in `activeState.reservations`. A wider SELECT alone is insufficient:
+group membership and totals are derived from the loaded calendar window, which never holds
+out-of-window history. A contract test asserts the select string keeps `booking_group_id` and
+`adults`.
+
+---
+
+### B-39 — `review_request` is missing from the repo's `notification_events` event-type constraint (Medium) — Open
+
+The most recent recreation of `notification_events_event_type_check`
+(`supabase/migrations/20260619170000_complaints.sql`) lists eight event types and does NOT include
+`review_request`, which `send-review-requests` has been emitting in production since ADR-082. Either
+production drifted from the repo (most likely — see the known migration-history drift) or those
+inserts have been failing. The ADR-111 migration recreates the constraint with the complete
+allowlist plus `guest_flag_alert`, so applying it repairs the drift — but the live constraint must
+be read and compared BEFORE it runs, not assumed. Not otherwise addressed here.
+
+---
+
 ### B-37 — Difference-link reads sent every visible reservation id in one URL (High) — Fixed 2026-08-27
 
 **Symptom (reported from live prod).** Every card on the CRM calendar rendered a

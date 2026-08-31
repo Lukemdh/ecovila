@@ -48,7 +48,7 @@ ecovila/
 │
 ├── js/                         # Browser JS (UMD-style wrapper: window global + CommonJS for tests)
 │   ├── supabase-config.js      # Frozen config: Supabase URL + PUBLIC anon key
-│   ├── supabase.js             # Data layer: ~40 helpers wrapping supabase-js + Edge Functions
+│   ├── supabase.js             # Data layer: ~45 helpers wrapping supabase-js + Edge Functions
 │   ├── tracking-config.js      # Public tracking IDs only; blank by default
 │   ├── tracking.js             # Consent-gated Meta/Google/browser-to-Edge tracking
 │   ├── pricing.js              # Pricing, billing floors, date/night/holiday logic (pure)
@@ -87,10 +87,11 @@ ecovila/
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260827 link binding)
+│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260831 guest notes)
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
 │       ├── _shared/            # cors, env, http, maib, notifications, paymentLinks (ADR-106/107),
+│       │                       #   guestNotes + guestFlagAlerts (ADR-111),
 │       │                       #   pricing (copy of js/pricing.js), pricingGuard, providers,
 │       │                       #   reminders, reservationManage, reservations, supabaseAdmin, tracking
 │       ├── create-reservation/, confirm-reservation-payment/
@@ -98,6 +99,7 @@ ecovila/
 │       ├── maib-create-payment/, maib-callback/, maib-refund/, maib-mia-callback/, track-event/
 │       ├── payment-link-admin/, payment-link-public/ (ADR-106/107)
 │       ├── reservation-accommodation-move/ # Diana-only atomic move + optional bound link
+│       ├── send-guest-flag-alerts/  # per-minute sweep: noted guest booked again → staff email (ADR-111)
 │       ├── reservation-lookup-start/, reservation-lookup-verify/
 │       ├── reservation-manage-details/, reservation-extend-cash/, reservation-cancel/
 │       └── tests/              # Deno tests incl. move RPC mapping/SMS and guest-cancellation honesty

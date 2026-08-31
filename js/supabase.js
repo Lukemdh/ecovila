@@ -164,6 +164,34 @@
   // call (a PostgREST builder is single-use once awaited) with a deterministic
   // total ordering, or a row on a page boundary could be skipped or repeated.
   const SUPABASE_PAGE_SIZE = 1000;
+  const ADMIN_RESERVATION_COLUMNS = [
+    'id',
+    'booking_group_id',
+    'room_id',
+    'guest_first_name',
+    'guest_last_name',
+    'guest_phone',
+    'guest_email',
+    'guest_language',
+    'check_in',
+    'check_out',
+    'adults',
+    'kids_ages',
+    'total_price',
+    'towel_cards_issued',
+    'payment_type',
+    'payment_status',
+    'room_explicitly_selected',
+    'conference_room',
+    'notes',
+    'cash_expires_at',
+    'cash_extended',
+    'created_by',
+    'created_at',
+    'cancelled_at',
+    'cancellation_reason',
+    'rooms(id, number, type)',
+  ].join(', ');
 
   async function unwrapAllSupabaseRows(buildQuery) {
     const rows = [];
@@ -849,36 +877,7 @@
     const buildQuery = () => {
       let query = client
         .from('reservations')
-        .select(
-          [
-            'id',
-            'booking_group_id',
-            'room_id',
-            'guest_first_name',
-            'guest_last_name',
-            'guest_phone',
-            'guest_email',
-            'guest_language',
-            'check_in',
-            'check_out',
-            'adults',
-            'kids_ages',
-            'total_price',
-            'towel_cards_issued',
-            'payment_type',
-            'payment_status',
-            'room_explicitly_selected',
-            'conference_room',
-            'notes',
-            'cash_expires_at',
-            'cash_extended',
-            'created_by',
-            'created_at',
-            'cancelled_at',
-            'cancellation_reason',
-            'rooms(id, number, type)',
-          ].join(', '),
-        )
+        .select(ADMIN_RESERVATION_COLUMNS)
         // check_in is not unique, so add id as a tiebreaker for a stable total
         // order across paged .range() requests (no skipped/duplicated rows).
         .order('check_in', { ascending: true })
@@ -896,6 +895,88 @@
     };
 
     return unwrapAllSupabaseRows(buildQuery);
+  }
+
+  function fetchGuestFlagMarkers(client) {
+    return unwrapAllSupabaseRows(() => client
+      .from('guest_flag_markers')
+      .select('id, guest_phone, guest_email, severity, created_at, body_preview')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true }));
+  }
+
+  async function fetchGuestNotes(client, options) {
+    const phone = String(options?.phone || '').trim();
+    const email = String(options?.email || '').trim().toLowerCase();
+    const select = 'id, guest_phone, guest_email, severity, body, source_reservation_id, created_by, created_by_role, created_at, updated_at, archived_at, archived_by';
+    const fetchBy = (column, value) => unwrapAllSupabaseRows(() => client
+      .from('guest_notes')
+      .select(select)
+      .eq(column, value)
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true }));
+    const resultSets = await Promise.all([
+      ...(phone ? [fetchBy('guest_phone', phone)] : []),
+      ...(email ? [fetchBy('guest_email', email)] : []),
+    ]);
+    const byId = new Map();
+    resultSets.flat().forEach((note) => byId.set(note.id, note));
+    return Array.from(byId.values()).sort((left, right) => {
+      return String(right.created_at || '').localeCompare(String(left.created_at || '')) ||
+        String(left.id || '').localeCompare(String(right.id || ''));
+    });
+  }
+
+  function createGuestNote(client, input) {
+    return unwrapSupabaseResult(
+      client
+        .from('guest_notes')
+        .insert({
+          guest_phone: String(input?.guestPhone || '').trim() || null,
+          guest_email: String(input?.guestEmail || '').trim().toLowerCase() || null,
+          severity: input?.severity,
+          body: input?.body,
+          source_reservation_id: input?.sourceReservationId || null,
+        })
+        .select(),
+    );
+  }
+
+  function archiveGuestNote(client, input) {
+    return unwrapSupabaseResult(
+      client
+        .from('guest_notes')
+        .update({
+          archived_at: new Date().toISOString(),
+          archived_by: input?.archivedBy || null,
+        })
+        .eq('id', input?.id)
+        .select(),
+    );
+  }
+
+  async function fetchReservationGroupById(client, reservationId) {
+    const rows = await unwrapSupabaseResult(
+      client
+        .from('reservations')
+        .select(ADMIN_RESERVATION_COLUMNS)
+        .eq('id', reservationId)
+        .limit(1),
+    );
+    const reservation = Array.isArray(rows) ? rows[0] : rows;
+    if (!reservation) {
+      throw new Error('Rezervarea nu a fost găsită.');
+    }
+    if (!reservation.booking_group_id) {
+      return [reservation];
+    }
+    return unwrapAllSupabaseRows(() => client
+      .from('reservations')
+      .select(ADMIN_RESERVATION_COLUMNS)
+      .eq('booking_group_id', reservation.booking_group_id)
+      .order('check_in', { ascending: true })
+      .order('id', { ascending: true }));
   }
 
   function fetchPendingCashReservations(client) {
@@ -1303,7 +1384,7 @@
 
     let query = client
       .from('reservations')
-      .select('id, room_id, guest_first_name, guest_last_name, guest_phone, check_in, check_out, payment_status, rooms(number, type)')
+      .select(ADMIN_RESERVATION_COLUMNS)
       .order('check_in', { ascending: false })
       .limit(50);
 
@@ -1780,9 +1861,11 @@
     PHOTO_CACHE_CONTROL,
     PHOTO_VARIANTS,
     isRateLimited: isRateLimitError,
+    archiveGuestNote,
     cancelPendingReservation,
     cancelReservationByToken,
     confirmReservationPayment,
+    createGuestNote,
     createMaibPaymentRequest,
     createReservationChange,
     fetchReservationChangeStatus,
@@ -1822,9 +1905,12 @@
     extendCashReservation,
     fetchPendingReservationStatus,
     fetchReservationByToken,
+    fetchReservationGroupById,
     createSupabaseClient,
     fetchAvailabilityBlocks,
     fetchAdminReservations,
+    fetchGuestFlagMarkers,
+    fetchGuestNotes,
     fetchCrmPhotos,
     fetchDailyStatuses,
     fetchFinanceBookedReservations,

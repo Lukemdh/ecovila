@@ -801,3 +801,37 @@ Statuses: TODO | IN PROGRESS | DONE.
   (6) documented move dialog unverified totals on fetch failure. Logged B-36 in `docs/bugs.md` for pre-existing
   fail-open Finance refund reads. Reviewed and updated all ten DoD documents. Verified `npm test`
   (426 Node + 202 Deno), clean `deno lint` and `deno fmt --check`, asset token `?v=2026082702`.
+
+---
+
+## ADR-111 — deployment order (NOT YET EXECUTED, awaiting owner sign-off)
+
+Nothing has been applied, deployed or scheduled. Database-first is backward compatible: the old
+CRM ignores the new table and view. Frontend-first is NOT compatible — it would query
+`guest_flag_markers` before it exists (the client degrades to "no markers", but the dossier panel
+would error on every open).
+
+0. **Preflight against LIVE, not the repo.**
+   - `select count(*) from reservations where guest_phone !~ '^\+[0-9]{8,15}$';` must be 0, or the
+     `guest_notes` phone CHECK will reject notes on those guests.
+   - Read the live `notification_events_event_type_check` and diff it against the allowlist in
+     `20260831120000_guest_notes.sql`. The repo copy is missing `review_request` (B-39); the new
+     migration restores it, but confirm nothing ELSE is live that the new list would drop.
+   - Confirm local vs linked migration history (known drift) before any push.
+1. Set `ECOVILA_GUEST_FLAG_EMAIL` (or confirm `ECOVILA_ALERT_EMAIL` is set). With neither, the
+   sweeper is a no-op by design.
+2. Apply `20260831120000_guest_notes.sql`. Probe afterwards: insert a note as Diana and confirm
+   `created_by_role` was forced; attempt an UPDATE of `body` and confirm 42501; attempt a note on
+   `+37360120220` and confirm the exclusion raise; confirm `guest_flag_markers` is
+   `security_invoker`.
+3. Deploy Edge Functions. `_shared/notifications.ts` changed, so **every** function must be
+   redeployed, plus the new `send-guest-flag-alerts`.
+4. Smoke-test `send-guest-flag-alerts` with the shared secret and an empty database of notes
+   (expect `{ scanned: 0 … }`), THEN apply `20260831123000_guest_flag_alert_cron.sql`.
+5. Upload the frontend last: token `?v=2026083101`, `dist/tophost` already regenerated. Verify on
+   the live host by CONTENT, not by the version stamp.
+
+**First live exercise to run afterwards:** add an `attention` note to a past guest from sidebar
+search, create a test booking on that phone, confirm exactly one email arrives within ~2 minutes
+and that the calendar card shows the ring plus the badge, then archive the note and confirm both
+the marker and the alert stop.

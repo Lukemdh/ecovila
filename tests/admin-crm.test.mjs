@@ -3415,6 +3415,7 @@ describe('EcoVila Step 9 CRM', () => {
 
   it('restricts Angela to a read-only reservations dashboard while keeping daily writes', () => {
     const sql = allMigrations();
+    const dashboardJs = read('admin/js/crm-dashboard.js');
 
     // The shared both-roles manage policy is replaced by explicit per-role policies.
     assert.match(sql, /drop policy if exists "CRM staff can manage reservations" on public\.reservations/i);
@@ -3427,6 +3428,12 @@ describe('EcoVila Step 9 CRM', () => {
     assert.match(sql, /allowed_columns constant text\[\] := array\[\s*'towel_cards_issued', 'adults', 'check_out', 'kids_ages', 'total_price'\s*\]/i);
     assert.match(sql, /if public\.ecovila_app_role\(\) <> 'angela' then\s+return new;/i);
     assert.match(sql, /create trigger enforce_angela_reservation_columns\s+before update on public\.reservations/i);
+    assert.match(sql, /create policy "Angela can read guest notes"[\s\S]+?for select/i);
+    assert.match(sql, /create policy "Angela can create guest notes"[\s\S]+?for insert/i);
+    assert.match(sql, /create policy "Diana can archive guest notes"[\s\S]+?for update/i);
+    assert.doesNotMatch(dashboardJs, /qsa\('input, textarea', dialog\)/);
+    assert.match(dashboardJs, /\[data-dossier-body\][\s\S]+?disabled = false/);
+    assert.match(dashboardJs, /\[data-dossier-severity\][\s\S]+?disabled = false/);
   });
 });
 

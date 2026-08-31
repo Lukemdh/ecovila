@@ -1,5 +1,10 @@
 (function (root, factory) {
   const api = factory(root);
+
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+  }
+
   root.EcoVilaCrmCalendar = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, function (root) {
   'use strict';
@@ -15,6 +20,8 @@
     large: 'Mare',
     hotel: 'Hotel',
   };
+  const GUEST_FLAG_GLYPHS = Object.freeze({ attention: '!', vip: '★' });
+  const GUEST_FLAG_LABELS = Object.freeze({ attention: 'Atenție', vip: 'VIP', info: 'Notă' });
 
   function toISODate(value) {
     if (!value) {
@@ -115,6 +122,71 @@
       '"': '&quot;',
       "'": '&#39;',
     })[character]);
+  }
+
+  function normalizeGuestEmail(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function buildGuestFlagIndex(markers) {
+    const index = {
+      byPhone: new Map(),
+      byEmail: new Map(),
+    };
+
+    (markers || []).forEach((marker) => {
+      const phone = String(marker?.guest_phone || '').trim();
+      const email = normalizeGuestEmail(marker?.guest_email);
+      if (phone) {
+        const phoneMarkers = index.byPhone.get(phone) || [];
+        phoneMarkers.push(marker);
+        index.byPhone.set(phone, phoneMarkers);
+      }
+      if (email) {
+        const emailMarkers = index.byEmail.get(email) || [];
+        emailMarkers.push(marker);
+        index.byEmail.set(email, emailMarkers);
+      }
+    });
+
+    return index;
+  }
+
+  function guestFlagFor(reservation, index) {
+    const phone = String(reservation?.guest_phone || '').trim();
+    const email = normalizeGuestEmail(reservation?.guest_email);
+    const matches = [
+      ...(phone ? index?.byPhone?.get(phone) || [] : []),
+      ...(email ? index?.byEmail?.get(email) || [] : []),
+    ];
+    const byId = new Map();
+    matches.forEach((marker) => {
+      if (marker?.id && (marker.severity === 'attention' || marker.severity === 'vip')) {
+        byId.set(marker.id, marker);
+      }
+    });
+    const markers = Array.from(byId.values());
+    if (!markers.length) {
+      return null;
+    }
+
+    const hasAttention = markers.some((marker) => marker.severity === 'attention');
+    const hasVip = markers.some((marker) => marker.severity === 'vip');
+    const severity = hasAttention ? 'attention' : 'vip';
+    const newest = markers
+      .filter((marker) => marker.severity === severity)
+      .sort((left, right) => {
+        return String(right.created_at || '').localeCompare(String(left.created_at || '')) ||
+          String(left.id || '').localeCompare(String(right.id || ''));
+      })[0];
+
+    return {
+      severity,
+      hasAttention,
+      hasVip,
+      count: markers.length,
+      preview: String(newest?.body_preview || ''),
+    };
   }
 
   function formatCalendarPhone(value) {
@@ -437,8 +509,13 @@
     guestName,
     groupPendingCashReservations,
     groupReservationRows,
+    GUEST_FLAG_GLYPHS,
+    GUEST_FLAG_LABELS,
+    buildGuestFlagIndex,
+    guestFlagFor,
     isCancelled,
     isTemporaryHold,
+    normalizeGuestEmail,
     overlapsDate,
     pendingDifference,
     requiresSwapConfirmation,
