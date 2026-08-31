@@ -165,6 +165,15 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   exactly one, so a client UPDATE cannot launder a wipe through it. For the same reason, a
   both-or-neither CHECK across a value and its nullable FK author column will abort that deletion;
   make the invariant one-directional instead.
+- RLS denies an UPDATE with no matching policy by affecting **zero rows**, not by raising. A probe
+  that only catches exceptions will report success and prove nothing — assert `row_count`. And a
+  probe run as `postgres` or the service role proves nothing at all, because both bypass RLS: use
+  `set local role authenticated` with real JWT claims inside a rolled-back block.
+- A PostgREST read without an explicit bound truncates silently. Where a short answer would change
+  a decision — skipping a recipient, missing an exclusion — request a ceiling and fail loudly
+  instead of proceeding on a partial result.
+- Only a notification event with `delivery_status = 'sent'` may retire or suppress a recipient.
+  Treating `reserved` or `failed` as delivered silences someone who received nothing.
 - A view over an RLS-protected table must be declared `set (security_invoker = true)`, otherwise it
   runs with the view owner's rights and bypasses the policies of the table beneath it.
 - Before recreating an enumerated CHECK constraint, read the LIVE definition. `review_request` was

@@ -95,6 +95,79 @@ Implemented and adversarially reviewed, but **not deployed**:
   `20260827120000_payment_link_reservation_binding.sql`, then the seven affected
   functions, then TopHost. Do not set `ECOVILA_REFUND_COMMISSION_BPS`.
 
+## 2026-08-31 addendum — ADR-111 guest dossier + B-38/B-39, QA pass
+
+Reviewed by three passes: a Gemini frontend verification (measurement-based), a focused Codex
+review of the four live email-sending modules, and my own live-production probing. The whole of
+this work was already deployed when the QA ran, so findings were fixed against production.
+
+**Verified against production, as the real roles.** The earlier deploy probe ran as `postgres`,
+which BYPASSES RLS and therefore proved nothing about the policies. Re-probed with
+`set local role authenticated` plus real staff JWT claims, everything inside a rolled-back block:
+- Angela inserting a note while claiming `created_by_role='diana'` and Diana's uuid → **stored as
+  `angela` with her own uuid**. Authorship cannot be forged.
+- Angela archiving → **0 rows**. This is the subtle one: RLS denies an UPDATE with no policy by
+  matching zero rows, not by raising, so an exception-based probe would have wrongly reported
+  success.
+- Diana archiving → 1 row, `archived_by` overwritten with her real uuid (she supplied a different
+  one). Diana editing a body → **42501**. `anon` selecting → denied.
+- `DELETE` is held only by `postgres`, never by `service_role` or `authenticated`.
+
+**Verified about the 36 emails actually sent:** 37 `review_request` events, **37 distinct people,
+0 duplicates, 0 complainers, 0 missing addresses**. The 37th is the LIVE flow firing at 18:30
+Chișinău — B-39's fix confirmed end to end, not merely by constraint inspection. A follow-up dry
+run returned 108 with the newest checkout moved from 30 → 24 August, proving the sent cohort is
+excluded.
+
+**Defects found and fixed in this pass:**
+1. *(Codex, High)* The backfill treated ANY `review_request` event as delivered. A `reserved` or
+   `failed` row would have silently retired a guest who received nothing — the exact mirror of the
+   cooldown bug already fixed in the flag sweeper. Now filtered to `delivery_status = 'sent'`.
+2. *(Codex, High)* Complainers were resolved only from bookings inside the 30-day window, so a
+   complaint filed on an older stay was invisible when the newer booking carried a different or
+   missing phone. Now resolved to email across the guest's whole history.
+3. *(Codex, High)* Unpaginated PostgREST reads truncate silently; a short reservation set skips
+   guests and a short complaints set can email a complainer. Both now request a ceiling and **fail
+   loudly** rather than proceeding on a partial answer.
+4. *(Gemini, High)* The dossier severity pills signalled their checked state by colour alone
+   (WCAG 1.4.1) — and choosing the wrong severity has consequences. Now also a ✓ glyph and
+   `font-weight: 800`, measured to cause no reflow (pills stay 159px).
+5. *(Gemini, Medium)* Their focus outline measured **1.27:1**, under the 3:1 of WCAG 1.4.11. Now a
+   solid moss outline at **5.35:1**.
+6. *(mine)* `_preview/` was committed by an over-broad `git add -A`. Removed and gitignored; it
+   could never have shipped, because `prepare-tophost-upload.mjs` copies from an explicit allowlist.
+
+**Found and deliberately NOT changed, with reasons:**
+- *Send-then-record leaves a duplicate window* in both senders. This is the accepted at-least-once
+  design: recording first would silently retire a guest who received nothing, which is worse. Same
+  guarantee as every other notification here.
+- *Concurrent `mode=send` runs could double-send.* The only caller is a once-daily cron and three
+  runs remain; adding locking machinery to disposable code is not worth it.
+- *Dedup reads the reservation's current, mutable email.* Editing a guest's address after a send
+  could cost one duplicate. Accepted.
+- *Staggered checkout dates could split a booking group before assembly.* Checked empirically:
+  **0 of 285** groups in the window have mixed checkout dates. Latent, not live.
+- *A guest with >100 historical rows could have a previous-stay group truncated* in the staff
+  alert's party totals. Cosmetic, and the busiest real guest is nowhere near it; fixing means
+  redeploying every function for a shared-module change.
+
+**Regression audits.** `openReservation` became `async`: its return value is unused at all four
+call sites. The Angela read-only lock changed from a blanket `input, textarea` to an explicit list;
+every one of the 16 dialog controls was enumerated — 7 locked, 4 dossier controls intentionally
+enabled for her, 4 inside sections already `hidden` for her, 1 with its own disable. Nothing became
+newly reachable.
+
+**Clean:** `npm test` 440 Node + 220 Deno; `deno lint` 31 files; `deno fmt --check`; no
+`console.*`/`debugger`/`TODO` in the new browser code; one asset token (`?v=2026083101`) across all
+19 shipped pages; `dist/tophost` regenerated with no drift; cron health 228/228 and 8,280/8,280
+succeeded.
+
+**Not yet exercised:** the guest-flag alert has never fired with a real flagged guest, because
+`guest_notes` is empty until the frontend upload lands. The sweeper returns `{"scanned":0,...}` and
+is a genuine no-op until then.
+
+---
+
 ## Readiness verdict
 
 **Not production-ready yet.** The automated suites are green, and Steps 15-16 fixed the

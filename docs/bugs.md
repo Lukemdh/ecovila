@@ -591,6 +591,41 @@ out-of-window history. A contract test asserts the select string keeps `booking_
 
 ---
 
+### B-40 — Backfill treated undelivered review events as sent, and missed complainers outside the window (High) — Fixed 2026-08-31
+
+Found by the post-deploy QA pass, before the 108 remaining emails ran.
+
+1. `fetchAlreadySentEmails` selected every `review_request` notification event regardless of
+   `delivery_status`. The live flow uses `dispatchScheduledNotificationOnce`, which legitimately
+   leaves `reserved` and `failed` rows, so any such row would have added that guest's address to
+   `alreadySentEmails` and **silently dropped them from every future run** — a guest who received
+   nothing, retired forever. This is the same defect class already fixed in the guest-flag
+   sweeper's six-hour cooldown. Now filtered to `delivery_status = 'sent'`.
+2. Complainer exclusion was derived only from bookings inside the 30-day window, so a complaint
+   filed on an **older** stay was invisible whenever the newer booking carried a different or
+   missing phone — and that guest would have been invited to leave a public Google review. Now
+   resolved to email addresses across the guest's whole booking history.
+3. Several PostgREST reads had no explicit row bound. Truncation is silent, and a short
+   reservations read skips guests while a short complaints read can email a complainer. Each read
+   now requests a ceiling and throws rather than proceeding on a partial answer.
+
+Regression tests added for (1) and (2). Re-deployed and re-verified: the dry run still reports 108,
+so the hardening excluded nobody incorrectly.
+
+---
+
+### B-41 — Dossier severity pills signalled their state by colour alone (Medium) — Fixed 2026-08-31
+
+Measured in a browser: checked and unchecked pills differed only in background, border and text
+colour — identical `font-weight`, no glyph, no border-width change (WCAG 2.1 SC 1.4.1). Choosing
+the wrong severity is consequential: `attention` paints the calendar and triggers staff email. The
+checked pill now also carries a ✓ and `font-weight: 800`; because the three pills sit in a
+fixed-width grid this costs no reflow (measured: 159px in every state). Their focus outline
+measured **1.27:1** against the panel, under the 3:1 required by SC 1.4.11, and is now a solid moss
+outline at **5.35:1**.
+
+---
+
 ### B-39 — ADR-082 review-request emails have never sent: `review_request` is missing from the `notification_events` CHECK (High) — Fixed 2026-08-31
 
 **Confirmed against production, not inferred.**

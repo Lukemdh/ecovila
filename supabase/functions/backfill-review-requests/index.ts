@@ -42,6 +42,18 @@ import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdm
 const REVIEW_REQUEST_EVENT = 'review_request';
 const WINDOW_DAYS = 30;
 const DEFAULT_LIMIT = 40;
+// PostgREST truncates a large response without saying so. Every read below asks for
+// one more row than could legitimately exist and fails loudly if it gets it, because
+// a silently short result here means skipped guests or an emailed complainer.
+const ROW_CEILING = 5000;
+
+function assertNotTruncated(rows: unknown[] | null, what: string) {
+  if ((rows || []).length >= ROW_CEILING) {
+    throw new Error(
+      `Refusing to send: the ${what} read hit the ${ROW_CEILING}-row ceiling and may be truncated.`,
+    );
+  }
+}
 
 type RoomJoin = { number?: number | string | null; type?: string | null };
 
@@ -198,9 +210,11 @@ async function loadRecipients(client: SupabaseClient) {
     .eq('payment_status', 'paid')
     .is('cancelled_at', null)
     .gte('check_out', windowStart)
-    .lt('check_out', todayIso);
+    .lt('check_out', todayIso)
+    .limit(ROW_CEILING);
 
   if (error) throw new Error(error.message);
+  assertNotTruncated(data, 'reservations');
 
   const reservations = (data || [])
     .map(withRoomFields)
@@ -220,6 +234,7 @@ async function loadRecipients(client: SupabaseClient) {
     statusByReservation: aggregateCheckoutStatus(statuses),
     complaintPhones: complaints.phones,
     complaintReservationIds: complaints.reservationIds,
+    complainerEmails: complaints.emails,
     alreadySentEmails,
   });
 }
@@ -244,8 +259,9 @@ async function fetchComplaints(client: SupabaseClient) {
   >(
     client,
     'complaints',
-  ).select('guest_phone, reservation_id');
+  ).select('guest_phone, reservation_id').limit(ROW_CEILING);
   if (error) throw new Error(error.message);
+  assertNotTruncated(data, 'complaints');
 
   const phones = new Set<string>();
   const reservationIds = new Set<string>();
@@ -253,7 +269,31 @@ async function fetchComplaints(client: SupabaseClient) {
     if (row.guest_phone) phones.add(String(row.guest_phone).trim());
     if (row.reservation_id) reservationIds.add(row.reservation_id);
   }
-  return { phones, reservationIds };
+
+  // Resolve those complaints to EMAIL across the guest's whole booking history, not
+  // just the stays inside the 30-day window. A complaint filed on an older stay was
+  // otherwise invisible whenever the newer booking carried a different or missing
+  // phone, and that guest would have been invited to leave a public review.
+  const emails = new Set<string>();
+  const collect = async (column: 'guest_phone' | 'id', values: string[]) => {
+    for (let i = 0; i < values.length; i += 100) {
+      const { data: rows, error: lookupError } = await table<
+        Array<{ guest_email: string | null }>
+      >(client, 'reservations')
+        .select('guest_email')
+        .in(column, values.slice(i, i + 100))
+        .limit(ROW_CEILING);
+      if (lookupError) throw new Error(lookupError.message);
+      for (const row of rows || []) {
+        const email = normalizeBackfillEmail(row.guest_email);
+        if (email) emails.add(email);
+      }
+    }
+  };
+  if (phones.size) await collect('guest_phone', [...phones]);
+  if (reservationIds.size) await collect('id', [...reservationIds]);
+
+  return { phones, reservationIds, emails };
 }
 
 async function fetchAlreadySentEmails(client: SupabaseClient) {
@@ -268,7 +308,11 @@ async function fetchAlreadySentEmails(client: SupabaseClient) {
     >
   >(client, 'notification_events')
     .select('reservation_id, reservations!inner(guest_email)')
-    .eq('event_type', REVIEW_REQUEST_EVENT);
+    .eq('event_type', REVIEW_REQUEST_EVENT)
+    // Only a DELIVERED event retires a guest. A 'reserved' or 'failed' row means they
+    // never received anything, and treating it as sent would silently drop them from
+    // every future run — the mirror of the cooldown bug fixed in the flag sweeper.
+    .eq('delivery_status', 'sent');
   if (error) throw new Error(error.message);
 
   const emails = new Set<string>();

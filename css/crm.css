@@ -1647,10 +1647,21 @@ h2 {
   border-color: var(--crm-moss);
 }
 
+/* Checked state must not rest on colour alone (WCAG 1.4.1): choosing the wrong
+   severity has consequences — `attention` paints the calendar and sends mail — and
+   the three pills sit in a fixed-width grid, so a glyph and a heavier weight cost
+   no reflow. */
 .crm-dossier__level input:checked + span {
   border-color: var(--crm-moss);
   background: var(--crm-moss);
   color: #fff;
+  font-weight: 800;
+}
+
+.crm-dossier__level input:checked + span::before {
+  content: '✓';
+  margin-right: 6px;
+  font-weight: 800;
 }
 
 .crm-dossier__level--attention input:checked + span {
@@ -1665,9 +1676,11 @@ h2 {
   color: #fff;
 }
 
+/* A solid outline: the translucent house variant measures 1.27:1 against the panel,
+   well under the 3:1 that WCAG 1.4.11 asks of a focus indicator. */
 .crm-dossier__level input:focus-visible + span {
-  outline: 3px solid rgba(96, 108, 56, 0.18);
-  outline-offset: 1px;
+  outline: 2px solid var(--crm-moss);
+  outline-offset: 2px;
 }
 
 .crm-dossier__compose textarea {

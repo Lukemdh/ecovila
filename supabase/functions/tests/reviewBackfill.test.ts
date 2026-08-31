@@ -113,6 +113,26 @@ Deno.test('a complaint about one stay silences that PERSON, not just that bookin
   assertEquals(picked.map((entry) => entry.owner.guest_email), ['other@mail.md']);
 });
 
+Deno.test('a complaint on a stay outside the window still silences the guest', () => {
+  // QA finding: complainers were derived only from bookings inside the 30-day window.
+  // A complaint filed on an older stay was invisible whenever the newer booking
+  // carried a different phone, and that guest was invited to review publicly.
+  const reservations = [
+    row('recent', 'g1', '2026-08-26', 'switched@mail.md', '+37369000099'),
+    row('other', 'g2', '2026-08-27', 'fine@mail.md', '+37369000098'),
+  ];
+
+  const picked = selectBackfillRecipients({
+    reservations,
+    statusByReservation: departed(['recent', 'other']),
+    // Resolved by the caller from the guest's whole history; their old booking used a
+    // different number, so neither phone nor reservation id matches anything here.
+    complainerEmails: new Set(['switched@mail.md']),
+  });
+
+  assertEquals(picked.map((entry) => entry.owner.guest_email), ['fine@mail.md']);
+});
+
 Deno.test('normalizeBackfillEmail lowercases, trims and empties absent values', () => {
   assertEquals(normalizeBackfillEmail('  ION@Mail.MD '), 'ion@mail.md');
   assertEquals(normalizeBackfillEmail(null), '');

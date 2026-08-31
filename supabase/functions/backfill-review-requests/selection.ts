@@ -34,11 +34,15 @@ export function selectBackfillRecipients<T extends BackfillRow>(input: {
   statusByReservation: Map<string, CheckoutStatus>;
   complaintPhones?: Set<string>;
   complaintReservationIds?: Set<string>;
+  complainerEmails?: Set<string>;
   alreadySentEmails?: Set<string>;
 }): Array<{ owner: T; group: T[] }> {
   const complaintPhones = input.complaintPhones || new Set<string>();
   const complaintReservationIds = input.complaintReservationIds || new Set<string>();
   const alreadySentEmails = input.alreadySentEmails || new Set<string>();
+  // Seeded by the caller from the guest's WHOLE booking history, so a complaint filed
+  // on a stay outside this window still silences them here.
+  const complainerEmails = new Set(input.complainerEmails || []);
 
   const eligible = selectReviewRequestGroups({
     reservations: input.reservations,
@@ -48,7 +52,6 @@ export function selectBackfillRecipients<T extends BackfillRow>(input: {
   // Exclusion is per PERSON, not per booking. A guest who complained about one stay
   // must not be asked for a public review about a different one — filtering the
   // single booking would let exactly that through, and the dry run proved it did.
-  const complainerEmails = new Set<string>();
   for (const entry of eligible) {
     const email = normalizeBackfillEmail(entry.owner.guest_email);
     if (!email) continue;
