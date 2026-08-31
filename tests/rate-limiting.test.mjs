@@ -217,6 +217,7 @@ describe('EcoVila site-wide rate limiting (ADR-060)', () => {
       'send-reminders',
       'send-review-requests',
       'send-guest-flag-alerts',
+      'backfill-review-requests',
     ]);
     const dirs = readdirSync(join(root, 'supabase/functions'), { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name !== '_shared' && entry.name !== 'tests')

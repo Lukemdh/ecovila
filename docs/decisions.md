@@ -4388,6 +4388,35 @@ should need a privileged connection, not an application path.
 serving the previous bundle: the tables and the cron exist, but no marker, dossier or note-writing UI
 is on screen, so nothing can become flagged and the sweeper stays a no-op.
 
+### B-39 catch-up — a one-off backfill for the guests the outage missed
+
+- **Date:** 2026-08-31. Owner's decisions: last 30 days only, one email per person, spread over
+  ~4 days, exclude anyone who filed a complaint, and one live test email first.
+- **Scope, measured twice.** 552 bookings were missed overall, but they collapse to 303 people;
+  within 30 days it is 225 booking groups → **146 people → 144 after excluding complainers**. A
+  per-booking send would have asked repeat guests three or four times in one week.
+- **Why 30 days and not all of it.** Review conversion falls off sharply with delay and a request
+  about a stay from late June invites "why now?". The older 157 people are deliberately left alone.
+- **Why paced.** ~36/day against a domain that otherwise sends a trickle of confirmations. A single
+  burst of 144 to addresses that have not been mailed in weeks is the classic pattern that gets a
+  domain throttled — which would then damage booking confirmations, a far worse outcome.
+- **Eligibility is not restated, it is reused.** `selectBackfillRecipients` runs the live
+  `selectReviewRequestGroups` first, so a guest qualifies only if the real flow would have picked
+  them: actually marked checked out in situația zilnică, and no checkout note anywhere in the
+  booking. Anything looser would mail people the normal flow deliberately stays quiet about.
+- **The dry run earned its keep.** It reported 144 where an independent SQL count said 145 — a
+  one-person gap that turned out to be a real defect, not arithmetic: complaints were excluded per
+  BOOKING, so a guest who complained about one stay would still have been invited to review a
+  different one. Exclusion is now per PERSON, with a regression test. Both numbers agree at 144.
+- **The test send records nothing.** `mode=test` renders a real recipient's email and redirects
+  delivery, so the guest it was rendered from still receives their own copy in a later run —
+  otherwise the preview would silently retire them.
+- **`recordNotificationEvent` runs only after a successful send,** so a provider failure leaves the
+  guest eligible for the next run instead of quietly retiring them. That also makes the batches
+  self-sequencing: each run takes the next N without an event.
+- **This function is disposable.** `backfill-review-requests` is invoked by hand, is never
+  scheduled, and is to be deleted — code and deployment — once the runs are done.
+
 ---
 
 ### B-38 — Opening a past reservation from search wiped its guest counts and notes (High) — Fixed 2026-08-31
