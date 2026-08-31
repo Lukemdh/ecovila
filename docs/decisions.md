@@ -4366,6 +4366,28 @@ is relied upon against bookings made earlier.
   from the next evening's checkouts, and work out a catch-up proposal for the 552 separately rather
   than mailing them.
 
+**DEPLOY STATUS — BACKEND FULLY LIVE 2026-08-31.** Migrations `20260831120000`, `20260831123000`
+and the follow-up `20260831130000` applied via `db query --linked` + `migration repair`; history
+aligned. All 31 Edge Functions redeployed (`_shared/notifications.ts` changed), `send-guest-flag-alerts`
+live at v1, cron `ecovila-guest-flag-alerts` active on `* * * * *` and confirmed firing. Verified in
+production: the constraint now carries all ten event types (B-39 repaired), `guest_flag_markers` is
+`security_invoker=true`, RLS is on, both exclusions are seeded, and both triggers exist. Trigger
+behaviour probed inside a self-rolling-back block — a note posted as `created_by_role='angela'` came
+back as the real actor, and updates to `body` and `guest_phone` both raised 42501; nothing persisted
+(`guest_notes` is empty). The endpoint answers `{"scanned":0,...}` with the shared secret and 401
+without it. `ECOVILA_GUEST_FLAG_EMAIL` is deliberately unset — alerts fall back to the configured
+`ECOVILA_ALERT_EMAIL`, per the owner.
+
+**A gap the post-deploy probe caught:** granting service_role only `select, insert, update` did NOT
+remove the `DELETE` that Supabase's default privileges on new `public` tables had already conferred,
+so the documented "no role the application uses can hard-delete a note" was false until
+`20260831130000` revoked it explicitly. Only `postgres` holds DELETE now — a genuine erasure request
+should need a privileged connection, not an application path.
+
+**REMAINING: the owner's manual TopHost upload of `?v=2026083101`.** Until then the CRM keeps
+serving the previous bundle: the tables and the cron exist, but no marker, dossier or note-writing UI
+is on screen, so nothing can become flagged and the sweeper stays a no-op.
+
 ---
 
 ### B-38 — Opening a past reservation from search wiped its guest counts and notes (High) — Fixed 2026-08-31
