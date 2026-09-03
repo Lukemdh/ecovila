@@ -3895,6 +3895,45 @@ h2 {
   display: block;
 }
 
+.crm-booking-failures {
+  border: 1px solid var(--crm-line);
+  border-radius: 12px;
+  background: var(--crm-panel);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crm-booking-failures__headline {
+  font-weight: 700;
+  color: var(--crm-ink);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.crm-booking-failures__causes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.crm-booking-failures__cause {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--crm-muted);
+}
+
+.crm-booking-failures__zero {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--crm-muted);
+}
+
 .crm-complaints-bar {
   display: flex;
   align-items: center;

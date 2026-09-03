@@ -591,4 +591,151 @@ describe('EcoVila Step 5 checkout', () => {
 
     assert.equal(location.href, 'gestionare.html?id=reservation-cash&manage=cash-manage-token');
   });
+
+  it('attaches structured 409 error body and code to thrown error in createReservationRequest', async () => {
+    const supabaseHelpers = require('../js/supabase.js');
+    const errorBody = {
+      error: 'Vila selectată nu mai este disponibilă.',
+      code: 'rooms_unavailable',
+      roomType: 'small',
+      explicitPick: true,
+      takenRoomNumbers: [5],
+      freeRoomNumbers: [3, 7],
+      soldOut: false,
+    };
+    let cloned = false;
+    const mockResponse = {
+      clone() {
+        cloned = true;
+        return {
+          json: () => Promise.resolve(errorBody),
+        };
+      },
+      json() {
+        return Promise.resolve(errorBody);
+      },
+    };
+    const invokeError = new Error('Edge Function returned a non-2xx status code');
+    invokeError.context = mockResponse;
+
+    const client = {
+      functions: {
+        invoke() {
+          return Promise.resolve({
+            data: null,
+            error: invokeError,
+          });
+        },
+      },
+    };
+
+    await assert.rejects(
+      async () => {
+        await supabaseHelpers.createReservationRequest(client, [{ id: 'reservation-a' }]);
+      },
+      (err) => {
+        assert.equal(err.code, 'rooms_unavailable');
+        assert.deepEqual(err.detail, errorBody);
+        assert.equal(cloned, true);
+        return true;
+      },
+    );
+  });
+
+  it('handles frozen error objects defensively in createReservationRequest', async () => {
+    const supabaseHelpers = require('../js/supabase.js');
+    const errorBody = {
+      error: 'Rooms unavailable',
+      code: 'rooms_unavailable',
+    };
+    const mockResponse = {
+      clone() {
+        return { json: () => Promise.resolve(errorBody) };
+      },
+      json: () => Promise.resolve(errorBody),
+    };
+    const frozenError = Object.freeze(
+      Object.assign(new Error('Edge Function returned 409'), { context: mockResponse }),
+    );
+
+    const client = {
+      functions: {
+        invoke() {
+          return Promise.resolve({
+            data: null,
+            error: frozenError,
+          });
+        },
+      },
+    };
+
+    await assert.rejects(
+      async () => {
+        await supabaseHelpers.createReservationRequest(client, [{ id: 'reservation-a' }]);
+      },
+      (err) => {
+        assert.equal(err.message, 'Edge Function returned 409');
+        return true;
+      },
+    );
+  });
+
+  it('reads structured error body using clone without consuming the original response', async () => {
+    const supabaseHelpers = require('../js/supabase.js');
+    const body = { code: 'rooms_unavailable', error: 'taken' };
+    let cloned = false;
+    let bodyRead = false;
+    const context = {
+      clone() {
+        cloned = true;
+        return {
+          async json() {
+            bodyRead = true;
+            return body;
+          },
+        };
+      },
+      async json() {
+        throw new Error('Original stream consumed!');
+      },
+    };
+    const parsed = await supabaseHelpers.readInvokeErrorBody({ context });
+    assert.equal(cloned, true);
+    assert.equal(bodyRead, true);
+    assert.deepEqual(parsed, body);
+
+    const detail = await supabaseHelpers.readInvokeErrorDetail({ context });
+    assert.equal(detail, 'taken');
+  });
+
+  it('generates a valid RFC 4122 v4 UUID when crypto.randomUUID is absent', () => {
+    const checkout = loadCheckout();
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    try {
+      Object.defineProperty(globalThis.crypto, 'randomUUID', { value: undefined, configurable: true });
+      for (let i = 0; i < 50; i++) {
+        const id = checkout.getOrCreateTrackingEventId({ getItem: () => null, setItem: () => {} });
+        assert.match(id, uuidRegex, `Generated ID ${id} should match RFC 4122 v4`);
+      }
+    } finally {
+      delete globalThis.crypto.randomUUID;
+    }
+  });
+
+  it('generates a valid RFC 4122 v4 UUID when crypto is completely absent (Math.random fallback)', () => {
+    const checkout = loadCheckout();
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    const cryptoDesc = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    try {
+      Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+      for (let i = 0; i < 50; i++) {
+        const id = checkout.getOrCreateTrackingEventId({ getItem: () => null, setItem: () => {} });
+        assert.match(id, uuidRegex, `Generated ID ${id} should match RFC 4122 v4`);
+      }
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', cryptoDesc);
+    }
+  });
 });

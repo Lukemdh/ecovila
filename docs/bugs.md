@@ -680,3 +680,49 @@ card, a label on every daily card, and a relabelled total in two dialogs — noi
 calendar unreadable. Display now shows the booking price plainly; the guarantee stays where it
 changes an outcome: the daily repricing save is still refused outright, the cancel and partial-cancel
 preflights still warn, and the move dialog still states that differences could not be verified.
+
+---
+
+### B-42 — A guest who lost their villa mid-checkout was told to "check your details and try again" (High) — Fixed 2026-09-03
+
+**Confirmed against production, not inferred.**
+
+Roughly one guest in five could not reach the payment page. `js/booking.js` takes a single
+availability snapshot at page load (`loadBookingData()`, line 1438 — no polling, no refetch on
+focus) and `js/checkout.js` never re-checked it. When the villa was taken while the guest filled in
+the form, the insert hit `23P01 reservations_no_room_overlap`, `_shared/reservations.ts:207`
+rethrew it as a plain `Error`, and `errorResponse` turned that into a 500 that checkout rendered as
+`checkout.errorCreate`.
+
+**Why it kept guests stuck rather than merely failing them.** The message says *"Verifică datele și
+încearcă din nou"* — check your details and try again. The details were fine and retrying could
+never work, because the villa was genuinely gone. Edge logs show runs of 5-7 consecutive 500s from
+one device inside a few minutes, then a 429 as the guest hit the rate limiter. Counting devices,
+not requests: 5 failing sessions against ~10 successful on 09-03, 1 against ~11 on 09-02.
+
+**One instance reconstructed completely.** 2026-09-02 10:36 UTC — a staff hold took room 25 (hotel)
+for 13-14 Sep. 10:49 — a guest began seven consecutive 500s, rate-limited at 10:54. Occupancy for
+that night at that moment: small 8/8, large 7/7, hotel 9/10. The hold had taken the last room on
+the property; the guest's page, loaded before 10:36, still showed it free.
+
+**Why it hid.** `errorResponse` never logged. The only trace was a 500 in edge logs with ~7-day
+retention, and the DB held nothing at all — the insert is what failed, so there was no row to find.
+Verified: across 89 guest card bookings in 7 days, zero were missing a payment row or a cancellation
+token, which is what ruled out every partial-write theory.
+
+**Ruled out along the way,** each with evidence rather than argument: the ADR-084 foreign-phone
+block (measured at ~6% of bookings and dropping to exactly zero non-`+373` bookings after June —
+working as designed); a stale TopHost upload (live JS and HTML byte-identical to the repo); the
+pricing guard (answers 409 and logs; zero of either); rate limiting (always arrives *after* a run of
+500s, never before); and old browsers (every failing user agent was Chrome 152, iOS 26 or
+CriOS 151/152).
+
+**Fix (ADR-113).** 23P01 now maps to a 409 carrying which villas of that type are still free; the
+checkout page shows a truthful message and a button back to the booking page with the dates
+preserved, and disables submit so the retry spiral cannot start. An explicit villa pick is never
+silently substituted — that was an explicit owner decision. Failures are logged with their SQLSTATE
+and counted in the CRM.
+
+**Lesson, and it is the same one as B-39:** an error path that is never logged is a bug that can run
+for months. `errorResponse` mapping every untyped error to a silent 500 was the mechanism both
+times.

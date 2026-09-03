@@ -4448,6 +4448,109 @@ contains out-of-window history.
 
 ---
 
+### ADR-113 — A booking that loses its villa must say so, not fail
+
+**Reported symptom.** "Some users cannot book. When pressing continue on the final page it doesn't
+take them to the payment page. Not everyone, about 10-30%."
+
+**Root cause, confirmed against production.** `js/booking.js` calls `loadBookingData()` exactly
+once (line 1438) — no polling, no refetch on focus or visibility change — so a guest's availability
+is a single snapshot taken when the booking page loaded. `js/checkout.js` never re-checked it. When
+inventory moved underneath the guest, the insert hit `23P01 reservations_no_room_overlap`, which
+`_shared/reservations.ts:207` rethrew as a plain `Error`; `_shared/http.ts errorResponse` maps
+untyped errors to 500, and checkout rendered `checkout.errorCreate` — *"Rezervarea nu a putut fi
+creată. Verifică datele și încearcă din nou."*
+
+That copy was the real damage. It told the guest their details were wrong and to retry, when their
+details were fine and retrying could never succeed. Edge logs show the consequence exactly: runs of
+5-7 consecutive 500s from one device over a few minutes, then a 429 as the guest hit the rate
+limiter, then silence.
+
+**Measured, not estimated.** Counting devices rather than requests: 2026-09-03 had 5 failing
+sessions against ~10 that succeeded; 2026-09-02 had 1 against ~11. Six failing sessions out of ~31
+is ~19%, inside the reported band. One instance was reconstructed end to end: on 09-02 at 10:36 UTC
+a staff hold took room 25 (hotel) for 13-14 Sep; at 10:49 a guest began seven consecutive 500s and
+was rate-limited at 10:54. Occupancy for that night at that moment was small 8/8, large 7/7,
+hotel 9/10 — the hold had taken the last room on the property, and the guest's page, loaded before
+10:36, still showed it free.
+
+**Decisions.**
+
+- **An explicit villa pick is sacred.** The owner rejected silent substitution outright. When a
+  guest ticked a specific villa and it is gone, the server never swaps them onto another unit — it
+  answers 409 and names the villas of that type that are still free so the guest chooses again.
+  Rows with `room_explicitly_selected = false` keep ADR-054 auto-assignment untouched. 33% of guest
+  bookings (305 of 929 over 60 days) are explicit picks, and they previously had no fallback of any
+  kind: they failed even when identical villas stood empty.
+- **The preflight is a courtesy, never a lock.** `findRoomAvailabilityConflict` runs immediately
+  before the insert, on the final room ids, after assignment and pricing. It is not transactional
+  and is not claimed to be. The DB exclusion constraint remains the arbiter, and a 23P01 from the
+  insert produces the identical 409 body via the same code path — the preflight only buys a better
+  message in the common case.
+- **`HttpError` carries a structured detail.** `errorResponse` spreads it into the body but `error`
+  is written last, so a detail key can never overwrite the message the browser localizes against.
+- **The checkout re-check is advisory and must fail open.** It runs after first paint and swallows
+  every error: a booking must never be blocked because a convenience read timed out.
+- **Returning to the booking page uses query parameters, not stored state.** `rezervari.html`
+  currently never restores a previous selection, and quietly changing that would alter behaviour for
+  every visitor on the highest-traffic page of the site. The parser is fail-closed — any malformed,
+  duplicated, past-dated or out-of-range parameter discards the whole set and the page behaves
+  exactly as it does today.
+- **Failures are now visible.** `create-reservation` logs a structured line carrying the SQLSTATE and
+  writes a `booking_failures` row, surfaced as a 7-day count at the top of the CRM's Probleme tab.
+  It deliberately does not feed that tab's unread badge, which means "a guest is waiting for a
+  reply". The table holds no guest PII by design — it is a diagnostic counter, not a shadow guest
+  table.
+
+**Two latent bugs fixed in passing, neither of which caused this outage — stated plainly so the
+record is not overclaimed.**
+
+- `fetchAvailabilityBlocks` was the only guest-facing read in `js/supabase.js` that was unpaginated
+  and could outgrow the PostgREST 1000-row cap; `unwrapAllSupabaseRows` had been written for exactly
+  this problem (ADR-092, B-37) and applied only to the CRM reads. Reconstructed week by week, the
+  guest window has peaked at ~662 rows, so it has **never actually truncated in production** — but it
+  climbs every season. The RPC gained `order by room_id, check_in` because paging without a total
+  ordering can skip or repeat a row; the live definition was read with `pg_get_functiondef` before
+  being recreated, and showed no drift (the B-39 lesson).
+- `createReservationId` fell back to `reservation-<ts>-<rand>`, which is not a UUID, so any browser
+  without `crypto.randomUUID` would have been rejected with `22P02` forever. Every failing user agent
+  observed was modern (Chrome 152, iOS 26, CriOS 151/152), so this was latent, not the cause. The
+  fallback now emits a real v4 UUID, and `22P02` maps to 400 rather than 500.
+
+**What adversarial QA changed before this shipped.** Three defects were found by review and fixed
+before deploy, all of them in the new code rather than the old:
+
+- The load-time availability check was disabling the submit button, which contradicted the invariant
+  this ADR states about itself. A guest whose villa was held transiently at page load was hard-locked
+  with no polling and no retry. Advisory and authoritative are now separate: the load-time check only
+  renders the notice, and ONLY the server's 409 sets `soldOutConfirmed` and locks the button — the
+  one case where retrying genuinely cannot succeed. This also closed a race where an advisory result
+  arriving mid-submit could freeze the button after an unrelated network error.
+- The 23P01 backstop fabricated which villa collided. When the re-read could not see the winning row
+  it blamed `rows[0]` and could offer back the unit that actually collided. The insert is atomic, so
+  a failed booking now returns none of its own rooms as free.
+- A 429 was recorded as `invalid_request` and rendered as "Date invalide", telling the owner a
+  throttled guest had sent bad data. `rate_limited` is now its own reason, and a test fails if
+  `failureReason`'s possible returns and the migration's CHECK allowlist ever drift apart — the B-39
+  failure mode, guarded mechanically rather than by memory.
+
+**One QA finding was rejected on evidence.** Review reported a critical infinite loop in the paged
+availability read, reasoning that `.range()` sends a `Range` header which PostgREST ignores on POST,
+so every page would return the same 1000 rows forever. The reasoning is correct in general and wrong
+here: the vendored client implements `range()` with `offset`/`limit` query parameters. Measured
+against production, the pager returns 1,415 rows where the old code returned exactly 1,000, with zero
+duplicates and a stable total ordering across page boundaries. An explicit `.order()` was added on
+the client anyway, because the inner ORDER BY of a `SECURITY DEFINER` function is not guaranteed to
+survive PostgREST's LIMIT/OFFSET.
+
+**Deploy ordering.** The migration must go first — it creates the table the functions write to and
+the ordering the pager relies on. After that the order is free: functions before frontend means the
+new 409 falls through to today's generic message, frontend before functions means the page never
+sees a `rooms_unavailable` code and behaves as it does now. Neither half can strand the site, which
+matters because the frontend upload to TopHost is a manual step.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

@@ -12,6 +12,24 @@
     altceva: 'Altceva',
   };
 
+  const FAILURE_REASON_LABELS = {
+    rooms_unavailable: 'Cazare ocupată',
+    invalid_request: 'Date invalide',
+    rate_limited: 'Limită de cereri atinsă',
+    server_error: 'Eroare de server',
+  };
+
+  const FAILURE_ROOM_TYPE_LABELS = {
+    small: 'căsuțe mici',
+    large: 'căsuțe mari',
+    hotel: 'hotel',
+  };
+
+  const RO_MONTHS_SHORT = [
+    'ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.',
+    'iul.', 'aug.', 'sept.', 'oct.', 'noi.', 'dec.',
+  ];
+
   // Inline SVGs (feather-style, currentColor) kept as trusted constants so they
   // can be set via innerHTML without ever touching guest-supplied data.
   const ICON_USER =
@@ -427,8 +445,145 @@
     }
   }
 
+  function formatFailureDateRange(inStr, outStr) {
+    const mIn = typeof inStr === 'string' ? inStr.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+    const mOut = typeof outStr === 'string' ? outStr.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+    if (mIn && mOut) {
+      const yIn = mIn[1];
+      const monIn = parseInt(mIn[2], 10);
+      const dIn = parseInt(mIn[3], 10);
+      const yOut = mOut[1];
+      const monOut = parseInt(mOut[2], 10);
+      const dOut = parseInt(mOut[3], 10);
+      if (yIn === yOut && monIn === monOut) {
+        return dIn === dOut ? `${dIn} ${RO_MONTHS_SHORT[monIn - 1]}` : `${dIn}–${dOut} ${RO_MONTHS_SHORT[monIn - 1]}`;
+      }
+      if (yIn === yOut) {
+        return `${dIn} ${RO_MONTHS_SHORT[monIn - 1]} – ${dOut} ${RO_MONTHS_SHORT[monOut - 1]}`;
+      }
+      return `${dIn} ${RO_MONTHS_SHORT[monIn - 1]} ${yIn} – ${dOut} ${RO_MONTHS_SHORT[monOut - 1]} ${yOut}`;
+    }
+    if (mIn) {
+      const monIn = parseInt(mIn[2], 10);
+      const dIn = parseInt(mIn[3], 10);
+      return `${dIn} ${RO_MONTHS_SHORT[monIn - 1]}`;
+    }
+    if (mOut) {
+      const monOut = parseInt(mOut[2], 10);
+      const dOut = parseInt(mOut[3], 10);
+      return `${dOut} ${RO_MONTHS_SHORT[monOut - 1]}`;
+    }
+    if (inStr && outStr) {
+      return `${inStr} – ${outStr}`;
+    }
+    return inStr || outStr || '';
+  }
+
+  function renderBookingFailures(context, failures) {
+    const container = qs('[data-booking-failures]');
+    if (!container) {
+      return;
+    }
+    container.innerHTML = '';
+
+    const items = Array.isArray(failures) ? failures : [];
+    if (!items.length) {
+      const zero = ce('p', 'crm-booking-failures__zero');
+      zero.textContent = 'Nicio rezervare eșuată în ultimele 7 zile.';
+      container.appendChild(zero);
+      return;
+    }
+
+    const headline = ce('div', 'crm-booking-failures__headline');
+    headline.textContent = `Rezervări eșuate (7 zile): ${items.length}`;
+    container.appendChild(headline);
+
+    const groups = new Map();
+    for (const failure of items) {
+      const reason = failure?.reason || 'server_error';
+      let group = groups.get(reason);
+      if (!group) {
+        group = {
+          reason,
+          count: 0,
+          roomTypes: new Map(),
+          dateRanges: new Map(),
+        };
+        groups.set(reason, group);
+      }
+      group.count += 1;
+
+      if (failure?.room_type) {
+        const rt = String(failure.room_type).toLowerCase();
+        group.roomTypes.set(rt, (group.roomTypes.get(rt) || 0) + 1);
+      }
+
+      if (failure?.check_in || failure?.check_out) {
+        const rangeKey = `${failure.check_in || ''}|${failure.check_out || ''}`;
+        const existing = group.dateRanges.get(rangeKey) || {
+          count: 0,
+          checkIn: failure.check_in,
+          checkOut: failure.check_out,
+        };
+        existing.count += 1;
+        group.dateRanges.set(rangeKey, existing);
+      }
+    }
+
+    const sortedGroups = Array.from(groups.values()).sort(
+      (a, b) => b.count - a.count || a.reason.localeCompare(b.reason),
+    );
+
+    const list = ce('ul', 'crm-booking-failures__causes');
+
+    for (const group of sortedGroups) {
+      const item = ce('li', 'crm-booking-failures__cause');
+      const reasonLabel = FAILURE_REASON_LABELS[group.reason] || group.reason;
+      let text = `${reasonLabel} — ${group.count}`;
+
+      if (group.roomTypes.size > 0) {
+        const sortedTypes = Array.from(group.roomTypes.entries()).sort(
+          (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+        );
+        const typeParts = sortedTypes.map(([type, count]) => {
+          const label = FAILURE_ROOM_TYPE_LABELS[type] || type;
+          return `${label} ${count}`;
+        });
+        text += ` (${typeParts.join(', ')})`;
+      }
+
+      if (group.reason === 'rooms_unavailable' && group.dateRanges.size > 0) {
+        const sortedRanges = Array.from(group.dateRanges.values()).sort(
+          (a, b) => b.count - a.count || String(b.checkIn).localeCompare(String(a.checkIn)),
+        );
+        const topRange = sortedRanges[0];
+        const formattedRange = formatFailureDateRange(topRange.checkIn, topRange.checkOut);
+        if (formattedRange) {
+          text += ` · cel mai afectat: ${formattedRange}`;
+        }
+      }
+
+      item.textContent = text;
+      list.appendChild(item);
+    }
+
+    container.appendChild(list);
+  }
+
+  async function loadBookingFailures(context) {
+    const ctx = context || active?.context;
+    try {
+      const failures = await helpers().fetchBookingFailures(ctx?.client, { sinceDays: 7 });
+      renderBookingFailures(ctx, failures);
+    } catch (error) {
+      if (typeof ctx?.setAlert === 'function') {
+        ctx.setAlert(error?.message || 'Eșecurile de rezervare nu s-au putut încărca.');
+      }
+    }
+  }
+
   // Called by crm-app when the Probleme tab is opened: clear the unread badge,
-  // record this view as "seen", and (re)load the current list.
+  // record this view as "seen", (re)load the current list, and load booking failures.
   function showPanel() {
     if (!active) {
       return;
@@ -436,6 +591,7 @@
     const { context, state } = active;
     markRead(context);
     loadList(context, state);
+    loadBookingFailures(context);
   }
 
   function init(context) {
@@ -477,10 +633,15 @@
   return {
     COMPLAINTS_TABLE,
     CATEGORY_LABELS,
+    FAILURE_REASON_LABELS,
+    FAILURE_ROOM_TYPE_LABELS,
     init,
     showPanel,
     setView,
     renderList,
     buildCard,
+    loadBookingFailures,
+    renderBookingFailures,
+    formatFailureDateRange,
   };
 });

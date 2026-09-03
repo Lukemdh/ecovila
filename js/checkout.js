@@ -68,7 +68,20 @@
       return root.crypto.randomUUID();
     }
 
-    return `reservation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    if (root.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      root.crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+    }
+
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   function getOrCreateTrackingEventId(storage) {
@@ -455,6 +468,134 @@
     element.hidden = !message;
   }
 
+  function normalizeRoomNumbers(numbers) {
+    return Array.from(new Set((Array.isArray(numbers) ? numbers : [])
+      .map((number) => Number(number))
+      .filter((number) => Number.isInteger(number))))
+      .sort((left, right) => left - right);
+  }
+
+  function formatRoomNumbers(numbers, language) {
+    const values = normalizeRoomNumbers(numbers).map(String);
+    const locale = SUPPORTED_LANGUAGES.has(language) ? language : 'ro';
+
+    if (typeof Intl.ListFormat === 'function') {
+      return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(values);
+    }
+
+    return values.join(', ');
+  }
+
+  function buildBookingReturnUrl(selection) {
+    const query = new URLSearchParams();
+    query.set('checkIn', String(selection?.checkIn || ''));
+    query.set('checkOut', String(selection?.checkOut || ''));
+    query.set('adults', String(selection?.adults || ''));
+
+    const kidsAges = Array.isArray(selection?.kidsAges) ? selection.kidsAges : [];
+    if (kidsAges.length) {
+      query.set('kids', kidsAges.join(','));
+    }
+
+    query.set('type', String(selection?.type || ''));
+    return `rezervari.html?${query.toString().replaceAll('%2C', ',')}`;
+  }
+
+  function getSelectionAvailabilityConflict(selection, rooms, blocks) {
+    const typeRooms = (Array.isArray(rooms) ? rooms : [])
+      .filter((room) => room?.type === selection?.type && room.is_active !== false);
+    const takenRoomIds = new Set(
+      (Array.isArray(blocks) ? blocks : [])
+        .filter((block) => {
+          const blockStart = String(block?.check_in || '');
+          const blockEnd = String(block?.check_out || '');
+          return blockStart < selection.checkOut && selection.checkIn < blockEnd;
+        })
+        .map((block) => String(block.room_id)),
+    );
+    const freeRooms = typeRooms.filter((room) => !takenRoomIds.has(String(room.id)));
+    const freeRoomIds = new Set(freeRooms.map((room) => String(room.id)));
+    const selectedRoomIds = (Array.isArray(selection?.roomIds) ? selection.roomIds : [])
+      .map((roomId) => String(roomId));
+    const unitsValue = Number(selection?.units);
+    const requestedUnits = Number.isInteger(unitsValue) && unitsValue > 0
+      ? unitsValue
+      : Math.max(1, selectedRoomIds.length);
+    const explicitPick = Boolean(selection?.roomExplicitlySelected);
+    const unavailable = explicitPick
+      ? selectedRoomIds.length < requestedUnits || selectedRoomIds.some((roomId) => !freeRoomIds.has(roomId))
+      : freeRooms.length < requestedUnits;
+
+    if (!unavailable) {
+      return null;
+    }
+
+    return {
+      code: 'rooms_unavailable',
+      roomType: selection.type,
+      explicitPick,
+      takenRoomNumbers: normalizeRoomNumbers(
+        typeRooms.filter((room) => takenRoomIds.has(String(room.id))).map((room) => room.number),
+      ),
+      freeRoomNumbers: normalizeRoomNumbers(freeRooms.map((room) => room.number)),
+      soldOut: freeRooms.length === 0,
+    };
+  }
+
+  async function checkSelectionAvailability(selection, client, helpers) {
+    const availabilityHelpers = helpers || supabaseHelpers;
+
+    try {
+      const activeClient = client || availabilityHelpers.getSupabaseClient();
+      const [rooms, blocks] = await Promise.all([
+        availabilityHelpers.fetchRooms(activeClient),
+        availabilityHelpers.fetchAvailabilityBlocks(activeClient, {
+          startDate: selection.checkIn,
+          endDate: selection.checkOut,
+        }),
+      ]);
+      return getSelectionAvailabilityConflict(selection, rooms, blocks);
+    } catch (_error) {
+      // This early check is only a courtesy; the create-reservation function is
+      // authoritative and must remain reachable when a read temporarily fails.
+      return null;
+    }
+  }
+
+  function renderSoldOutNotice(selection, detail) {
+    const documentRef = getDocument();
+    const notice = documentRef?.querySelector('[data-checkout-soldout]');
+
+    if (!notice) {
+      return;
+    }
+
+    if (!detail) {
+      notice.hidden = true;
+      return;
+    }
+
+    const freeRoomNumbers = normalizeRoomNumbers(detail.freeRoomNumbers);
+    const messageKey = detail.soldOut === true || !freeRoomNumbers.length
+      ? 'checkout.soldOutAll'
+      : 'checkout.soldOutPicked';
+    const message = notice.querySelector('[data-checkout-soldout-message]');
+    const action = notice.querySelector('[data-checkout-soldout-action]');
+
+    if (message) {
+      message.textContent = t(messageKey, {
+        rooms: formatRoomNumbers(freeRoomNumbers, getLanguage()),
+      });
+    }
+    if (action) {
+      action.textContent = t('checkout.soldOutAction');
+      action.href = buildBookingReturnUrl(selection);
+    }
+
+    notice.hidden = false;
+    showMessage('[data-checkout-error]', '');
+  }
+
   function collectGuestDetails(form) {
     return {
       firstName: form.querySelector('[data-guest-first-name]')?.value,
@@ -620,22 +761,25 @@
       button.setAttribute('aria-pressed', String(isSelected));
     });
 
+    const hasAvailabilityConflict = Boolean(state.availabilityConflict);
     const internationalNotice = documentRef.querySelector('[data-international-notice]');
     if (internationalNotice) {
-      internationalNotice.hidden = !foreign;
+      internationalNotice.hidden = !foreign || hasAvailabilityConflict;
     }
 
     // A foreign guest has no online rail, so lock the submit and let the contact
     // notice be the single call to action — also clear any stale form error so
-    // the two messages never stack.
+    // the two messages never stack. Confirmed sold-out rooms also lock the button.
     const submitButton = documentRef.querySelector('[data-checkout-submit]');
     if (submitButton) {
-      submitButton.disabled = foreign;
-      submitButton.classList.toggle('is-blocked', foreign);
+      submitButton.disabled = foreign || Boolean(state.soldOutConfirmed);
+      submitButton.classList.toggle('is-blocked', foreign || Boolean(state.soldOutConfirmed));
     }
-    if (foreign) {
+    if (foreign || hasAvailabilityConflict) {
       showMessage('[data-checkout-error]', '');
     }
+
+    renderSoldOutNotice(state.selection, state.availabilityConflict);
 
     const disclaimer = documentRef.querySelector('[data-cash-disclaimer]');
     if (disclaimer) {
@@ -643,11 +787,12 @@
     }
   }
 
-  function setSubmitting(isSubmitting) {
+  function setSubmitting(isSubmitting, isBlocked) {
     const button = getDocument()?.querySelector('[data-checkout-submit]');
 
     if (button) {
-      button.disabled = isSubmitting;
+      button.disabled = isSubmitting || Boolean(isBlocked);
+      button.classList.toggle('is-blocked', Boolean(isBlocked));
       button.textContent = isSubmitting ? t('checkout.submitting') : t('checkout.reserve');
     }
   }
@@ -688,7 +833,7 @@
       return;
     }
 
-    setSubmitting(true);
+    setSubmitting(true, Boolean(state.soldOutConfirmed));
 
     try {
       const client = supabaseHelpers.getSupabaseClient();
@@ -734,6 +879,14 @@
         guestValidation.guest.phone,
       );
     } catch (error) {
+      if (error?.code === 'rooms_unavailable') {
+        state.soldOutConfirmed = true;
+        state.availabilityConflict = error.detail || { soldOut: true, freeRoomNumbers: [] };
+        showMessage('[data-checkout-status]', '');
+        renderSoldOutNotice(state.selection, state.availabilityConflict);
+        return;
+      }
+
       const message = String(error?.message || '');
       const key = supabaseHelpers.isRateLimited?.(error)
         ? 'common.rateLimited'
@@ -743,7 +896,7 @@
       showMessage('[data-checkout-status]', '');
       showMessage('[data-checkout-error]', t(key));
     } finally {
-      setSubmitting(false);
+      setSubmitting(false, Boolean(state.soldOutConfirmed));
     }
   }
 
@@ -758,6 +911,8 @@
     const state = {
       selection: readStoredSelection(),
       paymentType: 'card',
+      availabilityConflict: null,
+      soldOutConfirmed: false,
     };
     const form = documentRef.querySelector('[data-checkout-form]');
     const phoneInput = documentRef.querySelector('[data-guest-phone]');
@@ -829,6 +984,17 @@
     });
 
     renderCheckout(state);
+
+    if (validateCheckoutSelection(state.selection).valid) {
+      void checkSelectionAvailability(state.selection).then((conflict) => {
+        if (!conflict) {
+          return;
+        }
+
+        state.availabilityConflict = conflict;
+        renderCheckout(state);
+      });
+    }
   }
 
   if (getDocument()) {
@@ -839,7 +1005,11 @@
     CASH_EXPIRY_MINUTES,
     STORAGE_PENDING,
     STORAGE_SELECTION,
+    buildBookingReturnUrl,
     buildReservationPayloads,
+    checkSelectionAvailability,
+    formatRoomNumbers,
+    getSelectionAvailabilityConflict,
     getCashExpiry,
     getOnlinePaymentCopy,
     getPaymentRail,
@@ -855,8 +1025,11 @@
     normalizeLanguage,
     normalizeGuestDetails,
     readStoredSelection,
+    renderCheckout,
+    renderSoldOutNotice,
     redirectAfterReservation,
     splitTotalPrice,
+    submitCheckout,
     validateCheckoutSelection,
     validateGuestDetails,
   };

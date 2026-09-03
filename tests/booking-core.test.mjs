@@ -722,13 +722,23 @@ describe('EcoVila Step 3 Supabase helper', () => {
 
   it('fetches public availability blocks through RPC instead of selecting guest reservations directly', async () => {
     const calls = [];
+    const orderCalls = [];
     const client = {
       rpc(name, params) {
         calls.push({ name, params });
-        return Promise.resolve({
-          data: [{ room_id: 'small-1', check_in: '2026-07-01', check_out: '2026-07-03' }],
-          error: null,
-        });
+        const builder = {
+          order(column, options) {
+            orderCalls.push({ column, options });
+            return builder;
+          },
+          range(from, to) {
+            return Promise.resolve({
+              data: [{ room_id: 'small-1', check_in: '2026-07-01', check_out: '2026-07-03' }],
+              error: null,
+            });
+          },
+        };
+        return builder;
       },
     };
 
@@ -744,6 +754,110 @@ describe('EcoVila Step 3 Supabase helper', () => {
         params: { range_start: '2026-07-01', range_end: '2026-07-31' },
       },
     ]);
+    assert.deepEqual(orderCalls, [
+      { column: 'room_id', options: { ascending: true } },
+      { column: 'check_in', options: { ascending: true } },
+    ]);
+  });
+
+  it('pages through availability blocks when the first page comes back full and returns the merged set', async () => {
+    const allBlocks = Array.from({ length: 1345 }, (_, index) => ({
+      room_id: `room-${index}`,
+      check_in: '2026-07-01',
+      check_out: '2026-07-03',
+    }));
+    const rangeCalls = [];
+    const rpcCalls = [];
+    const orderCalls = [];
+
+    function makeBuilder() {
+      const builder = {
+        order: (column, options) => {
+          orderCalls.push({ column, options });
+          return builder;
+        },
+        range: (from, to) => {
+          rangeCalls.push([from, to]);
+          const slice = allBlocks.slice(from, Math.min(to + 1, from + 1000));
+          return Promise.resolve({ data: slice, error: null });
+        },
+      };
+      return builder;
+    }
+
+    const client = {
+      rpc: (name, params) => {
+        rpcCalls.push({ name, params });
+        return makeBuilder();
+      },
+    };
+
+    const blocks = await supabaseHelpers.fetchAvailabilityBlocks(client, {
+      startDate: '2026-06-01',
+      endDate: '2026-12-31',
+    });
+
+    assert.equal(blocks.length, 1345);
+    assert.equal(blocks[0].room_id, 'room-0');
+    assert.equal(blocks[1344].room_id, 'room-1344');
+    assert.equal(new Set(blocks.map((b) => b.room_id)).size, 1345);
+    assert.deepEqual(rangeCalls, [[0, 999], [1000, 1999]]);
+    assert.equal(rpcCalls.length, 2);
+    assert.deepEqual(rpcCalls[0], {
+      name: 'get_public_availability_blocks',
+      params: { range_start: '2026-06-01', range_end: '2026-12-31' },
+    });
+    assert.deepEqual(rpcCalls[1], {
+      name: 'get_public_availability_blocks',
+      params: { range_start: '2026-06-01', range_end: '2026-12-31' },
+    });
+    assert.deepEqual(orderCalls, [
+      { column: 'room_id', options: { ascending: true } },
+      { column: 'check_in', options: { ascending: true } },
+      { column: 'room_id', options: { ascending: true } },
+      { column: 'check_in', options: { ascending: true } },
+    ]);
+  });
+
+  it('fetchAvailabilityBlocks issues its ordering on every page request', async () => {
+    const allBlocks = Array.from({ length: 1500 }, (_, index) => ({
+      room_id: `room-${index}`,
+      check_in: '2026-07-01',
+      check_out: '2026-07-03',
+    }));
+    const orderCallsByPage = [];
+
+    const client = {
+      rpc: () => {
+        const pageOrders = [];
+        orderCallsByPage.push(pageOrders);
+        const builder = {
+          order: (column, options) => {
+            pageOrders.push({ column, options });
+            return builder;
+          },
+          range: (from, to) => {
+            const slice = allBlocks.slice(from, Math.min(to + 1, from + 1000));
+            return Promise.resolve({ data: slice, error: null });
+          },
+        };
+        return builder;
+      },
+    };
+
+    const blocks = await supabaseHelpers.fetchAvailabilityBlocks(client, {
+      startDate: '2026-06-01',
+      endDate: '2026-12-31',
+    });
+
+    assert.equal(blocks.length, 1500);
+    assert.equal(orderCallsByPage.length, 2);
+    for (const pageOrders of orderCallsByPage) {
+      assert.deepEqual(pageOrders, [
+        { column: 'room_id', options: { ascending: true } },
+        { column: 'check_in', options: { ascending: true } },
+      ]);
+    }
   });
 
   it('upserts pricing rows by tier, day type, and effective date', async () => {

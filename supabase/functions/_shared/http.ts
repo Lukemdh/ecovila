@@ -4,10 +4,12 @@ import { requiredEnv } from './env.ts';
 
 export class HttpError extends Error {
   status: number;
+  detail?: Record<string, unknown>;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -24,8 +26,11 @@ export function jsonResponse(body: unknown, init: ResponseInit = {}, request?: R
 export function errorResponse(error: unknown, request?: Request) {
   const status = error instanceof HttpError ? error.status : 500;
   const message = error instanceof Error ? error.message : 'Unexpected server error.';
+  const detail = error instanceof HttpError ? error.detail : undefined;
 
-  return jsonResponse({ error: message }, { status }, request);
+  // Spread detail first so it can enrich the response, but error message must
+  // always win because it is the contract the browser localizes against.
+  return jsonResponse({ ...(detail || {}), error: message }, { status }, request);
 }
 
 export function assertMethod(request: Request, methods: string[]) {

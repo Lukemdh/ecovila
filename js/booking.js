@@ -4,7 +4,73 @@
   const pricing = window.EcoVilaPricing;
   const calendar = window.EcoVilaCalendar;
   const supabaseHelpers = window.EcoVilaSupabase;
+  const TYPE_ORDER = ['small', 'large', 'hotel'];
+  const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
   const app = document.querySelector('[data-booking-app]');
+
+  function parseBookingQueryParams(search) {
+    try {
+      const params = new URLSearchParams(String(search || ''));
+      const recognizedKeys = ['checkIn', 'checkOut', 'adults', 'kids', 'type'];
+      const hasBookingParams = recognizedKeys.some((key) => params.has(key));
+
+      if (!hasBookingParams) {
+        return null;
+      }
+
+      if (
+        ['checkIn', 'checkOut', 'adults', 'type'].some((key) => !params.has(key)) ||
+        recognizedKeys.some((key) => params.getAll(key).length > 1)
+      ) {
+        return null;
+      }
+
+      const checkIn = params.get('checkIn') || '';
+      const checkOut = params.get('checkOut') || '';
+      const adultsValue = params.get('adults') || '';
+      const type = params.get('type') || '';
+
+      if (
+        !ISO_DATE_PATTERN.test(checkIn) ||
+        !ISO_DATE_PATTERN.test(checkOut) ||
+        pricing.toISODate(checkIn) !== checkIn ||
+        pricing.toISODate(checkOut) !== checkOut ||
+        checkOut <= checkIn ||
+        checkIn < pricing.todayISO() ||
+        !/^[1-9]\d*$/.test(adultsValue) ||
+        Number(adultsValue) > 10 ||
+        !TYPE_ORDER.includes(type)
+      ) {
+        return null;
+      }
+
+      let kidsAges = [];
+      if (params.has('kids')) {
+        const kidsValue = params.get('kids') || '';
+        const ageValues = kidsValue.split(',');
+        if (
+          !kidsValue ||
+          ageValues.length > 10 ||
+          ageValues.some((age) => !/^\d+$/.test(age) || Number(age) > 18)
+        ) {
+          return null;
+        }
+        kidsAges = ageValues.map(Number);
+      }
+
+      return {
+        checkIn,
+        checkOut,
+        adults: Number(adultsValue),
+        kidsAges,
+        type,
+      };
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  window.EcoVilaBooking = Object.freeze({ parseBookingQueryParams });
 
   if (!app || !pricing || !calendar) {
     return;
@@ -12,7 +78,6 @@
 
   const STORAGE_SELECTION = 'ecovila_booking_selection';
   const STORAGE_LANGUAGE = 'ecovila_language';
-  const TYPE_ORDER = ['small', 'large', 'hotel'];
   const LOOKAHEAD_DAYS = 210;
   // Surface the "only N left for your dates" urgency cue once a type's live
   // availability for the chosen range drops to this many units or fewer.
@@ -59,6 +124,7 @@
   };
 
   const fallbackRooms = createFallbackRooms();
+  const querySelection = parseBookingQueryParams(window.location?.search);
 
   const state = {
     language: localStorage.getItem(STORAGE_LANGUAGE) || document.documentElement.lang || 'ro',
@@ -89,6 +155,15 @@
       hotel: [],
     },
   };
+
+  if (querySelection) {
+    state.adults = querySelection.adults;
+    state.kidsAges = querySelection.kidsAges;
+    state.checkIn = querySelection.checkIn;
+    state.checkOut = querySelection.checkOut;
+    state.selectedType = querySelection.type;
+    state.currentMonth = firstOfMonth(querySelection.checkIn);
+  }
 
   function getTranslations() {
     return window.EcoVilaTranslations || {};

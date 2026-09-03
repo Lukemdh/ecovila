@@ -16,6 +16,7 @@
 // `assignAutomaticRooms` is the thin orchestration used by `create-reservation`.
 
 import './pricing.js';
+import { HttpError } from './http.ts';
 import type { SupabaseClient, SupabaseQueryResult } from './supabaseAdmin.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -47,6 +48,15 @@ type AssignableRow = {
   check_in: string;
   check_out: string;
   room_explicitly_selected: boolean;
+};
+
+export type RoomUnavailableDetail = {
+  code: 'rooms_unavailable';
+  roomType: string;
+  explicitPick: boolean;
+  takenRoomNumbers: number[];
+  freeRoomNumbers: number[];
+  soldOut: boolean;
 };
 
 function toEpochDay(value: string): number {
@@ -292,4 +302,102 @@ export async function assignAutomaticRooms<T extends AssignableRow>(
   }
 
   return rows;
+}
+
+/**
+ * Re-read availability for the final room ids immediately before insertion.
+ * `forceConflict` is reserved for the exclusion-constraint backstop: SQLSTATE
+ * 23P01 proves the insert collided even if a later read no longer sees the
+ * winning row (for example, because it was cancelled immediately afterwards).
+ */
+export async function findRoomAvailabilityConflict<T extends AssignableRow>(
+  client: SupabaseClient,
+  rows: T[],
+  options: { forceConflict?: boolean } = {},
+): Promise<HttpError | null> {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const rooms = await loadActiveRooms(client);
+  const roomsById = new Map(rooms.map((room) => [room.id, room]));
+  const dates = rows.flatMap((row) => [row.check_in, row.check_out]).sort();
+  const reservations = await loadActiveReservations(client, dates[0], dates[dates.length - 1]);
+  let conflictRow: T | undefined;
+  let selectedRoom: AssignmentRoom | undefined;
+  let freeRooms: AssignmentRoom[] = [];
+
+  for (const row of rows) {
+    const room = roomsById.get(row.room_id);
+    if (!room) {
+      continue;
+    }
+
+    const candidates = orderRoomsByTightestWindow({
+      rooms,
+      reservations,
+      type: room.type,
+      checkIn: row.check_in,
+      checkOut: row.check_out,
+    });
+    if (!candidates.some((candidate) => candidate.id === row.room_id)) {
+      conflictRow = row;
+      selectedRoom = room;
+      freeRooms = candidates;
+      break;
+    }
+  }
+
+  if (!conflictRow && options.forceConflict) {
+    conflictRow = rows.find((row) => roomsById.has(row.room_id));
+    selectedRoom = conflictRow ? roomsById.get(conflictRow.room_id) : undefined;
+    if (conflictRow && selectedRoom) {
+      freeRooms = orderRoomsByTightestWindow({
+        rooms,
+        reservations,
+        type: selectedRoom.type,
+        checkIn: conflictRow.check_in,
+        checkOut: conflictRow.check_out,
+      });
+    }
+  }
+
+  if (!conflictRow || !selectedRoom) {
+    return null;
+  }
+
+  const freeRoomIds = new Set(freeRooms.map((room) => room.id));
+  if (options.forceConflict) {
+    for (const row of rows) {
+      freeRoomIds.delete(row.room_id);
+    }
+  }
+  const comparableRows = rows.filter((candidate) =>
+    candidate.check_in === conflictRow.check_in &&
+    candidate.check_out === conflictRow.check_out &&
+    roomsById.get(candidate.room_id)?.type === selectedRoom.type
+  );
+  const takenRoomNumbers = comparableRows
+    .filter((candidate) => !freeRoomIds.has(candidate.room_id))
+    .map((candidate) => roomsById.get(candidate.room_id)?.number)
+    .filter((number): number is number => Number.isFinite(number))
+    .sort((left, right) => left - right);
+  const freeRoomNumbers = freeRooms
+    .filter((room) => freeRoomIds.has(room.id))
+    .map((room) => room.number)
+    .sort((left, right) => left - right);
+  const soldOut = freeRoomNumbers.length === 0;
+  const message = soldOut
+    ? 'Toate vilele de acest tip sunt ocupate pentru datele selectate. Alege alte date sau alt tip de vilă.'
+    : 'Vila selectată tocmai a fost ocupată pentru datele selectate. Alege una dintre vilele disponibile.';
+  const detail: RoomUnavailableDetail = {
+    code: 'rooms_unavailable',
+    roomType: selectedRoom.type,
+    explicitPick: conflictRow.room_explicitly_selected,
+    takenRoomNumbers: [...new Set(takenRoomNumbers)],
+    freeRoomNumbers,
+    soldOut,
+  };
+
+  return new HttpError(409, message, detail);
 }

@@ -120,6 +120,22 @@
     }
   }
 
+  async function readInvokeErrorBody(error) {
+    const context = error?.context;
+    if (!context || typeof context.json !== 'function') {
+      return null;
+    }
+    try {
+      // Clone so we never consume a body another handler might still read.
+      const source = typeof context.clone === 'function' ? context.clone() : context;
+      const body = await source.json();
+      return body && typeof body === 'object' ? body : null;
+    } catch (_error) {
+      // Body missing, not JSON, or already consumed — fall back to null.
+      return null;
+    }
+  }
+
   function createSupabaseClient(config, library, options) {
     const supabaseLibrary = library || defaultRoot.supabase;
 
@@ -249,11 +265,14 @@
   }
 
   function fetchAvailabilityBlocks(client, options) {
-    return unwrapSupabaseResult(
-      client.rpc('get_public_availability_blocks', {
-        range_start: options.startDate,
-        range_end: options.endDate,
-      }),
+    return unwrapAllSupabaseRows(() =>
+      client
+        .rpc('get_public_availability_blocks', {
+          range_start: options?.startDate,
+          range_end: options?.endDate,
+        })
+        .order('room_id', { ascending: true })
+        .order('check_in', { ascending: true }),
     );
   }
 
@@ -275,7 +294,21 @@
     });
 
     if (result.error) {
-      throw decorateInvokeError(result.error);
+      const error = result.error;
+      const body = await readInvokeErrorBody(error);
+      if (body) {
+        try {
+          if (body !== undefined && body !== null) {
+            error.detail = body;
+          }
+          if (body.code !== undefined && body.code !== null) {
+            error.code = body.code;
+          }
+        } catch (_error) {
+          // Some error objects are frozen; attaching defensively ensures safe throw.
+        }
+      }
+      throw decorateInvokeError(error);
     }
 
     return result.data || {};
@@ -1785,6 +1818,31 @@
     return unwrapSupabaseResult(query);
   }
 
+  function fetchBookingFailures(client, options) {
+    const sinceDays = Number.isFinite(options?.sinceDays)
+      ? Number(options.sinceDays)
+      : 7;
+    const cutoff = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const buildQuery = () => {
+      let query = client
+        .from('booking_failures')
+        .select(
+          'id, created_at, reason, sqlstate, room_type, check_in, check_out, units, room_explicitly_selected, guest_language, detail',
+        );
+
+      if (sinceDays > 0) {
+        query = query.gte('created_at', cutoff);
+      }
+
+      return query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
+    };
+
+    return unwrapAllSupabaseRows(buildQuery);
+  }
+
   function markComplaintSolved(client, complaintId, solvedBy) {
     return unwrapSupabaseResult(
       client
@@ -1895,6 +1953,7 @@
     verifyReservationLookup,
     submitComplaint,
     fetchComplaints,
+    fetchBookingFailures,
     markComplaintSolved,
     fetchComplaintReadState,
     upsertComplaintReadState,
@@ -1948,5 +2007,7 @@
     upsertDailyStatus,
     upsertTowelCount,
     unwrapSupabaseResult,
+    readInvokeErrorBody,
+    readInvokeErrorDetail,
   };
 });

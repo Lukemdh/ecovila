@@ -180,6 +180,8 @@ export async function createReservationsWithTokens(
     now?: Date;
     assignRooms?: (rows: ReservationRow[]) => Promise<ReservationRow[]>;
     priceGuard?: (rows: ReservationRow[]) => Promise<ReservationRow[]>;
+    beforeInsert?: (rows: ReservationRow[]) => Promise<void>;
+    onRoomConflict?: (rows: ReservationRow[]) => Promise<HttpError>;
   } = {},
 ) {
   let rows = buildReservationRows(inputs, options);
@@ -194,6 +196,11 @@ export async function createReservationsWithTokens(
   if (options.priceGuard) {
     rows = await options.priceGuard(rows);
   }
+
+  if (options.beforeInsert) {
+    await options.beforeInsert(rows);
+  }
+
   const { data: reservations, error: reservationError } = await insertTable<ReservationRecord>(
     client,
     'reservations',
@@ -204,7 +211,27 @@ export async function createReservationsWithTokens(
     );
 
   if (reservationError) {
-    throw new Error(reservationError.message || 'Could not create reservation.');
+    const sqlstate = String(reservationError.code || '');
+
+    if (sqlstate === '23P01') {
+      const conflict = options.onRoomConflict ? await options.onRoomConflict(rows) : new HttpError(
+        409,
+        'Cazarea selectată tocmai a fost ocupată pentru aceste date. Reîncearcă.',
+      );
+      throw withSqlstate(conflict, sqlstate);
+    }
+
+    if (sqlstate === '22P02') {
+      throw withSqlstate(
+        new HttpError(400, 'ID-ul rezervării trimis nu este valid.'),
+        sqlstate,
+      );
+    }
+
+    throw withSqlstate(
+      new Error(reservationError.message || 'Could not create reservation.'),
+      sqlstate,
+    );
   }
 
   const normalizedReservations = (reservations || []).map(withRoomFields);
@@ -269,6 +296,13 @@ export function withRoomFields<T extends ReservationRoomFields>(reservation: T) 
 
 function insertTable<T>(client: SupabaseClient, table: string) {
   return client.from(table) as InsertTable<T>;
+}
+
+function withSqlstate<T extends Error>(error: T, sqlstate: string): T {
+  if (sqlstate) {
+    (error as T & { sqlstate?: string }).sqlstate = sqlstate;
+  }
+  return error;
 }
 
 function normalizeReservationInput(input: ReservationInput, now: Date, bookingGroupId: string) {
