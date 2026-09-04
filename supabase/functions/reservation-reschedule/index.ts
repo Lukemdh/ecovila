@@ -13,7 +13,11 @@ import { hasValidPhoneLength, normalizeInternationalPhone } from '../_shared/res
 import { planReschedule } from '../_shared/reservationReschedule.ts';
 import type { RescheduleGroupRow } from '../_shared/reservationReschedule.ts';
 import { normalizeEmailLang, reservationRescheduleSms } from '../_shared/notifications.ts';
-import type { AssignmentReservation, AssignmentRoom } from '../_shared/roomAssignment.ts';
+import {
+  loadActiveReservations,
+  type AssignmentReservation,
+  type AssignmentRoom,
+} from '../_shared/roomAssignment.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -289,17 +293,8 @@ async function loadActiveReservationsWindow(
 ): Promise<Array<AssignmentReservation & { id: string }>> {
   const minDate = addDaysISO(checkIn, -RESERVATION_WINDOW_DAYS);
   const maxDate = addDaysISO(checkOut, RESERVATION_WINDOW_DAYS);
-  const { data, error } = await table<Array<AssignmentReservation & { id: string }>>(
-    client,
-    'reservations',
-  )
-    .select('id, room_id, check_in, check_out, payment_status, cancelled_at')
-    .is('cancelled_at', null)
-    .in('payment_status', ['pending', 'paid'])
-    .gt('check_out', minDate)
-    .lt('check_in', maxDate);
-  if (error) throw new Error(error.message || 'Could not load reservations.');
-  return data || [];
+  const reservations = await loadActiveReservations(client, minDate, maxDate);
+  return reservations as Array<AssignmentReservation & { id: string }>;
 }
 
 function toPlanRow(row: GroupReservationRow): RescheduleGroupRow {

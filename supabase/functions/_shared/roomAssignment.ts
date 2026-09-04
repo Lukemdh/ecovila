@@ -36,6 +36,7 @@ export type AssignmentRoom = {
 };
 
 export type AssignmentReservation = {
+  id?: string | null;
   room_id?: string | null;
   check_in?: string | null;
   check_out?: string | null;
@@ -204,6 +205,8 @@ type QueryBuilder<T> = PromiseLike<SupabaseQueryResult<T>> & {
   in(column: string, values: unknown[]): QueryBuilder<T>;
   gt(column: string, value: unknown): QueryBuilder<T>;
   lt(column: string, value: unknown): QueryBuilder<T>;
+  order(column: string, options?: { ascending?: boolean }): QueryBuilder<T>;
+  range(from: number, to: number): QueryBuilder<T>;
 };
 
 function table<T>(client: SupabaseClient, name: string) {
@@ -228,21 +231,43 @@ async function loadActiveRooms(client: SupabaseClient): Promise<AssignmentRoom[]
   return (data || []).filter((room) => room.is_active !== false);
 }
 
-async function loadActiveReservations(
+// PostgREST returns at most 1000 rows per request. Auto-assignment reads a
+// ±FREE_WINDOW_CAP_DAYS window (~4 months) which can exceed 1000 rows on a busy
+// calendar (B-37, ADR-092 class). Page through with .range() until a short page
+// arrives, rebuilding a fresh query builder for each page (a builder is single-use
+// once awaited) with a deterministic total ordering (.order('id')) to prevent
+// skipping or repeating rows across page boundaries.
+export const RESERVATION_PAGE_SIZE = 1000;
+
+export async function loadActiveReservations(
   client: SupabaseClient,
   minDate: string,
   maxDate: string,
+  options: { pageSize?: number } = {},
 ): Promise<AssignmentReservation[]> {
-  const { data, error } = await table<AssignmentReservation[]>(client, 'reservations')
-    .select('room_id, check_in, check_out, payment_status, cancelled_at')
-    .is('cancelled_at', null)
-    .in('payment_status', ['pending', 'paid'])
-    .gt('check_out', minDate)
-    .lt('check_in', maxDate);
-  if (error) {
-    throw new Error(error.message || 'Could not load reservations for assignment.');
+  const pageSize = options.pageSize ?? RESERVATION_PAGE_SIZE;
+  const rows: AssignmentReservation[] = [];
+
+  const buildQuery = () =>
+    table<AssignmentReservation[]>(client, 'reservations')
+      .select('id, room_id, check_in, check_out, payment_status, cancelled_at')
+      .is('cancelled_at', null)
+      .in('payment_status', ['pending', 'paid'])
+      .gt('check_out', minDate)
+      .lt('check_in', maxDate)
+      .order('id', { ascending: true });
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+    if (error) {
+      throw new Error(error.message || 'Could not load reservations for assignment.');
+    }
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) {
+      return rows;
+    }
   }
-  return data || [];
 }
 
 /**
@@ -257,6 +282,7 @@ async function loadActiveReservations(
 export async function assignAutomaticRooms<T extends AssignableRow>(
   client: SupabaseClient,
   rows: T[],
+  options: { pageSize?: number } = {},
 ): Promise<T[]> {
   const autoRows = rows.filter((row) => !row.room_explicitly_selected);
   if (autoRows.length === 0) {
@@ -269,7 +295,7 @@ export async function assignAutomaticRooms<T extends AssignableRow>(
   const dates = autoRows.flatMap((row) => [row.check_in, row.check_out]).sort();
   const minDate = addDaysISO(dates[0], -FREE_WINDOW_CAP_DAYS - 1);
   const maxDate = addDaysISO(dates[dates.length - 1], FREE_WINDOW_CAP_DAYS + 1);
-  const reservations = await loadActiveReservations(client, minDate, maxDate);
+  const reservations = await loadActiveReservations(client, minDate, maxDate, options);
 
   // Seed with rooms held by explicit picks in the same booking.
   const usedRoomIds = new Set<string>(
@@ -313,7 +339,7 @@ export async function assignAutomaticRooms<T extends AssignableRow>(
 export async function findRoomAvailabilityConflict<T extends AssignableRow>(
   client: SupabaseClient,
   rows: T[],
-  options: { forceConflict?: boolean } = {},
+  options: { forceConflict?: boolean; pageSize?: number } = {},
 ): Promise<HttpError | null> {
   if (rows.length === 0) {
     return null;
@@ -322,7 +348,9 @@ export async function findRoomAvailabilityConflict<T extends AssignableRow>(
   const rooms = await loadActiveRooms(client);
   const roomsById = new Map(rooms.map((room) => [room.id, room]));
   const dates = rows.flatMap((row) => [row.check_in, row.check_out]).sort();
-  const reservations = await loadActiveReservations(client, dates[0], dates[dates.length - 1]);
+  const reservations = await loadActiveReservations(client, dates[0], dates[dates.length - 1], {
+    pageSize: options.pageSize,
+  });
   let conflictRow: T | undefined;
   let selectedRoom: AssignmentRoom | undefined;
   let freeRooms: AssignmentRoom[] = [];

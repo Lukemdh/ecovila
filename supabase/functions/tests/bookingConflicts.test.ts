@@ -48,13 +48,24 @@ function activeBooking(roomId: string): AssignmentReservation {
 }
 
 function resolvedQuery<T>(data: T) {
+  let rangeStart = 0;
+  let rangeEnd = Infinity;
   const chain = {
     select: () => chain,
     is: () => chain,
     in: () => chain,
     gt: () => chain,
     lt: () => chain,
-    then: (resolve: (value: { data: T; error: null }) => unknown) => resolve({ data, error: null }),
+    order: () => chain,
+    range: (from: number, to: number) => {
+      rangeStart = from;
+      rangeEnd = to;
+      return chain;
+    },
+    then: (resolve: (value: { data: T; error: null }) => unknown) => {
+      const sliced = Array.isArray(data) ? data.slice(rangeStart, rangeEnd + 1) : data;
+      return resolve({ data: sliced as T, error: null });
+    },
   };
   return chain;
 }

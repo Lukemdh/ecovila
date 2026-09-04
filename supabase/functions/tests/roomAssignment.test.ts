@@ -2,7 +2,9 @@ import { assertEquals } from 'std/assert';
 import {
   assignAutomaticRooms,
   freeWindowDays,
+  loadActiveReservations,
   orderRoomsByTightestWindow,
+  RESERVATION_PAGE_SIZE,
 } from '../_shared/roomAssignment.ts';
 import type { AssignmentReservation, AssignmentRoom } from '../_shared/roomAssignment.ts';
 import type { SupabaseClient } from '../_shared/supabaseAdmin.ts';
@@ -150,16 +152,28 @@ Deno.test('freeWindowDays measures adjacent bookings exactly and caps open sides
 function fakeClient(
   rooms: AssignmentRoom[],
   reservations: AssignmentReservation[],
+  options: { onRange?: (from: number, to: number) => void } = {},
 ): SupabaseClient {
   const resolveWith = <T>(data: T) => {
+    let rangeStart = 0;
+    let rangeEnd = Infinity;
     const chain = {
       select: () => chain,
       is: () => chain,
       in: () => chain,
       gt: () => chain,
       lt: () => chain,
-      then: (resolve: (value: { data: T; error: null }) => unknown) =>
-        resolve({ data, error: null }),
+      order: () => chain,
+      range: (from: number, to: number) => {
+        rangeStart = from;
+        rangeEnd = to;
+        options.onRange?.(from, to);
+        return chain;
+      },
+      then: (resolve: (value: { data: T; error: null }) => unknown) => {
+        const sliced = Array.isArray(data) ? data.slice(rangeStart, rangeEnd + 1) : data;
+        return resolve({ data: sliced as T, error: null });
+      },
     };
     return chain;
   };
@@ -226,3 +240,98 @@ Deno.test('assignAutomaticRooms gives a multi-villa booking distinct rooms', asy
   const assigned = rows.map((row) => row.room_id);
   assertEquals(new Set(assigned).size, 2, 'each villa in the booking gets a distinct room');
 });
+
+Deno.test('loadActiveReservations pages through full pages and returns the merged set', async () => {
+  const rangeCalls: Array<[number, number]> = [];
+  // 1007 rows matches the exact production count where truncation caused dropped bookings.
+  const totalReservations = 1007;
+  const mockReservations: AssignmentReservation[] = Array.from(
+    { length: totalReservations },
+    (_, i) => ({
+      id: `res-${String(i + 1).padStart(5, '0')}`,
+      room_id: `room-${(i % 5) + 1}`,
+      check_in: '2026-08-01',
+      check_out: '2026-08-03',
+      payment_status: 'paid',
+      cancelled_at: null,
+    }),
+  );
+
+  const client = fakeClient([], mockReservations, {
+    onRange: (from, to) => rangeCalls.push([from, to]),
+  });
+
+  const rows = await loadActiveReservations(client, '2026-07-01', '2026-11-01');
+
+  assertEquals(rangeCalls, [
+    [0, 999],
+    [1000, 1999],
+  ]);
+  assertEquals(rows.length, 1007);
+  assertEquals(rows[0].id, 'res-00001');
+  assertEquals(rows[1006].id, 'res-01007');
+});
+
+Deno.test(
+  'assignAutomaticRooms does not pick an occupied room when the blocking reservation only appears on the second page',
+  async () => {
+    // Hotel rooms #1 and #2. Ascending assignment order prefers #1 when both appear free.
+    const rooms = [room('r1', 1, 'hotel'), room('r2', 2, 'hotel')];
+
+    // Page 1 (1000 rows): filler reservations on another room so room #1 looks wide open.
+    const fillerReservations: AssignmentReservation[] = Array.from(
+      { length: 1000 },
+      (_, i) => ({
+        id: `res-filler-${String(i + 1).padStart(4, '0')}`,
+        room_id: 'r99',
+        check_in: '2026-08-01',
+        check_out: '2026-08-03',
+        payment_status: 'paid',
+        cancelled_at: null,
+      }),
+    );
+
+    // Page 2: the 1001st row (index 1000) blocks room #1 for 26-27 Sep 2026 (the live production incident).
+    const blockingReservation: AssignmentReservation = {
+      id: 'res-blocking-r1',
+      room_id: 'r1',
+      check_in: '2026-09-26',
+      check_out: '2026-09-27',
+      payment_status: 'paid',
+      cancelled_at: null,
+    };
+
+    // If truncated to page 1, auto-assignment would believe room #1 is free and assign it (bug).
+    const truncatedClient = fakeClient(rooms, fillerReservations);
+    const brokenAssignment = await assignAutomaticRooms(truncatedClient, [
+      {
+        room_id: 'r1',
+        check_in: '2026-09-26',
+        check_out: '2026-09-27',
+        room_explicitly_selected: false,
+      },
+    ]);
+    assertEquals(
+      brokenAssignment[0].room_id,
+      'r1',
+      'truncation repro: unpaginated read assigns room #1 because blocking row was dropped',
+    );
+
+    // With pagination, page 2 is read, room #1 is recognized as occupied, and room #2 is chosen:
+    const allReservations = [...fillerReservations, blockingReservation];
+    const paginatedClient = fakeClient(rooms, allReservations);
+    const fixedAssignment = await assignAutomaticRooms(paginatedClient, [
+      {
+        room_id: 'r1',
+        check_in: '2026-09-26',
+        check_out: '2026-09-27',
+        room_explicitly_selected: false,
+      },
+    ]);
+    assertEquals(
+      fixedAssignment[0].room_id,
+      'r2',
+      'pagination fix: reads through page 2, avoids occupied room #1, and assigns free room #2',
+    );
+  },
+);

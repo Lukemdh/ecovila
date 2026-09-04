@@ -726,3 +726,44 @@ and counted in the CRM.
 **Lesson, and it is the same one as B-39:** an error path that is never logged is a bug that can run
 for months. `errorResponse` mapping every untyped error to a silent 500 was the mechanism both
 times.
+
+---
+
+### B-43 — Auto room assignment read a truncated calendar and handed guests an occupied villa (High) — Fixed 2026-09-04
+
+**Found by the telemetry shipped hours earlier in ADR-113, against production.**
+
+`loadActiveReservations` in `supabase/functions/_shared/roomAssignment.ts` was unpaginated and had no
+`ORDER BY`, so PostgREST capped it at 1000 rows and the rows it dropped varied per call.
+`assignAutomaticRooms` calls it with the stay window padded by `±FREE_WINDOW_CAP_DAYS` — about four
+months. Measured in production for a 26-27 Sep 2026 stay: **1007 rows matched, 7 were silently
+dropped.**
+
+Auto-assignment therefore saw an incomplete calendar, judged an occupied villa free, and assigned it.
+The ADR-113 preflight, which reads only the narrow stay window and so is complete, then correctly
+refused the booking. A guest who had NOT picked a specific villa could not recover by retrying,
+because going back ran the same broken assignment again.
+
+**Live impact.** Four guests hit it on 2026-09-04 between 05:51 and 06:35 UTC, all wanting a hotel
+room for 26-27 Sep — logged in `booking_failures` with `sqlstate = null`, i.e. refused by the
+preflight rather than by the database constraint. Rooms 23 and 24 were free for that night the whole
+time.
+
+**This is older than ADR-113 and was not caused by it.** Before that change the same guests hit
+`23P01` at the insert and received the opaque 500 of B-42; they were already failing, invisibly. The
+threshold was only crossed recently — the window sat under 1000 rows until this season.
+
+**Also fixed here:** `loadActiveReservationsWindow` in `reservation-reschedule/index.ts` carried an
+identical unpaginated ±61-day query, so a staff reschedule could be planned against the same
+truncated view. It now delegates to the shared paginated reader.
+
+**Fix.** Both reads page with `.range()` until a short page arrives, rebuilding a fresh builder per
+page, ordered by `id` so offset paging cannot skip or repeat a row. A regression test puts the
+blocking reservation on the SECOND page and asserts auto-assignment does not pick the occupied room.
+Every other shared read was audited and documented as bounded (scoped to a booking group, a pay id,
+or an explicit limit).
+
+**Lesson.** This is the fourth appearance of the same 1000-row truncation class — B-37, ADR-092, the
+guest availability read in ADR-113, and now this. The pattern is always an unpaginated PostgREST read
+over a date window that grows with the business. Fixing the instance in front of you is not enough:
+grep for siblings.
