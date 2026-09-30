@@ -117,9 +117,9 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 491 Node + 220 Deno tests (220 is the last recorded Deno suite size);
-#   Node passes, while 5 clock-dependent Deno fixture-date tests currently fail
-#   and are being fixed separately
+# → 491 Node + 232 Deno tests (2026-09-30); Node passes, Deno 227 pass while
+#   5 clock-dependent fixture-date tests currently fail and are being fixed
+#   separately (production behaviour is correct)
 ```
 
 The suites can also be run independently.
@@ -136,7 +136,8 @@ npm run test:node
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 202 tests, all passing
+# → 232 tests (2026-09-30): 227 pass; 5 clock-dependent fixture-date tests
+#   currently fail and are being fixed separately
 ```
 
 The task runs `deno test --allow-env --allow-net tests`; backend test files are named

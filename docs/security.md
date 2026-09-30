@@ -318,7 +318,7 @@ already in place, and `.htaccess` sends HSTS.
 
 ## ADR-115 — RLS helper evaluation (2026-09-29)
 
-Wrapping `public.ecovila_app_role()` and the one `auth.uid()` call in scalar SELECTs changes evaluation frequency, not policy predicates or access. The migration covers 29 owned policies from the 32-policy live fixture; the three `storage.objects` policies remain unchanged because `supabase_storage_admin` owns that table and `postgres` cannot alter them. Role probes for anon, Diana and Angela are required after application. **Status:** written, NOT applied / NOT uploaded yet.
+Wrapping `public.ecovila_app_role()` and the one `auth.uid()` call in scalar SELECTs changes evaluation frequency, not policy predicates or access. The migration covers 29 owned policies from the 32-policy live fixture; the three `storage.objects` policies remain unchanged because `supabase_storage_admin` owns that table and `postgres` cannot alter them. **LIVE 2026-09-30** (migration `20260929130000`, ledger repaired): the same 32 policies exist, no public policy calls the helper unwrapped, the storage policies are unchanged, and a rolled-back per-role visibility probe (anon, Diana, Angela, an unrelated authenticated role; 19 tables) matched the pre-migration baseline — the only difference, `crm_daily_statuses` +15 rows for both staff roles, was live data confirmed by a direct count. No change in security posture.
 
 ---
 
