@@ -4595,7 +4595,7 @@ matters because the frontend upload to TopHost is a manual step.
 
 **Surface:** `admin/js/crm-app.js`, `crm-dashboard.js`, `crm-sidebar.js`, `crm-finance.js`, `crm-payment-links.js`, `crm-towels.js`, `js/supabase.js`, `tests/admin-crm-lazy.test.mjs`, the asset token and `dist/tophost`. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** after ADR-114 and ADR-115 checks and owner sign-off, upload `dist/tophost` (`?v=2026092901`), content-verify on the live host with a cache-buster; then remeasure a cold calendar page and disk read latency.
 
-**DEPLOY STATUS — STILL PENDING 2026-09-30:** The owner uploads dist/tophost (?v=2026092901) to TopHost manually; then content-verify on the live host with a cache-buster.
+**DEPLOY STATUS — FULLY LIVE 2026-09-30** (supersedes the status line above). On 2026-09-30 the owner uploaded dist/tophost (?v=2026092901) to TopHost. Content-verified on the live host with cache-busters: all 60 shipped HTML/JS/CSS files are byte-identical (SHA-256) to dist/tophost (site.html intentionally skipped — it 301-redirects to /); admin/dashboard.html carries 18 references to ?v=2026092901 and none to the old token. In a real browser the live CRM ran the new code (a #finance deep link redirected cleanly to login with no console errors) and the live booking page loaded with no console errors; its own availability loader fetched 573 blocks in 226 ms (2.31 s first call on 2026-09-28).
 
 ---
 

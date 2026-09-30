@@ -782,13 +782,13 @@ grep for siblings.
 
 ---
 
-### B-45 — Hidden dashboard realtime reload reset calendar scroll (Low) — Fixed in code, pending upload
+### B-45 — Hidden dashboard realtime reload reset calendar scroll (Low) — Fixed — LIVE 2026-09-30
 
 **Cause.** Realtime reloaded the dashboard while its panel was hidden; reading `scrollLeft` from the `display:none` calendar returned zero and reset the saved position.
 
 **Fix (ADR-116).** ADR-116 defers the reload until the dashboard becomes active, including when a queued debounce expires after a tab switch.
 
-**Status.** Written, NOT applied / NOT uploaded yet.
+**Status.** Fixed — LIVE 2026-09-30.
 
 ---
 
