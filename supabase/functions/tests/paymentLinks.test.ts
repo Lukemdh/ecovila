@@ -700,16 +700,20 @@ Deno.test('payment-link display ordering keeps money and in-flight attempts ahea
 });
 
 Deno.test('expired link plus pending attempt stays pending when the authoritative lookup fails', async () => {
+  const now = Date.now();
+  const createdAt = new Date(now - 20 * 60 * 1000).toISOString();
+  const expiresAt = new Date(now - 5 * 60 * 1000).toISOString();
   const state: MemoryState = {
-    links: [link({ expires_at: '2020-01-01T00:00:00.000Z' })],
-    attempts: [attempt({ expires_at: '2020-01-01T00:00:00.000Z' })],
+    links: [link({ created_at: createdAt, updated_at: createdAt, expires_at: expiresAt })],
+    attempts: [attempt({ created_at: createdAt, updated_at: createdAt, expires_at: expiresAt })],
   };
   const client = memoryPaymentClient(state);
+  const maib = maibFetcher({}, { checkoutStatus: 500 });
   const originalError = console.error;
   console.error = () => {};
   try {
     await withMaibEnvironment(
-      maibFetcher({}, { checkoutStatus: 500 }).fetcher,
+      maib.fetcher,
       async () => {
         const response = await handleStatus(
           client as never,
@@ -720,6 +724,7 @@ Deno.test('expired link plus pending attempt stays pending when the authoritativ
         );
         assertEquals(response.status, 'pending');
         assertEquals(state.attempts[0].status, 'pending');
+        assert(maib.calls.some((call) => call.url.endsWith('/v2/checkouts/checkout-1')));
       },
     );
   } finally {
@@ -728,16 +733,30 @@ Deno.test('expired link plus pending attempt stays pending when the authoritativ
 });
 
 Deno.test('late card capture on a revoked link reconciles to review and preserves revokedAt', async () => {
-  const revokedAt = '2026-08-26T12:03:00.000Z';
+  const now = Date.now();
+  const createdAt = new Date(now - 30 * 60 * 1000).toISOString();
+  const revokedAt = new Date(now - 27 * 60 * 1000).toISOString();
   const state: MemoryState = {
-    links: [link({ status: 'revoked', revoked_at: revokedAt })],
-    attempts: [attempt({ status: 'cancelled', processed_at: revokedAt })],
+    links: [link({
+      status: 'revoked',
+      created_at: createdAt,
+      updated_at: revokedAt,
+      expires_at: new Date(now + 30 * 60 * 1000).toISOString(),
+      revoked_at: revokedAt,
+    })],
+    attempts: [attempt({
+      status: 'cancelled',
+      created_at: createdAt,
+      updated_at: revokedAt,
+      expires_at: new Date(now - 15 * 60 * 1000).toISOString(),
+      processed_at: revokedAt,
+    })],
   };
   const client = memoryPaymentClient(state, (fn, _args, memory) => {
     if (fn !== 'settle_payment_link_attempt') return undefined;
     Object.assign(memory.links[0], {
       status: 'paid',
-      paid_at: '2026-08-26T12:04:00.000Z',
+      paid_at: new Date(now - 26 * 60 * 1000).toISOString(),
       paid_amount: 875,
       settled_attempt_id: ATTEMPT_ID,
       manual_review: true,
@@ -770,6 +789,7 @@ Deno.test('late card capture on a revoked link reconciles to review and preserve
     );
     assertEquals(response.status, 'review');
     assertEquals(state.links[0].revoked_at, revokedAt);
+    assert(maib.calls.some((call) => call.url.endsWith('/v2/checkouts/checkout-1')));
   });
 });
 
@@ -875,8 +895,9 @@ Deno.test('superseded card attempt is still re-read after a sibling paid the lin
 });
 
 Deno.test('long-dead terminal card attempt is not re-read on every poll', async () => {
+  const now = Date.now();
   const state: MemoryState = {
-    links: [link({ expires_at: '2099-01-01T00:00:00.000Z' })],
+    links: [link({ expires_at: new Date(now + 24 * 60 * 60 * 1000).toISOString() })],
     attempts: [attempt({
       status: 'failed',
       expires_at: '2020-01-01T00:00:00.000Z',
@@ -1061,8 +1082,9 @@ Deno.test('two waitForReusableAttempt callers reuse the same concurrently-create
 });
 
 Deno.test('a checkout minted while the link becomes revoked is cancelled after mint', async () => {
+  const now = Date.now();
   const state: MemoryState = {
-    links: [link({ expires_at: '2099-01-01T00:00:00.000Z' })],
+    links: [link({ expires_at: new Date(now + 24 * 60 * 60 * 1000).toISOString() })],
     attempts: [],
   };
   const client = memoryPaymentClient(state, (fn, _args, memory) => {

@@ -221,8 +221,18 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - **Backend:** Deno tests in `supabase/functions/tests/`, named `*.test.ts`, run
   via `npm run test:deno` from the repository root (equivalent to
   `cd supabase/functions && deno task test`, which runs
-  `deno test --allow-env --allow-net tests`). Keep using `*.test.ts` so Deno's default
-  directory discovery runs the tests.
+  `deno test --allow-env --allow-net --allow-read=../migrations tests`). Keep using
+  `*.test.ts` so Deno's default directory discovery runs the tests.
+- Never hard-code a date or timestamp that production compares with the real clock,
+  including far-future sentinels. Derive related times from one `Date.now()` capture
+  (see `isoDaysFromNow` in `tests/checkout.test.mjs` and
+  `supabase/functions/tests/guestCancellationHonesty.test.ts`), with margins from the
+  business constant and a timeline that respects production invariants; or pin today
+  through an existing seam (`EcoVilaPricing.todayISO`, `EcoVilaCrmCalendar.todayISO`,
+  or a `_shared` helper's `now` parameter). Do not add a clock parameter to an Edge
+  Function handler solely for tests (ADR-117, B-47).
+- A test of a time-window-gated branch asserts that the gated path ran, such as a
+  requested provider lookup (B-47).
 - A change that alters markup, copy, or file layout will likely require updating the
   corresponding contract test in the same commit.
 

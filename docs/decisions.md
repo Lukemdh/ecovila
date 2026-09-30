@@ -4599,6 +4599,20 @@ matters because the frontend upload to TopHost is a manual step.
 
 ---
 
+### ADR-117 — Tests derive or pin time; handlers take no injected clock
+
+**Date:** 2026-09-30.
+
+**Problem.** Fixed fixture dates made five Deno cases fail on 2026-09-30, one Node pricing case fail from 2026-10-01 local time, and an ADR-106 payment-link lookup test pass without reaching its gated provider call. `2099-01-01` sentinels only postponed failure. Two code-reading reviews missed the Node case; a shifted-clock run found it.
+
+**Decision.** Capture `Date.now()` once per time-sensitive fixture and derive all related timestamps with margins based on the business constant and timelines that preserve production invariants, including an attempt session ending no later than its link. The cancellation mock checks in at `isoDaysFromNow(REFUND_ADVANCE_DAYS + 20)`, has a booking created 30 days ago, a token valid for 24 h and a refund ETA 60 h ahead. Pin today through an existing seam when appropriate: the two CRM pricing tests use a stubbed `EcoVilaPricing.todayISO` returning `'2026-08-15'`. Assert that a time-gated branch actually ran; both payment-link cases check that the MAIB checkout lookup was requested. No production code, business rule or assertion was weakened.
+
+**Alternatives rejected.** Threading a clock through `handleCancelReservation` and `handleStatus` would change two deployed handler signatures purely for tests and diverge repo source from deployed code; preserving behavior would also require keeping each former `new Date()` read separate. No Edge Function handler currently takes a clock. A global fake `Date` could leak across async tests that already swap `fetch` and environment variables. Moving literals to a later year would repeat the failure.
+
+**Surface:** `supabase/functions/tests/paymentLinks.test.ts`, `supabase/functions/tests/guestCancellationHonesty.test.ts`, and `tests/admin-crm.test.mjs`. **Status:** committed and pushed to main with this entry; test-only, nothing to deploy. `npm test` passes 491 Node + 232 Deno. Both suites passed shifted-clock runs hourly over 48 h, daily from −60 to +400 days, and at +1,000, +3,650 and +27,000 days, with zero failures.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

@@ -3204,7 +3204,9 @@ describe('EcoVila Step 9 CRM', () => {
   });
 
   it('builds a price schedule split into effective-date timeframes', () => {
-    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
+    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js', {
+      EcoVilaPricing: { todayISO: () => '2026-08-15' },
+    });
     const make = (effective_from, created_at, table) => table.map(([nights_tier, day_type, adult_price, kid_price]) => ({
       nights_tier,
       day_type,
@@ -3280,7 +3282,9 @@ describe('EcoVila Step 9 CRM', () => {
   });
 
   it('drops fully elapsed price periods, keeping the active one and future ones', () => {
-    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js');
+    const { EcoVilaCrmPricing: pricing } = loadAdminModule('admin/js/crm-pricing.js', {
+      EcoVilaPricing: { todayISO: () => '2026-08-15' },
+    });
     const mk = (effective_from, adultBase) => Array.from({ length: 6 }, (unused, index) => ({
       nights_tier: (index >> 1) + 1,
       day_type: index % 2 === 0 ? 'weekday' : 'holiday',

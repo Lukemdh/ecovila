@@ -799,3 +799,25 @@ grep for siblings.
 **Fix.** Add deterministic paging before either result can reach the cap.
 
 **Status.** Open; documented only (no code written).
+
+---
+
+### B-47 — Test fixtures depended on the real clock (Medium) — Fixed 2026-09-30
+
+**Cause.** `paymentLinks.test.ts` used an August 2026 checkout deadline whose seven-day `TERMINAL_RECONCILE_GRACE_MS` window closed on 2026-09-02; its late-capture case then stayed `revoked` instead of reaching `review`. Its authoritative-lookup failure case used 2020 expiries and passed without requesting MAIB. Four `guestCancellationHonesty.test.ts` cases used an October 15 check-in that fell inside the 20 Europe/Chisinau calendar-day `REFUND_ADVANCE_DAYS` limit on 2026-09-26. A CRM pricing period ended 2026-09-30 and would be dropped from 2026-10-01 local time. Four `2099-01-01` sentinels would eventually expire too.
+
+**Fix (ADR-117).** Time-sensitive fixtures derive dates from one `Date.now()` capture with business-rule margins and valid link/attempt timelines, or pin today through `EcoVilaPricing.todayISO`. Both time-gated payment-link tests assert the MAIB checkout lookup was requested. No production code, business rule or assertion was weakened.
+
+**Verification.** `npm test` passes 491 Node + 232 Deno tests. Both suites passed with a shifted `Date` hourly over 48 h, daily from −60 to +400 days, and at +1,000, +3,650 and +27,000 days (0 failures); before the fix, 5 Deno tests failed on 2026-09-30, 1 Node test would fail from 2026-10-01, and 7 Deno + 2 Node failed at +27,000 days.
+
+**Status.** Fixed 2026-09-30; test-only, nothing to deploy.
+
+---
+
+### B-48 — Deno format, lint and type checks were red while the docs said they passed (Low) — Partly fixed 2026-09-30
+
+**Cause.** Since B-43 (`c7b5078`, 2026-09-04), `deno fmt --check` flagged `supabase/functions/_shared/roomAssignment.ts` and `supabase/functions/reservation-reschedule/index.ts`, and `deno lint` flagged an unused `RESERVATION_PAGE_SIZE` import in `supabase/functions/tests/roomAssignment.test.ts`. `deno check` also reports five type errors in `supabase/functions/backfill-review-requests/index.ts`, present since `cbed1cb`/`af8894e` (2026-08-31). `docs/README.md` and the readiness verdict in `docs/production-readiness-audit.md` stated all three checks passed.
+
+**Fix.** Applied formatting and import-order changes only, and removed the unused test import. The one-off backfill function is due for deletion under the B-39 follow-up, so the owner left its five type errors open.
+
+**Status.** Format/lint Fixed 2026-09-30; typecheck Open. `deno check tests/*.ts` passes. No behavior change or redeploy is needed.

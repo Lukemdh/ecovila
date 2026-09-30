@@ -4,7 +4,6 @@ import {
   freeWindowDays,
   loadActiveReservations,
   orderRoomsByTightestWindow,
-  RESERVATION_PAGE_SIZE,
 } from '../_shared/roomAssignment.ts';
 import type { AssignmentReservation, AssignmentRoom } from '../_shared/roomAssignment.ts';
 import type { SupabaseClient } from '../_shared/supabaseAdmin.ts';

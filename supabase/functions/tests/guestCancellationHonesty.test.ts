@@ -6,6 +6,7 @@ import {
   sumUnrefundedDifferenceAmount,
 } from '../_shared/paymentLinks.ts';
 import { buildCancellationEmail, cancellationConfirmationSms } from '../_shared/notifications.ts';
+import { REFUND_ADVANCE_DAYS } from '../_shared/reservationManage.ts';
 import { handleCancelReservation } from '../reservation-cancel/index.ts';
 import type { SupabaseClient } from '../_shared/supabaseAdmin.ts';
 
@@ -398,6 +399,10 @@ function createMockSupabaseForCancellation(options: {
   paymentLinkRows?: PaymentLinkRow[];
   paymentLinksError?: string | null;
 }) {
+  const now = Date.now();
+  function isoDaysFromNow(days: number) {
+    return new Date(now + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
   const updatedReservations: Array<Record<string, unknown>> = [];
   const insertedMaibRefunds: Array<Record<string, unknown>> = [];
   const insertedNotificationEvents: Array<Record<string, unknown>> = [];
@@ -421,7 +426,10 @@ function createMockSupabaseForCancellation(options: {
           eq: () => chain,
           maybeSingle: () =>
             Promise.resolve({
-              data: { phone: '+37369111222', expires_at: '2099-01-01T00:00:00.000Z' },
+              data: {
+                phone: '+37369111222',
+                expires_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+              },
               error: null,
             }),
         };
@@ -473,12 +481,13 @@ function createMockSupabaseForCancellation(options: {
                   guest_phone: '+37369111222',
                   guest_email: 'ana@test.md',
                   guest_language: 'ro',
-                  check_in: '2026-10-15',
-                  check_out: '2026-10-18',
+                  // 20 days past the cancel cutoff, so timezone, DST and month ends cannot matter.
+                  check_in: isoDaysFromNow(REFUND_ADVANCE_DAYS + 20),
+                  check_out: isoDaysFromNow(REFUND_ADVANCE_DAYS + 23),
                   total_price: 3000,
                   payment_type: 'card',
                   payment_status: 'paid',
-                  created_at: '2026-08-01T10:00:00.000Z',
+                  created_at: new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString(),
                   cancelled_at: null,
                   rooms: { number: 1, type: 'small' },
                 },
@@ -604,7 +613,7 @@ function createMockSupabaseForCancellation(options: {
         return Promise.resolve({
           data: {
             main_status: 'requested',
-            main_eligible_at: '2026-08-28T18:30:00.000Z',
+            main_eligible_at: new Date(now + 60 * 60 * 60 * 1000).toISOString(),
             main_amount: 3000,
             main_gross_amount: 3000,
             main_withheld: 0,

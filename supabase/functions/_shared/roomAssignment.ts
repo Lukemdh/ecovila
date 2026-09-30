@@ -257,7 +257,7 @@ export async function loadActiveReservations(
       .lt('check_in', maxDate)
       .order('id', { ascending: true });
 
-  for (let from = 0; ; from += pageSize) {
+  for (let from = 0;; from += pageSize) {
     const { data, error } = await buildQuery().range(from, from + pageSize - 1);
     if (error) {
       throw new Error(error.message || 'Could not load reservations for assignment.');

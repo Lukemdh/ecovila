@@ -14,9 +14,9 @@ import { planReschedule } from '../_shared/reservationReschedule.ts';
 import type { RescheduleGroupRow } from '../_shared/reservationReschedule.ts';
 import { normalizeEmailLang, reservationRescheduleSms } from '../_shared/notifications.ts';
 import {
-  loadActiveReservations,
   type AssignmentReservation,
   type AssignmentRoom,
+  loadActiveReservations,
 } from '../_shared/roomAssignment.ts';
 import type { SupabaseClient, SupabaseQueryResult } from '../_shared/supabaseAdmin.ts';
 

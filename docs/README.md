@@ -117,9 +117,7 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 491 Node + 232 Deno tests (2026-09-30); Node passes, Deno 227 pass while
-#   5 clock-dependent fixture-date tests currently fail and are being fixed
-#   separately (production behaviour is correct)
+# → 491 Node + 232 Deno tests, all passing (2026-09-30)
 ```
 
 The suites can also be run independently.
@@ -136,19 +134,21 @@ npm run test:node
 ```sh
 npm run test:deno
 # equivalent: cd supabase/functions && deno task test
-# → 232 tests (2026-09-30): 227 pass; 5 clock-dependent fixture-date tests
-#   currently fail and are being fixed separately
+# → 232 tests, all passing (2026-09-30)
 ```
 
-The task runs `deno test --allow-env --allow-net tests`; backend test files are named
-`*.test.ts` so Deno discovers them from the `tests` directory.
+The task runs `deno test --allow-env --allow-net --allow-read=../migrations tests`;
+backend test files are named `*.test.ts` so Deno discovers them from the `tests`
+directory.
 
 **Typecheck (Deno):**
 ```sh
 cd supabase/functions
 deno check $(find . -name '*.ts' -not -path './tests/*')
-# → passes, no type errors
+# → 5 known type errors, all in backfill-review-requests/index.ts (B-48, open)
 ```
+
+Everything else type-checks, including `deno check tests/*.ts`.
 
 **Lint (Deno):**
 ```sh

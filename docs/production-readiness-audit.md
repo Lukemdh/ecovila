@@ -174,6 +174,10 @@ ADR-114 supplies bounded reclaim and recurring maintenance; ADR-115 wraps owned 
 
 **Deployment status (LIVE 2026-09-30):** ADR-114 and ADR-115 are LIVE in production. ADR-114 runbook executed 09:33–09:43 Europe/Chisinau (commit `4d5b018` on main): `net._http_response` 338 MB → 144 kB, `cron.job_run_details` 1,453 MB → 144 kB (~1.8 GB reclaimed); migration `20260929120000` applied via `supabase db query --linked -f` and recorded with `supabase migration repair --status applied 20260929120000 --linked`; jobs 12 `ecovila-prune-cron-history`, 13 `ecovila-vacuum-cron-history`, 14 `ecovila-vacuum-pgnet-responses` active, `ecovila-review-backfill` removed; first scheduled `vacuum (analyze) net._http_response` ran 07:07 UTC and succeeded (~50 ms); daily prune/vacuum of cron history first runs 03:17 / 03:27 UTC on 2026-10-01. Data disk utilisation 0.2% (was saturated), 0 reads/s, CPU iowait 0.2%; pg_net cleanup ~0.01 ms per call with 0 blocks read (was ~110 s and ~291 MB per call); guest booking availability RPC 0.13 s on first call (was 2.31 s). ADR-115 LIVE at 09:54 Europe/Chisinau: migration `20260929130000` applied on the first attempt and recorded with `supabase migration repair --status applied 20260929130000 --linked`; all 32 policies intact with role helper InitPlan; Diana calendar first run in a new session 1.9 ms planning + 25.2 ms execution (was 381 ms + 3,935 ms on 2026-09-28), warm 24.6 ms (was 50 ms), plan now sequential scan with InitPlan (~234 buffers instead of 2,454). ADR-116 is FULLY LIVE since the owner's 2026-09-30 upload of `dist/tophost` (`?v=2026092901`): all 60 shipped HTML/JS/CSS files are byte-identical on the live host (cache-busted SHA-256 check), and the live booking page's availability loader fetched 573 blocks in 226 ms (2.31 s on 2026-09-28). The batch is complete.
 
+## 2026-09-30 test clock audit (B-47/B-48)
+
+Fixed fixture dates caused five Deno failures on 2026-09-30 and would cause one Node failure from 2026-10-01 local time; a payment-link provider-lookup test passed without reaching the lookup. ADR-117 derives related fixture times from one clock capture or pins today through an existing seam, and verifies time-gated provider calls. `npm test` passes 491 Node + 232 Deno. Shifted-clock runs of both suites (hourly over 48 h, daily from −60 to +400 days, and at +1,000, +3,650 and +27,000 days) had zero failures. `deno lint` and `deno fmt --check` pass after B-48 cleanup; `deno check` still reports five known errors, all in the one-off `backfill-review-requests/index.ts` (B-48 open). Test-only changes; nothing to deploy.
+
 ---
 
 ## Readiness verdict
@@ -184,9 +188,9 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 426 Node + 202 Deno tests pass on 2026-08-27 |
+| Test suite | Green | `npm test` -> 491 Node + 232 Deno tests pass on 2026-09-30, independent of run date |
 | Payment integrity | Green locally | B-23/B-24/B-25 deployed; ADR-106/107 payment links tested locally but still undeployed |
-| Deno lint/type/format | Green | `deno lint`, `deno check`, `deno fmt --check` pass |
+| Deno lint/type/format | Mostly clean | `deno lint` and `deno fmt --check` pass; `deno check` has five known `backfill-review-requests/index.ts` errors (B-48, open) |
 | Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |
 | Secret scan | Mostly clean | Regex scan found only the intended public Supabase anon JWT |
@@ -362,7 +366,7 @@ payload out of the URL; if no, ensure the full provider URL is never written to 
 ## Positive findings
 
 - Full local test suite passes.
-- Deno lint/type/format checks pass.
+- Deno lint and format pass; `deno check` passes except for five known errors in the one-off `backfill-review-requests/index.ts` (B-48).
 - Local static asset references are intact.
 - `verify_jwt` settings are explicit per Edge Function.
 - CORS is centralized and no longer returns a wildcard by default.
