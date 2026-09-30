@@ -184,6 +184,7 @@
     const selected = new Set(uniqueRoomNumbers(input.selectedNumbers));
     const ranged = hasCompleteRange(input.checkIn, input.checkOut);
     const unverified = ranged && isBeyondAvailabilityHorizon(input.checkOut, input.horizonEnd);
+    const availabilityReady = input.availabilityReady !== false;
 
     let freeCount = 0;
     const groups = roomGroupDefinitions().map((group) => {
@@ -195,7 +196,7 @@
         // known clash, and "unverified" must not hide it. Past the horizon the
         // index simply holds nothing, so unclashed villas read as free — which
         // is exactly what the status line calls unverified.
-        const free = Boolean(room) && ranged &&
+        const free = availabilityReady && Boolean(room) && ranged &&
           isRoomFreeInIndex(index, room.id, input.checkIn, input.checkOut);
 
         if (free) {
@@ -205,6 +206,8 @@
         let state = 'available';
         if (!room) {
           state = inventoryLoaded ? 'inactive' : 'standby';
+        } else if (!availabilityReady) {
+          state = 'standby';
         } else if (!ranged) {
           state = 'standby';
         } else if (!free) {
@@ -231,6 +234,7 @@
       groups,
       ranged,
       unverified,
+      availabilityReady,
       freeCount,
       totalCount: groups.reduce((sum, group) => sum + group.totalCount, 0),
       selectedNumbers: uniqueRoomNumbers(input.selectedNumbers),
@@ -244,7 +248,7 @@
     // Without a stay, availability is unknown rather than false — dropping the
     // selection here would announce "villa 3 is taken" the moment staff clear
     // the dates to pick a different period.
-    if (!model.ranged) {
+    if (!model.ranged || model.availabilityReady === false) {
       return { kept: model.selectedNumbers, dropped: [] };
     }
 
@@ -272,6 +276,7 @@
     const calendar = root.EcoVilaCalendar;
 
     if (
+      !Array.isArray(input.reservations) ||
       !calendar?.areRoomsAvailable ||
       !roomNumbers.length ||
       selectedRooms.length !== roomNumbers.length ||
@@ -284,7 +289,7 @@
 
     return calendar.areRoomsAvailable({
       roomIds: selectedRooms.map((room) => room.id),
-      reservations: input.reservations || [],
+      reservations: input.reservations,
       checkIn: input.checkIn,
       checkOut: input.checkOut,
     });
@@ -574,7 +579,9 @@
   }
 
   function getAddAvailabilityReservations(state) {
-    return state.addReservations || state.reservations || [];
+    return state.addAvailabilityStatus === 'ready' && Array.isArray(state.addReservations)
+      ? state.addReservations
+      : null;
   }
 
   function activeRooms(state) {
@@ -635,6 +642,7 @@
       checkIn: qs('[data-add-check-in]', form)?.value,
       checkOut: qs('[data-add-check-out]', form)?.value,
       horizonEnd: state.addAvailabilityEnd,
+      availabilityReady: Array.isArray(getAddAvailabilityReservations(state)),
       selectedNumbers: getRoomNumbers(form),
     };
 
@@ -658,7 +666,7 @@
       const name = root.document.createElement('span');
       name.textContent = group.label;
       const count = root.document.createElement('span');
-      count.textContent = model.ranged && !model.unverified ? `${group.freeCount}/${group.totalCount}` : '';
+      count.textContent = model.ranged && model.availabilityReady && !model.unverified ? `${group.freeCount}/${group.totalCount}` : '';
       heading.append(name, count);
 
       const squares = root.document.createElement('div');
@@ -669,7 +677,8 @@
         button.className = `crm-room-square is-${square.state}`;
         button.textContent = String(square.number);
         button.dataset.addRoom = String(square.number);
-        button.disabled = square.state === 'inactive' || square.state === 'occupied';
+        button.disabled = square.state === 'inactive' || square.state === 'occupied' ||
+          (model.ranged && !model.availabilityReady);
         button.setAttribute('aria-pressed', String(square.state === 'selected'));
         button.setAttribute('aria-label', `Căsuța ${square.number}`);
         button.addEventListener('click', () => toggleRoomSquare(context, state, form, formState, square.number));
@@ -680,17 +689,34 @@
       grid.appendChild(block);
     });
 
-    renderRoomStatus(form, model);
+    renderRoomStatus(form, model, state);
     return model;
   }
 
-  function renderRoomStatus(form, model) {
+  function renderRoomStatus(form, model, state) {
     const status = qs('[data-add-room-status]', form);
     if (!status) {
       return;
     }
 
     status.classList.remove('is-free', 'is-empty', 'is-warning');
+
+    if (!model.availabilityReady) {
+      status.classList.add('is-warning');
+      status.textContent = state.addAvailabilityStatus === 'error'
+        ? 'Disponibilitatea nu s-a putut încărca.'
+        : 'Se încarcă disponibilitatea…';
+      if (state.addAvailabilityStatus === 'error') {
+        const retry = root.document.createElement('button');
+        retry.type = 'button';
+        retry.dataset.addAvailabilityRetry = '';
+        retry.className = 'crm-button crm-button--ghost crm-button--small';
+        retry.textContent = 'Reîncearcă';
+        retry.addEventListener('click', () => state.reloadAddAvailability?.());
+        status.appendChild(retry);
+      }
+      return;
+    }
 
     if (!model.ranged) {
       status.textContent = 'Alege întâi perioada';
@@ -721,6 +747,10 @@
     if (!hasCompleteRange(qs('[data-add-check-in]', form)?.value, qs('[data-add-check-out]', form)?.value)) {
       formState.calendarOpen = true;
       renderAddCalendar(context, state, form, formState);
+      return;
+    }
+
+    if (!Array.isArray(getAddAvailabilityReservations(state))) {
       return;
     }
 
@@ -764,6 +794,7 @@
     const adults = Number(qs('[data-add-adults]', form)?.value || 0);
 
     if (
+      state.addAvailabilityStatus !== 'ready' ||
       !hasCompleteChildBuckets(form, formState) ||
       !areSelectedRoomsAvailable({
         rooms: state.rooms || [],
@@ -1083,6 +1114,11 @@
     if (email && !EMAIL_PATTERN.test(email)) {
       return 'Introdu un email valid sau lasă câmpul gol.';
     }
+    if (state.addAvailabilityStatus !== 'ready') {
+      return state.addAvailabilityStatus === 'error'
+        ? 'Disponibilitatea nu s-a putut încărca. Apasă „Reîncearcă”.'
+        : 'Disponibilitatea camerelor se încarcă. Încearcă din nou în câteva secunde.';
+    }
     if (!areSelectedRoomsAvailable({
       rooms: state.rooms || [],
       reservations: getAddAvailabilityReservations(state),
@@ -1181,6 +1217,7 @@
           addController.formState.currentMonth = firstOfMonth(todayISO());
           addController.refresh();
           await state.reload?.();
+          await state.addAvailabilityPromise;
         } catch (error) {
           // 23P01 = exclusion constraint (reservations_no_room_overlap): another
           // booking won the room between the local availability check and the
@@ -1188,6 +1225,7 @@
           if (error?.code === '23P01' || String(error?.message || '').includes('reservations_no_room_overlap')) {
             context.setAlert('Camerele selectate tocmai au fost rezervate pentru perioada aleasă. Calendarul a fost actualizat — verifică disponibilitatea.');
             await state.reload?.();
+            await state.addAvailabilityPromise;
             return;
           }
           context.setAlert(error?.message || 'Rezervarea nu a putut fi adăugată.');

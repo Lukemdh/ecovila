@@ -117,7 +117,9 @@ One canonical command runs both suites from the repository root:
 
 ```sh
 npm test
-# → 430 Node + 202 Deno tests, all passing (2026-08-27)
+# → 491 Node + 220 Deno tests (220 is the last recorded Deno suite size);
+#   Node passes, while 5 clock-dependent Deno fixture-date tests currently fail
+#   and are being fixed separately
 ```
 
 The suites can also be run independently.
@@ -127,7 +129,7 @@ The suites can also be run independently.
 # from the repository root
 npm run test:node
 # equivalent: node --test 'tests/**/*.test.mjs'
-# → 426 tests, all passing
+# → 491 tests, all passing (2026-09-30)
 ```
 
 **Edge Function tests (Deno):**
@@ -177,6 +179,18 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 ---
 
 ## Deployment
+
+### 2026-09-29 performance batch (ADR-114/115/116)
+
+**Status:** written, NOT applied / NOT uploaded yet. Each step requires owner sign-off.
+
+1. At 03:00–05:00 Europe/Chisinau, run `supabase/ops/20260929_reclaim_bookkeeping_tables.sql` preflights 0a–0e, Block 1, check 3a, Block 2, then checks 3a/3b/3c.
+2. Apply `supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` using `supabase db query --linked -f supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` and `supabase migration repair --status applied 20260929120000`. After the first scheduled runs, complete runbook checks 4a/4b; every run must have succeeded.
+3. At a quiet time, apply `supabase/migrations/20260929130000_rls_role_helper_initplan.sql` by the same query/repair method. Confirm `pg_policies` has no unwrapped owned helper calls and probe anon, Diana and Angela in rolled-back blocks. The rollback runbook is `supabase/ops/20260929_rls_role_helper_initplan_rollback.sql`.
+4. Upload `dist/tophost` (`?v=2026092901`), content-verify on the live host with a cache-buster.
+5. Remeasure a cold CRM calendar page and disk read latency.
+
+The 2026-09-28/29 read-only audit and rollback details are in ADR-114/115/116 and `docs/production-readiness-audit.md`.
 
 > **2026-08-27 ADR-106/ADR-107 rollout gate:** standalone payment links and
 > reservation-bound accommodation-difference links are built and green locally, but

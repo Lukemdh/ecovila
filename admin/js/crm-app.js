@@ -17,6 +17,8 @@
   });
   let allowedTabs = TAB_NAMES;
   let hashNavigationWired = false;
+  let appContext = null;
+  const initializedTabs = new Set();
 
   function isTabAllowed(name) {
     return allowedTabs.includes(name);
@@ -85,23 +87,48 @@
       panel.classList.toggle('is-active', panel.dataset.panel === target);
     });
 
-    if (target === 'daily') {
-      root.EcoVilaCrmDaily?.showToday?.();
-    }
-    if (target === 'finance') {
-      root.EcoVilaCrmFinance?.showToday?.();
-    }
-    if (target === 'payment-links') {
-      root.EcoVilaCrmPaymentLinks?.showPanel?.();
-    }
-    if (target === 'towels') {
-      root.EcoVilaCrmTowels?.showToday?.();
-    }
-    if (target === 'probleme') {
-      root.EcoVilaCrmComplaints?.showPanel?.();
+    syncTabHash(target);
+    if (!appContext) {
+      return;
     }
 
-    syncTabHash(target);
+    const firstActivation = !initializedTabs.has(target);
+    if (firstActivation) {
+      initializedTabs.add(target);
+    }
+    const context = appContext;
+    switch (target) {
+      case 'dashboard':
+        if (firstActivation) root.EcoVilaCrmDashboard?.init?.(context);
+        else root.EcoVilaCrmDashboard?.showPanel?.();
+        break;
+      case 'daily':
+        if (firstActivation) root.EcoVilaCrmDaily?.init?.(context);
+        else root.EcoVilaCrmDaily?.showToday?.();
+        break;
+      case 'finance':
+        if (firstActivation) root.EcoVilaCrmFinance?.init?.(context);
+        else root.EcoVilaCrmFinance?.showToday?.();
+        break;
+      case 'payment-links':
+        if (firstActivation) root.EcoVilaCrmPaymentLinks?.init?.(context);
+        else root.EcoVilaCrmPaymentLinks?.showPanel?.();
+        break;
+      case 'towels':
+        if (firstActivation) root.EcoVilaCrmTowels?.init?.(context);
+        else root.EcoVilaCrmTowels?.showToday?.();
+        break;
+      case 'photos':
+        if (firstActivation) root.EcoVilaCrmPhotos?.init?.(context);
+        break;
+      case 'pricing':
+        if (firstActivation) root.EcoVilaCrmPricing?.init?.(context);
+        break;
+      case 'probleme':
+        if (firstActivation) root.EcoVilaCrmComplaints?.init?.(context);
+        else root.EcoVilaCrmComplaints?.showPanel?.();
+        break;
+    }
   }
 
   function wireTabs() {
@@ -123,9 +150,11 @@
     hashNavigationWired = true;
     // Follow direct #tab links / manual hash edits that arrive after load.
     root.addEventListener('hashchange', () => {
-      const tab = resolveTabFromHash();
-      if (tab && tab !== qs('[data-tab].is-active')?.dataset.tab) {
+      const tab = resolveTabFromHash() || 'dashboard';
+      if (tab !== qs('[data-tab].is-active')?.dataset.tab) {
         setActiveTab(tab);
+      } else {
+        syncTabHash(tab);
       }
     });
   }
@@ -185,25 +214,9 @@
         formatMDL,
       };
 
-      // Dashboard, daily, towels and complaints are visible to every CRM role;
-      // the rest only initialise (and fetch their data) when the role is allowed
-      // to see them.
-      root.EcoVilaCrmDashboard?.init?.(context);
-      root.EcoVilaCrmDaily?.init?.(context);
-      root.EcoVilaCrmTowels?.init?.(context);
       root.EcoVilaCrmComplaints?.init?.(context);
-      if (isTabAllowed('finance')) {
-        root.EcoVilaCrmFinance?.init?.(context);
-      }
-      if (isTabAllowed('payment-links')) {
-        root.EcoVilaCrmPaymentLinks?.init?.(context);
-      }
-      if (isTabAllowed('photos')) {
-        root.EcoVilaCrmPhotos?.init?.(context);
-      }
-      if (isTabAllowed('pricing')) {
-        root.EcoVilaCrmPricing?.init?.(context);
-      }
+      initializedTabs.add('probleme');
+      appContext = context;
       setActiveTab(resolveTabFromHash() || 'dashboard');
     } catch (error) {
       app.hidden = false;

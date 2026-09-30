@@ -631,7 +631,9 @@
     if (context?.client?.channel) {
       context.client
         .channel('crm-payment-links-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, () => loadLinks())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, () => {
+          if (qs('[data-panel="payment-links"]')?.classList.contains('is-active')) loadLinks();
+        })
         .subscribe();
     }
   }

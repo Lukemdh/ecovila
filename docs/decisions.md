@@ -4551,6 +4551,48 @@ matters because the frontend upload to TopHost is a manual step.
 
 ---
 
+### ADR-114 — Reclaim and maintain background bookkeeping tables
+
+**Date:** 2026-09-29.
+
+**Problem.** On the 950 MB Supabase Micro instance (about 262 MB available RAM and 347 MB swap used), the 1,770 MB database held 1,417 MB of `cron.job_run_details` (~740k rows) and a 290 MB `net._http_response` heap for ~1,050 live rows; `reservations` used only 3 MB. Long-lived pg_cron/pg_net workers left `n_ins_since_vacuum = 0` while IDs kept climbing, so autovacuum never ran on either table. pg_net's TTL DELETE re-read 1,221 MB in 309 seconds, about all data-disk reads, at 63.6–68.7 ms per read. A cold 1,000-row CRM calendar page took 3,935 ms plus 381 ms planning versus 50 ms warm; guest availability took 2.31 s first call versus about 0.15 s after.
+
+**Decision.** The owner chose one-off TRUNCATE for timer run logs and transient HTTP replies; historic run details are lost by decision, and no bookings, payments or messages are in those tables. `supabase/ops/20260929_reclaim_bookkeeping_tables.sql` has preflights 0a–0e, bounded truncate blocks and post-checks 3a–3c/4a–4b. `supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` unschedules the finished `ecovila-review-backfill`, schedules `ecovila-prune-cron-history` at `17 3 * * *` with seven-day retention on `coalesce(end_time, start_time)`, `ecovila-vacuum-cron-history` at `27 3 * * *`, and `ecovila-vacuum-pgnet-responses` at `7 * * * *`.
+
+**Alternatives rejected.** Relying on autovacuum leaves these worker writes invisible to its statistics. A large row-by-row cleanup would prolong I/O pressure and keep heap bloat. The claim that TopHost had no compression was refuted: Brotli and HTTP/2 are enabled.
+
+**Surface:** the runbook and maintenance migration above. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** with owner sign-off for each step, run preflights at 03:00–05:00 Europe/Chisinau, Block 1, check 3a, Block 2, checks 3a/3b/3c; apply the migration with `supabase db query --linked -f` and repair ledger version `20260929120000`; after first runs, complete checks 4a/4b and confirm every run succeeded. Then ADR-115, then the ADR-116 upload, then cold remeasurement.
+
+---
+
+### ADR-115 — Evaluate RLS role helpers once per statement
+
+**Date:** 2026-09-29.
+
+**Problem.** Thirty-two live policies call `public.ecovila_app_role()` (one also calls `auth.uid()`) per row; its `SET search_path` prevents inlining. Warm RLS roughly doubles DB time. Emulating an InitPlan changed a calendar page from 48 to 24 ms, a two-year page from 33 to 10 ms, row estimate from 26 to 2,639 (2,518 actual), and plan buffers from 2,454 to 183.
+
+**Decision.** Wrap helper calls as `(select public.ecovila_app_role())` and `(select auth.uid())`. `supabase/migrations/20260929130000_rls_role_helper_initplan.sql` carries 29 ALTER POLICY statements generated from the live dump. The three `storage.objects` policies stay unchanged because `supabase_storage_admin` owns the table and `postgres` cannot alter them. The migration uses 2 s lock, 30 s statement and 15 s transaction timeouts, verified on Postgres 17.6 to abort the whole transaction. All 44 new expressions were EXPLAIN-parsed on production. `supabase/ops/20260929_rls_role_helper_initplan_rollback.sql` includes ledger repair; `tests/fixtures/live-rls-policies-2026-09-29.json` and `tests/rls-role-helper-initplan.test.mjs` enforce parity.
+
+**Alternatives rejected.** Changing access rules or rewriting storage policies is unnecessary and exceeds ownership. The apparent 23× slowdown from ADR-113's availability `ORDER BY` was a pg_stat_statements time-period artefact: both forms took about 2.2 ms warm.
+
+**Surface:** the migration, rollback runbook, fixture and test above. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** after ADR-114, obtain owner sign-off, apply `20260929130000` at a quiet time via `supabase db query --linked -f`, repair its ledger version, verify `pg_policies` has no unwrapped helper among owned policies, and probe anon/Diana/Angela inside rolled-back blocks. ADR-116 upload follows.
+
+---
+
+### ADR-116 — Lazy CRM tabs and explicit add-form availability state
+
+**Date:** 2026-09-29.
+
+**Problem.** Login fired about 50 HTTP requests because every CRM tab initialized together. The calendar waited for the two-year add-form scan (1,207 rows, 631 cancelled). A hidden dashboard reloaded on realtime events and read `scrollLeft = 0` from a `display:none` calendar, resetting its position.
+
+**Decision.** `admin/js/crm-app.js` initializes tabs on first activation; the complaints badge initializes at login, and pre-auth clicks only toggle classes. The dashboard calendar loads all window rows as before, while its two-year add-form scan runs separately for active rows only (`activeOnly: true`), with its own generation and idle/loading/ready/error state. Month navigation skips that scan. Hidden realtime marks the dashboard stale for a visible return; finance, payment links and towels also skip hidden realtime reads and refresh on entry. The add form never treats an unloaded/default-empty snapshot as free: the grid waits, quote is zero, submit refuses, and retry is explicit; successful/conflicting submits await a fresh snapshot. `js/supabase.js` adds `fetchAdminReservations` `activeOnly`; `tests/admin-crm-lazy.test.mjs` covers the lifecycle. Asset token is `?v=2026092901`; `dist/tophost` was regenerated.
+
+**Alternatives rejected.** Initializing all modules at login keeps the request burst. Falling back to calendar rows for add-form availability would make a partial snapshot look authoritative. Hidden reloads recreate the scroll reset.
+
+**Surface:** `admin/js/crm-app.js`, `crm-dashboard.js`, `crm-sidebar.js`, `crm-finance.js`, `crm-payment-links.js`, `crm-towels.js`, `js/supabase.js`, `tests/admin-crm-lazy.test.mjs`, the asset token and `dist/tophost`. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** after ADR-114 and ADR-115 checks and owner sign-off, upload `dist/tophost` (`?v=2026092901`), content-verify on the live host with a cache-buster; then remeasure a cold calendar page and disk read latency.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

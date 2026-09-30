@@ -1,0 +1,322 @@
+[
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can read booking failures",
+    "qual": "(ecovila_app_role() = 'angela'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "booking_failures",
+    "with_check": null
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can read booking failures",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "booking_failures",
+    "with_check": null
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage cancellation_tokens",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "cancellation_tokens",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff manage own complaint read state",
+    "qual": "((user_id = auth.uid()) AND (ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "complaint_read_state",
+    "with_check": "((user_id = auth.uid()) AND (ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))"
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can read complaints",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "complaints",
+    "with_check": null
+  },
+  {
+    "cmd": "UPDATE",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can update complaints",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "complaints",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage daily statuses",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "crm_daily_statuses",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage photo sections",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "crm_photo_sections",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage CRM photos",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "crm_photos",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage towel counts",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "crm_towel_counts",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can read guest flag exclusions",
+    "qual": "(ecovila_app_role() = 'angela'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_flag_exclusions",
+    "with_check": null
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can read guest flag exclusions",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_flag_exclusions",
+    "with_check": null
+  },
+  {
+    "cmd": "INSERT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can create guest notes",
+    "qual": null,
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_notes",
+    "with_check": "(ecovila_app_role() = 'angela'::text)"
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can read guest notes",
+    "qual": "(ecovila_app_role() = 'angela'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_notes",
+    "with_check": null
+  },
+  {
+    "cmd": "UPDATE",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can archive guest notes",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_notes",
+    "with_check": "(ecovila_app_role() = 'diana'::text)"
+  },
+  {
+    "cmd": "INSERT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can create guest notes",
+    "qual": null,
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_notes",
+    "with_check": "(ecovila_app_role() = 'diana'::text)"
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can read guest notes",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "guest_notes",
+    "with_check": null
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage holidays",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "holidays",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage notification_events",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "notification_events",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can read payment link attempts",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "payment_link_attempts",
+    "with_check": null
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can read accommodation difference payment links",
+    "qual": "((ecovila_app_role() = 'angela'::text) AND (purpose = 'accommodation_difference'::text))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "payment_links",
+    "with_check": null
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can read payment links",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "payment_links",
+    "with_check": null
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage pricing_tiers",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "pricing_tiers",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can read reservation changes",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "reservation_changes",
+    "with_check": null
+  },
+  {
+    "cmd": "SELECT",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can read reservations",
+    "qual": "(ecovila_app_role() = 'angela'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "reservations",
+    "with_check": null
+  },
+  {
+    "cmd": "UPDATE",
+    "permissive": "PERMISSIVE",
+    "policyname": "Angela can update daily reservation fields",
+    "qual": "(ecovila_app_role() = 'angela'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "reservations",
+    "with_check": "(ecovila_app_role() = 'angela'::text)"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can manage reservations",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "reservations",
+    "with_check": "(ecovila_app_role() = 'diana'::text)"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can manage rooms",
+    "qual": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "rooms",
+    "with_check": "(ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))"
+  },
+  {
+    "cmd": "ALL",
+    "permissive": "PERMISSIVE",
+    "policyname": "Diana can manage tracking events",
+    "qual": "(ecovila_app_role() = 'diana'::text)",
+    "roles": "{authenticated}",
+    "schemaname": "public",
+    "tablename": "tracking_events",
+    "with_check": "(ecovila_app_role() = 'diana'::text)"
+  },
+  {
+    "cmd": "DELETE",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can delete EcoVila photos",
+    "qual": "((bucket_id = 'ecovila-photos'::text) AND (ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))",
+    "roles": "{authenticated}",
+    "schemaname": "storage",
+    "tablename": "objects",
+    "with_check": null
+  },
+  {
+    "cmd": "UPDATE",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can update EcoVila photos",
+    "qual": "((bucket_id = 'ecovila-photos'::text) AND (ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))",
+    "roles": "{authenticated}",
+    "schemaname": "storage",
+    "tablename": "objects",
+    "with_check": "((bucket_id = 'ecovila-photos'::text) AND (ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))"
+  },
+  {
+    "cmd": "INSERT",
+    "permissive": "PERMISSIVE",
+    "policyname": "CRM staff can upload EcoVila photos",
+    "qual": null,
+    "roles": "{authenticated}",
+    "schemaname": "storage",
+    "tablename": "objects",
+    "with_check": "((bucket_id = 'ecovila-photos'::text) AND (ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))"
+  }
+]

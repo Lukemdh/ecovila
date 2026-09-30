@@ -166,6 +166,12 @@ succeeded.
 `guest_notes` is empty until the frontend upload lands. The sweeper returns `{"scanned":0,...}` and
 is a genuine no-op until then.
 
+## 2026-09-28 performance audit (ADR-114/115/116)
+
+Read-only measurements on Supabase Micro (950 MB RAM, ~262 MB available, ~347 MB swap used; eu-central-1, Postgres 17.6) found 1,417 MB of `cron.job_run_details` and a 290 MB `net._http_response` heap in the 1,770 MB database, versus 3 MB of reservations. Background-worker writes were invisible to autovacuum statistics. The pg_net TTL DELETE read 1,221 MB in 309 seconds, about all data-disk reads, averaging 63.6–68.7 ms per disk read. A cold 1,000-row CRM calendar page took 3,935 ms plus 381 ms planning (50 ms warm); guest availability took 2.31 s first call (~0.15 s warm). Warm RLS roughly doubled DB time; an emulated InitPlan reduced calendar-page DB time 48 → 24 ms. CRM login also fired about 50 requests, while the two-year add scan blocked calendar display and hidden realtime could reset scroll.
+
+ADR-114 supplies bounded reclaim and recurring maintenance; ADR-115 wraps owned RLS helpers without changing access; ADR-116 makes CRM tabs lazy and add-form availability explicit. The TopHost compression hypothesis was refuted (Brotli and HTTP/2 enabled), as was an alleged 23× ADR-113 `ORDER BY` slowdown (both forms ~2.2 ms warm). `npm run test:node` passes 491 tests. **Status:** written, NOT applied / NOT uploaded yet; no production effect has been measured. Apply in ADR-114 → ADR-115 → ADR-116 upload order with owner sign-off, then remeasure cold calendar and disk latency.
+
 ---
 
 ## Readiness verdict

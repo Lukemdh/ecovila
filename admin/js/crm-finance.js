@@ -1697,9 +1697,15 @@
 
     context.client
       .channel('crm-finance-reservations')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => loadFinance(context, state))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_changes' }, () => loadFinance(context, state))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, () => loadFinance(context, state))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
+        if (qs('[data-panel="finance"]')?.classList.contains('is-active')) loadFinance(context, state);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_changes' }, () => {
+        if (qs('[data-panel="finance"]')?.classList.contains('is-active')) loadFinance(context, state);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_links' }, () => {
+        if (qs('[data-panel="finance"]')?.classList.contains('is-active')) loadFinance(context, state);
+      })
       .subscribe();
   }
 

@@ -216,7 +216,9 @@
 
     context.client
       .channel('crm-towel-counts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: TOWEL_COUNTS_TABLE }, () => loadTowels(context, state))
+      .on('postgres_changes', { event: '*', schema: 'public', table: TOWEL_COUNTS_TABLE }, () => {
+        if (qs('[data-panel="towels"]')?.classList.contains('is-active')) loadTowels(context, state);
+      })
       .subscribe();
   }
 

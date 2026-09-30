@@ -66,7 +66,7 @@ ecovila/
 │
 ├── admin/                      # Staff CRM (admin.ecovila.md)
 │   ├── index.html              # CRM login (Supabase Auth)
-│   ├── dashboard.html          # CRM shell; tabs: dashboard/finance/payment-links/daily/towels/photos/pricing
+│   ├── dashboard.html          # CRM shell; tabs: dashboard/finance/payment-links/daily/towels/photos/pricing/probleme
 │   └── js/
 │       ├── crm-app.js          # Orchestrator: wires tabs, requires session, inits modules
 │       ├── crm-auth.js         # Supabase Auth login + role/session gating
@@ -83,11 +83,15 @@ ecovila/
 ├── scripts/
 │   └── prepare-tophost-upload.mjs # cPanel-safe static upload folder builder
 │
-├── tests/                      # Node node:test contract/unit suites (*.test.mjs, incl. payment-link-page.test.mjs)
+├── tests/                      # Node node:test contract/unit suites (*.test.mjs)
+│   ├── admin-crm-lazy.test.mjs  # ADR-116 tab lifecycle and add-form availability
+│   ├── rls-role-helper-initplan.test.mjs # ADR-114/115 migration and runbook parity
+│   └── fixtures/live-rls-policies-2026-09-29.json # Live policy snapshot for parity
 │
 ├── supabase/
 │   ├── config.toml             # Per-function verify_jwt settings
-│   ├── migrations/             # timestamped SQL migrations (20260506 → 20260831 guest notes)
+│   ├── migrations/             # timestamped SQL migrations, including pending ADR-114/115
+│   ├── ops/                    # One-off ADR-114 reclaim and ADR-115 rollback runbooks
 │   └── functions/              # Deno/TypeScript Edge Functions
 │       ├── deno.json, import_map.json, deno.lock
 │       ├── _shared/            # cors, env, http, maib, notifications, paymentLinks (ADR-106/107),
@@ -139,6 +143,8 @@ ecovila/
 | `js/translations.js` | RO/RU/EN string tables consumed via `data-i18n`. |
 | `js/main.js` | Shared header, sticky behavior, language switching. |
 | `admin/js/crm-app.js` | CRM bootstrap: session gate, tab wiring, module init with shared context. |
+| `tests/admin-crm-lazy.test.mjs` | ADR-116 lifecycle, realtime deferral, navigation-only reload and fail-closed add-form coverage. |
+| `tests/rls-role-helper-initplan.test.mjs` / `tests/fixtures/` | ADR-114/115 SQL safeguards and live-policy parity fixture. |
 | `admin/js/crm-payment-links.js` | Standalone payment links CRM module: creation form (MIA/card, expiry, label), recent links list, copy/open URL, revoke, record portal refund. |
 | `admin/js/crm-*.js` | One module per CRM concern. The dashboard owns the rolling calendar, single-card drag and multi-villa move picker, optional difference-link dialog (with unverified total indicator on read failures), cancellation preflight, and group reloads; Finance partitions standalone and bound links; Daily shows effective totals and refuses unsafe repricing (enforced by DB trigger). |
 | `supabase/functions/_shared/paymentLinks.ts` | Payment-link backend logic: status mapping, provider session minting, attempt claims/settlements, MAIB API integration, and outstanding accommodation-difference refund lookup/alerts based strictly on verified `paid_amount`. |
@@ -148,6 +154,7 @@ ecovila/
 | `supabase/functions/reservation-accommodation-move/` | Diana-only Edge Function for validating one reservation move, invoking the atomic move/link RPC, returning the canonical payment URL, and sending the opt-in SMS best-effort. |
 | `supabase/functions/*/index.ts` | One HTTP entrypoint per Edge Function. |
 | `supabase/migrations/` | DB schema evolution; apply in filename order. ADR-107's `20260827120000_payment_link_reservation_binding.sql` requires `20260826120000_payment_links.sql` first. |
+| `supabase/ops/` | One-off operational SQL: ADR-114 bounded reclaim and ADR-115 rollback; not migration files. |
 | `supabase/config.toml` | Declares which functions require a verified JWT. |
 | `tests/*.test.mjs` | Node contract/behavior tests (require browser JS via CommonJS shim). |
 | `supabase/functions/tests/*.ts` | Deno unit tests for shared backend logic. |

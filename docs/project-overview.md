@@ -79,6 +79,7 @@ The product has two surfaces:
   effective dates, plus a read-only **Program** sub-view listing each price timeframe — `DD.MM.YYYY
   – DD.MM.YYYY` ranges derived from `effective_from` boundaries — so staff can see when a
   scheduled change overwrites the current tariff; ADR-040).
+  Tab modules load on first open; the complaints badge channel still starts at login (ADR-116).
 
 ## Domain concepts / glossary
 

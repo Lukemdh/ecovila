@@ -316,6 +316,12 @@ already in place, and `.htaccess` sends HSTS.
 
 ---
 
+## ADR-115 — RLS helper evaluation (2026-09-29)
+
+Wrapping `public.ecovila_app_role()` and the one `auth.uid()` call in scalar SELECTs changes evaluation frequency, not policy predicates or access. The migration covers 29 owned policies from the 32-policy live fixture; the three `storage.objects` policies remain unchanged because `supabase_storage_admin` owns that table and `postgres` cannot alter them. Role probes for anon, Diana and Angela are required after application. **Status:** written, NOT applied / NOT uploaded yet.
+
+---
+
 ## ADR-111 — guest dossier notes (2026-08-31, not yet deployed)
 
 **What the data is.** `public.guest_notes` holds staff-authored commentary about identifiable

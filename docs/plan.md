@@ -802,6 +802,8 @@ Statuses: TODO | IN PROGRESS | DONE.
   fail-open Finance refund reads. Reviewed and updated all ten DoD documents. Verified `npm test`
   (426 Node + 202 Deno), clean `deno lint` and `deno fmt --check`, asset token `?v=2026082702`.
 
+- **2026-09-30 — OFF-PLAN performance batch review and docs (ADR-114/115/116).** Corrected CRM copy, alert guard and hash sanitation; Photos and Pricing load once on first open and keep unsaved edits across tab switches, with Node coverage for all reviewed lifecycle/navigation/realtime gaps. `npm run test:node` passed 491/491. Recorded the 2026-09-28/29 read-only performance audit, B-44/B-45 fixed in code and B-46 latent/open, owner-chosen one-off reclaim, RLS InitPlan and rollback, and the owner-sign-off rollout sequence in README, project-overview, project-structure, project-history, production-readiness-audit, security, bugs, decisions, conventions and this plan. Asset token `?v=2026092901`; `dist/tophost` regenerated from final code. Checked AGENTS; no workflow change needed. Five clock-dependent Deno fixture-date failures belong to a separate session. CURRENT STEP stays 17, Status TODO; tracker unchanged. **Batch status:** written, NOT applied / NOT uploaded yet; no network, database, deploy or git commit.
+
 ---
 
 ## ADR-111 — deployment order (NOT YET EXECUTED, awaiting owner sign-off)

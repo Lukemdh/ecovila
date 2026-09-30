@@ -1,0 +1,93 @@
+-- Rollback runbook for 20260929130000_rls_role_helper_initplan.sql
+-- Restores verbatim the live RLS policy expressions captured on 2026-09-29,
+-- with ecovila_app_role() schema-qualified as public.ecovila_app_role().
+--
+-- On timeout or deadlock the transaction rolls back automatically — inspect blockers
+-- and re-run at a quieter moment.
+--
+-- Migration-ledger procedure after a rollback:
+-- Run:
+--   supabase migration repair --status reverted 20260929130000
+-- and remove that migration file from the repository (or supersede it with a new
+-- migration), so a later deployment does not re-apply it unexpectedly.
+
+begin;
+set local lock_timeout = '2s';
+set local statement_timeout = '30s';
+set local transaction_timeout = '15s';
+
+alter policy "Angela can read booking failures" on public.booking_failures
+  using (public.ecovila_app_role() = 'angela'::text);
+alter policy "Diana can read booking failures" on public.booking_failures
+  using (public.ecovila_app_role() = 'diana'::text);
+alter policy "CRM staff can manage cancellation_tokens" on public.cancellation_tokens
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff manage own complaint read state" on public.complaint_read_state
+  using ((user_id = auth.uid()) AND (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])))
+  with check ((user_id = auth.uid()) AND (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text])));
+alter policy "CRM staff can read complaints" on public.complaints
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can update complaints" on public.complaints
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can manage daily statuses" on public.crm_daily_statuses
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can manage photo sections" on public.crm_photo_sections
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can manage CRM photos" on public.crm_photos
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can manage towel counts" on public.crm_towel_counts
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "Angela can read guest flag exclusions" on public.guest_flag_exclusions
+  using (public.ecovila_app_role() = 'angela'::text);
+alter policy "Diana can read guest flag exclusions" on public.guest_flag_exclusions
+  using (public.ecovila_app_role() = 'diana'::text);
+alter policy "Angela can create guest notes" on public.guest_notes
+  with check (public.ecovila_app_role() = 'angela'::text);
+alter policy "Angela can read guest notes" on public.guest_notes
+  using (public.ecovila_app_role() = 'angela'::text);
+alter policy "Diana can archive guest notes" on public.guest_notes
+  using (public.ecovila_app_role() = 'diana'::text)
+  with check (public.ecovila_app_role() = 'diana'::text);
+alter policy "Diana can create guest notes" on public.guest_notes
+  with check (public.ecovila_app_role() = 'diana'::text);
+alter policy "Diana can read guest notes" on public.guest_notes
+  using (public.ecovila_app_role() = 'diana'::text);
+alter policy "CRM staff can manage holidays" on public.holidays
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can manage notification_events" on public.notification_events
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "Diana can read payment link attempts" on public.payment_link_attempts
+  using (public.ecovila_app_role() = 'diana'::text);
+alter policy "Angela can read accommodation difference payment links" on public.payment_links
+  using ((public.ecovila_app_role() = 'angela'::text) AND (purpose = 'accommodation_difference'::text));
+alter policy "Diana can read payment links" on public.payment_links
+  using (public.ecovila_app_role() = 'diana'::text);
+alter policy "CRM staff can manage pricing_tiers" on public.pricing_tiers
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "CRM staff can read reservation changes" on public.reservation_changes
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "Angela can read reservations" on public.reservations
+  using (public.ecovila_app_role() = 'angela'::text);
+alter policy "Angela can update daily reservation fields" on public.reservations
+  using (public.ecovila_app_role() = 'angela'::text)
+  with check (public.ecovila_app_role() = 'angela'::text);
+alter policy "Diana can manage reservations" on public.reservations
+  using (public.ecovila_app_role() = 'diana'::text)
+  with check (public.ecovila_app_role() = 'diana'::text);
+alter policy "CRM staff can manage rooms" on public.rooms
+  using (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]))
+  with check (public.ecovila_app_role() = ANY (ARRAY['diana'::text, 'angela'::text]));
+alter policy "Diana can manage tracking events" on public.tracking_events
+  using (public.ecovila_app_role() = 'diana'::text)
+  with check (public.ecovila_app_role() = 'diana'::text);
+
+commit;

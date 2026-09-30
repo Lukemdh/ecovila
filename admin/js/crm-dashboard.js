@@ -2319,7 +2319,7 @@
     const anchorDate = visibleCalendarDate(state);
     state.focusDate = root.EcoVilaCrmCalendar.addMonths(anchorDate, nearLeft ? -1 : 1);
     state.scrollToDateAfterReload = anchorDate;
-    state.reload().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
+    state.reloadNavigation().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
   }
 
   // A reload fires on every realtime event, and most finish in well under a
@@ -2359,7 +2359,41 @@
     }, CALENDAR_LOADER_DELAY_MS);
   }
 
-  async function loadDashboard(context, state) {
+  function loadAddAvailability(context, state) {
+    if (state.readOnly) {
+      return Promise.resolve();
+    }
+
+    const generation = (state.addLoadGeneration || 0) + 1;
+    state.addLoadGeneration = generation;
+    if (state.addAvailabilityStatus !== 'ready') {
+      state.addAvailabilityStatus = 'loading';
+      state.refreshAddReservationForm?.();
+    }
+    const today = root.EcoVilaCrmCalendar.todayISO();
+    state.addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(today, ADD_RESERVATION_LOOKAHEAD_DAYS);
+    const promise = root.EcoVilaSupabase.fetchAdminReservations(context.client, {
+      startDate: today,
+      endDate: state.addAvailabilityEnd,
+      activeOnly: true,
+    }).then((reservations) => {
+      if (state.addLoadGeneration !== generation) return;
+      if (!Array.isArray(reservations)) {
+        throw new Error('Disponibilitatea nu s-a putut încărca.');
+      }
+      state.addReservations = root.EcoVilaCrmCalendar.sortReservations(reservations);
+      state.addAvailabilityStatus = 'ready';
+      state.refreshAddReservationForm?.();
+    }).catch(() => {
+      if (state.addLoadGeneration !== generation) return;
+      state.addAvailabilityStatus = 'error';
+      state.refreshAddReservationForm?.();
+    });
+    state.addAvailabilityPromise = promise;
+    return promise;
+  }
+
+  async function loadDashboard(context, state, options) {
     const helpers = root.EcoVilaSupabase;
     captureCalendarScroll(state);
     state.isLoading = true;
@@ -2372,14 +2406,13 @@
     state.loadGeneration = generation;
     try {
       state.today = root.EcoVilaCrmCalendar.todayISO();
+      state.addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(state.today, ADD_RESERVATION_LOOKAHEAD_DAYS);
       state.focusDate = state.focusDate || state.today;
       state.startDate = root.EcoVilaCrmCalendar.startOfMonth(state.focusDate);
       state.dates = buildCalendarWindowDates(state.focusDate);
       const endDate = root.EcoVilaCrmCalendar.addDays(state.dates[state.dates.length - 1], 1);
       const todayWindowStart = root.EcoVilaCrmCalendar.addDays(state.today, -1);
       const todayWindowEnd = root.EcoVilaCrmCalendar.addDays(state.today, 1);
-      const addAvailabilityStart = state.today;
-      const addAvailabilityEnd = root.EcoVilaCrmCalendar.addDays(addAvailabilityStart, ADD_RESERVATION_LOOKAHEAD_DAYS);
       const [
         rooms,
         reservations,
@@ -2387,7 +2420,6 @@
         todayReservations,
         pricingTiers,
         holidays,
-        addReservations,
         holds,
         guestFlagMarkers,
       ] = await Promise.all([
@@ -2397,7 +2429,6 @@
         helpers.fetchAdminReservations(context.client, { startDate: todayWindowStart, endDate: todayWindowEnd }),
         helpers.fetchPricingTiers(context.client),
         helpers.fetchHolidays(context.client),
-        helpers.fetchAdminReservations(context.client, { startDate: addAvailabilityStart, endDate: addAvailabilityEnd }),
         helpers.fetchTemporaryHolds(context.client),
         typeof helpers.fetchGuestFlagMarkers === 'function'
           ? helpers.fetchGuestFlagMarkers(context.client).catch(() => [])
@@ -2430,9 +2461,7 @@
       state.todayReservations = root.EcoVilaCrmCalendar.sortReservations(todayReservations);
       state.pricingTiers = pricingTiers;
       state.holidays = holidays;
-      state.addReservations = root.EcoVilaCrmCalendar.sortReservations(addReservations);
       state.guestFlagIndex = root.EcoVilaCrmCalendar.buildGuestFlagIndex(guestFlagMarkers);
-      state.addAvailabilityEnd = addAvailabilityEnd;
       renderCalendar(context, state);
       renderPendingCash(context, pending);
       renderTemporaryHolds(context, holds);
@@ -2443,6 +2472,9 @@
         scrollCalendarToDate(state, scrollTarget);
       } else {
         restoreCalendarScroll(state);
+      }
+      if (!options?.navigationOnly) {
+        state.reloadAddAvailability();
       }
     } finally {
       state.scrollToDateAfterReload = '';
@@ -2485,9 +2517,14 @@
       pricingTiers: [],
       holidays: [],
       addReservations: [],
+      addAvailabilityStatus: 'idle',
+      addLoadGeneration: 0,
+      addAvailabilityPromise: null,
       guestFlagIndex: root.EcoVilaCrmCalendar.buildGuestFlagIndex([]),
-      addAvailabilityEnd: '',
+      addAvailabilityEnd: root.EcoVilaCrmCalendar.addDays(today, ADD_RESERVATION_LOOKAHEAD_DAYS),
       reload: () => loadDashboard(context, state),
+      reloadNavigation: () => loadDashboard(context, state, { navigationOnly: true }),
+      reloadAddAvailability: () => loadAddAvailability(context, state),
       openReservation,
     };
     activeState = state;
@@ -2496,19 +2533,19 @@
     qs('[data-calendar-prev]')?.addEventListener('click', () => {
       state.focusDate = root.EcoVilaCrmCalendar.addMonths(visibleCalendarDate(state), -1);
       state.shouldScrollToFocus = true;
-      state.reload();
+      state.reloadNavigation();
     });
     qs('[data-calendar-next]')?.addEventListener('click', () => {
       state.focusDate = root.EcoVilaCrmCalendar.addMonths(visibleCalendarDate(state), 1);
       state.shouldScrollToFocus = true;
-      state.reload();
+      state.reloadNavigation();
     });
     qs('[data-calendar-today]')?.addEventListener('click', () => {
       state.today = root.EcoVilaCrmCalendar.todayISO();
       state.startDate = root.EcoVilaCrmCalendar.startOfMonth(state.today);
       state.focusDate = state.today;
       state.shouldScrollToFocus = true;
-      state.reload();
+      state.reloadNavigation();
     });
     qs('[data-calendar-jump-date]')?.addEventListener('change', (event) => {
       const targetDate = event.target.value;
@@ -2518,7 +2555,7 @@
       state.startDate = root.EcoVilaCrmCalendar.startOfMonth(targetDate);
       state.focusDate = targetDate;
       state.shouldScrollToFocus = true;
-      state.reload();
+      state.reloadNavigation();
     });
     qs('[data-show-cancelled]')?.addEventListener('change', () => renderCalendar(context, state));
     qs('[data-reservation-calendar]')?.addEventListener('scroll', () => {
@@ -2559,14 +2596,21 @@
     state.reload().catch((error) => context.setAlert(error?.message || 'Dashboardul nu s-a putut încărca.'));
 
     // One realtime event per ROW: confirming or expiring a multi-villa booking
-    // fires several within milliseconds, and each reload is seven queries wide
-    // (including the two-year availability scan). Coalesce them into one.
+    // fires several within milliseconds. Coalesce them into one.
     const scheduleRealtimeReload = () => {
+      if (!qs('[data-panel="dashboard"]')?.classList.contains('is-active')) {
+        state.needsReloadOnActivate = true;
+        return;
+      }
       if (state.realtimeTimer) {
         root.clearTimeout(state.realtimeTimer);
       }
       state.realtimeTimer = root.setTimeout(() => {
         state.realtimeTimer = null;
+        if (!qs('[data-panel="dashboard"]')?.classList.contains('is-active')) {
+          state.needsReloadOnActivate = true;
+          return;
+        }
         state.reload().catch((error) => {
           context.setAlert(error?.message || 'Dashboardul nu s-a putut actualiza.');
         });
@@ -2580,12 +2624,23 @@
       .subscribe();
   }
 
+  function showPanel() {
+    if (!activeState?.needsReloadOnActivate) {
+      return;
+    }
+    activeState.needsReloadOnActivate = false;
+    activeState.reload().catch((error) => {
+      activeState.context?.setAlert?.(error?.message || 'Dashboardul nu s-a putut actualiza.');
+    });
+  }
+
   return {
     assignGroupColors,
     buildCalendarWindowDates,
     calendarMonthLabelForScroll,
     captureCalendarScroll,
     init,
+    showPanel,
     initStateForTests(state) {
       activeState = state;
     },

@@ -924,6 +924,10 @@
         query = query.lt('check_in', options.endDate);
       }
 
+      if (options?.activeOnly) {
+        query = query.is('cancelled_at', null).neq('payment_status', 'cancelled');
+      }
+
       return query;
     };
 

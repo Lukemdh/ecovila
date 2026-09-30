@@ -33,6 +33,10 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - All Supabase access from the browser goes through `js/supabase.js` helpers — do not
   call the raw client from feature scripts. Pure pricing/date math lives in
   `js/pricing.js`; keep it side-effect-free (it is unit-tested directly).
+- CRM tab modules initialise on first activation (except the complaints badge channel at
+  login). Entry refreshes must read fresh data because hidden tabs skip realtime work.
+- Availability-dependent UI must represent "not loaded" explicitly; an unloaded or
+  default-empty reservation snapshot is never evidence that a room is free (ADR-116).
 - A reservation-bound accommodation difference is a separate `payment_links` ledger
   entry, never an in-place mutation of `reservations.total_price`. Staff-facing totals
   use `base + Σ net(paid_amount - refunded_amount)` only for links bound to the supplied
@@ -149,6 +153,12 @@ cleanup consistent with these. Update this file if a convention is deliberately 
   row/query-builder shapes, or `unknown` + narrowing) and must not add explicit `any`.
 
 ## SQL migrations
+- RLS role helpers in policies use `(select public.ecovila_app_role())` and
+  `(select auth.uid())` so their values can be evaluated once per statement
+  (ADR-115); the wrappers change evaluation, not access rules.
+- Background-worker writes to `cron.job_run_details` and `net._http_response` do not
+  reach autovacuum statistics here. Keep ADR-114's prune/vacuum cron jobs. One-off
+  operational SQL belongs in `supabase/ops/`, never in migrations.
 - One file per change under `supabase/migrations/`, named
   `YYYYMMDDHHMMSS_snake_case_description.sql`, applied in filename order. Never edit a
   migration that has shipped — add a new one.

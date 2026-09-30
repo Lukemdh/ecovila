@@ -767,3 +767,35 @@ or an explicit limit).
 guest availability read in ADR-113, and now this. The pattern is always an unpaginated PostgREST read
 over a date window that grows with the business. Fixing the instance in front of you is not enough:
 grep for siblings.
+
+---
+
+### B-44 — DB disk saturated by pg_cron/pg_net bookkeeping bloat invisible to autovacuum (High) — Fixed in code, pending apply
+
+**Cause.** The 1,770 MB production database had 1,417 MB of `cron.job_run_details` (~740k rows) and a 290 MB `net._http_response` heap for ~1,050 live rows; business `reservations` used 3 MB. Long-lived pg_cron/pg_net workers left insertion counters frozen (`n_ins_since_vacuum = 0`) while IDs climbed, so autovacuum did not run. The pg_net TTL DELETE read 1,221 MB in 309 seconds, about all data-disk reads, with 63.6–68.7 ms average disk-read latency.
+
+**Live impact.** Cold CRM calendar and guest availability calls took 3,935 ms plus 381 ms planning and 2.31 s respectively; warm calls took 50 ms and about 0.15 s.
+
+**Fix (ADR-114).** ADR-114 provides a bounded one-off truncate runbook and recurring prune/vacuum migration. Historical timer logs will be lost by owner decision.
+
+**Status.** Written, NOT applied / NOT uploaded yet.
+
+---
+
+### B-45 — Hidden dashboard realtime reload reset calendar scroll (Low) — Fixed in code, pending upload
+
+**Cause.** Realtime reloaded the dashboard while its panel was hidden; reading `scrollLeft` from the `display:none` calendar returned zero and reset the saved position.
+
+**Fix (ADR-116).** ADR-116 defers the reload until the dashboard becomes active, including when a queued debounce expires after a tab switch.
+
+**Status.** Written, NOT applied / NOT uploaded yet.
+
+---
+
+### B-46 — Two staff reads can silently truncate at 1,000 rows (Medium, latent) — Open
+
+**Cause.** `fetchPendingCashReservations` and `fetchTemporaryHolds` in `js/supabase.js` each make one unpaginated PostgREST read. Their result sets are small today, but growth can recreate the 1,000-row truncation class in B-43.
+
+**Fix.** Add deterministic paging before either result can reach the cap.
+
+**Status.** Open; documented only (no code written).
