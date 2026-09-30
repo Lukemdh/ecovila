@@ -4563,6 +4563,8 @@ matters because the frontend upload to TopHost is a manual step.
 
 **Surface:** the runbook and maintenance migration above. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** with owner sign-off for each step, run preflights at 03:00–05:00 Europe/Chisinau, Block 1, check 3a, Block 2, checks 3a/3b/3c; apply the migration with `supabase db query --linked -f` and repair ledger version `20260929120000`; after first runs, complete checks 4a/4b and confirm every run succeeded. Then ADR-115, then the ADR-116 upload, then cold remeasurement.
 
+**DEPLOY STATUS — LIVE 2026-09-30 (commit 4d5b018 on main)** (supersedes the status line above). Runbook executed 09:33–09:43 Europe/Chisinau. Preflights: 2 failed timer replies found and saved before truncating (05:40 UTC pg_net DNS timeout; 06:27 UTC HTTP 503 SUPABASE_EDGE_RUNTIME_SERVICE_DEGRADED — platform blips, the next minute's run covered both); 0 replies older than 7 h; no holds expiring within 15 min. `net._http_response` 338 MB → 144 kB; `cron.job_run_details` 1,453 MB → 144 kB (~1.8 GB reclaimed). Cron kept logging every job 'succeeded'; pg_net kept writing fresh replies. Migration 20260929120000 applied via `supabase db query --linked -f` and recorded with `supabase migration repair --status applied 20260929120000 --linked`; jobs 12 ecovila-prune-cron-history, 13 ecovila-vacuum-cron-history, 14 ecovila-vacuum-pgnet-responses active; ecovila-review-backfill removed. First scheduled `vacuum (analyze) net._http_response` ran 07:07 UTC and succeeded (~50 ms). The daily prune/vacuum of cron history first runs 03:17 / 03:27 UTC on 2026-10-01. One Block 2 attempt failed before connecting because this machine briefly lost DNS for api.supabase.com; nothing reached the database; the retry succeeded. Measured after: data disk utilisation 0.2% (was saturated), 0 reads/s, CPU iowait 0.2%; pg_net cleanup ~0.01 ms per call with 0 blocks read (was ~110 s and ~291 MB per call); guest booking availability RPC 0.13 s on first call (was 2.31 s).
+
 ---
 
 ### ADR-115 — Evaluate RLS role helpers once per statement
@@ -4577,6 +4579,8 @@ matters because the frontend upload to TopHost is a manual step.
 
 **Surface:** the migration, rollback runbook, fixture and test above. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** after ADR-114, obtain owner sign-off, apply `20260929130000` at a quiet time via `supabase db query --linked -f`, repair its ledger version, verify `pg_policies` has no unwrapped helper among owned policies, and probe anon/Diana/Angela inside rolled-back blocks. ADR-116 upload follows.
 
+**DEPLOY STATUS — LIVE 2026-09-30 at 09:54 Europe/Chisinau** (supersedes the status line above). Migration 20260929130000 applied on the first attempt (no lock timeout), recorded with `supabase migration repair --status applied 20260929130000 --linked`. Post-checks: the same 32 policies exist; no public policy calls the helper unwrapped; no command/role/clause change; the 3 storage.objects policies are unchanged. Per-role visibility probe (anon, diana, angela, unrelated authenticated role, 19 tables, rolled back) identical to the pre-migration baseline except crm_daily_statuses 2,870 → 2,885 for both staff roles, confirmed by a direct count to be live data written between the two probes. Calendar page as Diana: first run in a new session 1.9 ms planning + 25.2 ms execution (was 381 ms + 3,935 ms on 2026-09-28); warm 24.6 ms (was 50 ms); plan now a sequential scan with the role check as an InitPlan (~234 buffers instead of 2,454).
+
 ---
 
 ### ADR-116 — Lazy CRM tabs and explicit add-form availability state
@@ -4590,6 +4594,8 @@ matters because the frontend upload to TopHost is a manual step.
 **Alternatives rejected.** Initializing all modules at login keeps the request burst. Falling back to calendar rows for add-form availability would make a partial snapshot look authoritative. Hidden reloads recreate the scroll reset.
 
 **Surface:** `admin/js/crm-app.js`, `crm-dashboard.js`, `crm-sidebar.js`, `crm-finance.js`, `crm-payment-links.js`, `crm-towels.js`, `js/supabase.js`, `tests/admin-crm-lazy.test.mjs`, the asset token and `dist/tophost`. **Status:** written, NOT applied / NOT uploaded yet. **Deploy order:** after ADR-114 and ADR-115 checks and owner sign-off, upload `dist/tophost` (`?v=2026092901`), content-verify on the live host with a cache-buster; then remeasure a cold calendar page and disk read latency.
+
+**DEPLOY STATUS — STILL PENDING 2026-09-30:** The owner uploads dist/tophost (?v=2026092901) to TopHost manually; then content-verify on the live host with a cache-buster.
 
 ---
 

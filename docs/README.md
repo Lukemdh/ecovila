@@ -182,12 +182,12 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 
 ### 2026-09-29 performance batch (ADR-114/115/116)
 
-**Status:** written, NOT applied / NOT uploaded yet. Each step requires owner sign-off.
+**Status:** Steps 1–3 LIVE in production (2026-09-30); Step 4 pending owner manual upload to TopHost.
 
-1. At 03:00–05:00 Europe/Chisinau, run `supabase/ops/20260929_reclaim_bookkeeping_tables.sql` preflights 0a–0e, Block 1, check 3a, Block 2, then checks 3a/3b/3c.
-2. Apply `supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` using `supabase db query --linked -f supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` and `supabase migration repair --status applied 20260929120000`. After the first scheduled runs, complete runbook checks 4a/4b; every run must have succeeded.
-3. At a quiet time, apply `supabase/migrations/20260929130000_rls_role_helper_initplan.sql` by the same query/repair method. Confirm `pg_policies` has no unwrapped owned helper calls and probe anon, Diana and Angela in rolled-back blocks. The rollback runbook is `supabase/ops/20260929_rls_role_helper_initplan_rollback.sql`.
-4. Upload `dist/tophost` (`?v=2026092901`), content-verify on the live host with a cache-buster.
+1. **DONE (LIVE 2026-09-30):** Run `supabase/ops/20260929_reclaim_bookkeeping_tables.sql` preflights 0a–0e, Block 1, check 3a, Block 2, then checks 3a/3b/3c (09:33–09:43 Europe/Chisinau, commit `4d5b018` on main).
+2. **DONE (LIVE 2026-09-30):** Apply `supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` using `supabase db query --linked -f supabase/migrations/20260929120000_bookkeeping_table_maintenance.sql` and `supabase migration repair --status applied 20260929120000 --linked`. Jobs 12, 13, 14 active; ecovila-review-backfill removed. First scheduled vacuum ran 07:07 UTC; daily prune/vacuum of cron history first runs 03:17 / 03:27 UTC on 2026-10-01.
+3. **DONE (LIVE 2026-09-30 at 09:54 Europe/Chisinau):** Apply `supabase/migrations/20260929130000_rls_role_helper_initplan.sql` using `supabase db query --linked -f` and `supabase migration repair --status applied 20260929130000 --linked`. Confirmed the same 32 policies exist, the 29 public ones now evaluate the helper once per statement (InitPlan) and the 3 `storage.objects` policies are unchanged; per-role probes verified.
+4. **Remaining owner action:** Upload `dist/tophost` (`?v=2026092901`) to TopHost manually, then content-verify on the live host with a cache-buster.
 5. Remeasure a cold CRM calendar page and disk read latency.
 
 The 2026-09-28/29 read-only audit and rollback details are in ADR-114/115/116 and `docs/production-readiness-audit.md`.

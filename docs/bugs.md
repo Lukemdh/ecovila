@@ -770,7 +770,7 @@ grep for siblings.
 
 ---
 
-### B-44 — DB disk saturated by pg_cron/pg_net bookkeeping bloat invisible to autovacuum (High) — Fixed in code, pending apply
+### B-44 — DB disk saturated by pg_cron/pg_net bookkeeping bloat invisible to autovacuum (High) — Fixed — LIVE 2026-09-30
 
 **Cause.** The 1,770 MB production database had 1,417 MB of `cron.job_run_details` (~740k rows) and a 290 MB `net._http_response` heap for ~1,050 live rows; business `reservations` used 3 MB. Long-lived pg_cron/pg_net workers left insertion counters frozen (`n_ins_since_vacuum = 0`) while IDs climbed, so autovacuum did not run. The pg_net TTL DELETE read 1,221 MB in 309 seconds, about all data-disk reads, with 63.6–68.7 ms average disk-read latency.
 
@@ -778,7 +778,7 @@ grep for siblings.
 
 **Fix (ADR-114).** ADR-114 provides a bounded one-off truncate runbook and recurring prune/vacuum migration. Historical timer logs will be lost by owner decision.
 
-**Status.** Written, NOT applied / NOT uploaded yet.
+**Status.** Fixed — LIVE 2026-09-30. Measured after: data disk utilisation 0.2% (was saturated), 0 reads/s, CPU iowait 0.2%; pg_net cleanup ~0.01 ms per call with 0 blocks read (was ~110 s and ~291 MB per call); guest booking availability RPC 0.13 s on first call (was 2.31 s).
 
 ---
 
