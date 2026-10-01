@@ -4613,6 +4613,20 @@ matters because the frontend upload to TopHost is a manual step.
 
 ---
 
+### ADR-118 — Entrypoints that tests import start their server only as the main module
+
+**Date:** 2026-09-30.
+
+**Problem.** Since ADR-107 (`d4cf7a5`, 2026-08-27), `guestCancellationHonesty.test.ts` imports `handleCancelReservation` from `reservation-cancel/index.ts`, whose last line called `Deno.serve` unguarded, so every Deno suite run bound port 8000 until it ended. In three of three concurrent pairs, one run failed with `AddrInUse`; without network permission the import failed with `NotCapable`. The failure was loud, limited to test runs, and a rerun passed. Four other entrypoints that tests import already started their server only under `import.meta.main` (ADR-106, ADR-107, ADR-113), but no doc recorded the pattern.
+
+**Decision.** Use `if (import.meta.main) Deno.serve((request) => handleCancelReservation(request));`, preserving the wrapper because Deno passes `(request, info)` and the handler's second parameter is an injected client. Any entrypoint a test imports, for any reason, gets the same guard, added by the change that first exports from it or imports it into a test (conventions). The Deno test task no longer grants `--allow-net` (owner decision, 2026-10-01): the suite needs no network, so a future import-time listener or real network call from a test fails on every run instead of only when runs overlap. Leave the other 27 unguarded entrypoints unchanged: none exports anything or is imported by tests, and editing deployed files without gain would put repo source ahead of production. There is no dedicated deploy; this behavior-identical change rides the next routine `reservation-cancel` redeploy. After deployment, require a live OPTIONS preflight from `https://ecovila.md` to return 200 with the matching `Access-Control-Allow-Origin`, or roll back. A local `supabase functions serve reservation-cancel` smoke is optional.
+
+**Alternatives rejected.** A separate handler module changes more production code; a random port retains the import side effect and network need; a test-run lock treats the symptom; stubbing `Deno.serve` before the import is an order-dependent global mutation that hides the problem; guarding all 27 unimported entrypoints puts more deployed files ahead of production. The owner declined a Node contract test requiring exported entrypoints to carry this guard (2026-10-01): it misses side-effect-only imports, and the permission change already catches any import-time listener.
+
+**Surface:** `supabase/functions/reservation-cancel/index.ts:626` and the `test` task in `supabase/functions/deno.json`. **Status:** committed and pushed to main with this entry after owner sign-off on 2026-10-01; not deployed, it rides the next routine `reservation-cancel` redeploy. `npm test` passes 491 Node + 232 Deno; five concurrent pairs passed 10/10, four concurrent runs passed 4/4, and the Deno suite passed 232/232 without `--allow-net`.
+
+---
+
 ## Open questions for the owner (decisions not yet made)
 
 - Should the owner-retained unused media (`ecovilavideo.mp4` HEVC master,

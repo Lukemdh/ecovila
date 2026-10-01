@@ -137,9 +137,10 @@ npm run test:deno
 # → 232 tests, all passing (2026-09-30)
 ```
 
-The task runs `deno test --allow-env --allow-net --allow-read=../migrations tests`;
+The task runs `deno test --allow-env --allow-read=../migrations tests`;
 backend test files are named `*.test.ts` so Deno discovers them from the `tests`
 directory.
+As of B-49 (2026-09-30), nothing a Deno test imports opens a listener, so several runs can execute at once on one machine. The task grants no network permission, so a test that opens a listener or reaches the network fails on every run.
 
 **Typecheck (Deno):**
 ```sh

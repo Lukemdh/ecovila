@@ -821,3 +821,17 @@ grep for siblings.
 **Fix.** Applied formatting and import-order changes only, and removed the unused test import. The one-off backfill function is due for deletion under the B-39 follow-up, so the owner left its five type errors open.
 
 **Status.** Format/lint Fixed 2026-09-30; typecheck Open. `deno check tests/*.ts` passes. No behavior change or redeploy is needed.
+
+---
+
+### B-49 — Two Deno test runs on one machine collided on port 8000 (Low) — Fixed 2026-09-30
+
+**Cause.** `supabase/functions/reservation-cancel/index.ts:626` called `Deno.serve` at module top level. Since ADR-107 (`d4cf7a5`, 2026-08-27) exported `handleCancelReservation` for `supabase/functions/tests/guestCancellationHonesty.test.ts:10`, every Deno suite run bound `0.0.0.0:8000`, the `Deno.serve` default, until it exited. A second run on the same machine then failed at import with `AddrInUse: Address already in use (os error 48)` at `index.ts:626:6`. The plain task reports `FAILED | 222 passed | 1 failed` because that file's 10 tests never load; a wrapper that imports every test module at once, like the B-47 clock-shift probe, reports `0 passed | 1 failed (0ms)`. The same import made the suite need network permission: without `--allow-net` it failed with `NotCapable`. `create-reservation`, `payment-link-admin`, `payment-link-public` and `reservation-accommodation-move` already guarded their server (ADR-106/107/113), but the pattern was never written down.
+
+**Fix (ADR-118).** Start the server only when `reservation-cancel/index.ts` is the main module. Keep `(request) => handleCancelReservation(request)` so Deno's second handler argument cannot become the injected client. Leave the 27 unguarded entrypoints that no test imports unchanged. The Deno test task no longer grants `--allow-net` (owner decision, 2026-10-01), so an import-time listener or a real network call from a test now fails on every run, not only when two runs overlap.
+
+**Audit.** `deno info --json` over all 28 Deno test files, literal dynamic imports included, loads 61 local modules. The only function-directory modules among them are the five guarded entrypoints and `backfill-review-requests/selection.ts`, which has no listener; no `_shared/` or test module calls `Deno.serve` or `Deno.listen`. Of the 32 entrypoints only those five export anything; the other 27 call `Deno.serve` unguarded, export nothing, and no test imports them.
+
+**Verification.** Before: in each of three concurrent pairs one run failed and the other passed 232/232; a foreign process holding the port also caused the failure. After: five concurrent pairs passed 10/10, four concurrent runs passed 4/4, and the suite passed 232/232 without `--allow-net`. With the guard removed again in a scratch copy, the new task failed on each of three single runs (`NotCapable` at `:626`, `FAILED | 222 passed | 1 failed`). A local main-module smoke returned identical OPTIONS and GET responses before and after. `npm test` passes 491 Node + 232 Deno; `deno fmt --check` and `deno lint` pass; `deno check` shows only the five B-48 errors, unchanged.
+
+**Status.** Fixed; committed and pushed to main on 2026-10-01 after owner sign-off. The failure affected only test runs, with no guest impact. Not deployed; production behavior is identical, and the change rides the next routine `reservation-cancel` redeploy. Afterward, check that an OPTIONS preflight with `Origin: https://ecovila.md` returns 200 and `Access-Control-Allow-Origin: https://ecovila.md`; roll back if it does not.

@@ -623,4 +623,4 @@ function table<T = unknown>(client: SupabaseClient, name: string) {
   return client.from(name) as QueryBuilder<T>;
 }
 
-Deno.serve((request) => handleCancelReservation(request));
+if (import.meta.main) Deno.serve((request) => handleCancelReservation(request));

@@ -178,6 +178,10 @@ ADR-114 supplies bounded reclaim and recurring maintenance; ADR-115 wraps owned 
 
 Fixed fixture dates caused five Deno failures on 2026-09-30 and would cause one Node failure from 2026-10-01 local time; a payment-link provider-lookup test passed without reaching the lookup. ADR-117 derives related fixture times from one clock capture or pins today through an existing seam, and verifies time-gated provider calls. `npm test` passes 491 Node + 232 Deno. Shifted-clock runs of both suites (hourly over 48 h, daily from −60 to +400 days, and at +1,000, +3,650 and +27,000 days) had zero failures. `deno lint` and `deno fmt --check` pass after B-48 cleanup; `deno check` still reports five known errors, all in the one-off `backfill-review-requests/index.ts` (B-48 open). Test-only changes; nothing to deploy.
 
+## 2026-09-30 Deno suite concurrency (B-49, ADR-118)
+
+The imported `reservation-cancel` entrypoint bound port 8000 during every Deno run, so in three of three concurrent pairs one run failed with `AddrInUse`. ADR-118 starts that server only when the file is the main module. An import-graph audit of all 28 Deno test files found no other listener: the five entrypoints that tests import are guarded, and no test imports the 27 unguarded ones. After the fix, five concurrent pairs passed 10/10, four concurrent runs passed 4/4, the suite passed 232/232 without network permission, and a local main-module smoke returned identical OPTIONS and GET responses. By owner decision (2026-10-01) the Deno test task no longer grants network permission, so a missing guard now fails every run. Not deployed: the change rides the next routine `reservation-cancel` redeploy, followed by a live OPTIONS preflight check.
+
 ---
 
 ## Readiness verdict
@@ -188,7 +192,7 @@ accepted before public launch:
 
 | Area | Verdict | Evidence |
 |------|---------|----------|
-| Test suite | Green | `npm test` -> 491 Node + 232 Deno tests pass on 2026-09-30, independent of run date |
+| Test suite | Green | `npm test` -> 491 Node + 232 Deno tests pass on 2026-09-30, independent of run date; concurrent Deno runs no longer collide (B-49) |
 | Payment integrity | Green locally | B-23/B-24/B-25 deployed; ADR-106/107 payment links tested locally but still undeployed |
 | Deno lint/type/format | Mostly clean | `deno lint` and `deno fmt --check` pass; `deno check` has five known `backfill-review-requests/index.ts` errors (B-48, open) |
 | Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |

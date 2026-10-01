@@ -82,6 +82,14 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - One `index.ts` entrypoint per function under `supabase/functions/<name>/`; shared
   logic in `_shared/`. New cross-cutting logic goes in `_shared/`, not copied per
   function.
+- An entrypoint imported by a test, for any reason, starts its server only as the
+  main module: `if (import.meta.main) Deno.serve(handler);`. This applies to
+  `create-reservation`, `payment-link-admin`, `payment-link-public`,
+  `reservation-accommodation-move`, and `reservation-cancel`. The change that first
+  exports from an entrypoint or imports one into a test adds the guard. Otherwise,
+  `Deno.serve` runs on import: it held port 8000 for the whole test run (B-49), and
+  with no `--allow-net` it now fails the run. Deno calls its handler as
+  `(request, info)`, so keep a wrapper when the handler takes injected parameters.
 - HTTP plumbing is centralized: use `_shared/http.ts` (`jsonResponse`, `errorResponse`,
   `assertMethod`, `readJson`, `HttpError`, `requireSharedSecret`, `requireStaffRole`)
   and `_shared/cors.ts`. Throw `HttpError(status, msg)` rather than crafting responses.
@@ -221,8 +229,11 @@ cleanup consistent with these. Update this file if a convention is deliberately 
 - **Backend:** Deno tests in `supabase/functions/tests/`, named `*.test.ts`, run
   via `npm run test:deno` from the repository root (equivalent to
   `cd supabase/functions && deno task test`, which runs
-  `deno test --allow-env --allow-net --allow-read=../migrations tests`). Keep using
+  `deno test --allow-env --allow-read=../migrations tests`). Keep using
   `*.test.ts` so Deno's default directory discovery runs the tests.
+- Deno tests, and any module they import, must not open a listener or reach the network.
+  Since B-49 the test task grants no `--allow-net`, so either fails on every run, and
+  concurrent runs can share a machine. Do not add the flag back to make a test pass.
 - Never hard-code a date or timestamp that production compares with the real clock,
   including far-future sentinels. Derive related times from one `Date.now()` capture
   (see `isoDaysFromNow` in `tests/checkout.test.mjs` and
