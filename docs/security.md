@@ -322,7 +322,7 @@ Wrapping `public.ecovila_app_role()` and the one `auth.uid()` call in scalar SEL
 
 ---
 
-## ADR-111 — guest dossier notes (2026-08-31, not yet deployed)
+## ADR-111 — guest dossier notes (2026-08-31; backend live since 2026-08-31)
 
 **What the data is.** `public.guest_notes` holds staff-authored commentary about identifiable
 people, keyed by phone and/or email. This is personal data under GDPR: a data subject can request
