@@ -236,8 +236,7 @@ fixed; the remaining main blockers are public security-definer RPC review, plain
 legacy cancellation tokens, server-side child-age validation, the Maib `pg_cron`
 migration assumption, dependency/version posture, and production content/asset readiness.
 
-ADR-106 and ADR-107 are now built, reviewed, and green locally (`npm test`: 426 Node +
-202 Deno; Deno lint/format clean). They remain entirely undeployed. The required order
-is the ADR-106 migration, then the ADR-107 binding migration, then the seven affected
-Edge Functions, then the `?v=2026082702` TopHost bundle; the final upload also carries
-the pending ADR-105 frontend.
+ADR-106 and ADR-107 were built, reviewed, and green locally (`npm test`: 426 Node +
+202 Deno; Deno lint/format clean), and have been fully live since 2026-08-27: both
+migrations applied, all 30 Edge Functions redeployed, and the TopHost upload
+content-verified on the live host (see their deploy status in `docs/decisions.md`).

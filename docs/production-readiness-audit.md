@@ -57,7 +57,7 @@ Implemented standalone single-use payment links in the CRM and guest page `plata
 
 ## 2026-08-27 addendum — accommodation moves + bound differences (ADR-107)
 
-Implemented and adversarially reviewed, but **not deployed**:
+Implemented and adversarially reviewed; **LIVE in production since 2026-08-27** (see the ADR-107 deploy status in `docs/decisions.md`):
 
 - Diana-only cross-type moves: single-villa drag and an exact-villa/free-target picker
   for multi-villa bookings. Optional integer-MDL difference billing reuses ADR-106;
@@ -193,7 +193,7 @@ accepted before public launch:
 | Area | Verdict | Evidence |
 |------|---------|----------|
 | Test suite | Green | `npm test` -> 491 Node + 232 Deno tests pass on 2026-09-30, independent of run date; concurrent Deno runs no longer collide (B-49) |
-| Payment integrity | Green locally | B-23/B-24/B-25 deployed; ADR-106/107 payment links tested locally but still undeployed |
+| Payment integrity | Green locally | B-23/B-24/B-25 deployed; ADR-106/107 payment links live since 2026-08-27; their deploy record notes no payment link paid and no cross-type move billed with real money yet |
 | Deno lint/type/format | Mostly clean | `deno lint` and `deno fmt --check` pass; `deno check` has five known `backfill-review-requests/index.ts` errors (B-48, open) |
 | Static local references | Green | Root, `/ru/`, `/en/`, booking, CRM, legal, and required assets are covered by tests |
 | Local static serving | Green | `index.html`, `site.html`, `rezervari.html`, `admin/`, hero MP4 return HTTP 200 locally |

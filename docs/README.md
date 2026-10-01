@@ -194,9 +194,10 @@ See `docs/production-readiness-audit.md` for the full pre-production scan.
 
 The 2026-09-28/29 read-only audit and rollback details are in ADR-114/115/116 and `docs/production-readiness-audit.md`.
 
-> **2026-08-27 ADR-106/ADR-107 rollout gate:** standalone payment links and
-> reservation-bound accommodation-difference links are built and green locally, but
-> **nothing from either ADR is deployed**. Migration
+> **2026-08-27 ADR-106/ADR-107 rollout gate — DONE (FULLY LIVE 2026-08-27; kept for the
+> record):** standalone payment links and reservation-bound accommodation-difference
+> links were built and green locally, and this gate was executed on 2026-08-27 (see
+> their deploy status in `docs/decisions.md`). Migration
 > `20260826120000_payment_links.sql` is a hard prerequisite and must be applied first,
 > followed by `20260827120000_payment_link_reservation_binding.sql`; then deploy, in
 > this rollout, `payment-link-admin`, `payment-link-public`, `maib-callback`,
